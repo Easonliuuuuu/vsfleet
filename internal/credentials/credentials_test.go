@@ -9,6 +9,15 @@ import (
 	"github.com/easonliuuuuu/vc-tui/internal/credentials"
 )
 
+// Fixture values, not credentials. These tests never reach a real secret
+// store, and naming the values keeps a password-shaped literal out of a
+// Password field, where it reads as a real secret to both a human skimming
+// the file and a secret scanner.
+const (
+	storedFixture   = "stored-credential-fixture"
+	promptedFixture = "prompted-credential-fixture"
+)
+
 func TestParseRef(t *testing.T) {
 	cases := []struct {
 		in     string
@@ -65,10 +74,10 @@ func TestRefRoundTrip(t *testing.T) {
 func TestResolverDispatch(t *testing.T) {
 	ctx := context.Background()
 	store := credentials.NewStatic(credentials.SchemeKeyring, map[string]credentials.Credential{
-		"lab": {Password: "s3cret"},
+		"lab": {Password: storedFixture},
 	})
 	prompt := credentials.NewStatic(credentials.SchemePrompt, map[string]credentials.Credential{
-		"": {Password: "typed"},
+		"": {Password: promptedFixture},
 	})
 	r := credentials.NewResolver(store, prompt)
 
@@ -77,8 +86,8 @@ func TestResolverDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Password != "s3cret" {
-		t.Errorf("resolved %q, want the stored secret", got.Password)
+	if got.Password != storedFixture {
+		t.Errorf("resolved %q, want the stored value", got.Password)
 	}
 
 	missing, _ := credentials.ParseRef("keyring:absent")
@@ -97,7 +106,7 @@ func TestResolverDispatch(t *testing.T) {
 func TestPromptFallback(t *testing.T) {
 	ctx := context.Background()
 	store := credentials.NewStatic(credentials.SchemeKeyring, nil)
-	prompt := &credentials.Prompt{In: strings.NewReader("typed-secret\n"), Out: &strings.Builder{}}
+	prompt := &credentials.Prompt{In: strings.NewReader(promptedFixture + "\n"), Out: &strings.Builder{}}
 	r := credentials.NewResolver(store, prompt)
 
 	ref, _ := credentials.ParseRef("keyring:lab")
@@ -108,7 +117,7 @@ func TestPromptFallback(t *testing.T) {
 	if !prompted {
 		t.Error("expected the credential to come from the prompt")
 	}
-	if cred.Password != "typed-secret" {
+	if cred.Password != promptedFixture {
 		t.Errorf("read %q from the prompt", cred.Password)
 	}
 }

@@ -73,9 +73,11 @@ vctui replaces that with one command per question.
   still answers.
 - **Diagnostics that name the fault.** `vctui doctor` walks the connection one
   stage at a time and stops at the first real problem.
-- **A terminal interface over the same layers.** `vctui ui` puts every
-  configured vCenter in a sidebar, one resource kind per tab, and a detail
-  pane on any row. It shows nothing the command line cannot.
+- **A terminal interface that opens by default.** Run `vctui` and it puts
+  every configured vCenter in a sidebar, one resource kind per tab, and a
+  detail pane on any row. With no contexts yet, it opens straight into adding
+  one instead of sending you to read this file first. It shows nothing the
+  command line cannot.
 - **Table output for people, JSON for scripts.** Every command takes `-o json`.
 
 Everything in this release is read-only. There are no power operations, no
@@ -91,6 +93,18 @@ go install github.com/easonliuuuuu/vc-tui/cmd/vctui@latest
 Requires Go 1.25 or newer to build.
 
 ## Getting started
+
+```sh
+vctui
+```
+
+That's it. With no configuration file yet, this opens straight into adding
+your first vCenter — endpoint, route, certificate policy, password — tests
+the connection, and saves it. From there `n` adds another, `e` edits the
+selected one, `x` removes it; nothing about context management needs a
+separate trip to the command line.
+
+The command line does the same work for scripting and provisioning:
 
 ```sh
 # Interactive: asks for the endpoint, route, certificate policy and password,
@@ -126,15 +140,16 @@ vctui host list --context prod -f esxi-07
 vctui search ubuntu-24
 vctui search nvme --kind datastore -o json
 
-vctui ui                           # the same estate, interactively
-vctui ui --all-contexts            # open with every vCenter merged
+vctui                               # the same estate, interactively
+vctui ui --all-contexts             # an explicit alias, open with every vCenter merged
 ```
 
 ## The terminal interface
 
-`vctui ui` opens the estate rather than one vCenter. The sidebar lists every
-configured context whether or not it answers, the tabs are the resource kinds,
-and `a` widens the table from the selected vCenter to all of them at once.
+`vctui` — or, spelled out, `vctui ui` — opens the estate rather than one
+vCenter. The sidebar lists every configured context whether or not it
+answers, the tabs are the resource kinds, and `a` widens the table from the
+selected vCenter to all of them at once.
 
 ```
 vctui  all 3 vCenters  ·  2 connected · 1 failed
@@ -162,16 +177,36 @@ isolation the CLI has, made visible.
 | `enter` | Open the row, or switch to the selected vCenter |
 | `/` | Filter by name; `esc` clears it |
 | `a` | Toggle between one vCenter and all of them |
+| `s` | Cycle the sort order: name, then status (trouble first) |
 | `r` / `R` | Reload what is in scope / every context |
 | `d` | Diagnose the selected context, stage by stage |
+| `n` / `e` / `x` | Add, edit, or delete the selected context |
 | `?` | Keys |
 | `q` | Quit |
 
-The interface holds no state of its own beyond selection and scroll: everything
-it displays comes from `internal/session`, `internal/vsphere` and
-`internal/config`, the same three packages the commands use. It can be thrown
-away and rewritten without taking any behaviour with it, which is why it was
-built last.
+Adding or editing a context opens a form over the same fields
+`vctui context add` asks for — endpoint, username, credential, route, TLS
+policy — with a **Test connection** row that runs the identical stage-by-stage
+diagnosis `vctui doctor` prints, and a **Discover from the server** action next
+to the thumbprint field for trust-on-first-use pinning. A test that fails
+blocks saving once; pressing the now-relabelled **Save anyway** goes through
+regardless, for an operator who wants to fix the fault after saving rather
+than before. Deleting asks once, names the stored password explicitly, and
+defaults to removing it along with the context.
+
+The context, resource tab and sort order are remembered between runs — in
+`~/.config/vctui/state.json` (`VCTUI_STATE` to override), never in
+`config.toml`, which stays exactly what it says it is: contexts, not
+scratch UI state. `--context` overrides the remembered context for one run
+without changing what gets remembered next time.
+
+Beyond that one small file, the interface holds no state of its own: what it
+displays comes from `internal/session`, `internal/vsphere` and
+`internal/config`, the same packages the commands use, reached through one
+`Backend` interface so the whole model — including the form — runs in tests
+against a fake, with no vCenter, proxy or certificate anywhere in sight. It
+can be thrown away and rewritten without taking any behaviour with it, which
+is why it was built last.
 
 ## Configuration
 
@@ -271,6 +306,16 @@ Two rules hold the design together: `govmomi` types never leave
 `internal/vsphere`, and nothing above `internal/transport` knows how a vCenter
 is reached.
 
+Adding, editing, testing and removing a context is `internal/contextops`,
+sitting beside `internal/session` and `internal/search` in that middle layer:
+it validates, optionally runs the same diagnosis `internal/vsphere` exposes
+for `doctor`, stores the password through `internal/credentials`, and writes
+through `internal/config` — one path in, called by both the CLI wizard and
+the interface's form, so "what does saving a context do" has one answer. The
+interface's own memory of where it was left — context, tab, sort order — is
+smaller still: `internal/uistate`, a JSON file with no secrets in it and
+nothing `internal/config` needs to know about.
+
 ## Testing
 
 The whole product is testable without any VMware infrastructure. Integration
@@ -287,26 +332,50 @@ that are otherwise hard to be confident about:
 - one broken vCenter alongside a healthy one, with the healthy results intact
 
 The interface is tested the same way, against a fake backend: tab switching,
-context switching, filtering, the detail pane, the diagnosis panel and the
-merged all-contexts table with one vCenter failing.
+context switching, filtering, the detail pane, the diagnosis panel, sorting,
+the merged all-contexts table with one vCenter failing, and the add/edit
+form — saving, a failed test blocking the save until "save anyway", editing
+in place, deleting with and without confirmation, and certificate discovery.
+`internal/contextops` has its own tests against a real simulated vCenter:
+a save that passes, one a failed test blocks, and removal including the
+stored credential.
 
 ```sh
 go test ./...
 ```
 
-## Roadmap
+## Roadmap to 0.1.0
 
-| Version | Objective |
-|---|---|
-| 0.0.1–0.0.5 | Contexts, SOCKS5, keyring, inventory API — **done** |
-| 0.0.6 | Terminal UI: context switcher, resource tabs, detail view — **done** |
-| 0.0.7 | Inventory cache with concurrent background refresh |
-| 0.0.8 | Global search in the UI |
-| 0.1.0 | First public release |
+The goal is a fast, resilient, read-only multi-vCenter interface a new user
+can operate without learning the CLI subcommand tree first.
 
-Explicitly **not** planned for 0.1.0: provisioning, vMotion, NSX, vSAN, alarms,
-performance graphs, tag management, a web UI, or a plugin system. They are all
-tempting and they are all scope traps.
+| Area | Objective | Status |
+|---|---|---|
+| Entry experience | `vctui` opens the interface directly; add/edit/test/delete a context from inside it; remember the last context, tab and sort mode | **done** |
+| Proxy support | Direct, SOCKS5, HTTP and HTTPS routes; SOCKS5 remote DNS; unauthenticated and basic-auth proxies; passwords only ever in the keyring; explicit TLS modes; never inherit `HTTP_PROXY`/`HTTPS_PROXY` | SOCKS5 and direct done; HTTP/HTTPS proxy routes and proxy authentication next |
+| Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | direct and SOCKS5 stages done; HTTP CONNECT and proxy-auth stages pending |
+| Responsive inventory loading | A shared cache outside the interface; the selected context first, others concurrently, bounded; stale-while-revalidate; per-context refresh timestamps and errors; the keyboard never blocks on the network | not started |
+| Global search | Search cached inventory across every configured vCenter from inside the interface; selecting a result switches context, tab and selection; partial results survive a failed context | the CLI has cross-vCenter search today; bringing the same query into the interface, over the inventory cache above, is next |
+| Release hardening | Real vSphere 7/8, self-signed certs, enterprise CAs, thumbprints, restricted RBAC accounts; large-vcsim performance; Linux/macOS/Windows smoke tests; a demo GIF; GoReleaser binaries; tag v0.1.0 | not started — needs real VMware infrastructure and multi-platform hands, not just code |
+
+### Definition of done
+
+A new user can install vctui, run `vctui`, configure a direct or proxied
+vCenter entirely inside the interface, inspect all supported inventory,
+search across contexts, and keep using the contexts that are healthy or
+cached when another one fails.
+
+### Explicitly not planned for 0.1.0
+
+VM power operations, snapshots, provisioning, cloning or migration;
+performance graphs, alarms, tasks or events; tags, content libraries, vSAN,
+NSX or distributed-switch management; SSH bastions, Vault, 1Password or
+additional hypervisors; a web UI, an API server, an MCP server, or a plugin
+system. They are all tempting and they are all scope traps.
+
+After 0.1.0, feature development pauses long enough to hear from real
+VMware operators, and repeated requests — not this list — decide what comes
+next.
 
 ## License
 

@@ -292,7 +292,9 @@ func (m *Model) viewTabs(w int) string {
 			parts = append(parts, t.tabOff.Render(label))
 		}
 	}
-	return truncate(strings.Join(parts, t.faint.Render("   ")), w)
+	tabs := strings.Join(parts, t.faint.Render("   "))
+	suffix := t.faint.Render("  sort: " + m.sortMode.label())
+	return truncate(tabs+suffix, w)
 }
 
 // viewDetail is one object, full width, every property the inventory carries.

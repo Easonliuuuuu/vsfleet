@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -21,6 +22,63 @@ const (
 	statusWarn
 	statusBad
 )
+
+// sortMode orders the resource table. It is deliberately just two settings:
+// the grouped, alphabetical order that rowsFor already produces needs no
+// further sorting to earn its name, and the one thing worth reordering for
+// is surfacing trouble — a suspended VM or a host in maintenance anywhere in
+// the scope, not only the one at the top of its own vCenter's list.
+type sortMode int
+
+const (
+	sortByName sortMode = iota
+	sortByStatus
+)
+
+func (s sortMode) label() string {
+	if s == sortByStatus {
+		return "status"
+	}
+	return "name"
+}
+
+func (s sortMode) next() sortMode {
+	if s == sortByStatus {
+		return sortByName
+	}
+	return sortByStatus
+}
+
+// apply reorders rows in place. Name order is left exactly as rowsFor built
+// it — grouped by context, alphabetical within each — because that grouping
+// is itself information once more than one vCenter is in scope. Status order
+// uses a stable sort, so within a status the name grouping survives as the
+// tiebreaker.
+func (s sortMode) apply(rows []row) {
+	if s != sortByStatus {
+		return
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		return statusRank(rows[i].status) < statusRank(rows[j].status)
+	})
+}
+
+// statusRank orders the worst news first: a failure before a warning before
+// a healthy row before one with nothing to report.
+func statusRank(s rowStatus) int {
+	switch s {
+	case statusBad:
+		return 0
+	case statusWarn:
+		return 1
+	case statusGood:
+		return 2
+	case statusIdle:
+		return 3
+	default:
+		return 4
+	}
+}
 
 // column describes one table column. A width of zero means the column absorbs
 // whatever space the fixed ones leave over; exactly one column per kind is

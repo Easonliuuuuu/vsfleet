@@ -84,6 +84,31 @@ type Options struct {
 	Current string
 	// AllContexts starts with every vCenter in view rather than one.
 	AllContexts bool
+	// Kind is the resource tab to start on. An unrecognised or empty value
+	// starts on VMs, the same as a first run.
+	Kind string
+	// Sort is the sort mode to start in: "status", or anything else
+	// (including empty) for the default name order.
+	Sort string
+}
+
+// Snapshot is what is worth remembering about the interface between runs:
+// where the cursor was, not the inventory or connection state, which a new
+// run fetches fresh anyway.
+type Snapshot struct {
+	Context string
+	Kind    string
+	Sort    string
+}
+
+// Snapshot reports the interface's current position, for the caller to
+// persist once the program exits.
+func (m *Model) Snapshot() Snapshot {
+	snap := Snapshot{Kind: string(m.kind), Sort: m.sortMode.label()}
+	if st := m.current(); st != nil {
+		snap.Context = st.cc.Name
+	}
+	return snap
 }
 
 // Model is the whole interface. Every field is presentation state: nothing
@@ -103,6 +128,7 @@ type Model struct {
 	selected  int
 	pane      pane
 	kind      vsphere.Kind
+	sortMode  sortMode
 	allScope  bool
 	filtering bool
 	mode      mode
@@ -128,6 +154,14 @@ type Model struct {
 // New builds the interface over a backend.
 func New(ctx context.Context, backend Backend, opts Options) *Model {
 	contexts := backend.Contexts()
+	kind := vsphere.KindVM
+	if k, err := vsphere.ParseKind(opts.Kind); err == nil {
+		kind = k
+	}
+	sm := sortByName
+	if opts.Sort == "status" {
+		sm = sortByStatus
+	}
 	m := &Model{
 		ctx:      ctx,
 		backend:  backend,
@@ -136,7 +170,8 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		spin:     spinner.New(spinner.WithSpinner(spinner.Dot)),
 		filter:   newFilterInput(),
 		byName:   make(map[string]*contextState, len(contexts)),
-		kind:     vsphere.KindVM,
+		kind:     kind,
+		sortMode: sm,
 		allScope: opts.AllContexts,
 		pane:     paneResources,
 		width:    100,
@@ -213,16 +248,17 @@ func (m *Model) rows() []row {
 		out = append(out, rowsFor(st.inv, m.kind, m.showContext())...)
 	}
 	needle := strings.ToLower(strings.TrimSpace(m.filter.Value()))
-	if needle == "" {
-		return out
-	}
-	kept := out[:0]
-	for _, r := range out {
-		if strings.Contains(strings.ToLower(r.name), needle) {
-			kept = append(kept, r)
+	if needle != "" {
+		kept := out[:0]
+		for _, r := range out {
+			if strings.Contains(strings.ToLower(r.name), needle) {
+				kept = append(kept, r)
+			}
 		}
+		out = kept
 	}
-	return kept
+	m.sortMode.apply(out)
+	return out
 }
 
 // failuresInScope lists the contexts that could not be read, so the browse
@@ -662,6 +698,9 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 		return tea.Batch(m.reload(true)...)
 	case key.Matches(msg, m.keys.Doctor):
 		return m.diagnose()
+	case key.Matches(msg, m.keys.Sort):
+		m.sortMode = m.sortMode.next()
+		m.cursor, m.offset = 0, 0
 	case key.Matches(msg, m.keys.NewContext):
 		return m.enterForm(nil)
 	case key.Matches(msg, m.keys.EditContext):

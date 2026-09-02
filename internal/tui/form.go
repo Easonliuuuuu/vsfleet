@@ -50,8 +50,8 @@ type contextForm struct {
 	origName string // the context being edited; empty for a new one
 
 	name, endpoint, username, password textinput.Model
-	datacenter, socksAddr, socksUser   textinput.Model
-	thumbprint                         textinput.Model
+	datacenter, proxyAddr, proxyUser   textinput.Model
+	proxyPass, thumbprint              textinput.Model
 
 	credIdx      int // 0 keyring, 1 prompt
 	transportIdx int // 0 direct, 1 socks5
@@ -101,8 +101,9 @@ func newContextForm(edit *contextState) *contextForm {
 		username:   newFormInput("administrator@vsphere.local", 40),
 		password:   newFormSecret(40),
 		datacenter: newFormInput("optional", 30),
-		socksAddr:  newFormInput("127.0.0.1:1080", 30),
-		socksUser:  newFormInput("optional", 30),
+		proxyAddr:  newFormInput("127.0.0.1:1080", 30),
+		proxyUser:  newFormInput("optional", 30),
+		proxyPass:  newFormSecret(40),
 		thumbprint: newFormInput("", 60),
 	}
 	if edit == nil {
@@ -118,10 +119,17 @@ func newContextForm(edit *contextState) *contextForm {
 	if cc.Credential.Scheme == credentials.SchemePrompt {
 		f.credIdx = 1
 	}
-	if cc.Transport.Type == config.TransportSOCKS5 {
+	switch cc.Transport.Type {
+	case config.TransportSOCKS5:
 		f.transportIdx = 1
-		f.socksAddr.SetValue(cc.Transport.Address)
-		f.socksUser.SetValue(cc.Transport.Username)
+	case config.TransportHTTPProxy:
+		f.transportIdx = 2
+	case config.TransportHTTPSProxy:
+		f.transportIdx = 3
+	}
+	if f.transportIdx != 0 {
+		f.proxyAddr.SetValue(cc.Transport.Address)
+		f.proxyUser.SetValue(cc.Transport.Username)
 		f.remoteDNS = cc.Transport.RemoteDNS
 	}
 	switch cc.TLS.Mode {
@@ -158,13 +166,23 @@ func (f *contextForm) rows() []formRow {
 		}
 		rows = append(rows, formRow{label: label, kind: rowSecret, input: &f.password})
 	}
-	rows = append(rows, formRow{label: "Route", kind: rowSelect, options: []string{"direct", "socks5"}, idx: &f.transportIdx})
-	if f.transportIdx == 1 {
+	rows = append(rows, formRow{label: "Route", kind: rowSelect, options: []string{"direct", "socks5", "http", "https"}, idx: &f.transportIdx})
+	if f.transportIdx != 0 {
 		rows = append(rows,
-			formRow{label: "SOCKS5 address", kind: rowText, input: &f.socksAddr, hint: "host:port"},
-			formRow{label: "SOCKS5 username (optional)", kind: rowText, input: &f.socksUser},
-			formRow{label: "Resolve DNS at the proxy", kind: rowToggle, flag: &f.remoteDNS},
+			formRow{label: "Proxy address", kind: rowText, input: &f.proxyAddr, hint: "host:port"},
+			formRow{label: "Proxy username (optional)", kind: rowText, input: &f.proxyUser},
 		)
+		if strings.TrimSpace(f.proxyUser.Value()) != "" {
+			label := "Proxy password"
+			if f.editing {
+				label = "Proxy password (blank keeps the stored one)"
+			}
+			rows = append(rows, formRow{label: label, kind: rowSecret, input: &f.proxyPass})
+		}
+		if f.transportIdx == 1 {
+			rows = append(rows, formRow{label: "Resolve DNS at the proxy", kind: rowToggle, flag: &f.remoteDNS,
+				hint: "http and https always resolve at the proxy; only socks5 has a choice"})
+		}
 	}
 	rows = append(rows, formRow{label: "Certificate policy", kind: rowSelect, options: []string{"system", "thumbprint", "insecure"}, idx: &f.tlsIdx})
 	if f.tlsIdx == 1 {
@@ -225,14 +243,21 @@ func (f *contextForm) input() contextops.Input {
 	if f.editing {
 		in.Name = f.origName
 	}
-	if f.transportIdx == 1 {
+	switch f.transportIdx {
+	case 1, 2, 3:
+		routeType := map[int]string{1: config.TransportSOCKS5, 2: config.TransportHTTPProxy, 3: config.TransportHTTPSProxy}[f.transportIdx]
 		in.Transport = config.TransportConfig{
-			Type:      config.TransportSOCKS5,
-			Address:   strings.TrimSpace(f.socksAddr.Value()),
-			Username:  strings.TrimSpace(f.socksUser.Value()),
-			RemoteDNS: f.remoteDNS,
+			Type:      routeType,
+			Address:   strings.TrimSpace(f.proxyAddr.Value()),
+			Username:  strings.TrimSpace(f.proxyUser.Value()),
+			RemoteDNS: f.transportIdx == 1 && f.remoteDNS,
 		}
-	} else {
+		if in.Transport.Username != "" {
+			if pw := f.proxyPass.Value(); pw != "" {
+				in.ProxyPassword, in.HaveProxyPassword = pw, true
+			}
+		}
+	default:
 		in.Transport = config.TransportConfig{Type: config.TransportDirect}
 	}
 	switch f.tlsIdx {
@@ -266,8 +291,8 @@ func (f *contextForm) validate() string {
 		return "endpoint is required"
 	case in.Username == "":
 		return "username is required"
-	case in.Transport.Type == config.TransportSOCKS5 && in.Transport.Address == "":
-		return "SOCKS5 address is required"
+	case in.Transport.Type != config.TransportDirect && in.Transport.Address == "":
+		return "proxy address is required"
 	case in.TLS.Mode == config.TLSThumbprint && in.TLS.Thumbprint == "":
 		return "thumbprint is required in thumbprint mode — use Discover, or switch policy"
 	default:

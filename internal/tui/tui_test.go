@@ -234,7 +234,7 @@ func settleForm(m *Model) {
 	f := m.form
 	for _, ti := range []*textinput.Model{
 		&f.name, &f.endpoint, &f.username, &f.password,
-		&f.datacenter, &f.socksAddr, &f.socksUser, &f.thumbprint,
+		&f.datacenter, &f.proxyAddr, &f.proxyUser, &f.proxyPass, &f.thumbprint,
 	} {
 		ti.Cursor.SetMode(cursor.CursorStatic)
 	}
@@ -892,5 +892,118 @@ func TestOptionsSeedTheStartingPosition(t *testing.T) {
 	}
 	if m.sortMode != sortByStatus {
 		t.Errorf("starting sort is %v, want status", m.sortMode)
+	}
+}
+
+func hasLabel(rows []formRow, label string) bool {
+	for _, r := range rows {
+		if r.label == label {
+			return true
+		}
+	}
+	return false
+}
+
+// TestFormRouteRowsMatchEachProxyType checks the row generation directly,
+// independent of the keypresses needed to reach each route: direct shows no
+// proxy fields, every proxy type shows an address, only socks5 shows the
+// remote-DNS toggle (http and https always resolve at the proxy, so there is
+// nothing to choose), and the password field only appears once a proxy
+// username has actually been typed.
+func TestFormRouteRowsMatchEachProxyType(t *testing.T) {
+	f := newContextForm(nil)
+
+	if hasLabel(f.rows(), "Proxy address") {
+		t.Error("direct route should not show proxy fields")
+	}
+
+	f.transportIdx = 1 // socks5
+	if rows := f.rows(); !hasLabel(rows, "Proxy address") || !hasLabel(rows, "Resolve DNS at the proxy") {
+		t.Error("socks5 should show a proxy address and the remote-DNS toggle")
+	}
+
+	f.transportIdx = 2 // http
+	if rows := f.rows(); !hasLabel(rows, "Proxy address") {
+		t.Error("http should show a proxy address field")
+	} else if hasLabel(rows, "Resolve DNS at the proxy") {
+		t.Error("http has no remote-DNS choice — it always resolves at the proxy")
+	}
+
+	f.transportIdx = 3 // https
+	if rows := f.rows(); !hasLabel(rows, "Proxy address") {
+		t.Error("https should show a proxy address field")
+	} else if hasLabel(rows, "Resolve DNS at the proxy") {
+		t.Error("https has no remote-DNS choice either")
+	} else if hasLabel(rows, "Proxy password") {
+		t.Error("the password field should not appear before a proxy username is typed")
+	}
+
+	f.proxyUser.SetValue("svc-proxy")
+	if !hasLabel(f.rows(), "Proxy password") {
+		t.Error("a non-empty proxy username should reveal the password field")
+	}
+}
+
+func TestNewContextFormSavesAnHTTPSProxyRoute(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "n")
+	settleForm(m)
+	fillNewContextBasics(t, m, "secure-proxy", "https://vcsa.secure.internal", "operator@vsphere.local")
+	press(t, m, "down")                    // -> Password (leave blank)
+	press(t, m, "down")                    // -> Route
+	press(t, m, "right", "right", "right") // direct -> socks5 -> http -> https
+	if m.form.transportIdx != 3 {
+		t.Fatalf("transportIdx is %d, want 3 (https)", m.form.transportIdx)
+	}
+	press(t, m, "down") // -> Proxy address
+	typeText(t, m, "proxy.example.internal:3128")
+	press(t, m, "down") // -> Proxy username
+	typeText(t, m, "svc-proxy")
+	press(t, m, "down") // -> Proxy password (now visible)
+	typeText(t, m, "s3cret")
+	press(t, m, "down", "down", "down", "down", "down") // TLS, Datacenter, Current, Test, Save
+	press(t, m, "enter")
+
+	if m.mode != modeBrowse {
+		t.Fatalf("save should return to browse, mode is %v", m.mode)
+	}
+	saved, err := findContext(b.contexts, "secure-proxy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Transport.Type != config.TransportHTTPSProxy {
+		t.Errorf("route type is %q, want https", saved.Transport.Type)
+	}
+	if saved.Transport.Address != "proxy.example.internal:3128" {
+		t.Errorf("proxy address is %q", saved.Transport.Address)
+	}
+	if saved.Transport.Username != "svc-proxy" {
+		t.Errorf("proxy username is %q, want svc-proxy", saved.Transport.Username)
+	}
+}
+
+func TestEditContextPrefillsAnHTTPProxyRoute(t *testing.T) {
+	b := &fakeBackend{contexts: []*config.Context{func() *config.Context {
+		cc := ctx("via-proxy", "https://vcsa.via-proxy.internal")
+		cc.Transport = config.TransportConfig{Type: config.TransportHTTPProxy, Address: "10.0.0.1:8080", Username: "svc"}
+		return cc
+	}()}}
+	m := newTestModel(t, b, Options{Current: "via-proxy"})
+
+	press(t, m, "e")
+	settleForm(m)
+	if m.form.transportIdx != 2 {
+		t.Fatalf("transportIdx is %d, want 2 (http)", m.form.transportIdx)
+	}
+	if got := m.form.proxyAddr.Value(); got != "10.0.0.1:8080" {
+		t.Errorf("proxy address not prefilled: %q", got)
+	}
+	if got := m.form.proxyUser.Value(); got != "svc" {
+		t.Errorf("proxy username not prefilled: %q", got)
+	}
+	if hasLabel(m.form.rows(), "Resolve DNS at the proxy") {
+		t.Error("http should not show the remote-DNS toggle even when editing")
 	}
 }

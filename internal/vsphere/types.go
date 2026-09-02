@@ -1,9 +1,13 @@
 package vsphere
 
-import "fmt"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
-// Kind names a class of inventory object. Search results and the future UI
-// tabs are both keyed on it.
+// Kind names a class of inventory object. Search results and the interface's
+// resource tabs are both keyed on it.
 type Kind string
 
 // Inventory kinds.
@@ -159,8 +163,22 @@ type Inventory struct {
 	Networks   []Network   `json:"networks"`
 }
 
-// Counts renders a one-line summary, used by status output.
+// Counts renders a one-line summary, used by status output and by the
+// interface's message line.
 func (i *Inventory) Counts() string {
-	return fmt.Sprintf("%d VMs, %d templates, %d hosts, %d clusters, %d datastores, %d networks",
-		len(i.VMs), len(i.Templates), len(i.Hosts), len(i.Clusters), len(i.Datastores), len(i.Networks))
+	return strings.Join([]string{
+		plural(len(i.VMs), "VM"),
+		plural(len(i.Templates), "template"),
+		plural(len(i.Hosts), "host"),
+		plural(len(i.Clusters), "cluster"),
+		plural(len(i.Datastores), "datastore"),
+		plural(len(i.Networks), "network"),
+	}, ", ")
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	return strconv.Itoa(n) + " " + word + "s"
 }

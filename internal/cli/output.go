@@ -128,22 +128,6 @@ func humanDuration(d time.Duration) string {
 	}
 }
 
-// humanAge renders how long ago something happened.
-func humanAge(t time.Time) string {
-	if t.IsZero() {
-		return "-"
-	}
-	d := time.Since(t).Round(time.Second)
-	switch {
-	case d < time.Minute:
-		return strconv.FormatInt(int64(d.Seconds()), 10) + "s ago"
-	case d < time.Hour:
-		return strconv.FormatInt(int64(d.Minutes()), 10) + "m ago"
-	default:
-		return strconv.FormatInt(int64(d.Hours()), 10) + "h ago"
-	}
-}
-
 func dash(s string) string {
 	if strings.TrimSpace(s) == "" {
 		return "-"

@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/vmware/govmomi/vim25/mo"
-	"github.com/vmware/govmomi/vim25/types"
 )
 
 var hostProps = []string{
@@ -78,7 +77,3 @@ func newHost(c *Client, idx *index, m *mo.HostSystem) Host {
 	}
 	return h
 }
-
-// hostRefsByCluster is used by the cluster listing to count member hosts when
-// the server does not populate the compute resource summary.
-func hostRefsByCluster(refs []types.ManagedObjectReference) int { return len(refs) }

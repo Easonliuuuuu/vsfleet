@@ -116,12 +116,11 @@ func (p *HTTPProxy) connect(ctx context.Context, conn net.Conn, address string) 
 		return nil, fmt.Errorf("read CONNECT response from %s proxy %s: %w", p.scheme(), p.address, err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusProxyAuthRequired {
+		return nil, fmt.Errorf("%w: %s proxy %s: 407 Proxy Authentication Required", ErrProxyAuth, p.scheme(), p.address)
+	}
 	if resp.StatusCode != http.StatusOK {
-		detail := resp.Status
-		if resp.StatusCode == http.StatusProxyAuthRequired {
-			detail = "407 Proxy Authentication Required"
-		}
-		return nil, fmt.Errorf("%s proxy %s refused to connect to %s: %s", p.scheme(), p.address, address, detail)
+		return nil, fmt.Errorf("%s proxy %s refused to connect to %s: %s", p.scheme(), p.address, address, resp.Status)
 	}
 	return &bufConn{Conn: conn, r: br}, nil
 }

@@ -5,6 +5,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -16,6 +17,13 @@ import (
 
 // DefaultDialTimeout bounds a single TCP connect.
 const DefaultDialTimeout = 15 * time.Second
+
+// ErrProxyAuth marks a dial failure as the proxy rejecting the credentials it
+// was given — a SOCKS5 RFC 1929 refusal or an HTTP CONNECT 407 — as opposed to
+// the proxy being unreachable or refusing to route to the destination for any
+// other reason. Diagnostics use it to report a bad proxy password under its
+// own name instead of the generic "could not connect" stage.
+var ErrProxyAuth = errors.New("proxy rejected the configured credentials")
 
 // Dialer opens connections towards a vCenter. It is the single seam that keeps
 // routing decisions out of the vSphere client.

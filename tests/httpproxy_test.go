@@ -249,8 +249,8 @@ func TestHTTPProxyWrongCredentialFails(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a wrong proxy password must not connect:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "TCP connection") {
-		t.Errorf("a 407 during CONNECT should surface at the TCP connection stage:\n%s", stdout)
+	if !strings.Contains(stdout, "Proxy authentication") {
+		t.Errorf("a 407 during CONNECT should be named as a proxy authentication failure, not a generic connection failure:\n%s", stdout)
 	}
 	if !strings.Contains(stdout, "407") {
 		t.Errorf("the failure should mention the proxy's 407, got:\n%s", stdout)

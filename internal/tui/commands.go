@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/easonliuuuuu/vc-tui/internal/cache"
 	"github.com/easonliuuuuu/vc-tui/internal/config"
 	"github.com/easonliuuuuu/vc-tui/internal/contextops"
 	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
@@ -14,11 +15,16 @@ import (
 // inventoryMsg carries the outcome of reading one vCenter. The error travels
 // in the message rather than being returned: a command that fails must land on
 // its own context's row, never take the program down with it.
+//
+// inventory and loadedAt come from the cache rather than being computed here,
+// so a failed refresh reports the last inventory that did load and when,
+// never a nil that would blank an already-populated row.
 type inventoryMsg struct {
 	context   string
 	inventory *vsphere.Inventory
 	err       error
 	elapsed   time.Duration
+	loadedAt  time.Time
 }
 
 // diagnosisMsg carries a completed connection diagnosis.
@@ -27,14 +33,25 @@ type diagnosisMsg struct {
 	diagnosis *vsphere.Diagnosis
 }
 
-// loadInventory reads one vCenter in the background. Every context gets its
-// own command, so several are in flight at once and a slow one only ever
-// delays its own row.
-func loadInventory(ctx context.Context, b Backend, cc *config.Context) tea.Cmd {
+// loadInventory reads one vCenter in the background, through the shared
+// cache so a slow or overcrowded estate does not open every context's
+// connection at once, and so a failed refresh does not erase the inventory
+// the cache already had for it. Every context gets its own command, so
+// several are in flight at once (bounded by the cache) and a slow one only
+// ever delays its own row.
+func loadInventory(ctx context.Context, c *cache.Cache, b Backend, cc *config.Context) tea.Cmd {
 	return func() tea.Msg {
 		start := time.Now()
-		inv, err := b.Inventory(ctx, cc)
-		return inventoryMsg{context: cc.Name, inventory: inv, err: err, elapsed: time.Since(start)}
+		e := c.Refresh(ctx, cc.Name, func(ctx context.Context) (*vsphere.Inventory, error) {
+			return b.Inventory(ctx, cc)
+		})
+		return inventoryMsg{
+			context:   cc.Name,
+			inventory: e.Inventory,
+			err:       e.Err,
+			elapsed:   time.Since(start),
+			loadedAt:  e.LoadedAt,
+		}
 	}
 }
 

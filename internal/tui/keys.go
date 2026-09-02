@@ -22,6 +22,7 @@ type keyMap struct {
 	Reload    key.Binding
 	ReloadAll key.Binding
 	Doctor    key.Binding
+	Sort      key.Binding
 	Help      key.Binding
 	Quit      key.Binding
 
@@ -60,6 +61,7 @@ func defaultKeys() keyMap {
 		Reload:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
 		ReloadAll: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "reload all")),
 		Doctor:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "test/diagnose")),
+		Sort:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
 		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 
@@ -83,6 +85,7 @@ func (k keyMap) helpSections() []helpSection {
 		{"Navigate", []key.Binding{k.NextTab, k.PrevTab, k.NextPane, k.Open, k.Back}},
 		{"Scope", []key.Binding{k.AllScope, k.Filter}},
 		{"Connection", []key.Binding{k.Reload, k.ReloadAll, k.Doctor}},
+		{"Table", []key.Binding{k.Sort}},
 		{"Contexts", []key.Binding{k.NewContext, k.EditContext, k.DeleteContext}},
 		{"Other", []key.Binding{k.Help, k.Quit}},
 	}
@@ -108,6 +111,6 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeConfirmDelete:
 		return []key.Binding{k.Confirm, k.ToggleKeep, k.Back}
 	default:
-		return []key.Binding{k.NextTab, k.NextPane, k.Open, k.Filter, k.AllScope, k.Reload, k.Doctor, k.NewContext, k.EditContext, k.DeleteContext, k.Help, k.Quit}
+		return []key.Binding{k.NextTab, k.NextPane, k.Open, k.Filter, k.AllScope, k.Sort, k.Reload, k.Doctor, k.NewContext, k.EditContext, k.DeleteContext, k.Help, k.Quit}
 	}
 }

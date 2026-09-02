@@ -8,12 +8,20 @@ import (
 
 // Run starts the interface and blocks until the operator quits. The alternate
 // screen is used so the terminal is left exactly as it was found.
-func Run(ctx context.Context, b Backend, opts Options) error {
+//
+// The returned Snapshot reflects wherever the interface was left — even on
+// error, since a canceled context still exits through the same path and the
+// caller decides for itself whether a partial run is worth remembering.
+func Run(ctx context.Context, b Backend, opts Options) (Snapshot, error) {
+	m := New(ctx, b, opts)
 	p := tea.NewProgram(
-		New(ctx, b, opts),
+		m,
 		tea.WithAltScreen(),
 		tea.WithContext(ctx),
 	)
-	_, err := p.Run()
-	return err
+	final, err := p.Run()
+	if fm, ok := final.(*Model); ok {
+		return fm.Snapshot(), err
+	}
+	return Snapshot{}, err
 }

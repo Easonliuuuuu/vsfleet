@@ -825,3 +825,72 @@ func TestFormEscapeCancelsWithoutQuitting(t *testing.T) {
 		t.Errorf("cancelling must not save anything, have %d contexts", len(b.contexts))
 	}
 }
+
+func TestSortBringsTroubleToTheTop(t *testing.T) {
+	inv := inventoryFor("prod")
+	// app-01 sorts first alphabetically. Giving build-runner-3 the worse
+	// status is what makes name order and status order actually disagree,
+	// so the test tells them apart rather than passing by coincidence.
+	inv.VMs[1].PowerState = "suspended"
+	b := &fakeBackend{
+		contexts:    []*config.Context{ctx("prod", "https://vcsa.prod.internal")},
+		inventories: map[string]*vsphere.Inventory{"prod": inv},
+	}
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	rows := m.rows()
+	if rows[0].name != "app-01" {
+		t.Fatalf("name order should put app-01 first, got %q", rows[0].name)
+	}
+
+	press(t, m, "s")
+	if m.sortMode != sortByStatus {
+		t.Fatalf("'s' should switch to status order, sortMode is %v", m.sortMode)
+	}
+	rows = m.rows()
+	if rows[0].name != "build-runner-3" {
+		t.Errorf("status order should put the suspended VM first, got %q", rows[0].name)
+	}
+	if !strings.Contains(m.View(), "sort: status") {
+		t.Errorf("the active sort should be visible in the tab bar:\n%s", m.View())
+	}
+
+	press(t, m, "s")
+	if m.sortMode != sortByName {
+		t.Fatalf("'s' should cycle back to name order, sortMode is %v", m.sortMode)
+	}
+}
+
+func TestSnapshotReportsCurrentPosition(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "right") // Templates tab
+	press(t, m, "s")     // status sort
+
+	snap := m.Snapshot()
+	if snap.Context != "prod" {
+		t.Errorf("snapshot context is %q, want prod", snap.Context)
+	}
+	if snap.Kind != "template" {
+		t.Errorf("snapshot kind is %q, want template", snap.Kind)
+	}
+	if snap.Sort != "status" {
+		t.Errorf("snapshot sort is %q, want status", snap.Sort)
+	}
+}
+
+func TestOptionsSeedTheStartingPosition(t *testing.T) {
+	b := twoHealthy()
+	m := New(context.Background(), b, Options{Current: "customer-a", Kind: "host", Sort: "status"})
+
+	if got := m.current(); got == nil || got.cc.Name != "customer-a" {
+		t.Errorf("starting context is %v, want customer-a", got)
+	}
+	if m.kind != vsphere.KindHost {
+		t.Errorf("starting kind is %v, want host", m.kind)
+	}
+	if m.sortMode != sortByStatus {
+		t.Errorf("starting sort is %v, want status", m.sortMode)
+	}
+}

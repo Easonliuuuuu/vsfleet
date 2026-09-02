@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/easonliuuuuu/vc-tui/internal/config"
+	"github.com/easonliuuuuu/vc-tui/internal/contextops"
 	"github.com/easonliuuuuu/vc-tui/internal/credentials"
 	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
 )
@@ -138,15 +139,13 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		}
 	}
 
-	cc.Normalize()
+	var credRef credentials.Ref
 	if f.credential != "" {
 		ref, err := credentials.ParseRef(f.credential)
 		if err != nil {
 			return err
 		}
-		cc.Credential = ref
-	} else if cc.Credential.IsZero() {
-		cc.Credential = credentials.Ref{Scheme: credentials.SchemeKeyring, Value: cc.Name}
+		credRef = ref
 	}
 	// A pinned context with no fingerprint yet: fetch what the server presents
 	// so the operator can look at it before trusting it. This runs before
@@ -156,49 +155,39 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 			return err
 		}
 	}
-	if err := cc.Validate(); err != nil {
-		return err
-	}
 
-	opts := a.ConnectOptions()
-	if havePassword {
-		opts.Credential = &credentials.Credential{Password: password}
+	in := contextops.Input{
+		Name: cc.Name, Endpoint: cc.Endpoint, Username: cc.Username, Datacenter: cc.Datacenter,
+		Transport: cc.Transport, TLS: cc.TLS, Credential: credRef,
+		Password: password, HavePassword: havePassword,
+		Replace: f.force, SaveOnTestFailure: f.force, SetCurrent: f.setCurrent,
 	}
 
 	if !f.skipTest {
 		fmt.Fprintf(a.errOut(), "Testing connection to %s ...\n", cc.Endpoint)
-		diag, client := vsphere.Diagnose(ctx, cc, opts)
-		if client != nil {
-			_ = client.Close(context.WithoutCancel(ctx))
-		}
-		if !diag.OK() {
-			printDiagnosis(a, diag, true)
-			if !f.force {
-				return fmt.Errorf("connection test failed; fix the problem or pass --no-test to save anyway")
-			}
-			fmt.Fprintln(a.errOut(), "Saving anyway because --force was given.")
+	}
+	res, err := contextops.Save(ctx, cfg, a.Resolver(), a.ConnectOptions(), in, !f.skipTest)
+	if !f.skipTest && res.Diagnosis != nil {
+		if res.Diagnosis.OK() {
+			fmt.Fprintf(a.errOut(), "%s Connected to %s in %s\n", glyphOK, res.Diagnosis.About.FullVersion(), humanDuration(res.Diagnosis.Latency))
 		} else {
-			fmt.Fprintf(a.errOut(), "%s Connected to %s in %s\n", glyphOK, diag.About.FullVersion(), humanDuration(diag.Latency))
+			printDiagnosis(a, res.Diagnosis, true)
+			if f.force {
+				fmt.Fprintln(a.errOut(), "Saving anyway because --force was given.")
+			}
 		}
 	}
-
-	if havePassword && cc.Credential.Scheme == credentials.SchemeKeyring {
-		if err := a.Resolver().Store(ctx, cc.Credential, credentials.Credential{Password: password}); err != nil {
-			fmt.Fprintf(a.errOut(), "warning: could not store the password (%v)\n", err)
-			fmt.Fprintf(a.errOut(), "vctui will ask for it on each run. Set credential = \"prompt\" to make that explicit.\n")
+	if err != nil {
+		if res != nil && res.Diagnosis != nil && !res.Diagnosis.OK() {
+			return fmt.Errorf("connection test failed; fix the problem or pass --no-test to save anyway")
 		}
-	}
-
-	if err := cfg.Add(cc, f.force); err != nil {
 		return err
 	}
-	if f.setCurrent || cfg.CurrentContext == "" {
-		cfg.CurrentContext = cc.Name
+	if res.StoreWarning != nil {
+		fmt.Fprintf(a.errOut(), "warning: could not store the password (%v)\n", res.StoreWarning)
+		fmt.Fprintf(a.errOut(), "vctui will ask for it on each run. Set credential = \"prompt\" to make that explicit.\n")
 	}
-	if err := cfg.Save(); err != nil {
-		return err
-	}
-	fmt.Fprintf(a.out(), "Saved context %q to %s\n", cc.Name, cfg.Path())
+	fmt.Fprintf(a.out(), "Saved context %q to %s\n", res.Context.Name, cfg.Path())
 	return nil
 }
 
@@ -445,20 +434,13 @@ func newContextRemoveCommand(a *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			c, err := cfg.Context(args[0])
+			c, err := contextops.Remove(cfg, args[0])
 			if err != nil {
 				return err
 			}
-			ref := c.Credential
-			if err := cfg.Remove(c.Name); err != nil {
-				return err
-			}
-			if err := cfg.Save(); err != nil {
-				return err
-			}
-			if alsoCredential && ref.Scheme == credentials.SchemeKeyring {
-				if err := a.Resolver().Delete(cmd.Context(), ref); err != nil && !errors.Is(err, credentials.ErrNotFound) {
-					fmt.Fprintf(a.errOut(), "warning: could not remove %s: %v\n", ref, err)
+			if alsoCredential && c.Credential.Scheme == credentials.SchemeKeyring {
+				if err := contextops.DeleteCredential(cmd.Context(), a.Resolver(), c.Credential); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+					fmt.Fprintf(a.errOut(), "warning: could not remove %s: %v\n", c.Credential, err)
 				}
 			}
 			fmt.Fprintf(a.out(), "Removed context %q\n", c.Name)

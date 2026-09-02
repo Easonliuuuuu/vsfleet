@@ -139,7 +139,11 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 	})
 
 	r.run("Route configured", func() (string, error) {
-		dl, err := transport.New(ctx, cc.Transport, transport.Options{Timeout: opts.DialTimeout, Resolver: opts.Resolver})
+		dl, err := transport.New(ctx, cc.Transport, transport.Options{
+			Timeout:         opts.DialTimeout,
+			Resolver:        opts.Resolver,
+			ProxyCredential: opts.ProxyCredential,
+		})
 		if err != nil {
 			return "", err
 		}
@@ -148,18 +152,28 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 		return dl.Describe(), nil
 	})
 
-	if socks, ok := dialer.(*transport.SOCKS5); ok && socks != nil {
-		r.run("SOCKS5 proxy reachable", func() (string, error) {
-			if err := socks.Probe(ctx); err != nil {
+	// proxied and remoteResolver are satisfied by every proxy dialer —
+	// SOCKS5, HTTP and HTTPS alike — so this stage neither knows nor cares
+	// which kind of proxy it is looking at.
+	type proxied interface {
+		Probe(ctx context.Context) error
+		Address() string
+	}
+	if px, ok := dialer.(proxied); ok {
+		r.run("Proxy reachable", func() (string, error) {
+			if err := px.Probe(ctx); err != nil {
 				return "", err
 			}
-			return socks.Address(), nil
+			return px.Address(), nil
 		})
 	} else {
-		r.skip("SOCKS5 proxy reachable", "not using a proxy")
+		r.skip("Proxy reachable", "not using a proxy")
 	}
 
-	if socks, ok := dialer.(*transport.SOCKS5); ok && socks != nil && socks.RemoteDNS() {
+	type remoteResolver interface {
+		RemoteDNS() bool
+	}
+	if rr, ok := dialer.(remoteResolver); ok && rr.RemoteDNS() {
 		r.skip("DNS resolution", "resolved at the proxy")
 	} else {
 		r.run("DNS resolution", func() (string, error) {
@@ -267,7 +281,11 @@ func fetchCertificate(ctx context.Context, cc *config.Context, dialer transport.
 // and reports the certificate it presents, so an operator can inspect a
 // fingerprint before choosing to pin it.
 func FetchThumbprint(ctx context.Context, cc *config.Context, opts ConnectOptions) (sha256, sha1, subject string, notAfter time.Time, err error) {
-	dialer, err := transport.New(ctx, cc.Transport, transport.Options{Timeout: opts.DialTimeout, Resolver: opts.Resolver})
+	dialer, err := transport.New(ctx, cc.Transport, transport.Options{
+		Timeout:         opts.DialTimeout,
+		Resolver:        opts.Resolver,
+		ProxyCredential: opts.ProxyCredential,
+	})
 	if err != nil {
 		return "", "", "", time.Time{}, err
 	}

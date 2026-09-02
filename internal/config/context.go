@@ -11,8 +11,10 @@ import (
 
 // Transport types.
 const (
-	TransportDirect = "direct"
-	TransportSOCKS5 = "socks5"
+	TransportDirect     = "direct"
+	TransportSOCKS5     = "socks5"
+	TransportHTTPProxy  = "http"
+	TransportHTTPSProxy = "https"
 )
 
 // TLS verification modes.
@@ -24,15 +26,19 @@ const (
 
 // TransportConfig describes how to reach a vCenter's network endpoint. It is
 // per-context on purpose: one process routes some vCenters directly and others
-// through a proxy at the same time.
+// through a proxy — SOCKS5, HTTP CONNECT, or HTTP CONNECT over TLS — at the
+// same time.
 type TransportConfig struct {
 	Type string `toml:"type" json:"type"`
-	// Address is the SOCKS5 proxy, host:port.
+	// Address is the proxy's own address, host:port. Unused for direct.
 	Address string `toml:"address,omitempty" json:"address,omitempty"`
 	// RemoteDNS resolves the vCenter hostname at the proxy rather than
-	// locally. Required when the name only exists inside the remote network.
+	// locally. Only meaningful for socks5: an HTTP CONNECT proxy always
+	// resolves the destination itself, since the protocol has no concept of
+	// asking it to do otherwise.
 	RemoteDNS bool `toml:"remote_dns,omitempty" json:"remote_dns,omitempty"`
 	// Username and Credential authenticate to the proxy itself, if it asks.
+	// An empty Username means the proxy needs no authentication.
 	Username   string          `toml:"username,omitempty" json:"username,omitempty"`
 	Credential credentials.Ref `toml:"credential,omitempty" json:"credential,omitempty"`
 }
@@ -46,6 +52,10 @@ func (t TransportConfig) Describe() string {
 			s += " (remote DNS)"
 		}
 		return s
+	case TransportHTTPProxy:
+		return "HTTP proxy -> " + t.Address
+	case TransportHTTPSProxy:
+		return "HTTPS proxy -> " + t.Address
 	default:
 		return "Direct"
 	}
@@ -55,18 +65,18 @@ func (t TransportConfig) validate() error {
 	switch t.Type {
 	case TransportDirect, "":
 		if t.Address != "" {
-			return fmt.Errorf("transport.address is only meaningful for socks5")
+			return fmt.Errorf("transport.address is only meaningful for a proxy route")
 		}
-	case TransportSOCKS5:
+	case TransportSOCKS5, TransportHTTPProxy, TransportHTTPSProxy:
 		if t.Address == "" {
-			return fmt.Errorf("transport.address is required for socks5, e.g. 127.0.0.1:1080")
+			return fmt.Errorf("transport.address is required for %s, e.g. 127.0.0.1:1080", t.Type)
 		}
 		host, port, err := net.SplitHostPort(t.Address)
 		if err != nil || host == "" || port == "" {
 			return fmt.Errorf("transport.address %q must be host:port", t.Address)
 		}
 	default:
-		return fmt.Errorf("unknown transport type %q (supported: direct, socks5)", t.Type)
+		return fmt.Errorf("unknown transport type %q (supported: direct, socks5, http, https)", t.Type)
 	}
 	return nil
 }

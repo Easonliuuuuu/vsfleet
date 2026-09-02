@@ -66,6 +66,10 @@ type ConnectOptions struct {
 	// Credential, when set, is used as-is and the resolver is not consulted.
 	// The interactive commands use this after prompting once.
 	Credential *credentials.Credential
+	// ProxyCredential is the same escape hatch as Credential, for the proxy's
+	// own password rather than the vCenter's — needed to test an
+	// authenticated proxy route before its password has been stored.
+	ProxyCredential *credentials.Credential
 	// DialTimeout bounds a single TCP connect.
 	DialTimeout time.Duration
 	// UserAgent identifies this tool to vCenter.
@@ -83,8 +87,9 @@ func Connect(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Cli
 		return nil, err
 	}
 	dialer, err := transport.New(ctx, cc.Transport, transport.Options{
-		Timeout:  opts.DialTimeout,
-		Resolver: opts.Resolver,
+		Timeout:         opts.DialTimeout,
+		Resolver:        opts.Resolver,
+		ProxyCredential: opts.ProxyCredential,
 	})
 	if err != nil {
 		return nil, err

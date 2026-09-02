@@ -33,6 +33,13 @@ type Options struct {
 	Timeout time.Duration
 	// Resolver looks up credentials for proxies that require authentication.
 	Resolver *credentials.Resolver
+	// ProxyCredential, when set, is used as-is for proxy authentication and
+	// the resolver is not consulted. This is the same bootstrapping escape
+	// hatch vsphere.ConnectOptions.Credential gives the vCenter's own
+	// password: testing a proxy password before it has been stored anywhere
+	// needs a way to supply it that isn't "read it back from where it was
+	// just written."
+	ProxyCredential *credentials.Credential
 }
 
 func (o Options) timeout() time.Duration {
@@ -42,6 +49,29 @@ func (o Options) timeout() time.Duration {
 	return DefaultDialTimeout
 }
 
+// resolveProxyCredential looks up a proxy's password, the shared logic every
+// authenticated proxy dialer needs. An empty Username means the proxy wants
+// no authentication at all, which is the common case and returns immediately.
+func resolveProxyCredential(ctx context.Context, cfg config.TransportConfig, opts Options) (password string, err error) {
+	if cfg.Username == "" {
+		return "", nil
+	}
+	if opts.ProxyCredential != nil {
+		return opts.ProxyCredential.Password, nil
+	}
+	if cfg.Credential.IsZero() {
+		return "", nil
+	}
+	if opts.Resolver == nil {
+		return "", fmt.Errorf("%s proxy credential %s configured but no credential resolver available", cfg.Type, cfg.Credential)
+	}
+	c, err := opts.Resolver.Get(ctx, cfg.Credential)
+	if err != nil {
+		return "", fmt.Errorf("resolve %s proxy credential %s: %w", cfg.Type, cfg.Credential, err)
+	}
+	return c.Password, nil
+}
+
 // New builds the dialer described by a transport configuration.
 func New(ctx context.Context, cfg config.TransportConfig, opts Options) (Dialer, error) {
 	switch cfg.Type {
@@ -49,6 +79,10 @@ func New(ctx context.Context, cfg config.TransportConfig, opts Options) (Dialer,
 		return NewDirect(opts.timeout()), nil
 	case config.TransportSOCKS5:
 		return NewSOCKS5(ctx, cfg, opts)
+	case config.TransportHTTPProxy:
+		return NewHTTPProxy(ctx, cfg, opts, false)
+	case config.TransportHTTPSProxy:
+		return NewHTTPProxy(ctx, cfg, opts, true)
 	default:
 		return nil, fmt.Errorf("unknown transport type %q", cfg.Type)
 	}

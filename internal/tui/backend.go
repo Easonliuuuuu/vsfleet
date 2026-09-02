@@ -6,7 +6,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -107,9 +106,9 @@ func (b *sessionBackend) RemoveContext(ctx context.Context, name string, alsoCre
 	if err != nil {
 		return nil, err
 	}
-	if alsoCredential && cc.Credential.Scheme == credentials.SchemeKeyring {
-		if err := contextops.DeleteCredential(ctx, b.res, cc.Credential); err != nil && !errors.Is(err, credentials.ErrNotFound) {
-			return cc, fmt.Errorf("context %q removed, but could not delete its stored password: %w", cc.Name, err)
+	if alsoCredential {
+		if err := contextops.DeleteCredentials(ctx, b.res, cc); err != nil {
+			return cc, fmt.Errorf("context %q removed, but could not delete its stored password(s): %w", cc.Name, err)
 		}
 	}
 	return cc, nil

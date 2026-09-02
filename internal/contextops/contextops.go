@@ -33,6 +33,15 @@ type Input struct {
 	// is a keyring reference) and used for the connection test.
 	Password     string
 	HavePassword bool
+	// ProxyCredential is the reference under which the proxy's own password
+	// is saved, when Transport has a Username. The zero value defaults to
+	// keyring:<name>-proxy, distinct from the vCenter's own keyring entry.
+	ProxyCredential credentials.Ref
+	// ProxyPassword, when HaveProxyPassword is set, is stored under
+	// ProxyCredential and used for the connection test — the same relationship
+	// Password has to Credential, for the proxy instead of the vCenter.
+	ProxyPassword     string
+	HaveProxyPassword bool
 	// Replace allows Save to overwrite an existing context of the same name,
 	// which is what editing one means.
 	Replace bool
@@ -62,6 +71,13 @@ func Build(in Input) *config.Context {
 		cred = credentials.Ref{Scheme: credentials.SchemeKeyring, Value: cc.Name}
 	}
 	cc.Credential = cred
+	if cc.Transport.Username != "" {
+		pref := in.ProxyCredential
+		if pref.IsZero() {
+			pref = credentials.Ref{Scheme: credentials.SchemeKeyring, Value: cc.Name + "-proxy"}
+		}
+		cc.Transport.Credential = pref
+	}
 	return cc
 }
 
@@ -69,6 +85,10 @@ func connectOptions(connOpts vsphere.ConnectOptions, in Input) vsphere.ConnectOp
 	if in.HavePassword {
 		c := credentials.Credential{Password: in.Password}
 		connOpts.Credential = &c
+	}
+	if in.HaveProxyPassword {
+		c := credentials.Credential{Password: in.ProxyPassword}
+		connOpts.ProxyCredential = &c
 	}
 	return connOpts
 }
@@ -131,6 +151,15 @@ func Save(ctx context.Context, cfg *config.Config, resolver *credentials.Resolve
 			res.StoreWarning = err
 		}
 	}
+	if in.HaveProxyPassword && cc.Transport.Credential.Scheme == credentials.SchemeKeyring {
+		if err := resolver.Store(ctx, cc.Transport.Credential, credentials.Credential{Password: in.ProxyPassword}); err != nil {
+			if res.StoreWarning != nil {
+				res.StoreWarning = fmt.Errorf("%v; proxy password also not stored: %w", res.StoreWarning, err)
+			} else {
+				res.StoreWarning = fmt.Errorf("proxy password not stored: %w", err)
+			}
+		}
+	}
 	if err := cfg.Add(cc, in.Replace); err != nil {
 		return res, err
 	}
@@ -166,4 +195,24 @@ func Remove(cfg *config.Config, name string) (*config.Context, error) {
 // when nothing was ever stored.
 func DeleteCredential(ctx context.Context, resolver *credentials.Resolver, ref credentials.Ref) error {
 	return resolver.Delete(ctx, ref)
+}
+
+// DeleteCredentials removes every password a context might have stored — its
+// own, and its proxy's if the route has one — so "also delete the stored
+// credential" on a remove means all of them, not just the vCenter's. A
+// reference on any other scheme (prompt, say) has nothing stored to delete
+// and is silently skipped, the same as ErrNotFound.
+func DeleteCredentials(ctx context.Context, resolver *credentials.Resolver, cc *config.Context) error {
+	var errs []error
+	if cc.Credential.Scheme == credentials.SchemeKeyring {
+		if err := DeleteCredential(ctx, resolver, cc.Credential); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+			errs = append(errs, fmt.Errorf("%s: %w", cc.Credential, err))
+		}
+	}
+	if cc.Transport.Credential.Scheme == credentials.SchemeKeyring {
+		if err := DeleteCredential(ctx, resolver, cc.Transport.Credential); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+			errs = append(errs, fmt.Errorf("%s: %w", cc.Transport.Credential, err))
+		}
+	}
+	return errors.Join(errs...)
 }

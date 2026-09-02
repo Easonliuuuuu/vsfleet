@@ -118,7 +118,7 @@ func TestSOCKS5ProxyOffline(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected the offline proxy to fail the diagnosis:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "SOCKS5 proxy reachable") || !strings.Contains(stdout, "unreachable") {
+	if !strings.Contains(stdout, "Proxy reachable") || !strings.Contains(stdout, "unreachable") {
 		t.Errorf("doctor did not name the proxy as the fault:\n%s", stdout)
 	}
 	// The stages after the proxy must be reported as not reached rather than

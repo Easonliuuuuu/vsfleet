@@ -1,0 +1,4 @@
+interface:
+  display_name: "VSFleet Testbed"
+  short_description: "Run VSFleet against safe synthetic vCenters"
+  default_prompt: "Use $testbed to prepare and launch an isolated local VSFleet UI with synthetic vCenter inventory."

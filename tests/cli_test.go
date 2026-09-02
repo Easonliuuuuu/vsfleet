@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/vmware/govmomi/simulator"
 
@@ -78,14 +77,6 @@ func newRunner(t *testing.T) *runner {
 // tests supply passwords without touching the operating system keyring.
 func (r *runner) run(stdin string, args ...string) (stdout, stderr string, err error) {
 	r.t.Helper()
-	return r.runContext(context.Background(), stdin, args...)
-}
-
-// runContext is run with an explicit context, for a command whose only way to
-// stop is external cancellation — the terminal interface, with no real TTY
-// attached, keeps running rather than returning on its own.
-func (r *runner) runContext(ctx context.Context, stdin string, args ...string) (stdout, stderr string, err error) {
-	r.t.Helper()
 	var out, errOut bytes.Buffer
 	app := &cli.App{
 		In:  strings.NewReader(stdin),
@@ -94,7 +85,7 @@ func (r *runner) runContext(ctx context.Context, stdin string, args ...string) (
 	}
 	root := cli.NewRootCommand(app)
 	root.SetArgs(append([]string{"--config", r.configPath}, args...))
-	err = root.ExecuteContext(ctx)
+	err = root.ExecuteContext(context.Background())
 	return out.String(), errOut.String(), err
 }
 
@@ -252,26 +243,34 @@ func TestUINamedContextMustExist(t *testing.T) {
 	}
 }
 
-// TestBareCommandLaunchesTheInterface checks that "vctui" with no subcommand
-// is routed to the same place "vctui ui" is, rather than printing help the
-// way a command with no Run does by default. It cannot get further than that
-// without a real terminal: on Unix, opening one against CI's non-interactive
-// stdin fails immediately, but on Windows Bubble Tea instead blocks reading
-// console input rather than failing fast, so this bounds the run with a
-// context deadline and treats a cancellation-triggered exit as proof the
-// interface was reached rather than waiting for a failure that may not
-// come. Either way, the outcome to rule out is cobra's unknown-command path.
-func TestBareCommandLaunchesTheInterface(t *testing.T) {
-	r := newRunner(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+// TestBareCommandRoutesToTheInterface checks that "vctui" with no subcommand
+// is wired to open the terminal interface — cobra resolves the empty
+// argument list to the root command itself, and the root command has a RunE
+// that would run instead of cobra's default of printing help.
+//
+// It stops at that structural check rather than actually invoking RunE.
+// Doing so means starting a real Bubble Tea program, and there is no safe
+// way to bound that in an automated test: an earlier version of this test
+// gave it a context deadline, which does stop the event loop, but Bubble
+// Tea's Windows input reader then blocks tea.Program.Run() itself trying to
+// close a console handle out from under a goroutine parked in a blocking
+// ReadConsole syscall — Windows will not let that Close return early, no
+// matter how the context was cancelled. There is no context short enough to
+// avoid it. The interface's actual behaviour is exercised in internal/tui,
+// driven directly through its model rather than a live terminal.
+func TestBareCommandRoutesToTheInterface(t *testing.T) {
+	app := &cli.App{}
+	root := cli.NewRootCommand(app)
 
-	_, _, err := r.runContext(ctx, "")
-	if err == nil {
-		t.Fatal("a bare invocation with no TTY available should fail")
+	cmd, _, err := root.Find(nil)
+	if err != nil {
+		t.Fatalf("Find(nil): %v", err)
 	}
-	if strings.Contains(err.Error(), "unknown command") {
-		t.Errorf("bare vctui should reach the interface, not cobra's unknown-command path: %v", err)
+	if cmd != root {
+		t.Fatalf("a bare invocation should resolve to the root command itself, resolved to %q instead", cmd.Name())
+	}
+	if root.RunE == nil {
+		t.Fatal("root command has no RunE: a bare \"vctui\" would print help instead of opening the interface")
 	}
 }
 

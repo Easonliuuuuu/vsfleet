@@ -289,6 +289,42 @@ func TestHTTPProxyOffline(t *testing.T) {
 	}
 }
 
+// TestHTTPSProxyOffline covers the https route's other failure mode: no
+// certificate is ever presented because nothing answers the TCP connection
+// at all. The address is reused from a listener that has already been
+// closed, so this needs no TLS configuration on the (nonexistent) far end.
+func TestHTTPSProxyOffline(t *testing.T) {
+	vc := startVCenter(t, nil)
+	proxy := startHTTPProxy(t, "", nil)
+	address := proxy.Address()
+	proxy.listener.Close()
+
+	r := newRunner(t)
+	r.mustRun(testPassword+"\n", "context", "add",
+		"--name", "via-offline-https-proxy",
+		"--endpoint", vc.URL,
+		"--username", "operator@vsphere.local",
+		"--credential", "prompt",
+		"--password-stdin",
+		"--transport", "https",
+		"--proxy-address", address,
+		"--tls", "thumbprint",
+		"--thumbprint", vc.Thumbprint,
+		"--no-test",
+	)
+
+	stdout, _, err := r.run(testPassword+"\n", "doctor", "via-offline-https-proxy")
+	if err == nil {
+		t.Fatalf("expected the offline https proxy to fail the diagnosis:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "Proxy reachable") || !strings.Contains(stdout, "unreachable") {
+		t.Errorf("doctor did not name the proxy as the fault:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "not reached") {
+		t.Errorf("later stages were not marked as skipped:\n%s", stdout)
+	}
+}
+
 // TestHTTPSProxyRejectsUntrustedCertificate proves the security property
 // that matters most for an https route: vctui does not silently accept
 // whatever certificate a proxy happens to present. Pinning a proxy's own

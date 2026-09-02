@@ -372,14 +372,21 @@ process, covering the parts that are otherwise hard to be confident about:
   proxy was asked for
 - a proxy that is offline, reported as the proxy rather than as the vCenter
 - a proxy that requires username/password authentication, and one where the
-  password is wrong
+  password is wrong — reported by `doctor` as its own "Proxy authentication"
+  stage, not lumped in with a dead connection
 - an HTTPS proxy whose own certificate is untrusted, rejected before the
-  CONNECT tunnel is ever opened
+  CONNECT tunnel is ever opened, and one that is simply offline
 - a proxy credential resolved exactly once per diagnosis, not once per
   internal dialer, even when it comes from an interactive prompt
 - a pinned thumbprint that no longer matches
 - a self-signed certificate rejected under system trust
 - one broken vCenter alongside a healthy one, with the healthy results intact
+
+`doctor`'s own stage sequencing — skipping everything after the first
+failure, and renaming a stage when the failure turns out to be a rejected
+proxy credential rather than a dead connection — has fast unit tests in
+`internal/vsphere` that need no vcsim and no network, alongside the slower
+integration tests that prove the same rules hold end to end.
 
 The interface is tested the same way, against a fake backend: tab switching,
 context switching, filtering, the detail pane, the diagnosis panel, sorting,
@@ -403,7 +410,7 @@ can operate without learning the CLI subcommand tree first.
 |---|---|---|
 | Entry experience | `vctui` opens the interface directly; add/edit/test/delete a context from inside it; remember the last context, tab and sort mode | **done** |
 | Proxy support | Direct, SOCKS5, HTTP and HTTPS routes; SOCKS5 remote DNS; unauthenticated and basic-auth proxies; passwords only ever in the keyring; explicit TLS modes; never inherit `HTTP_PROXY`/`HTTPS_PROXY` | **done** |
-| Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | proxy reachability, auth and CONNECT stages done for all three proxy types; still no dedicated stage separating proxy TLS from vCenter TLS |
+| Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | proxy reachability (with proxy TLS folded in), proxy auth, DNS/routing, CONNECT, vCenter TLS, vCenter auth and API access all named as their own stage, with a rejected proxy password reported separately from a dead connection; every route has offline and, where applicable, auth-failure integration tests; one unreachable context among several is already isolated — a limited-permission account is not yet |
 | Responsive inventory loading | A shared cache outside the interface; the selected context first, others concurrently, bounded; stale-while-revalidate; per-context refresh timestamps and errors; the keyboard never blocks on the network | not started |
 | Global search | Search cached inventory across every configured vCenter from inside the interface; selecting a result switches context, tab and selection; partial results survive a failed context | the CLI has cross-vCenter search today; bringing the same query into the interface, over the inventory cache above, is next |
 | Release hardening | Real vSphere 7/8, self-signed certs, enterprise CAs, thumbprints, restricted RBAC accounts; large-vcsim performance; Linux/macOS/Windows smoke tests; a demo GIF; GoReleaser binaries; tag v0.1.0 | not started — needs real VMware infrastructure and multi-platform hands, not just code |

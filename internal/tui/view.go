@@ -156,11 +156,7 @@ func (m *Model) viewSidebar() []string {
 		if i == m.selected {
 			marker = glyphCursor
 		}
-		name := st.cc.Name
-		if !m.allScope && i == m.selected {
-			name = "*" + name
-		}
-		head := fmt.Sprintf("%s%s %s", marker, t.statusStyle(st.rowStatus()).Render(st.glyph()), name)
+		head := fmt.Sprintf("%s%s %s", marker, t.statusStyle(st.rowStatus()).Render(st.glyph()), st.cc.Name)
 		style := t.text
 		if i == m.selected {
 			style = t.selected

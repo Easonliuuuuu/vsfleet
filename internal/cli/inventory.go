@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/easonliuuuuu/vc-tui/internal/session"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/session"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 // contextFailure records that one vCenter could not answer. Listing commands
@@ -108,7 +108,7 @@ func (f *listFlags) matches(name string) bool {
 }
 
 // newInventoryCommands builds one command group per resource kind. They all
-// share the same shape so that "vctui <kind> list" is predictable.
+// share the same shape so that "vcfleet <kind> list" is predictable.
 func newInventoryCommands(a *App) []*cobra.Command {
 	return []*cobra.Command{
 		group("vm", []string{"vms", "virtualmachine"}, "Virtual machines", newVMListCommand(a)),

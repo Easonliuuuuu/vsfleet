@@ -1,4 +1,4 @@
-// Package config loads and stores the vctui configuration: a list of vCenter
+// Package config loads and stores the vcfleet configuration: a list of vCenter
 // contexts and, for each, how to reach it. It never holds a secret — only a
 // reference to one.
 package config
@@ -18,7 +18,7 @@ import (
 const Version = 1
 
 // EnvConfigPath overrides the configuration file location.
-const EnvConfigPath = "VCTUI_CONFIG"
+const EnvConfigPath = "VCFLEET_CONFIG"
 
 // ErrNotFound is returned when a named context does not exist.
 var ErrNotFound = errors.New("context not found")
@@ -33,7 +33,7 @@ type Config struct {
 	path string
 }
 
-// DefaultPath returns the configuration file path, honouring VCTUI_CONFIG and
+// DefaultPath returns the configuration file path, honouring VCFLEET_CONFIG and
 // then the platform user configuration directory.
 func DefaultPath() (string, error) {
 	if p := strings.TrimSpace(os.Getenv(EnvConfigPath)); p != "" {
@@ -43,12 +43,12 @@ func DefaultPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locate user config directory: %w", err)
 	}
-	return filepath.Join(dir, "vctui", "config.toml"), nil
+	return filepath.Join(dir, "vcfleet", "config.toml"), nil
 }
 
 // Load reads the configuration from path. An empty path means DefaultPath. A
 // missing file is not an error: it yields an empty configuration, so a fresh
-// install can run "vctui context add" immediately.
+// install can run "vcfleet context add" immediately.
 func Load(path string) (*Config, error) {
 	if path == "" {
 		p, err := DefaultPath()
@@ -118,9 +118,9 @@ func (c *Config) Context(name string) (*Context, error) {
 		case len(c.Contexts) == 1:
 			return c.Contexts[0], nil
 		case len(c.Contexts) == 0:
-			return nil, fmt.Errorf("no contexts configured: run \"vctui context add\"")
+			return nil, fmt.Errorf("no contexts configured: run \"vcfleet context add\"")
 		default:
-			return nil, fmt.Errorf("no context selected: pass --context or run \"vctui context use <name>\"")
+			return nil, fmt.Errorf("no context selected: pass --context or run \"vcfleet context use <name>\"")
 		}
 	}
 	for _, ctx := range c.Contexts {
@@ -146,7 +146,7 @@ func (c *Config) Names() []string {
 func (c *Config) Resolve(names []string, all bool) ([]*Context, error) {
 	if all {
 		if len(c.Contexts) == 0 {
-			return nil, fmt.Errorf("no contexts configured: run \"vctui context add\"")
+			return nil, fmt.Errorf("no contexts configured: run \"vcfleet context add\"")
 		}
 		out := make([]*Context, len(c.Contexts))
 		copy(out, c.Contexts)

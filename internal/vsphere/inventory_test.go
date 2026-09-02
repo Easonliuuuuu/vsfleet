@@ -9,8 +9,8 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/simulator"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 // newSimulator starts a vcsim vCenter and returns a client wired to it,

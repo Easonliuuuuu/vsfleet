@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/easonliuuuuu/vc-tui/internal/credentials"
+	"github.com/easonliuuuuu/vcfleet/internal/credentials"
 )
 
 // Transport types.
@@ -237,7 +237,7 @@ func (c *Context) Validate() error {
 }
 
 // Normalize fills in defaults so that a context written by hand behaves the
-// same as one produced by "vctui context add".
+// same as one produced by "vcfleet context add".
 func (c *Context) Normalize() {
 	c.Name = strings.TrimSpace(c.Name)
 	c.Username = strings.TrimSpace(c.Username)

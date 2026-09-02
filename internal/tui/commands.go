@@ -6,10 +6,10 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/easonliuuuuu/vc-tui/internal/cache"
-	"github.com/easonliuuuuu/vc-tui/internal/config"
-	"github.com/easonliuuuuu/vc-tui/internal/contextops"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/cache"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/contextops"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 // inventoryMsg carries the outcome of reading one vCenter. The error travels

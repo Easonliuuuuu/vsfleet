@@ -21,9 +21,9 @@ func String() string {
 	return v
 }
 
-// UserAgent identifies vctui to vCenter. Operators reading vCenter's session
+// UserAgent identifies vcfleet to vCenter. Operators reading vCenter's session
 // list should be able to tell what connected.
-func UserAgent() string { return "vctui/" + Version }
+func UserAgent() string { return "vcfleet/" + Version }
 
 func commit() string {
 	if Commit != "" {

@@ -1,4 +1,4 @@
-// Command vctui operates several vCenters from one terminal.
+// Command vcfleet operates several vCenters from one terminal.
 package main
 
 import (
@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/easonliuuuuu/vc-tui/internal/cli"
+	"github.com/easonliuuuuu/vcfleet/internal/cli"
 )
 
 func main() {

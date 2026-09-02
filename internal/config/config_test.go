@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
-	"github.com/easonliuuuuu/vc-tui/internal/credentials"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/credentials"
 )
 
 const sample = `

@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/easonliuuuuu/vc-tui/internal/humanize"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/humanize"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 // rowStatus drives the colour and glyph of a row, and nothing else. Keeping it

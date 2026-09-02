@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
 )
 
 // ThumbprintMismatchError reports that the certificate presented by a vCenter

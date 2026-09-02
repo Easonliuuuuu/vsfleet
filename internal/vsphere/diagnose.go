@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -85,6 +86,32 @@ func (r *diagRunner) run(name string, fn func() (string, error)) {
 	}
 	start := time.Now()
 	detail, err := fn()
+	c := Check{Name: name, Detail: detail, Duration: time.Since(start)}
+	if err != nil {
+		c.Status = CheckFail
+		c.Err = err
+		r.failed = true
+	} else {
+		c.Status = CheckPass
+	}
+	r.d.Checks = append(r.d.Checks, c)
+}
+
+// runClassified is like run, except a failure can rename the stage: a proxy
+// rejecting the configured username and password is a different fault from
+// the destination being unreachable, even though both surface from the same
+// dial attempt, so the report should not call them the same thing.
+func (r *diagRunner) runClassified(defaultName string, altName string, isAlt func(error) bool, fn func() (string, error)) {
+	if r.failed {
+		r.d.Checks = append(r.d.Checks, Check{Name: defaultName, Status: CheckSkip})
+		return
+	}
+	start := time.Now()
+	detail, err := fn()
+	name := defaultName
+	if err != nil && isAlt(err) {
+		name = altName
+	}
 	c := Check{Name: name, Detail: detail, Duration: time.Since(start)}
 	if err != nil {
 		c.Status = CheckFail
@@ -205,14 +232,16 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 		})
 	}
 
-	r.run("TCP connection", func() (string, error) {
-		conn, err := dialer.DialContext(ctx, "tcp", addr)
-		if err != nil {
-			return "", err
-		}
-		defer conn.Close()
-		return addr, nil
-	})
+	r.runClassified("TCP connection", "Proxy authentication",
+		func(err error) bool { return errors.Is(err, transport.ErrProxyAuth) },
+		func() (string, error) {
+			conn, err := dialer.DialContext(ctx, "tcp", addr)
+			if err != nil {
+				return "", err
+			}
+			defer conn.Close()
+			return addr, nil
+		})
 
 	if u, _ := cc.URL(); u != nil && u.Scheme == "http" {
 		r.skip("TLS certificate", "endpoint is plain http")

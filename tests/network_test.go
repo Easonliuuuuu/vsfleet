@@ -256,7 +256,7 @@ func TestSOCKS5WrongCredentialFails(t *testing.T) {
 	if err == nil {
 		t.Fatalf("a wrong socks5 password must not connect:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "TCP connection") {
-		t.Errorf("a rejected socks5 login should surface at the TCP connection stage:\n%s", stdout)
+	if !strings.Contains(stdout, "Proxy authentication") {
+		t.Errorf("a rejected socks5 login should be named as a proxy authentication failure, not a generic connection failure:\n%s", stdout)
 	}
 }

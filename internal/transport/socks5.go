@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"golang.org/x/net/proxy"
@@ -73,6 +74,13 @@ func (s *SOCKS5) DialContext(ctx context.Context, network, address string) (net.
 	}
 	conn, err := s.dialer.DialContext(ctx, network, target)
 	if err != nil {
+		// golang.org/x/net/proxy has no typed error for a rejected RFC 1929
+		// login; this substring is the exact text its internal socks package
+		// returns, so it is the only way to tell "the proxy said no to this
+		// username/password" apart from every other reason the dial failed.
+		if strings.Contains(err.Error(), "authentication failed") {
+			return nil, fmt.Errorf("%w: socks5 proxy %s: %v", ErrProxyAuth, s.address, err)
+		}
 		return nil, fmt.Errorf("connect to %s via socks5 proxy %s: %w", address, s.address, err)
 	}
 	return conn, nil

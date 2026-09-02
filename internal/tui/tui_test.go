@@ -344,11 +344,16 @@ func TestBrowseShowsOnlyTheSelectedContext(t *testing.T) {
 	if n := len(m.rows()); n != 2 {
 		t.Errorf("a single-context scope must show only prod's rows, got %d", n)
 	}
-	// Both contexts belong in the sidebar even though only one is in scope:
-	// the sidebar is the switcher.
+	// The browse screen names only the vCenter in scope; the other one is on
+	// the contexts screen, which is where switching happens now.
+	if !strings.Contains(out, "prod") {
+		t.Errorf("header should name the context in scope:\n%s", out)
+	}
+	press(t, m, "c")
+	out = m.View()
 	for _, name := range []string{"prod", "customer-a"} {
 		if !strings.Contains(out, name) {
-			t.Errorf("sidebar is missing %q:\n%s", name, out)
+			t.Errorf("contexts screen is missing %q:\n%s", name, out)
 		}
 	}
 }
@@ -459,25 +464,230 @@ func TestDetailViewShowsEveryProperty(t *testing.T) {
 	}
 }
 
-func TestEnterOnTheSidebarSwitchesContext(t *testing.T) {
+func TestContextsScreenSwitchesContext(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "tab") // focus the sidebar
-	if m.pane != paneContexts {
-		t.Fatalf("tab should move focus to the sidebar, pane is %v", m.pane)
+	press(t, m, "c")
+	if m.mode != modeContexts {
+		t.Fatalf("'c' should open the contexts screen, mode is %v", m.mode)
 	}
 	press(t, m, "up") // customer-a sorts first in the fixture order
 	press(t, m, "enter")
 
+	if m.mode != modeBrowse {
+		t.Fatalf("choosing a context should return to the table, mode is %v", m.mode)
+	}
 	if m.current().cc.Name != "customer-a" {
 		t.Fatalf("selected context is %q, want customer-a", m.current().cc.Name)
+	}
+	if m.allScope {
+		t.Error("choosing one vCenter should narrow the scope to it")
 	}
 	if b.calls["customer-a"] != 1 {
 		t.Errorf("switching to a context should fetch it once, got %d", b.calls["customer-a"])
 	}
-	if m.pane != paneResources {
-		t.Error("opening a context should hand the arrow keys back to the table")
+}
+
+// TestContextsScreenShowsRouteAndFailure is the point of the screen: it
+// carries what the sidebar used to, with room to say why a vCenter is not
+// answering rather than truncating the reason to nothing.
+func TestContextsScreenShowsRouteAndFailure(t *testing.T) {
+	b := twoHealthy()
+	b.failures = map[string]error{"customer-a": errors.New("socks5 proxy 127.0.0.1:1080 unreachable")}
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "c")
+	out := m.View()
+	for _, want := range []string{"Contexts", "prod", "https://vcsa.prod.internal", "customer-a", "socks5 proxy 127.0.0.1:1080 unreachable"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("contexts screen is missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestContextsScreenWidensScope checks the other way out of the screen: "a"
+// asks for every vCenter at once rather than choosing one.
+func TestContextsScreenWidensScope(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "c", "a")
+	if m.mode != modeBrowse {
+		t.Fatalf("'a' should return to the table, mode is %v", m.mode)
+	}
+	if !m.allScope {
+		t.Fatal("'a' on the contexts screen should widen the scope to every vCenter")
+	}
+	if got := len(m.rows()); got != 4 {
+		t.Errorf("all-contexts shows %d VMs, want 4", got)
+	}
+}
+
+// TestSearchWidensAFilterThatFoundNothing is the whole point of the escalation:
+// the VM tab of one vCenter has no "ubuntu" in it, and the template on both
+// vCenters is exactly what the reader was looking for.
+func TestSearchWidensAFilterThatFoundNothing(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "/")
+	typeText(t, m, "ubuntu")
+	if got := len(m.rows()); got != 0 {
+		t.Fatalf("the VM tab of one vCenter has %d ubuntu rows, want 0", got)
+	}
+	// The offer has to be visible, or nobody presses the key.
+	if out := m.View(); !strings.Contains(out, "tab to widen") {
+		t.Errorf("a filter that found less than the estate should offer to widen:\n%s", out)
+	}
+
+	press(t, m, "tab")
+	if m.mode != modeSearch {
+		t.Fatalf("tab should open the estate-wide search, mode is %v", m.mode)
+	}
+	rows := m.visibleRows()
+	if len(rows) != 2 {
+		t.Fatalf("search found %d matches, want 2 (one template per vCenter)", len(rows))
+	}
+	for _, r := range rows {
+		if r.kind != vsphere.KindTemplate {
+			t.Errorf("match %q is kind %q, want template", r.name, r.kind)
+		}
+	}
+	out := m.View()
+	for _, want := range []string{"VCENTER", "TYPE", "prod", "customer-a", "ubuntu-24.04-golden"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("search results are missing %q:\n%s", want, out)
+		}
+	}
+
+	// The query survives narrowing back: the filter and the search are the
+	// same query at two widths.
+	press(t, m, "tab")
+	if m.mode != modeBrowse {
+		t.Fatalf("tab should return to the table, mode is %v", m.mode)
+	}
+	if m.filter.Value() != "ubuntu" {
+		t.Errorf("narrowing back lost the query: %q", m.filter.Value())
+	}
+}
+
+// TestSearchIgnoresScopeAndKind checks the two axes it widens: it must answer
+// from every vCenter and every kind regardless of which tab is open or which
+// context is in scope.
+func TestSearchIgnoresScopeAndKind(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "3") // hosts, still scoped to prod alone
+	press(t, m, "tab")
+	typeText(t, m, "esxi-01")
+
+	rows := m.visibleRows()
+	if len(rows) != 2 {
+		t.Fatalf("search found %d hosts, want 2 — one per vCenter", len(rows))
+	}
+	seen := map[string]bool{}
+	for _, r := range rows {
+		seen[r.context] = true
+	}
+	if !seen["prod"] || !seen["customer-a"] {
+		t.Errorf("search stayed inside the scope, saw %v", seen)
+	}
+}
+
+// TestSearchNamesTheVCentersItCouldNotRead is the honesty requirement: fewer
+// matches because a proxy is down, without saying so, is the one way these
+// results could mislead.
+func TestSearchNamesTheVCentersItCouldNotRead(t *testing.T) {
+	b := twoHealthy()
+	b.failures = map[string]error{"customer-a": errors.New("socks5 proxy 127.0.0.1:1080 unreachable")}
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "tab")
+	typeText(t, m, "ubuntu")
+
+	if got := len(m.visibleRows()); got != 1 {
+		t.Fatalf("search found %d matches, want 1 — only prod could be read", got)
+	}
+	out := m.View()
+	for _, want := range []string{"customer-a", "not searched", "socks5 proxy 127.0.0.1:1080 unreachable"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("search must name the vCenter it could not read, missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestSearchResultOpensItsOwnKind checks that a detail pane opened from a
+// search result describes what the row actually is, not whichever tab happened
+// to be open behind it, and that esc goes back to the results.
+func TestSearchResultOpensItsOwnKind(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "tab") // the VM tab is open behind the search
+	typeText(t, m, "ubuntu")
+	press(t, m, "enter") // commit the query, as in the filter
+	press(t, m, "enter") // open the row under the cursor
+
+	if m.mode != modeDetail {
+		t.Fatalf("enter should open the result, mode is %v", m.mode)
+	}
+	out := m.View()
+	if !strings.Contains(out, "Template") {
+		t.Errorf("detail should name the row's own kind:\n%s", out)
+	}
+	if strings.Contains(out, "Virtual machine") {
+		t.Errorf("detail is describing the tab behind the search, not the result:\n%s", out)
+	}
+
+	press(t, m, "esc")
+	if m.mode != modeSearch {
+		t.Fatalf("esc should return to the search results, mode is %v", m.mode)
+	}
+}
+
+// TestNumberKeysJumpToAKind is what replaced cycling: Networks is the sixth
+// kind, and reaching it should cost one keystroke rather than five.
+func TestNumberKeysJumpToAKind(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "6")
+	if m.kind != vsphere.KindNetwork {
+		t.Fatalf("'6' should select networks, kind is %q", m.kind)
+	}
+	press(t, m, "1")
+	if m.kind != vsphere.KindVM {
+		t.Fatalf("'1' should select VMs, kind is %q", m.kind)
+	}
+	// The bar has to say which number is which, or the numbers are a secret.
+	out := m.View()
+	for i, want := range []string{"1 VMs", "2 Templates", "3 Hosts", "4 Clusters", "5 Datastores", "6 Networks"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("kind bar is missing %q (position %d):\n%s", want, i+1, out)
+		}
+	}
+}
+
+// TestBrowseTableGetsTheWholeWidth is the reason the sidebar went. At 80
+// columns the sidebar cost the table its IP address column — the field an
+// operator most often opened the table to read. Nothing may overflow either:
+// a key line that truncates is the other half of the same problem.
+func TestBrowseTableGetsTheWholeWidth(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	m.width, m.height = 80, 24
+
+	out := m.View()
+	if !strings.Contains(out, "IP ADDRESS") {
+		t.Errorf("an 80 column table should fit the IP column:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if w := ansi.StringWidth(line); w > 80 {
+			t.Fatalf("line is %d columns wide, want at most 80: %q", w, line)
+		}
+	}
+
+	// The host column costs another two columns beyond that; it should
+	// appear as soon as it fits rather than staying dropped.
+	m.width = 82
+	if !strings.Contains(m.View(), "HOST") {
+		t.Errorf("82 columns is enough for the host column:\n%s", m.View())
 	}
 }
 
@@ -516,7 +726,7 @@ func TestHelpListsEveryBinding(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 	press(t, m, "?")
 	out := m.View()
-	for _, want := range []string{"Keys", "switch pane", "all vCenters", "diagnose"} {
+	for _, want := range []string{"Keys", "contexts", "all vCenters", "diagnose", "1-6"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help is missing %q:\n%s", want, out)
 		}
@@ -706,10 +916,10 @@ func TestNewContextFormSavesAndSelectsIt(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "n")
+	press(t, m, "c", "n")
 	settleForm(m)
 	if m.mode != modeForm {
-		t.Fatalf("'n' should open the form, mode is %v", m.mode)
+		t.Fatalf("'n' on the contexts screen should open the form, mode is %v", m.mode)
 	}
 	if m.form.editing {
 		t.Fatal("'n' should open a blank form, not an edit")
@@ -721,8 +931,8 @@ func TestNewContextFormSavesAndSelectsIt(t *testing.T) {
 	press(t, m, "down")                                 // Save
 	press(t, m, "enter")
 
-	if m.mode != modeBrowse {
-		t.Fatalf("save should return to browse, mode is %v", m.mode)
+	if m.mode != modeContexts {
+		t.Fatalf("save should return to the contexts screen it was opened from, mode is %v", m.mode)
 	}
 	if len(b.contexts) != 3 {
 		t.Fatalf("backend has %d contexts, want 3", len(b.contexts))
@@ -746,7 +956,7 @@ func TestFormBlocksSaveOnFailedTestUntilSaveAnyway(t *testing.T) {
 	}
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "n")
+	press(t, m, "c", "n")
 	settleForm(m)
 	fillNewContextBasics(t, m, "broken", "https://vcsa.broken.internal", "operator@vsphere.local")
 	press(t, m, "right")                                // prompt credential
@@ -773,7 +983,7 @@ func TestFormBlocksSaveOnFailedTestUntilSaveAnyway(t *testing.T) {
 	}
 
 	press(t, m, "enter") // same row, now "Save anyway"
-	if m.mode != modeBrowse {
+	if m.mode != modeContexts {
 		t.Fatalf("save anyway should go through, mode is %v", m.mode)
 	}
 	if len(b.contexts) != 3 {
@@ -785,10 +995,10 @@ func TestEditContextPrefillsAndUpdatesInPlace(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "e")
+	press(t, m, "c", "e")
 	settleForm(m)
 	if m.mode != modeForm {
-		t.Fatalf("'e' should open the form, mode is %v", m.mode)
+		t.Fatalf("'e' on the contexts screen should open the form, mode is %v", m.mode)
 	}
 	if !m.form.editing || m.form.origName != "prod" {
 		t.Fatalf("form is not editing prod: editing=%v origName=%q", m.form.editing, m.form.origName)
@@ -808,8 +1018,8 @@ func TestEditContextPrefillsAndUpdatesInPlace(t *testing.T) {
 	}
 	press(t, m, "enter")
 
-	if m.mode != modeBrowse {
-		t.Fatalf("save should return to browse, mode is %v", m.mode)
+	if m.mode != modeContexts {
+		t.Fatalf("saving an edit should return to the contexts screen, mode is %v", m.mode)
 	}
 	if len(b.contexts) != 2 {
 		t.Fatalf("editing should replace, not add: have %d contexts", len(b.contexts))
@@ -839,7 +1049,7 @@ func TestDeleteContextConfirmationRemovesIt(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "x")
+	press(t, m, "c", "x")
 	if m.mode != modeConfirmDelete {
 		t.Fatalf("'x' should open the delete confirmation, mode is %v", m.mode)
 	}
@@ -848,8 +1058,8 @@ func TestDeleteContextConfirmationRemovesIt(t *testing.T) {
 	}
 
 	press(t, m, "y")
-	if m.mode != modeBrowse {
-		t.Fatalf("confirming should return to browse, mode is %v", m.mode)
+	if m.mode != modeContexts {
+		t.Fatalf("confirming should return to the contexts screen, mode is %v", m.mode)
 	}
 	if len(b.contexts) != 1 || b.contexts[0].Name != "customer-a" {
 		t.Fatalf("prod should have been removed, contexts: %v", b.contexts)
@@ -860,9 +1070,9 @@ func TestDeleteConfirmationCancels(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "x", "n")
-	if m.mode != modeBrowse {
-		t.Fatalf("'n' should cancel back to browse, mode is %v", m.mode)
+	press(t, m, "c", "x", "n")
+	if m.mode != modeContexts {
+		t.Fatalf("'n' should cancel back to the contexts screen, mode is %v", m.mode)
 	}
 	if len(b.contexts) != 2 {
 		t.Errorf("nothing should have been removed, have %d contexts", len(b.contexts))
@@ -876,7 +1086,7 @@ func TestDeleteLastContextReopensSetup(t *testing.T) {
 	b := &fakeBackend{contexts: []*config.Context{ctx("only", "https://vcsa.only.internal")}}
 	m := newTestModel(t, b, Options{Current: "only"})
 
-	press(t, m, "x", "y")
+	press(t, m, "c", "x", "y")
 	if m.mode != modeForm {
 		t.Fatalf("deleting the last context should reopen setup, mode is %v", m.mode)
 	}
@@ -891,7 +1101,7 @@ func TestDiscoverThumbprintFillsTheField(t *testing.T) {
 	b.discoverSubj = "vcsa.staging.internal"
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "n")
+	press(t, m, "c", "n")
 	settleForm(m)
 	fillNewContextBasics(t, m, "staging", "https://vcsa.staging.internal", "operator@vsphere.local")
 	press(t, m, "down", "down", "down") // Password, Route, TLS
@@ -911,13 +1121,13 @@ func TestFormEscapeCancelsWithoutQuitting(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "n")
+	press(t, m, "c", "n")
 	settleForm(m)
 	typeText(t, m, "this contains the letters q and colon: q")
 	press(t, m, "esc")
 
-	if m.mode != modeBrowse {
-		t.Fatalf("esc should cancel the form, mode is %v", m.mode)
+	if m.mode != modeContexts {
+		t.Fatalf("esc should cancel the form back to the contexts screen, mode is %v", m.mode)
 	}
 	if m.quitting {
 		t.Error("typing 'q' into a field must not quit the program")
@@ -953,7 +1163,7 @@ func TestSortBringsTroubleToTheTop(t *testing.T) {
 		t.Errorf("status order should put the suspended VM first, got %q", rows[0].name)
 	}
 	if !strings.Contains(m.View(), "sort: status") {
-		t.Errorf("the active sort should be visible in the tab bar:\n%s", m.View())
+		t.Errorf("the active sort should be visible in the header:\n%s", m.View())
 	}
 
 	press(t, m, "s")
@@ -1049,7 +1259,7 @@ func TestNewContextFormSavesAnHTTPSProxyRoute(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 
-	press(t, m, "n")
+	press(t, m, "c", "n")
 	settleForm(m)
 	fillNewContextBasics(t, m, "secure-proxy", "https://vcsa.secure.internal", "operator@vsphere.local")
 	press(t, m, "down")                    // -> Password (leave blank)
@@ -1067,8 +1277,8 @@ func TestNewContextFormSavesAnHTTPSProxyRoute(t *testing.T) {
 	press(t, m, "down", "down", "down", "down", "down") // TLS, Datacenter, Current, Test, Save
 	press(t, m, "enter")
 
-	if m.mode != modeBrowse {
-		t.Fatalf("save should return to browse, mode is %v", m.mode)
+	if m.mode != modeContexts {
+		t.Fatalf("save should return to the contexts screen, mode is %v", m.mode)
 	}
 	saved, err := findContext(b.contexts, "secure-proxy")
 	if err != nil {
@@ -1093,7 +1303,7 @@ func TestEditContextPrefillsAnHTTPProxyRoute(t *testing.T) {
 	}()}}
 	m := newTestModel(t, b, Options{Current: "via-proxy"})
 
-	press(t, m, "e")
+	press(t, m, "c", "e")
 	settleForm(m)
 	if m.form.transportIdx != 2 {
 		t.Fatalf("transportIdx is %d, want 2 (http)", m.form.transportIdx)

@@ -15,9 +15,15 @@ func newUICommand(a *App) *cobra.Command {
 		Short: "Browse every vCenter in one terminal interface",
 		Long: `Open the terminal interface.
 
-Every configured vCenter appears in the sidebar whether or not it is
-reachable, and the resource tabs show one kind at a time for the selected
-context or, with --all-contexts, for the whole estate at once.
+The numbered tabs show one resource kind at a time for the vCenter in scope
+or, with --all-contexts, for the whole estate at once. Press "c" for the
+contexts screen, which lists every configured vCenter whether or not it is
+reachable and is where you switch, add, edit and remove them.
+
+"/" filters the table in front of you and "tab" widens the same query into
+every vCenter and every kind at once, which is "vsfleet search" without
+leaving the interface. A vCenter that has not answered is reported as not
+searched rather than quietly narrowing the result.
 
 With no contexts configured yet, this opens straight into the setup form
 instead of asking you to run "vsfleet context add" first.
@@ -53,7 +59,7 @@ func runUI(a *App, cmd *cobra.Command) error {
 		}
 	}
 
-	// The sidebar is a switcher, so it always lists every context.
+	// The contexts screen is a switcher, so it always lists every context.
 	// --context and --all-contexts choose where the cursor starts and how
 	// wide the initial scope is, not what exists. An explicit --context
 	// overrides the remembered one for this run only.

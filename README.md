@@ -139,24 +139,63 @@ Useful global options:
 
 ## Terminal UI
 
-Run `vsfleet` or `vsfleet ui` to browse the estate interactively. The
-sidebar shows contexts, the tabs show resource kinds, and a detail pane shows
-the selected object. A failed context remains visible while results from
-healthy contexts are still usable.
+Run `vsfleet` or `vsfleet ui` to browse the estate interactively. One
+resource kind fills the width, the header names the vCenter in scope, and a
+failed context is reported under the table so results from healthy contexts
+stay usable.
+
+The browse screen:
 
 | Key | Action |
 |---|---|
-| `←` / `→` or `h` / `l` | Change resource tab |
+| `1`–`6` | Jump to a resource kind; `←` / `→` or `h` / `l` also cycle |
 | `↑` / `↓` or `k` / `j` | Move through rows |
-| `tab` | Switch between the sidebar and table |
-| `enter` | Open the selected row or context |
-| `/` | Filter by name; `esc` clears the filter |
+| `c` | Open the contexts screen |
 | `a` | Toggle the all-contexts view |
+| `/` | Filter the table by name; `esc` clears the filter |
+| `tab` | Search every vCenter and every kind |
+| `enter` | Open the selected row |
 | `r` / `R` | Reload the current scope / all contexts |
-| `d` | Diagnose the selected context |
-| `n` / `e` / `x` | Add / edit / remove a context |
+| `d` | Diagnose the vCenter the selected row came from |
 | `?` | Show the key reference |
 | `q` | Quit |
+
+Everything about a vCenter itself lives on the contexts screen (`c`), which
+lists each one with its route, latency, and — when it is not answering — the
+reason:
+
+| Key | Action |
+|---|---|
+| `enter` | Narrow the view to the highlighted vCenter |
+| `a` | Show every vCenter at once |
+| `n` / `e` / `x` | Add / edit / remove a context |
+| `d` | Diagnose the highlighted context |
+| `esc` | Back to the table |
+
+### Filtering and searching
+
+These are the same query at two widths. `/` narrows the table in front of you.
+When the estate holds more matches than the current tab and context can show,
+the query line says so:
+
+```text
+/ubuntu   0 here · 2 in the estate — tab to widen
+```
+
+`tab` then widens to every vCenter and every kind at once — the same answer
+`vsfleet search ubuntu --all-contexts` prints, in the same columns:
+
+```text
+  VCENTER       TYPE       NAME                    DATACENTER
+● prod-vc       template   ubuntu-24.04-golden     Taipei
+● edge-vc       template   ubuntu-22.04-base       Hsinchu
+✕ dr-site not searched: proxy 10.24.0.8:3128: connection refused
+```
+
+`tab` or `esc` narrows back with the query intact, and `enter` opens a result
+whatever kind it is. Results come from the inventory already loaded, so a
+vCenter that has not answered is named as **not searched** rather than
+silently left out.
 
 ## Configuration
 

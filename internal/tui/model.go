@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,15 +35,23 @@ const (
 	modeHelp
 	modeForm
 	modeConfirmDelete
+	modeContexts
+	modeSearch
 )
 
-// pane is which side of the browse view the arrow keys drive.
-type pane int
-
-const (
-	paneContexts pane = iota
-	paneResources
-)
+// searchState is one estate-wide search: every kind, every vCenter, matched
+// on name the same way "vsfleet search" matches on the command line.
+//
+// It is answered from the inventories already in memory rather than by going
+// back to the vCenters. Init prefetches every context, so by the time anyone
+// asks, the answer is on hand — and a vCenter that never answered is reported
+// as not searched rather than quietly narrowing the result.
+type searchState struct {
+	query    string
+	rows     []row
+	searched int
+	missing  []*contextState
+}
 
 // contextState is one vCenter as the UI sees it: the configuration, the last
 // inventory fetched from it, and whatever went wrong instead. A failed context
@@ -142,7 +151,6 @@ type Model struct {
 	byName map[string]*contextState
 
 	selected  int
-	pane      pane
 	kind      vsphere.Kind
 	sortMode  sortMode
 	allScope  bool
@@ -152,6 +160,25 @@ type Model struct {
 	cursor  int
 	offset  int
 	detailY int
+
+	// ctxCursor is the row the contexts screen is on, which is only the same
+	// as selected until you start moving around in there without choosing
+	// anything.
+	ctxCursor int
+	// returnTo is the screen the form or the delete confirmation was opened
+	// from, so cancelling lands back where you were rather than on the table.
+	returnTo mode
+	// search holds the last estate-wide result set, and searchDirty marks it
+	// stale after an inventory arrives or the context list changes.
+	search      *searchState
+	searchDirty bool
+	// detailFrom is the screen the detail pane was opened from, so esc goes
+	// back to the search results rather than always to the table.
+	detailFrom mode
+	// doctor is the context the diagnosis panel is reporting on. It is not
+	// always the one in scope: in all-vCenters view "d" asks about the
+	// vCenter the selected row came from.
+	doctor *contextState
 
 	// form holds the add/edit context form while mode is modeForm.
 	form *contextForm
@@ -190,7 +217,6 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		kind:     kind,
 		sortMode: sm,
 		allScope: opts.AllContexts,
-		pane:     paneResources,
 		width:    100,
 		height:   30,
 	}
@@ -205,10 +231,14 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 	return m
 }
 
+// filterPlaceholder is what the query line offers when the filter is
+// narrowing the table; the search screen replaces it with its own.
+const filterPlaceholder = "filter by name"
+
 func newFilterInput() textinput.Model {
 	ti := textinput.New()
 	ti.Prompt = "/"
-	ti.Placeholder = "filter by name"
+	ti.Placeholder = filterPlaceholder
 	ti.CharLimit = 128
 	return ti
 }
@@ -294,6 +324,54 @@ func (m *Model) prefetch() []tea.Cmd {
 	return cmds
 }
 
+// visibleRows is the list the cursor is moving through: the estate-wide
+// search results when a search is open, the current kind's table otherwise.
+func (m *Model) visibleRows() []row {
+	// A detail pane is a view onto the list it was opened from, so it keeps
+	// reading that one: opened from a search result, moving on with ←/→ walks
+	// the search results, not whichever tab is sitting behind them.
+	mode := m.mode
+	if mode == modeDetail {
+		mode = m.detailFrom
+	}
+	if mode == modeSearch {
+		return m.ensureSearch(m.filter.Value()).rows
+	}
+	return m.rows()
+}
+
+// ensureSearch answers a query from the loaded inventories, reusing the last
+// result when neither the query nor the inventories have changed — which is
+// what lets the browse screen show a live "and this many in the whole estate"
+// count while you are still typing.
+func (m *Model) ensureSearch(query string) *searchState {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if m.search != nil && m.search.query == q && !m.searchDirty {
+		return m.search
+	}
+	st := &searchState{query: q}
+	for _, cs := range m.states {
+		if cs.inv == nil {
+			st.missing = append(st.missing, cs)
+			continue
+		}
+		st.searched++
+		if q == "" {
+			continue
+		}
+		for _, k := range vsphere.AllKinds {
+			for _, r := range rowsFor(cs.inv, k, false) {
+				if strings.Contains(strings.ToLower(r.name), q) {
+					st.rows = append(st.rows, r)
+				}
+			}
+		}
+	}
+	m.sortMode.apply(st.rows)
+	m.search, m.searchDirty = st, false
+	return st
+}
+
 // rows builds the table for the active tab, across everything in scope.
 func (m *Model) rows() []row {
 	var out []row
@@ -359,7 +437,7 @@ func (m *Model) current() *contextState {
 
 // currentRow returns the row under the cursor, if any.
 func (m *Model) currentRow() (row, bool) {
-	rows := m.rows()
+	rows := m.visibleRows()
 	if m.cursor < 0 || m.cursor >= len(rows) {
 		return row{}, false
 	}
@@ -465,8 +543,7 @@ func (m *Model) applyFormSave(msg formSaveMsg) tea.Cmd {
 	m.syncContexts()
 	m.selectByName(name)
 	m.form = nil
-	m.mode = modeBrowse
-	m.pane = paneResources
+	m.leaveOverlay()
 	note := "saved context " + name
 	if msg.result.StoreWarning != nil {
 		note += " (password not stored: " + msg.result.StoreWarning.Error() + ")"
@@ -489,8 +566,19 @@ func (m *Model) applyFormDelete(msg formDeleteMsg) tea.Cmd {
 	if len(m.states) == 0 {
 		return m.enterForm(nil)
 	}
-	m.mode = modeBrowse
+	m.leaveOverlay()
 	return nil
+}
+
+// leaveOverlay closes the form or the delete confirmation and returns to the
+// screen that opened it — the contexts list when you got there through "c",
+// the table otherwise. Cancelling should never teleport you somewhere you
+// were not.
+func (m *Model) leaveOverlay() {
+	m.mode = m.returnTo
+	m.returnTo = modeBrowse
+	m.selected = clamp(m.selected, 0, max(0, len(m.states)-1))
+	m.ctxCursor = clamp(m.ctxCursor, 0, max(0, len(m.states)-1))
 }
 
 // syncContexts rebuilds the context list from the backend after a save or a
@@ -511,10 +599,19 @@ func (m *Model) syncContexts() {
 		byName[cc.Name] = st
 	}
 	m.states, m.byName = states, byName
+	m.searchDirty = true
 	m.selected = clamp(m.selected, 0, max(0, len(m.states)-1))
+	m.ctxCursor = clamp(m.ctxCursor, 0, max(0, len(m.states)-1))
+	// A diagnosis of a context that no longer exists has nothing left to
+	// report on, so it is dropped rather than left pointing at a removed one.
+	if m.doctor != nil {
+		if st, ok := m.byName[m.doctor.cc.Name]; !ok || st != m.doctor {
+			m.doctor = nil
+		}
+	}
 }
 
-// selectByName moves the sidebar cursor onto a context by name, if it exists.
+// selectByName puts a context by name in scope, if it exists.
 func (m *Model) selectByName(name string) {
 	for i, st := range m.states {
 		if st.cc.Name == name {
@@ -541,6 +638,7 @@ func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
 	st.loading = false
 	st.elapsed = msg.elapsed
 	st.err = msg.err
+	m.searchDirty = true
 	// inv and loadedAt reflect the cache's last successful fetch, which on a
 	// failed refresh is the same stale-but-real data the row already had —
 	// never nil just because the latest attempt failed.
@@ -606,6 +704,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.mode = modeBrowse
 		} else {
 			m.mode = modeHelp
+			m.detailY = 0
 		}
 		return nil
 	}
@@ -614,11 +713,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.handleDetailKey(msg)
 	case modeDoctor:
 		return m.handleDoctorKey(msg)
+	case modeContexts:
+		return m.handleContextsKey(msg)
+	case modeSearch:
+		return m.handleSearchKey(msg)
 	case modeHelp:
-		if key.Matches(msg, m.keys.Back) {
-			m.mode = modeBrowse
-		}
-		return nil
+		return m.handleHelpKey(msg)
 	default:
 		return m.handleBrowseKey(msg)
 	}
@@ -703,14 +803,13 @@ func (m *Model) handleConfirmDeleteKey(msg tea.KeyMsg) tea.Cmd {
 	case "y", "Y":
 		name := m.confirmDelete.cc.Name
 		also := m.confirmAlsoCredential
-		m.mode = modeBrowse
 		return removeContext(m.ctx, m.backend, name, also)
 	case "c", "C":
 		m.confirmAlsoCredential = !m.confirmAlsoCredential
 		return nil
 	case "n", "N", "esc":
 		m.confirmDelete = nil
-		m.mode = modeBrowse
+		m.leaveOverlay()
 		return nil
 	}
 	return nil
@@ -718,6 +817,11 @@ func (m *Model) handleConfirmDeleteKey(msg tea.KeyMsg) tea.Cmd {
 
 func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.Type {
+	case tea.KeyTab:
+		// Widening is offered exactly where the narrow filter runs out: the
+		// same query, against every vCenter and every kind.
+		m.toggleSearch()
+		return nil
 	case tea.KeyEnter:
 		m.filtering = false
 		m.filter.Blur()
@@ -741,12 +845,12 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 
 func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
-	case key.Matches(msg, m.keys.NextPane):
-		if m.pane == paneContexts {
-			m.pane = paneResources
-		} else {
-			m.pane = paneContexts
-		}
+	case key.Matches(msg, m.keys.Kind):
+		m.selectKindByNumber(msg.String())
+	case key.Matches(msg, m.keys.Contexts):
+		m.openContexts()
+	case key.Matches(msg, m.keys.Search):
+		return m.enterSearch()
 	case key.Matches(msg, m.keys.NextTab):
 		m.cycleTab(1)
 	case key.Matches(msg, m.keys.PrevTab):
@@ -788,18 +892,176 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Sort):
 		m.sortMode = m.sortMode.next()
 		m.cursor, m.offset = 0, 0
+	}
+	return nil
+}
+
+// selectKindByNumber maps the number row onto the resource kinds in the order
+// the tab bar prints them, so what you read is what you press.
+func (m *Model) selectKindByNumber(s string) {
+	i, err := strconv.Atoi(s)
+	if err != nil || i < 1 || i > len(vsphere.AllKinds) {
+		return
+	}
+	k := vsphere.AllKinds[i-1]
+	if k == m.kind {
+		return
+	}
+	m.kind = k
+	m.cursor, m.offset = 0, 0
+}
+
+// openContexts shows the vCenter list. With the sidebar gone this is the only
+// place a context is switched, added, edited or removed, which is what keeps
+// the browse screen down to eight keys.
+func (m *Model) openContexts() {
+	m.ctxCursor = clamp(m.selected, 0, max(0, len(m.states)-1))
+	m.mode = modeContexts
+}
+
+// handleContextsKey drives the contexts screen.
+func (m *Model) handleContextsKey(msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, m.keys.Back):
+		m.mode = modeBrowse
+	case key.Matches(msg, m.keys.Up):
+		m.moveContext(-1)
+	case key.Matches(msg, m.keys.Down):
+		m.moveContext(1)
+	case key.Matches(msg, m.keys.Home):
+		m.ctxCursor = 0
+	case key.Matches(msg, m.keys.End):
+		m.ctxCursor = max(0, len(m.states)-1)
+	case key.Matches(msg, m.keys.UseContext):
+		return m.useContext()
+	case key.Matches(msg, m.keys.AllScope):
+		m.allScope = true
+		m.cursor, m.offset = 0, 0
+		m.mode = modeBrowse
+		return tea.Batch(m.ensureLoaded(false)...)
+	case key.Matches(msg, m.keys.Reload):
+		if st := m.contextAt(m.ctxCursor); st != nil {
+			if cmd := m.startLoad(st, true); cmd != nil {
+				return tea.Batch(cmd, m.spin.Tick)
+			}
+		}
+	case key.Matches(msg, m.keys.Doctor):
+		return m.diagnoseContext(m.contextAt(m.ctxCursor))
 	case key.Matches(msg, m.keys.NewContext):
+		m.returnTo = modeContexts
 		return m.enterForm(nil)
 	case key.Matches(msg, m.keys.EditContext):
-		if st := m.current(); st != nil {
+		if st := m.contextAt(m.ctxCursor); st != nil {
+			m.returnTo = modeContexts
 			return m.enterForm(st)
 		}
 	case key.Matches(msg, m.keys.DeleteContext):
-		if st := m.current(); st != nil {
+		if st := m.contextAt(m.ctxCursor); st != nil {
 			m.confirmDelete = st
 			m.confirmAlsoCredential = true
+			m.returnTo = modeContexts
 			m.mode = modeConfirmDelete
 		}
+	}
+	return nil
+}
+
+func (m *Model) moveContext(delta int) {
+	if len(m.states) == 0 {
+		return
+	}
+	m.ctxCursor = clamp(m.ctxCursor+delta, 0, len(m.states)-1)
+}
+
+func (m *Model) contextAt(i int) *contextState {
+	if i < 0 || i >= len(m.states) {
+		return nil
+	}
+	return m.states[i]
+}
+
+// useContext narrows the view to the highlighted vCenter and returns to the
+// table, which is what choosing one in a list is understood to mean.
+func (m *Model) useContext() tea.Cmd {
+	if len(m.states) == 0 {
+		return nil
+	}
+	m.selected = clamp(m.ctxCursor, 0, len(m.states)-1)
+	m.allScope = false
+	m.cursor, m.offset = 0, 0
+	m.mode = modeBrowse
+	return tea.Batch(m.ensureLoaded(false)...)
+}
+
+// enterSearch opens the estate-wide results. With nothing typed yet it opens
+// with the query focused, so "tab" is a way in from an empty table as well as
+// a way to widen a filter that did not find enough.
+func (m *Model) enterSearch() tea.Cmd {
+	m.mode = modeSearch
+	m.filter.Placeholder = "search every vCenter"
+	m.cursor, m.offset = 0, 0
+	if strings.TrimSpace(m.filter.Value()) == "" {
+		m.filtering = true
+		return m.filter.Focus()
+	}
+	m.filtering = false
+	m.filter.Blur()
+	return nil
+}
+
+// leaveSearch returns to the table with the query intact, because the filter
+// and the search are the same query at two widths: narrowing back should not
+// cost you what you typed.
+func (m *Model) leaveSearch() {
+	m.mode = modeBrowse
+	m.filtering = false
+	m.filter.Blur()
+	m.filter.Placeholder = filterPlaceholder
+	m.clampCursor()
+}
+
+func (m *Model) toggleSearch() tea.Cmd {
+	if m.mode == modeSearch {
+		m.leaveSearch()
+		return nil
+	}
+	return m.enterSearch()
+}
+
+// handleSearchKey drives the estate-wide results. There is no scope to change
+// here — the search is already every vCenter — so the keys are movement, "/"
+// to refine the query in place, and the way back.
+func (m *Model) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, m.keys.Search):
+		m.leaveSearch()
+	case key.Matches(msg, m.keys.Back):
+		m.leaveSearch()
+	case key.Matches(msg, m.keys.Up):
+		m.move(-1)
+	case key.Matches(msg, m.keys.Down):
+		m.move(1)
+	case key.Matches(msg, m.keys.PageUp):
+		m.move(-m.tableHeight())
+	case key.Matches(msg, m.keys.PageDown):
+		m.move(m.tableHeight())
+	case key.Matches(msg, m.keys.Home):
+		m.moveTo(0)
+	case key.Matches(msg, m.keys.End):
+		m.moveTo(1 << 30)
+	case key.Matches(msg, m.keys.Filter):
+		m.filtering = true
+		return m.filter.Focus()
+	case key.Matches(msg, m.keys.Open):
+		return m.open()
+	case key.Matches(msg, m.keys.Sort):
+		m.sortMode = m.sortMode.next()
+		m.searchDirty = true
+		m.cursor, m.offset = 0, 0
+	case key.Matches(msg, m.keys.Reload):
+		return tea.Batch(m.reload(false)...)
+	case key.Matches(msg, m.keys.ReloadAll):
+		return tea.Batch(m.reload(true)...)
 	}
 	return nil
 }
@@ -818,36 +1080,74 @@ func (m *Model) reload(everything bool) []tea.Cmd {
 }
 
 func (m *Model) open() tea.Cmd {
-	if m.pane == paneContexts {
-		// Opening a context narrows the scope to it, which is what selecting
-		// one in a sidebar is understood to mean everywhere else.
-		m.allScope = false
-		m.cursor, m.offset = 0, 0
-		m.pane = paneResources
-		return tea.Batch(m.ensureLoaded(false)...)
-	}
 	if _, ok := m.currentRow(); ok {
+		m.detailFrom = m.mode
 		m.mode = modeDetail
 		m.detailY = 0
 	}
 	return nil
 }
 
+// diagnose walks the connection for the vCenter the cursor is on. In
+// all-vCenters view that is the one the selected row came from, so "d" always
+// asks about whatever produced the line you are looking at rather than about
+// whichever context happens to be in scope.
 func (m *Model) diagnose() tea.Cmd {
-	st := m.current()
+	return m.diagnoseContext(m.rowContext())
+}
+
+func (m *Model) diagnoseContext(st *contextState) tea.Cmd {
 	if st == nil || st.diagging {
 		return nil
 	}
 	st.diagging = true
 	st.diag = nil
+	m.doctor = st
 	m.mode = modeDoctor
 	return tea.Batch(diagnose(m.ctx, m.backend, st.cc), m.spin.Tick)
+}
+
+// rowContext is the vCenter behind the selected row, falling back to the one
+// in scope when there is no row — an empty tab, or a context that never
+// answered.
+func (m *Model) rowContext() *contextState {
+	if r, ok := m.currentRow(); ok {
+		if st, ok := m.byName[r.context]; ok {
+			return st
+		}
+	}
+	return m.current()
+}
+
+// handleHelpKey scrolls the key reference. It shares detailY with the detail
+// pane: the two are never open at once, and one scroll offset is one thing to
+// reason about rather than two.
+func (m *Model) handleHelpKey(msg tea.KeyMsg) tea.Cmd {
+	limit := max(0, len(m.helpLines())-m.bodyHeight())
+	switch {
+	case key.Matches(msg, m.keys.Back):
+		m.mode = modeBrowse
+		m.detailY = 0
+	case key.Matches(msg, m.keys.Up):
+		m.detailY = clamp(m.detailY-1, 0, limit)
+	case key.Matches(msg, m.keys.Down):
+		m.detailY = clamp(m.detailY+1, 0, limit)
+	case key.Matches(msg, m.keys.PageUp):
+		m.detailY = clamp(m.detailY-m.bodyHeight(), 0, limit)
+	case key.Matches(msg, m.keys.PageDown):
+		m.detailY = clamp(m.detailY+m.bodyHeight(), 0, limit)
+	case key.Matches(msg, m.keys.Home):
+		m.detailY = 0
+	case key.Matches(msg, m.keys.End):
+		m.detailY = limit
+	}
+	return nil
 }
 
 func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, m.keys.Back):
-		m.mode = modeBrowse
+		m.mode = m.detailFrom
 	case key.Matches(msg, m.keys.Up):
 		if m.detailY > 0 {
 			m.detailY--
@@ -872,7 +1172,7 @@ func (m *Model) handleDoctorKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Back):
 		m.mode = modeBrowse
 	case key.Matches(msg, m.keys.Reload):
-		return m.diagnose()
+		return m.diagnoseContext(m.doctor)
 	}
 	return nil
 }
@@ -892,21 +1192,11 @@ func (m *Model) cycleTab(delta int) {
 }
 
 func (m *Model) move(delta int) {
-	if m.pane == paneContexts {
-		if len(m.states) == 0 {
-			return
-		}
-		m.selected = clamp(m.selected+delta, 0, len(m.states)-1)
-		if !m.allScope {
-			m.cursor, m.offset = 0, 0
-		}
-		return
-	}
 	m.moveTo(m.cursor + delta)
 }
 
 func (m *Model) moveTo(i int) {
-	n := len(m.rows())
+	n := len(m.visibleRows())
 	if n == 0 {
 		m.cursor, m.offset = 0, 0
 		return

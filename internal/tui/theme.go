@@ -12,6 +12,9 @@ const (
 	glyphOK      = "✓"
 	glyphSkip    = "–"
 	glyphCursor  = "▸"
+	// glyphScope marks the vCenter in scope in the header, where the sidebar
+	// used to carry that job.
+	glyphScope = "◆"
 )
 
 // Colours are adaptive: a terminal with a light background gets darker inks.

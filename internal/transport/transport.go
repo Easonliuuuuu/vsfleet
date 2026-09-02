@@ -49,10 +49,17 @@ func (o Options) timeout() time.Duration {
 	return DefaultDialTimeout
 }
 
-// resolveProxyCredential looks up a proxy's password, the shared logic every
+// ResolveProxyCredential looks up a proxy's password, the shared logic every
 // authenticated proxy dialer needs. An empty Username means the proxy wants
 // no authentication at all, which is the common case and returns immediately.
-func resolveProxyCredential(ctx context.Context, cfg config.TransportConfig, opts Options) (password string, err error) {
+//
+// It is also exported for a caller that needs the same password more than
+// once in a single pass — Diagnose resolves it here and threads it through
+// Options.ProxyCredential to the dialer it builds for its own stage checks
+// and, separately, the one Connect builds internally for the Authentication
+// stage, so an operator using a prompt-scheme proxy credential is asked once
+// per diagnosis, not once per dialer it happens to build along the way.
+func ResolveProxyCredential(ctx context.Context, cfg config.TransportConfig, opts Options) (password string, err error) {
 	if cfg.Username == "" {
 		return "", nil
 	}

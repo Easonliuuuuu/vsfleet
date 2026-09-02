@@ -36,7 +36,7 @@ func NewHTTPProxy(ctx context.Context, cfg config.TransportConfig, opts Options,
 	}
 	p := &HTTPProxy{address: cfg.Address, tls: tlsToProxy, timeout: opts.timeout()}
 	if cfg.Username != "" {
-		password, err := resolveProxyCredential(ctx, cfg, opts)
+		password, err := ResolveProxyCredential(ctx, cfg, opts)
 		if err != nil {
 			return nil, err
 		}

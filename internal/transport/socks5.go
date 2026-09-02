@@ -29,7 +29,7 @@ func NewSOCKS5(ctx context.Context, cfg config.TransportConfig, opts Options) (*
 	}
 	var auth *proxy.Auth
 	if cfg.Username != "" {
-		password, err := resolveProxyCredential(ctx, cfg, opts)
+		password, err := ResolveProxyCredential(ctx, cfg, opts)
 		if err != nil {
 			return nil, err
 		}

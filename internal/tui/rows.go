@@ -101,11 +101,19 @@ type field struct {
 type row struct {
 	key     string
 	context string
-	name    string
-	glyph   string
-	status  rowStatus
-	cells   []string
-	detail  []field
+	// kind is what the row is, carried on the row rather than read from the
+	// model's current tab so that a search result — which sits in a list of
+	// six kinds at once — still knows what it is.
+	kind   vsphere.Kind
+	name   string
+	glyph  string
+	status rowStatus
+	// where is the object's place in the estate. The search table lists
+	// every kind side by side, so it cannot use any one kind's columns and
+	// needs the datacenter and path in a form it can reach.
+	where  vsphere.Location
+	cells  []string
+	detail []field
 	// notes are the free-form paragraphs under the detail fields, used for
 	// annotations that would not survive being squeezed into a column.
 	notes []field
@@ -198,6 +206,59 @@ func tabTitle(kind vsphere.Kind) string {
 	}
 }
 
+// searchColumns are the columns of the estate-wide search result table: the
+// same five, in the same order, that "vsfleet search" prints. It lists six
+// kinds at once, so it can only use what every object has — which vCenter,
+// what it is, its name, and where it sits.
+func searchColumns() []column {
+	return []column{
+		{title: "VCENTER", width: 12},
+		{title: "TYPE", width: 9},
+		{title: "NAME"},
+		{title: "DATACENTER", width: 12},
+		{title: "PATH", width: 26},
+	}
+}
+
+// searchCells renders one row for that table.
+func searchCells(r row) []string {
+	return []string{
+		r.context,
+		kindWord(r.kind),
+		r.name,
+		humanize.Dash(r.where.Datacenter),
+		humanize.Dash(r.where.Path),
+	}
+}
+
+// kindWord is the one-word name of a kind, matching what the command line
+// calls it: a search result reading "template" is a row you could have asked
+// for with "vsfleet template list".
+func kindWord(kind vsphere.Kind) string {
+	return string(kind)
+}
+
+// shortTabTitle is the abbreviated label the kind bar falls back to when the
+// full titles and their counts no longer fit the terminal.
+func shortTabTitle(kind vsphere.Kind) string {
+	switch kind {
+	case vsphere.KindVM:
+		return "VM"
+	case vsphere.KindTemplate:
+		return "Tpl"
+	case vsphere.KindHost:
+		return "Host"
+	case vsphere.KindCluster:
+		return "Clus"
+	case vsphere.KindDatastore:
+		return "DS"
+	case vsphere.KindNetwork:
+		return "Net"
+	default:
+		return string(kind)
+	}
+}
+
 // kindLabel names one object of a kind, for a detail pane where the plural tab
 // title would be describing a single thing.
 func kindLabel(kind vsphere.Kind) string {
@@ -275,6 +336,11 @@ func rowsFor(inv *vsphere.Inventory, kind vsphere.Kind, withContext bool) []row 
 			out = append(out, networkRow(n, withContext))
 		}
 	}
+	// The constructors each know one kind; stamping it here keeps them from
+	// having to repeat it, and keeps it impossible to forget.
+	for i := range out {
+		out[i].kind = kind
+	}
 	return out
 }
 
@@ -297,6 +363,7 @@ func vmRow(vm vsphere.VM, withContext bool) row {
 	r := row{
 		key:     vm.Context + "/" + vm.ID,
 		context: vm.Context,
+		where:   vm.Location,
 		name:    vm.Name,
 		glyph:   glyph,
 		status:  st,
@@ -338,6 +405,7 @@ func templateRow(vm vsphere.VM, withContext bool) row {
 	return row{
 		key:     vm.Context + "/" + vm.ID,
 		context: vm.Context,
+		where:   vm.Location,
 		name:    vm.Name,
 		glyph:   glyphSkip,
 		status:  statusNone,
@@ -377,6 +445,7 @@ func hostRow(h vsphere.Host, withContext bool) row {
 	return row{
 		key:     h.Context + "/" + h.ID,
 		context: h.Context,
+		where:   h.Location,
 		name:    h.Name,
 		glyph:   glyph,
 		status:  st,
@@ -421,6 +490,7 @@ func clusterRow(c vsphere.Cluster, withContext bool) row {
 	return row{
 		key:     c.Context + "/" + c.ID,
 		context: c.Context,
+		where:   c.Location,
 		name:    c.Name,
 		glyph:   glyph,
 		status:  st,
@@ -463,6 +533,7 @@ func datastoreRow(d vsphere.Datastore, withContext bool) row {
 	return row{
 		key:     d.Context + "/" + d.ID,
 		context: d.Context,
+		where:   d.Location,
 		name:    d.Name,
 		glyph:   glyph,
 		status:  st,
@@ -497,6 +568,7 @@ func networkRow(n vsphere.Network, withContext bool) row {
 	return row{
 		key:     n.Context + "/" + n.ID,
 		context: n.Context,
+		where:   n.Location,
 		name:    n.Name,
 		glyph:   glyph,
 		status:  st,

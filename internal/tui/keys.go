@@ -5,27 +5,50 @@ import "github.com/charmbracelet/bubbles/key"
 // keyMap is the whole keyboard surface. It is one struct rather than a switch
 // on raw strings so that the help panel is generated from the bindings and
 // cannot drift out of date with them.
+//
+// The browse screen deliberately keeps only the keys an operator uses hourly.
+// Everything about a vCenter itself — switching, adding, editing, removing —
+// lives behind Contexts, so the always-visible key line fits an 80 column
+// terminal without truncating.
 type keyMap struct {
-	Up        key.Binding
-	Down      key.Binding
-	PageUp    key.Binding
-	PageDown  key.Binding
-	Home      key.Binding
-	End       key.Binding
-	NextTab   key.Binding
-	PrevTab   key.Binding
-	NextPane  key.Binding
-	Open      key.Binding
-	Back      key.Binding
-	Filter    key.Binding
-	AllScope  key.Binding
+	Up       key.Binding
+	Down     key.Binding
+	PageUp   key.Binding
+	PageDown key.Binding
+	Home     key.Binding
+	End      key.Binding
+
+	// Kind jumps straight to a resource tab by its number. Cycling with
+	// NextTab and PrevTab still works, but five presses of "l" to reach
+	// Networks is not a way to move around an estate.
+	Kind    key.Binding
+	NextTab key.Binding
+	PrevTab key.Binding
+
+	Open   key.Binding
+	Back   key.Binding
+	Filter key.Binding
+	// Search widens the filter into every vCenter and every kind. It shares
+	// "tab" with nothing: removing the two-pane layout freed the key, and
+	// widening a search is the closest thing left to changing pane.
+	Search   key.Binding
+	Contexts key.Binding
+	AllScope key.Binding
+	// AllScopeBrief is the same key with a shorter label. The browse key line
+	// is the one place that has to fit eight hints into 80 columns, and a
+	// truncated key line is the problem this screen exists to fix.
+	AllScopeBrief key.Binding
+
 	Reload    key.Binding
 	ReloadAll key.Binding
 	Doctor    key.Binding
-	Sort      key.Binding
-	Help      key.Binding
-	Quit      key.Binding
 
+	Sort key.Binding
+	Help key.Binding
+	Quit key.Binding
+
+	// The next four belong to the contexts screen.
+	UseContext    key.Binding
 	NewContext    key.Binding
 	EditContext   key.Binding
 	DeleteContext key.Binding
@@ -45,29 +68,37 @@ type keyMap struct {
 
 func defaultKeys() keyMap {
 	return keyMap{
-		Up:        key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
-		Down:      key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		PageUp:    key.NewBinding(key.WithKeys("pgup", "ctrl+b"), key.WithHelp("pgup", "page up")),
-		PageDown:  key.NewBinding(key.WithKeys("pgdown", "ctrl+f"), key.WithHelp("pgdn", "page down")),
-		Home:      key.NewBinding(key.WithKeys("home", "g"), key.WithHelp("g", "first")),
-		End:       key.NewBinding(key.WithKeys("end", "G"), key.WithHelp("G", "last")),
-		NextTab:   key.NewBinding(key.WithKeys("right", "l", "]"), key.WithHelp("→/l", "next tab")),
-		PrevTab:   key.NewBinding(key.WithKeys("left", "h", "["), key.WithHelp("←/h", "prev tab")),
-		NextPane:  key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch pane")),
-		Open:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
-		Back:      key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
-		Filter:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
-		AllScope:  key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all vCenters")),
+		Up:       key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
+		Down:     key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
+		PageUp:   key.NewBinding(key.WithKeys("pgup", "ctrl+b"), key.WithHelp("pgup", "page up")),
+		PageDown: key.NewBinding(key.WithKeys("pgdown", "ctrl+f"), key.WithHelp("pgdn", "page down")),
+		Home:     key.NewBinding(key.WithKeys("home", "g"), key.WithHelp("g", "first")),
+		End:      key.NewBinding(key.WithKeys("end", "G"), key.WithHelp("G", "last")),
+
+		Kind:    key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6"), key.WithHelp("1-6", "kind")),
+		NextTab: key.NewBinding(key.WithKeys("right", "l", "]"), key.WithHelp("→/l", "next kind")),
+		PrevTab: key.NewBinding(key.WithKeys("left", "h", "["), key.WithHelp("←/h", "prev kind")),
+
+		Open:          key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open")),
+		Back:          key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back")),
+		Filter:        key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter")),
+		Search:        key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "search all")),
+		Contexts:      key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "contexts")),
+		AllScope:      key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all vCenters")),
+		AllScopeBrief: key.NewBinding(key.WithHelp("a", "all")),
+
 		Reload:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
 		ReloadAll: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "reload all")),
-		Doctor:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "test/diagnose")),
-		Sort:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
-		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
-		Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+		Doctor:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "diagnose")),
 
-		NewContext:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new context")),
-		EditContext:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit context")),
-		DeleteContext: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "delete context")),
+		Sort: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
+		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
+		Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+
+		UseContext:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "use")),
+		NewContext:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new")),
+		EditContext:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
+		DeleteContext: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "delete")),
 
 		FormMove:     key.NewBinding(key.WithHelp("↑/↓", "move")),
 		FormChange:   key.NewBinding(key.WithHelp("←/→", "change")),
@@ -82,11 +113,11 @@ func defaultKeys() keyMap {
 func (k keyMap) helpSections() []helpSection {
 	return []helpSection{
 		{"Move", []key.Binding{k.Up, k.Down, k.PageUp, k.PageDown, k.Home, k.End}},
-		{"Navigate", []key.Binding{k.NextTab, k.PrevTab, k.NextPane, k.Open, k.Back}},
-		{"Scope", []key.Binding{k.AllScope, k.Filter}},
+		{"Resource kinds", []key.Binding{k.Kind, k.NextTab, k.PrevTab, k.Open, k.Back}},
+		{"Scope", []key.Binding{k.Contexts, k.AllScope, k.Filter, k.Search}},
 		{"Connection", []key.Binding{k.Reload, k.ReloadAll, k.Doctor}},
 		{"Table", []key.Binding{k.Sort}},
-		{"Contexts", []key.Binding{k.NewContext, k.EditContext, k.DeleteContext}},
+		{"Contexts screen (c)", []key.Binding{k.UseContext, k.NewContext, k.EditContext, k.DeleteContext}},
 		{"Other", []key.Binding{k.Help, k.Quit}},
 	}
 }
@@ -97,7 +128,7 @@ type helpSection struct {
 }
 
 // footerHints is the always-visible key line, kept short enough to survive an
-// 80 column terminal.
+// 80 column terminal without an ellipsis.
 func (k keyMap) footerHints(m *Model) []key.Binding {
 	switch m.mode {
 	case modeDetail:
@@ -105,12 +136,16 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeDoctor:
 		return []key.Binding{k.Reload, k.Back, k.Help, k.Quit}
 	case modeHelp:
-		return []key.Binding{k.Back, k.Quit}
+		return []key.Binding{k.Up, k.Down, k.Back, k.Quit}
 	case modeForm:
 		return []key.Binding{k.FormMove, k.FormChange, k.FormActivate, k.Back}
 	case modeConfirmDelete:
 		return []key.Binding{k.Confirm, k.ToggleKeep, k.Back}
+	case modeContexts:
+		return []key.Binding{k.UseContext, k.AllScope, k.NewContext, k.EditContext, k.DeleteContext, k.Doctor, k.Back}
+	case modeSearch:
+		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
 	default:
-		return []key.Binding{k.NextTab, k.NextPane, k.Open, k.Filter, k.AllScope, k.Sort, k.Reload, k.Doctor, k.NewContext, k.EditContext, k.DeleteContext, k.Help, k.Quit}
+		return []key.Binding{k.Kind, k.Contexts, k.AllScopeBrief, k.Filter, k.Open, k.Reload, k.Help, k.Quit}
 	}
 }

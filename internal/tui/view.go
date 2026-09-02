@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 
@@ -15,16 +14,19 @@ import (
 // Layout constants. The interface is built for an 80x24 terminal on a jump
 // host and grows from there; nothing below assumes more.
 const (
-	cellGap        = 2
-	glyphGutter    = 2 // status glyph plus its separating space
-	minNameWidth   = 16
-	sidebarMin     = 18
-	sidebarMax     = 26
-	chromeHeight   = 4 // header, rule, message, key line
-	tableChrome    = 3 // tab bar, rule, column headings
-	minTermWidth   = 40
-	minTermHeight  = 10
-	labelColumnPad = 20
+	cellGap         = 2
+	glyphGutter     = 2 // status glyph plus its separating space
+	minNameWidth    = 16
+	chromeHeight    = 4 // header, tab bar or rule, message, key line
+	tableChrome     = 2 // the browse rule and its column headings
+	searchChrome    = 1 // headings only: the search screen's rule is the one under the header
+	minTermWidth    = 40
+	minTermHeight   = 10
+	labelColumnPad  = 20
+	tabGap          = 3
+	tabGapTight     = 2
+	helpColumnWidth = 34
+	ctxNameWidth    = 18
 )
 
 // View renders the whole frame.
@@ -36,6 +38,10 @@ func (m *Model) View() string {
 		return m.theme.dim.Render(fmt.Sprintf("terminal too small: %dx%d, need at least %dx%d",
 			m.width, m.height, minTermWidth, minTermHeight))
 	}
+	// The line under the header is the kind bar while browsing and a plain
+	// rule everywhere else. A full-screen view is not one of the kinds, so
+	// leaving a tab highlighted over it would be saying something untrue.
+	second := m.theme.rule.Render(strings.Repeat("─", m.width))
 	var body string
 	switch m.mode {
 	case modeDetail:
@@ -48,12 +54,17 @@ func (m *Model) View() string {
 		body = strings.Join(m.viewForm(), "\n")
 	case modeConfirmDelete:
 		body = strings.Join(m.viewConfirmDelete(), "\n")
+	case modeContexts:
+		body = strings.Join(m.viewContexts(), "\n")
+	case modeSearch:
+		body = strings.Join(m.viewSearch(), "\n")
 	default:
-		body = m.viewBrowse()
+		second = m.viewTabs(m.width)
+		body = strings.Join(m.viewBrowse(), "\n")
 	}
 	return strings.Join([]string{
 		m.viewHeader(),
-		m.theme.rule.Render(strings.Repeat("─", m.width)),
+		second,
 		body,
 		m.viewMessage(),
 		m.viewKeys(),
@@ -62,23 +73,28 @@ func (m *Model) View() string {
 
 func (m *Model) bodyHeight() int { return max(1, m.height-chromeHeight) }
 
-func (m *Model) sidebarWidth() int {
-	return clamp(m.width/4, sidebarMin, sidebarMax)
-}
-
-func (m *Model) contentWidth() int {
-	return max(minNameWidth, m.width-m.sidebarWidth()-cellGap)
-}
-
-// tableHeight is how many resource rows fit, after the tab bar, the headings
-// and any line spent reporting a vCenter that could not be read.
+// tableHeight is how many resource rows fit, after the rule, the headings and
+// any line spent reporting a vCenter that could not be read.
 func (m *Model) tableHeight() int {
-	return max(1, m.bodyHeight()-tableChrome-len(m.failuresInScope()))
+	chrome, unread := tableChrome, len(m.failuresInScope())
+	if m.mode == modeSearch {
+		chrome, unread = searchChrome, len(m.ensureSearch(m.filter.Value()).missing)
+	}
+	return max(1, m.bodyHeight()-chrome-unread)
 }
 
+// viewHeader names the scope on the left and the sort order on the right.
+// With the sidebar gone this is the only place the current vCenter is
+// written, so it says so plainly rather than in a legend.
 func (m *Model) viewHeader() string {
 	t := m.theme
-	scope := "context " + t.accent.Render(m.scopeName())
+	if m.mode == modeSearch {
+		return m.viewSearchHeader()
+	}
+	scope := t.accent.Render(m.scopeName())
+	if st := m.current(); st != nil && !m.allScope {
+		scope = t.statusStyle(st.rowStatus()).Render(glyphScope) + " " + scope
+	}
 	if m.allScope {
 		scope = t.accent.Render(fmt.Sprintf("all %d vCenters", len(m.states)))
 	}
@@ -99,7 +115,23 @@ func (m *Model) viewHeader() string {
 		summary += " · " + m.spin.View() + "loading"
 	}
 	left := t.title.Render("vsfleet") + "  " + scope + t.dim.Render("  ·  "+summary)
-	return truncate(left, m.width)
+	// The sort order describes the table, so it is only claimed on the screen
+	// that has one.
+	right := ""
+	if m.mode == modeBrowse {
+		right = t.faint.Render("sort: " + m.sortMode.label())
+	}
+	return joinEnds(left, right, m.width)
+}
+
+// joinEnds puts left and right on one line of exactly w columns, dropping the
+// right-hand side rather than the left when there is not room for both.
+func joinEnds(left, right string, w int) string {
+	lw, rw := ansi.StringWidth(left), ansi.StringWidth(right)
+	if rw == 0 || lw+rw+2 > w {
+		return truncate(left, w)
+	}
+	return left + strings.Repeat(" ", w-lw-rw) + right
 }
 
 func (m *Model) scopeName() string {
@@ -112,11 +144,7 @@ func (m *Model) scopeName() string {
 func (m *Model) viewMessage() string {
 	t := m.theme
 	if m.filtering || m.filter.Value() != "" {
-		hint := ""
-		if !m.filtering && m.filter.Value() != "" {
-			hint = t.dim.Render(fmt.Sprintf("  %d match(es), esc to clear", len(m.rows())))
-		}
-		return truncate(t.accent.Render(m.filter.View())+hint, m.width)
+		return truncate(t.accent.Render(m.filter.View())+t.dim.Render(m.filterHint()), m.width)
 	}
 	if m.message == "" {
 		return ""
@@ -126,6 +154,24 @@ func (m *Model) viewMessage() string {
 		style = t.bad
 	}
 	return truncate(style.Render(m.message), m.width)
+}
+
+// filterHint is what the query line says about its own reach. In the table it
+// reports both widths — what matched here and what would match across the
+// whole estate — because a filter that found nothing is exactly when it is
+// worth knowing the thing exists on another vCenter.
+func (m *Model) filterHint() string {
+	if m.mode == modeSearch || m.filter.Value() == "" {
+		return ""
+	}
+	here := len(m.rows())
+	hint := fmt.Sprintf("  %d here", here)
+	if all := len(m.ensureSearch(m.filter.Value()).rows); all > here {
+		hint += fmt.Sprintf(" · %d in the estate — tab to widen", all)
+	} else if !m.filtering {
+		hint += " · esc clears"
+	}
+	return hint
 }
 
 func (m *Model) viewKeys() string {
@@ -138,47 +184,236 @@ func (m *Model) viewKeys() string {
 	return truncate(strings.Join(parts, t.faint.Render("  ")), m.width)
 }
 
-// viewBrowse is the main screen: contexts on the left, one resource kind on
-// the right.
-func (m *Model) viewBrowse() string {
-	side := m.viewSidebar()
-	content := m.viewContent()
-	return lipgloss.JoinHorizontal(lipgloss.Top,
-		padBlock(side, m.sidebarWidth(), m.bodyHeight()),
-		strings.Repeat(" ", cellGap),
-		padBlock(content, m.contentWidth(), m.bodyHeight()),
-	)
+// viewBrowse is the main screen: one resource kind, full width. There is no
+// sidebar — the estate summary lives in the header and the vCenter list is a
+// keystroke away — because at 80 columns the sidebar was costing the table the
+// IP address and host columns an operator opened it to read.
+func (m *Model) viewBrowse() []string {
+	t := m.theme
+	w := m.width
+	lines := []string{t.rule.Render(strings.Repeat("─", w))}
+
+	cols := columnsFor(m.kind, m.showContext())
+	widths := layoutColumns(cols, w-glyphGutter)
+	head := make([]string, 0, len(cols))
+	for i, c := range cols {
+		if widths[i] == 0 {
+			continue
+		}
+		head = append(head, pad(c.title, widths[i], c.right))
+	}
+	lines = append(lines, t.header.Render(strings.Repeat(" ", glyphGutter)+strings.Join(head, strings.Repeat(" ", cellGap))))
+
+	rows := m.rows()
+	h := m.tableHeight()
+	if len(rows) == 0 {
+		lines = append(lines, t.dim.Render(m.emptyMessage()))
+	}
+	for i := m.offset; i < len(rows) && i < m.offset+h; i++ {
+		lines = append(lines, m.renderRow(rows[i], cols, widths, i == m.cursor))
+	}
+	// Failures are listed under the table rather than replacing it: the
+	// vCenters that did answer are still the answer to the question asked.
+	for _, st := range m.failuresInScope() {
+		lines = append(lines, t.bad.Render(truncate(
+			fmt.Sprintf("%s %s: %s", glyphFail, st.cc.Name, firstLine(st.err.Error())), w)))
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
 }
 
-// viewSidebar lists every configured vCenter with its state. Two lines each:
-// the name, and the route or the reason it is not answering. The second line
-// is the point — "failed" alone sends you to the logs.
-func (m *Model) viewSidebar() []string {
+// viewTabs is the numbered kind bar. Numbering it is the point: reaching
+// Networks used to be five presses of "l" against a strip that truncated
+// before you could see where you were going.
+func (m *Model) viewTabs(w int) string {
 	t := m.theme
-	w := m.sidebarWidth()
-	lines := []string{t.header.Render(pad("CONTEXTS", w, false))}
-	for i, st := range m.states {
-		marker := " "
-		if i == m.selected {
-			marker = glyphCursor
-		}
-		head := fmt.Sprintf("%s%s %s", marker, t.statusStyle(st.rowStatus()).Render(st.glyph()), st.cc.Name)
-		style := t.text
-		if i == m.selected {
-			style = t.selected
-			if m.pane == paneContexts {
-				style = t.focused
+	// Try the widest thing that fits: full names first, and a tighter gap
+	// before giving up a name, because "Datastores" earns two columns of
+	// whitespace more than "DS" does.
+	density, gap := tabBare, tabGapTight
+	for _, d := range []tabDensity{tabFull, tabShort, tabBare} {
+		for _, g := range []int{tabGap, tabGapTight} {
+			if tabsWidth(m.tabLabels(d), g) <= w {
+				density, gap = d, g
+				goto found
 			}
 		}
-		lines = append(lines, style.Render(pad(head, w, false)))
-		lines = append(lines, t.faint.Render(pad("   "+m.sidebarDetail(st), w, false)))
 	}
-	return lines
+found:
+	labels := m.tabLabels(density)
+	parts := make([]string, 0, len(labels))
+	for i, label := range labels {
+		style := t.tabOff
+		if vsphere.AllKinds[i] == m.kind {
+			style = t.tabOn
+		}
+		if strings.HasSuffix(label, "!") {
+			// The listing error keeps its own colour: a tab that is merely
+			// unselected and a tab you cannot read are different news.
+			parts = append(parts, style.Render(label[:len(label)-1])+t.warn.Render("!"))
+			continue
+		}
+		parts = append(parts, style.Render(label))
+	}
+	return truncate(" "+strings.Join(parts, strings.Repeat(" ", gap)), w)
 }
 
-// sidebarDetail is the second line of a context row: what it cost, or what
-// went wrong.
-func (m *Model) sidebarDetail(st *contextState) string {
+// tabDensity is how much of a kind's label the bar can afford. Something
+// always fits, because the number is what you actually press.
+type tabDensity int
+
+const (
+	tabFull  tabDensity = iota // "1 Datastores 24"
+	tabShort                   // "1 DS 24"
+	tabBare                    // "1 DS"
+)
+
+func (m *Model) tabLabels(d tabDensity) []string {
+	labels := make([]string, 0, len(vsphere.AllKinds))
+	for i, k := range vsphere.AllKinds {
+		title := tabTitle(k)
+		if d != tabFull {
+			title = shortTabTitle(k)
+		}
+		label := fmt.Sprintf("%d %s", i+1, title)
+		if d != tabBare {
+			label += fmt.Sprintf(" %d", m.count(k))
+		}
+		if m.kindErrorInScope(k) {
+			label += "!"
+		}
+		labels = append(labels, label)
+	}
+	return labels
+}
+
+func tabsWidth(labels []string, gap int) int {
+	w := 1 // the bar is indented one column, like the table's glyph gutter
+	for i, l := range labels {
+		w += ansi.StringWidth(l)
+		if i > 0 {
+			w += gap
+		}
+	}
+	return w
+}
+
+// viewSearchHeader replaces the scope line while a search is open: a search
+// is not scoped to a vCenter, so naming one there would be a lie.
+func (m *Model) viewSearchHeader() string {
+	t := m.theme
+	st := m.ensureSearch(m.filter.Value())
+	left := t.title.Render("vsfleet") + "  " + t.accent.Render("search")
+	if st.query == "" {
+		return truncate(left+t.dim.Render("  ·  every vCenter, every kind"), m.width)
+	}
+	summary := fmt.Sprintf("%d match(es) in %d vCenter(s)", len(st.rows), st.searched)
+	if n := len(st.missing); n > 0 {
+		summary += t.bad.Render(fmt.Sprintf(" · %d not searched", n))
+	}
+	return truncate(left+t.dim.Render("  ·  ")+t.value.Render(st.query)+t.dim.Render("  ·  "+summary), m.width)
+}
+
+// viewSearch is the estate-wide result table: every kind and every vCenter in
+// one list. It is the interface catching up with "vsfleet search", which has
+// been able to answer this from the command line all along.
+//
+// A vCenter with no inventory loaded is named under the results rather than
+// silently left out. Returning fewer matches because a proxy is down, without
+// saying so, is the one way this view could mislead.
+func (m *Model) viewSearch() []string {
+	t := m.theme
+	w := m.width
+	st := m.ensureSearch(m.filter.Value())
+
+	cols := searchColumns()
+	var lines []string
+	widths := layoutColumns(cols, w-glyphGutter)
+	head := make([]string, 0, len(cols))
+	for i, c := range cols {
+		if widths[i] == 0 {
+			continue
+		}
+		head = append(head, pad(c.title, widths[i], c.right))
+	}
+	lines = append(lines, t.header.Render(strings.Repeat(" ", glyphGutter)+strings.Join(head, strings.Repeat(" ", cellGap))))
+
+	h := m.tableHeight()
+	if len(st.rows) == 0 {
+		lines = append(lines, t.dim.Render(m.searchEmptyMessage(st)))
+	}
+	for i := m.offset; i < len(st.rows) && i < m.offset+h; i++ {
+		r := st.rows[i]
+		r.cells = searchCells(r)
+		lines = append(lines, m.renderRow(r, cols, widths, i == m.cursor))
+	}
+	for _, cs := range st.missing {
+		reason := "not connected"
+		if cs.loading {
+			reason = "still loading"
+		} else if cs.err != nil {
+			reason = firstLine(cs.err.Error())
+		}
+		lines = append(lines, t.bad.Render(truncate(
+			fmt.Sprintf("%s %s not searched: %s", glyphFail, cs.cc.Name, reason), w)))
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func (m *Model) searchEmptyMessage(st *searchState) string {
+	switch {
+	case st.query == "":
+		return "type a name to search every vCenter and every kind"
+	case st.searched == 0:
+		return "no vCenter has answered yet"
+	default:
+		return fmt.Sprintf("nothing named %q in %d vCenter(s)", st.query, st.searched)
+	}
+}
+
+// viewContexts is the vCenter list, reached with "c". Everything about a
+// context — choosing, adding, editing, removing, diagnosing — happens here,
+// which is what lets the browse screen get by on eight keys.
+func (m *Model) viewContexts() []string {
+	t := m.theme
+	scope := "scope: " + m.scopeName()
+	if m.allScope {
+		scope = fmt.Sprintf("scope: all %d vCenters", len(m.states))
+	}
+	lines := []string{joinEnds(t.title.Render("Contexts"), t.faint.Render(scope), m.width), ""}
+	if len(m.states) == 0 {
+		lines = append(lines, "  "+t.dim.Render("No vCenters configured yet — n adds the first one."))
+		return scrollLines(lines, 0, m.bodyHeight())
+	}
+
+	bodyW := max(minNameWidth, m.width-4)
+	epW := clamp((bodyW-ctxNameWidth)/2, 16, 34)
+	detW := max(8, bodyW-ctxNameWidth-epW)
+	for i, st := range m.states {
+		marker := "  "
+		if i == m.ctxCursor {
+			marker = t.accent.Render(glyphCursor + " ")
+		}
+		body := pad(st.cc.Name, ctxNameWidth, false) +
+			pad(st.cc.Endpoint, epW, false) +
+			pad(m.contextDetail(st), detW, false)
+		style := t.text
+		switch {
+		case i == m.ctxCursor:
+			style = t.focused
+		case !m.allScope && i == m.selected:
+			// The context in scope stays marked even while the cursor is
+			// elsewhere, so "which one am I looking at" survives browsing.
+			style = t.selected
+		}
+		lines = append(lines, marker+t.statusStyle(st.rowStatus()).Render(st.glyph())+" "+style.Render(body))
+	}
+	lines = append(lines, "",
+		"  "+t.faint.Render("enter narrows the view to one vCenter · a shows them all at once"))
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+// contextDetail is what a context costs to reach, or what went wrong instead.
+func (m *Model) contextDetail(st *contextState) string {
 	switch {
 	case st.loading:
 		return "connecting…"
@@ -212,40 +447,6 @@ func firstLine(s string) string {
 	return s
 }
 
-// viewContent is the tab bar and the resource table.
-func (m *Model) viewContent() []string {
-	t := m.theme
-	w := m.contentWidth()
-	lines := []string{m.viewTabs(w), t.rule.Render(strings.Repeat("─", w))}
-
-	cols := columnsFor(m.kind, m.showContext())
-	widths := layoutColumns(cols, w-glyphGutter)
-	head := make([]string, 0, len(cols))
-	for i, c := range cols {
-		if widths[i] == 0 {
-			continue
-		}
-		head = append(head, pad(c.title, widths[i], c.right))
-	}
-	lines = append(lines, t.header.Render(strings.Repeat(" ", glyphGutter)+strings.Join(head, strings.Repeat(" ", cellGap))))
-
-	rows := m.rows()
-	h := m.tableHeight()
-	if len(rows) == 0 {
-		lines = append(lines, t.dim.Render(m.emptyMessage()))
-	}
-	for i := m.offset; i < len(rows) && i < m.offset+h; i++ {
-		lines = append(lines, m.renderRow(rows[i], cols, widths, i == m.cursor))
-	}
-	// Failures are listed under the table rather than replacing it: the
-	// vCenters that did answer are still the answer to the question asked.
-	for _, st := range m.failuresInScope() {
-		lines = append(lines, t.bad.Render(truncate(
-			fmt.Sprintf("%s %s: %s", glyphFail, st.cc.Name, firstLine(st.err.Error())), w)))
-	}
-	return lines
-}
-
 func (m *Model) emptyMessage() string {
 	switch {
 	case m.pendingScope():
@@ -269,36 +470,14 @@ func (m *Model) renderRow(r row, cols []column, widths []int, selected bool) str
 		cells = append(cells, pad(r.cells[i], widths[i], c.right))
 	}
 	line := strings.Join(cells, strings.Repeat(" ", cellGap))
-	switch {
-	case selected && m.pane == paneResources:
+	if selected {
 		line = t.focused.Render(line)
-	case selected:
-		line = t.selected.Render(line)
-	default:
+	} else {
 		line = t.text.Render(line)
 	}
 	// The glyph sits in its own gutter, outside the selection highlight, so a
 	// powered-off VM still reads as powered off while the cursor is on it.
 	return t.statusStyle(r.status).Render(r.glyph) + " " + line
-}
-
-func (m *Model) viewTabs(w int) string {
-	t := m.theme
-	parts := make([]string, 0, len(vsphere.AllKinds))
-	for _, k := range vsphere.AllKinds {
-		label := fmt.Sprintf("%s %d", tabTitle(k), m.count(k))
-		if m.kindErrorInScope(k) {
-			label += " " + t.warn.Render("!")
-		}
-		if k == m.kind {
-			parts = append(parts, t.tabOn.Render(label))
-		} else {
-			parts = append(parts, t.tabOff.Render(label))
-		}
-	}
-	tabs := strings.Join(parts, t.faint.Render("   "))
-	suffix := t.faint.Render("  sort: " + m.sortMode.label())
-	return truncate(tabs+suffix, w)
 }
 
 // viewDetail is one object, full width, every property the inventory carries.
@@ -309,7 +488,9 @@ func (m *Model) viewDetail() []string {
 		return []string{t.dim.Render("nothing selected")}
 	}
 	lines := []string{
-		t.title.Render(r.name) + t.dim.Render("   "+kindLabel(m.kind)+" · "+r.context),
+		// The kind comes from the row, not from the current tab: a detail pane
+		// opened from a search result is showing whatever that result was.
+		t.title.Render(r.name) + t.dim.Render("   "+kindLabel(r.kind)+" · "+r.context),
 		"",
 	}
 	for _, f := range r.detail {
@@ -328,7 +509,7 @@ func (m *Model) viewDetail() []string {
 // walk "vsfleet doctor" prints.
 func (m *Model) viewDoctor() []string {
 	t := m.theme
-	st := m.current()
+	st := m.doctor
 	if st == nil {
 		return []string{t.dim.Render("no context selected")}
 	}
@@ -490,20 +671,73 @@ func (m *Model) viewConfirmDelete() []string {
 	return scrollLines(lines, 0, m.bodyHeight())
 }
 
-func (m *Model) viewHelp() []string {
+// helpLines is the whole key reference. It is laid out in two columns when
+// there is width for them, because a reference you have to scroll to read is
+// a reference you look up somewhere else instead.
+func (m *Model) helpLines() []string {
 	t := m.theme
-	lines := []string{t.title.Render("Keys"), ""}
+	blocks := make([][]string, 0, len(m.keys.helpSections()))
 	for _, sec := range m.keys.helpSections() {
-		lines = append(lines, "  "+t.header.Render(sec.title))
+		block := []string{t.header.Render(sec.title)}
 		for _, b := range sec.bindings {
 			h := b.Help()
-			lines = append(lines, "    "+t.accent.Render(pad(h.Key, 10, false))+t.dim.Render(h.Desc))
+			block = append(block, "  "+t.accent.Render(pad(h.Key, 10, false))+t.dim.Render(h.Desc))
 		}
-		lines = append(lines, "")
+		blocks = append(blocks, block)
 	}
-	lines = append(lines,
+
+	var body []string
+	if m.width >= helpColumnWidth*2+4 {
+		body = pairColumns(blocks, helpColumnWidth)
+	} else {
+		for _, block := range blocks {
+			body = append(body, block...)
+			body = append(body, "")
+		}
+	}
+
+	lines := []string{t.title.Render("Keys"), ""}
+	for _, l := range body {
+		lines = append(lines, "  "+l)
+	}
+	return append(lines,
 		"  "+t.dim.Render("Every view here is also a command: vsfleet vm list, vsfleet search, vsfleet doctor."))
-	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func (m *Model) viewHelp() []string {
+	return scrollLines(m.helpLines(), m.detailY, m.bodyHeight())
+}
+
+// pairColumns splits blocks across two columns, breaking at the block that
+// crosses the halfway mark so no section is ever cut in two.
+func pairColumns(blocks [][]string, w int) []string {
+	total := 0
+	for _, b := range blocks {
+		total += len(b) + 1
+	}
+	var left, right []string
+	run := 0
+	for _, b := range blocks {
+		dst := &left
+		if run*2 >= total {
+			dst = &right
+		}
+		*dst = append(*dst, b...)
+		*dst = append(*dst, "")
+		run += len(b) + 1
+	}
+	out := make([]string, 0, max(len(left), len(right)))
+	for i := 0; i < max(len(left), len(right)); i++ {
+		l, r := "", ""
+		if i < len(left) {
+			l = left[i]
+		}
+		if i < len(right) {
+			r = right[i]
+		}
+		out = append(out, pad(l, w, false)+r)
+	}
+	return out
 }
 
 // layoutColumns assigns a width to every column, giving the flexible one what
@@ -567,23 +801,6 @@ func truncate(s string, w int) string {
 		return ""
 	}
 	return ansi.Truncate(s, w, "…")
-}
-
-// padBlock forces a block of lines to an exact width and height so that two
-// columns joined side by side stay square.
-func padBlock(lines []string, w, h int) string {
-	out := make([]string, 0, h)
-	for i := 0; i < h; i++ {
-		s := ""
-		if i < len(lines) {
-			s = truncate(lines[i], w)
-		}
-		if gap := w - lipgloss.Width(s); gap > 0 {
-			s += strings.Repeat(" ", gap)
-		}
-		out = append(out, s)
-	}
-	return strings.Join(out, "\n")
 }
 
 // scrollLines windows a block of lines and pads it to the available height.

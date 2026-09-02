@@ -358,6 +358,6 @@ func (m *Model) formCancel() tea.Cmd {
 	if len(m.states) == 0 {
 		return m.enterForm(nil)
 	}
-	m.mode = modeBrowse
+	m.leaveOverlay()
 	return nil
 }

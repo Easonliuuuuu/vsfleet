@@ -29,18 +29,11 @@ func NewSOCKS5(ctx context.Context, cfg config.TransportConfig, opts Options) (*
 	}
 	var auth *proxy.Auth
 	if cfg.Username != "" {
-		a := &proxy.Auth{User: cfg.Username}
-		if !cfg.Credential.IsZero() {
-			if opts.Resolver == nil {
-				return nil, fmt.Errorf("socks5 proxy credential %s configured but no credential resolver available", cfg.Credential)
-			}
-			c, err := opts.Resolver.Get(ctx, cfg.Credential)
-			if err != nil {
-				return nil, fmt.Errorf("resolve socks5 proxy credential %s: %w", cfg.Credential, err)
-			}
-			a.Password = c.Password
+		password, err := resolveProxyCredential(ctx, cfg, opts)
+		if err != nil {
+			return nil, err
 		}
-		auth = a
+		auth = &proxy.Auth{User: cfg.Username, Password: password}
 	}
 	base := &net.Dialer{Timeout: opts.timeout(), KeepAlive: 30 * time.Second}
 	d, err := proxy.SOCKS5("tcp", cfg.Address, auth, base)

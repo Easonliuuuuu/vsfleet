@@ -438,9 +438,9 @@ func newContextRemoveCommand(a *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if alsoCredential && c.Credential.Scheme == credentials.SchemeKeyring {
-				if err := contextops.DeleteCredential(cmd.Context(), a.Resolver(), c.Credential); err != nil && !errors.Is(err, credentials.ErrNotFound) {
-					fmt.Fprintf(a.errOut(), "warning: could not remove %s: %v\n", c.Credential, err)
+			if alsoCredential {
+				if err := contextops.DeleteCredentials(cmd.Context(), a.Resolver(), c); err != nil {
+					fmt.Fprintf(a.errOut(), "warning: could not remove stored password(s): %v\n", err)
 				}
 			}
 			fmt.Fprintf(a.out(), "Removed context %q\n", c.Name)

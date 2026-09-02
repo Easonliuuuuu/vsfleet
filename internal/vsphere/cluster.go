@@ -40,7 +40,9 @@ func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error
 			ID:         m.Self.Value,
 			Name:       m.Name,
 			Standalone: m.Self.Type != "ClusterComputeResource",
-			Hosts:      hostRefsByCluster(m.Host),
+			// The compute resource summary is authoritative when the server
+			// fills it in; the member list is the fallback.
+			Hosts: len(m.Host),
 		}
 		if s, ok := m.Summary.(*types.ComputeResourceSummary); ok && s != nil {
 			cl.CPUCores = int32(s.NumCpuCores)

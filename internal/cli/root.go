@@ -32,9 +32,6 @@ type App struct {
 	Out io.Writer
 	Err io.Writer
 
-	// KeyringService overrides the OS keyring service name. Tests set it.
-	KeyringService string
-
 	cfg      *config.Config
 	resolver *credentials.Resolver
 	prompt   *credentials.Prompt
@@ -66,9 +63,7 @@ func (a *App) Prompt() *credentials.Prompt {
 // an interactive prompt when nothing is stored.
 func (a *App) Resolver() *credentials.Resolver {
 	if a.resolver == nil {
-		kr := credentials.NewKeyring()
-		kr.Service = a.KeyringService
-		a.resolver = credentials.NewResolver(kr, a.Prompt())
+		a.resolver = credentials.NewResolver(credentials.NewKeyring(), a.Prompt())
 	}
 	return a.resolver
 }

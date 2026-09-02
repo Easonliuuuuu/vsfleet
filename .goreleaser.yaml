@@ -1,0 +1,41 @@
+version: 2
+
+project_name: vctui
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: vctui
+    main: ./cmd/vctui
+    binary: vctui
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/easonliuuuuu/vc-tui/internal/version.Version={{ .Version }}
+      - -X github.com/easonliuuuuu/vc-tui/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/easonliuuuuu/vc-tui/internal/version.Date={{ .Date }}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"golang.org/x/term"
 )
@@ -21,6 +22,10 @@ type Prompt struct {
 	// value of its own.
 	Label string
 
+	// mu serialises reads. Several vCenters are connected to concurrently, and
+	// two goroutines asking for a password at the same time would interleave
+	// their prompts and read each other's input.
+	mu sync.Mutex
 	// buf is shared by every read so that a buffered line read cannot swallow
 	// input meant for the next question.
 	buf *bufio.Reader
@@ -54,6 +59,8 @@ func (p *Prompt) reader() *bufio.Reader {
 
 // ReadLine writes prompt to the output and reads one echoed line.
 func (p *Prompt) ReadLine(prompt string) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	fmt.Fprint(p.out(), prompt)
 	line, err := p.reader().ReadString('\n')
 	if err != nil && (err != io.EOF || line == "") {
@@ -88,6 +95,8 @@ func (p *Prompt) Get(_ context.Context, ref Ref) (Credential, error) {
 
 // ReadSecret writes prompt to the output and reads one line without echoing it.
 func (p *Prompt) ReadSecret(prompt string) (string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	fmt.Fprint(p.out(), prompt)
 	f, ok := p.in().(*os.File)
 	if ok && term.IsTerminal(int(f.Fd())) {
@@ -115,9 +124,9 @@ func (p *Prompt) Delete(context.Context, Ref) error {
 	return fmt.Errorf("%w: prompt", ErrUnsupported)
 }
 
-// Resolve fetches a credential for ref, falling back to an interactive prompt
-// when the reference resolves to nothing and a terminal is available. label
-// names the thing being unlocked, typically the context name.
+// Resolve fetches a credential for ref, falling back to the prompt provider
+// when nothing is stored for it. label names the thing being unlocked,
+// typically the context name.
 //
 // It reports whether the credential came from the prompt, so callers can offer
 // to persist it.
@@ -133,13 +142,11 @@ func Resolve(ctx context.Context, r *Resolver, ref Ref, label string) (c Credent
 	if !ok {
 		return Credential{}, false, err
 	}
-	pr, ok := p.(*Prompt)
-	if ok && !pr.Interactive() {
-		return Credential{}, false, err
-	}
 	c, perr := p.Get(ctx, Ref{Scheme: SchemePrompt, Value: label})
 	if perr != nil {
-		return Credential{}, false, perr
+		// The original miss is the useful half of the message; the prompt
+		// failure explains why asking was not an option either.
+		return Credential{}, false, fmt.Errorf("%w (and could not ask: %v)", err, perr)
 	}
 	return c, true, nil
 }

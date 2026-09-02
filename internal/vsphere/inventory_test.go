@@ -2,6 +2,7 @@ package vsphere_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/vmware/govmomi"
@@ -12,8 +13,11 @@ import (
 	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
 )
 
-// newSimulator starts a vcsim vCenter and returns a client wired to it.
-func newSimulator(t *testing.T, tune func(*simulator.Model)) *vsphere.Client {
+// newSimulator starts a vcsim vCenter and returns a client wired to it,
+// along with the fault injector for its underlying service — used by tests
+// that need one specific call to misbehave without the rest of the
+// simulator noticing.
+func newSimulator(t *testing.T, tune func(*simulator.Model)) (*vsphere.Client, *simulator.FaultInjector) {
 	t.Helper()
 	model := simulator.VPX()
 	if tune != nil {
@@ -41,11 +45,11 @@ func newSimulator(t *testing.T, tune func(*simulator.Model)) *vsphere.Client {
 		TLS:      config.TLSConfig{Mode: config.TLSInsecure},
 	}
 	cc.Normalize()
-	return vsphere.NewClientForTest(cc, gc)
+	return vsphere.NewClientForTest(cc, gc), model.Service.FaultInjector()
 }
 
 func TestListInventory(t *testing.T) {
-	c := newSimulator(t, func(m *simulator.Model) {
+	c, _ := newSimulator(t, func(m *simulator.Model) {
 		m.Datacenter = 1
 		m.Cluster = 2
 		m.ClusterHost = 3
@@ -144,7 +148,7 @@ func markTemplate(t *testing.T, c *vsphere.Client, name string) {
 }
 
 func TestListTemplates(t *testing.T) {
-	c := newSimulator(t, nil)
+	c, _ := newSimulator(t, nil)
 	ctx := context.Background()
 
 	before, err := c.ListVMs(ctx)
@@ -182,5 +186,77 @@ func TestListTemplates(t *testing.T) {
 	}
 	if len(vms) != len(before)-1 {
 		t.Errorf("ListVMs returned %d vms, want %d", len(vms), len(before)-1)
+	}
+}
+
+// TestListInventoryIsPartialOnOneKindFailing proves the core claim behind
+// the "limited-permission accounts" work: a context that can list most
+// resource kinds but is denied on one still returns everything it could
+// read, rather than the whole thing coming back empty.
+//
+// vcsim has no real privilege enforcement — AuthorizationManager stores
+// permissions but nothing checks them against other calls — so this reaches
+// for the fault injector instead: SkipCount/MaxCount target one specific
+// RetrievePropertiesEx call by its position in the sequence ListInventory
+// always makes in the same order (the path index, then VMs, hosts,
+// clusters, datastores, networks). The skip count below (5, not the 4 that
+// sequence alone would suggest) is calibrated against what the test
+// actually observes rather than derived from that list — some other
+// RetrievePropertiesEx call happens first, and which one does not change
+// the point of the test — so if ListInventory's own call sequence ever
+// changes, expect this to need recalibrating the same way: run it, see
+// which kind actually got denied, adjust.
+func TestListInventoryIsPartialOnOneKindFailing(t *testing.T) {
+	c, faults := newSimulator(t, func(m *simulator.Model) {
+		m.Datacenter = 1
+		m.Cluster = 1
+		m.ClusterHost = 2
+		m.Machine = 2
+		m.Datastore = 2
+	})
+	faults.AddRule(&simulator.FaultInjectionRule{
+		MethodName:  "RetrievePropertiesEx",
+		ObjectType:  "*",
+		ObjectName:  "*",
+		Probability: 1,
+		SkipCount:   5,
+		MaxCount:    1,
+		Enabled:     true,
+		FaultType:   simulator.FaultTypeNoPermission,
+		Message:     "permission denied: datastores",
+	})
+
+	inv, err := c.ListInventory(context.Background())
+	if err != nil {
+		t.Fatalf("ListInventory returned a top-level error instead of a partial result: %v", err)
+	}
+
+	if len(inv.VMs) == 0 {
+		t.Error("VMs came back empty despite only datastores being denied")
+	}
+	if len(inv.Hosts) == 0 {
+		t.Error("hosts came back empty despite only datastores being denied")
+	}
+	if len(inv.Clusters) == 0 {
+		t.Error("clusters came back empty despite only datastores being denied")
+	}
+	if len(inv.Networks) == 0 {
+		t.Error("networks (listed after datastores) came back empty despite only datastores being denied")
+	}
+	if len(inv.Datastores) != 0 {
+		t.Errorf("datastores = %v, want none — the denied kind should not have partial results either", inv.Datastores)
+	}
+
+	msg, ok := inv.ErrorFor(vsphere.KindDatastore)
+	if !ok {
+		t.Fatalf("Errors does not record a failure for datastores: %+v", inv.Errors)
+	}
+	if !strings.Contains(msg, "permission denied") {
+		t.Errorf("datastore error = %q, want it to mention the injected fault", msg)
+	}
+	for _, kind := range []vsphere.Kind{vsphere.KindVM, vsphere.KindTemplate, vsphere.KindHost, vsphere.KindCluster, vsphere.KindNetwork} {
+		if _, failed := inv.ErrorFor(kind); failed {
+			t.Errorf("Errors records a failure for %s, which was never denied", kind)
+		}
 	}
 }

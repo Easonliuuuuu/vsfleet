@@ -1,4 +1,4 @@
-// Command vcfleet operates several vCenters from one terminal.
+// Command vsfleet operates several vCenters from one terminal.
 package main
 
 import (
@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/easonliuuuuu/vcfleet/internal/cli"
+	"github.com/easonliuuuuu/vsfleet/internal/cli"
 )
 
 func main() {

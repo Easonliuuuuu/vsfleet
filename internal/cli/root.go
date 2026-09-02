@@ -1,4 +1,4 @@
-// Package cli implements the vcfleet command line. Every command is a thin
+// Package cli implements the vsfleet command line. Every command is a thin
 // wrapper over the configuration, session and inventory layers, which is what
 // lets the terminal interface be a second front end rather than a second
 // implementation.
@@ -13,11 +13,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/credentials"
-	"github.com/easonliuuuuu/vcfleet/internal/session"
-	"github.com/easonliuuuuu/vcfleet/internal/version"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
+	"github.com/easonliuuuuu/vsfleet/internal/session"
+	"github.com/easonliuuuuu/vsfleet/internal/version"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // App holds everything the commands share: where the configuration lives, how
@@ -147,21 +147,21 @@ func (a *App) checkFormat() error {
 	}
 }
 
-// NewRootCommand builds the vcfleet command tree.
+// NewRootCommand builds the vsfleet command tree.
 func NewRootCommand(a *App) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "vcfleet",
+		Use:   "vsfleet",
 		Short: "Operate all your vCenters from one terminal",
-		Long: `vcfleet treats every vCenter as a named context, the way kubectl treats
+		Long: `vsfleet treats every vCenter as a named context, the way kubectl treats
 clusters. Each context carries its own endpoint, credential reference,
 network route and TLS policy, so a lab reached directly and a customer
 vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.String(),
-		// A bare "vcfleet" opens the terminal interface: that is the product,
+		// A bare "vsfleet" opens the terminal interface: that is the product,
 		// not the subcommand tree. Args stays NoArgs so a genuine typo like
-		// "vcfleet statas" still reports "unknown command" instead of quietly
+		// "vsfleet statas" still reports "unknown command" instead of quietly
 		// launching the interface with an argument it ignores.
 		Args: cobra.NoArgs,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
@@ -203,7 +203,7 @@ func Execute(ctx context.Context) int {
 		}
 	}()
 	if err := root.ExecuteContext(ctx); err != nil {
-		fmt.Fprintf(a.errOut(), "vcfleet: %v\n", err)
+		fmt.Fprintf(a.errOut(), "vsfleet: %v\n", err)
 		return 1
 	}
 	return 0

@@ -5,7 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vcfleet/internal/session"
+	"github.com/easonliuuuuu/vsfleet/internal/session"
 )
 
 func newStatusCommand(a *App) *cobra.Command {

@@ -1,4 +1,4 @@
-// Package tests drives vcfleet end to end against a simulated vCenter and a real
+// Package tests drives vsfleet end to end against a simulated vCenter and a real
 // SOCKS5 proxy, so that the parts of the design that are hard to reason about
 // — per-context routing, remote DNS, certificate pinning and failure isolation
 // — are proven without access to physical VMware infrastructure.
@@ -14,9 +14,9 @@ import (
 
 	"github.com/vmware/govmomi/simulator"
 
-	"github.com/easonliuuuuu/vcfleet/internal/cli"
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/cli"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 const testPassword = "correct-horse"
@@ -62,7 +62,7 @@ func startVCenter(t *testing.T, tune func(*simulator.Model)) *vcenter {
 	return vc
 }
 
-// runner invokes vcfleet the way a shell would, against a throwaway config file.
+// runner invokes vsfleet the way a shell would, against a throwaway config file.
 type runner struct {
 	t          *testing.T
 	configPath string
@@ -94,7 +94,7 @@ func (r *runner) mustRun(stdin string, args ...string) string {
 	r.t.Helper()
 	stdout, stderr, err := r.run(stdin, args...)
 	if err != nil {
-		r.t.Fatalf("vcfleet %s: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout, stderr)
+		r.t.Fatalf("vsfleet %s: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout, stderr)
 	}
 	return stdout
 }
@@ -225,7 +225,7 @@ func TestFailureIsolation(t *testing.T) {
 	}
 }
 
-// TestUINamedContextMustExist checks that "vcfleet ui --context" is validated
+// TestUINamedContextMustExist checks that "vsfleet ui --context" is validated
 // before the terminal interface opens, on an empty configuration where no
 // name could possibly resolve. With no --context, an empty configuration is
 // exactly when the interface is supposed to open — into its own setup form —
@@ -236,14 +236,14 @@ func TestUINamedContextMustExist(t *testing.T) {
 
 	_, _, err := r.run("", "ui", "--context", "does-not-exist")
 	if err == nil {
-		t.Fatal("vcfleet ui --context does-not-exist on an empty configuration should fail")
+		t.Fatal("vsfleet ui --context does-not-exist on an empty configuration should fail")
 	}
 	if !strings.Contains(err.Error(), "does-not-exist") {
 		t.Errorf("error should name the context that was asked for, got: %v", err)
 	}
 }
 
-// TestBareCommandRoutesToTheInterface checks that "vcfleet" with no subcommand
+// TestBareCommandRoutesToTheInterface checks that "vsfleet" with no subcommand
 // is wired to open the terminal interface — cobra resolves the empty
 // argument list to the root command itself, and the root command has a RunE
 // that would run instead of cobra's default of printing help.
@@ -270,13 +270,13 @@ func TestBareCommandRoutesToTheInterface(t *testing.T) {
 		t.Fatalf("a bare invocation should resolve to the root command itself, resolved to %q instead", cmd.Name())
 	}
 	if root.RunE == nil {
-		t.Fatal("root command has no RunE: a bare \"vcfleet\" would print help instead of opening the interface")
+		t.Fatal("root command has no RunE: a bare \"vsfleet\" would print help instead of opening the interface")
 	}
 }
 
 // TestUnknownSubcommandIsRejected checks that a real typo is still reported
 // as such rather than being silently swallowed by the interface launch that
-// a bare "vcfleet" now performs.
+// a bare "vsfleet" now performs.
 func TestUnknownSubcommandIsRejected(t *testing.T) {
 	r := newRunner(t)
 

@@ -27,7 +27,7 @@ type connectRequest struct {
 }
 
 // httpProxyServer is a minimal HTTP CONNECT proxy, with optional Basic auth
-// and optional TLS on the listener itself, used to prove vcfleet's http and
+// and optional TLS on the listener itself, used to prove vsfleet's http and
 // https proxy routes without a real bastion in the test environment.
 type httpProxyServer struct {
 	// RequireAuth, when non-empty, is the exact "Basic ..." value a client
@@ -326,7 +326,7 @@ func TestHTTPSProxyOffline(t *testing.T) {
 }
 
 // TestHTTPSProxyRejectsUntrustedCertificate proves the security property
-// that matters most for an https route: vcfleet does not silently accept
+// that matters most for an https route: vsfleet does not silently accept
 // whatever certificate a proxy happens to present. Pinning a proxy's own
 // certificate, the way a vCenter's can be pinned, is not implemented yet —
 // this is the same "reject what the system trust store does not vouch for"

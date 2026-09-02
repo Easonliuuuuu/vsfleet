@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // Fetch retrieves one context's inventory. It is supplied by the caller —

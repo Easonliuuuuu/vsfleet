@@ -22,7 +22,7 @@ type socksRequest struct {
 // Domain reports whether the client asked the proxy to resolve a name.
 func (r socksRequest) Domain() bool { return r.AddressType == 3 }
 
-// socksServer is a minimal SOCKS5 proxy used to prove that vcfleet routes
+// socksServer is a minimal SOCKS5 proxy used to prove that vsfleet routes
 // per-context traffic through a proxy, including remote name resolution,
 // without needing a real bastion in the test environment.
 type socksServer struct {

@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -137,9 +138,13 @@ func TestSaveRoundTrip(t *testing.T) {
 		t.Fatalf("stat: %v", err)
 	}
 	// The file names credential references, but a mistake here would be
-	// expensive, so the permissions are asserted.
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Errorf("config permissions are %v, want 0600", perm)
+	// expensive, so the permissions are asserted. Windows has no POSIX mode
+	// bits — Chmod there only toggles the read-only attribute and Stat reports
+	// 0666 for any writable file — so the check runs where it means something.
+	if runtime.GOOS != "windows" {
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Errorf("config permissions are %v, want 0600", perm)
+		}
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {

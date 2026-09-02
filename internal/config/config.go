@@ -211,6 +211,10 @@ func (c *Config) Sort() {
 }
 
 // Save writes the configuration atomically with owner-only permissions.
+//
+// The mode is advisory on Windows, which has no POSIX permission bits: Chmod
+// there only toggles the read-only attribute. The file holds credential
+// references rather than secrets, so this is defence in depth either way.
 func (c *Config) Save() error {
 	if c.path == "" {
 		return errors.New("configuration has no path to save to")

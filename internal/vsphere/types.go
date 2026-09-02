@@ -43,11 +43,11 @@ func ParseKind(s string) (Kind, error) {
 // it, because with several vCenters in play "which one" is part of identity.
 type Location struct {
 	// Context is the vctui context name, i.e. which vCenter.
-	Context string
+	Context string `json:"context"`
 	// Datacenter is the vSphere datacenter the object belongs to.
-	Datacenter string
+	Datacenter string `json:"datacenter"`
 	// Path is the full inventory path, e.g. /Taipei/vm/Templates/ubuntu.
-	Path string
+	Path string `json:"path"`
 }
 
 // VM is a virtual machine or, when IsTemplate is set, a template. vSphere
@@ -55,72 +55,72 @@ type Location struct {
 // template views filter on IsTemplate rather than using a parallel type.
 type VM struct {
 	Location
-	ID         string
-	Name       string
-	PowerState string
-	IsTemplate bool
-	CPU        int32
-	MemoryMB   int64
-	GuestOS    string
-	GuestState string
-	ToolsState string
-	IPAddress  string
-	Host       string
-	Cluster    string
-	Folder     string
-	Datastores []string
-	StorageGB  float64
-	Annotation string
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	PowerState string   `json:"power_state"`
+	IsTemplate bool     `json:"is_template"`
+	CPU        int32    `json:"cpu"`
+	MemoryMB   int64    `json:"memory_mb"`
+	GuestOS    string   `json:"guest_os"`
+	GuestState string   `json:"guest_state"`
+	ToolsState string   `json:"tools_state"`
+	IPAddress  string   `json:"ip_address"`
+	Host       string   `json:"host"`
+	Cluster    string   `json:"cluster"`
+	Folder     string   `json:"folder"`
+	Datastores []string `json:"datastores"`
+	StorageGB  float64  `json:"storage_gb"`
+	Annotation string   `json:"annotation"`
 }
 
 // Host is an ESXi host.
 type Host struct {
 	Location
-	ID              string
-	Name            string
-	Cluster         string
-	PowerState      string
-	ConnectionState string
-	InMaintenance   bool
-	Vendor          string
-	Model           string
-	Version         string
-	Build           string
-	CPUCores        int32
-	CPUThreads      int32
-	CPUMHz          int32
-	MemoryMB        int64
-	CPUUsageMHz     int64
-	MemoryUsageMB   int64
-	VMCount         int
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Cluster         string `json:"cluster"`
+	PowerState      string `json:"power_state"`
+	ConnectionState string `json:"connection_state"`
+	InMaintenance   bool   `json:"in_maintenance"`
+	Vendor          string `json:"vendor"`
+	Model           string `json:"model"`
+	Version         string `json:"version"`
+	Build           string `json:"build"`
+	CPUCores        int32  `json:"cpu_cores"`
+	CPUThreads      int32  `json:"cpu_threads"`
+	CPUMHz          int32  `json:"cpu_mhz"`
+	MemoryMB        int64  `json:"memory_mb"`
+	CPUUsageMHz     int64  `json:"cpu_usage_mhz"`
+	MemoryUsageMB   int64  `json:"memory_usage_mb"`
+	VMCount         int    `json:"vm_count"`
 }
 
 // Cluster is a compute cluster. Standalone hosts appear as a ComputeResource
 // in vSphere and are reported here with Standalone set.
 type Cluster struct {
 	Location
-	ID            string
-	Name          string
-	Standalone    bool
-	Hosts         int
-	EffectiveHost int
-	CPUCores      int32
-	TotalCPUMHz   int64
-	TotalMemoryMB int64
-	DRSEnabled    bool
-	HAEnabled     bool
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Standalone    bool   `json:"standalone"`
+	Hosts         int    `json:"hosts"`
+	EffectiveHost int    `json:"effective_hosts"`
+	CPUCores      int32  `json:"cpu_cores"`
+	TotalCPUMHz   int64  `json:"total_cpu_mhz"`
+	TotalMemoryMB int64  `json:"total_memory_mb"`
+	DRSEnabled    bool   `json:"drs_enabled"`
+	HAEnabled     bool   `json:"ha_enabled"`
 }
 
 // Datastore is a backing store for VM files.
 type Datastore struct {
 	Location
-	ID            string
-	Name          string
-	Type          string
-	Accessible    bool
-	CapacityBytes int64
-	FreeBytes     int64
-	Maintenance   string
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Type          string `json:"type"`
+	Accessible    bool   `json:"accessible"`
+	CapacityBytes int64  `json:"capacity_bytes"`
+	FreeBytes     int64  `json:"free_bytes"`
+	Maintenance   string `json:"maintenance"`
 }
 
 // UsedBytes is capacity minus free space.
@@ -142,21 +142,21 @@ func (d Datastore) UsedPercent() float64 {
 // Network is a port group or network the VMs attach to.
 type Network struct {
 	Location
-	ID         string
-	Name       string
-	Type       string
-	Accessible bool
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Accessible bool   `json:"accessible"`
 }
 
 // Inventory is everything enumerated from one vCenter at one moment.
 type Inventory struct {
-	Context    string
-	VMs        []VM
-	Templates  []VM
-	Hosts      []Host
-	Clusters   []Cluster
-	Datastores []Datastore
-	Networks   []Network
+	Context    string      `json:"context"`
+	VMs        []VM        `json:"vms"`
+	Templates  []VM        `json:"templates"`
+	Hosts      []Host      `json:"hosts"`
+	Clusters   []Cluster   `json:"clusters"`
+	Datastores []Datastore `json:"datastores"`
+	Networks   []Network   `json:"networks"`
 }
 
 // Counts renders a one-line summary, used by status output.

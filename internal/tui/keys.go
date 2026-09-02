@@ -24,6 +24,22 @@ type keyMap struct {
 	Doctor    key.Binding
 	Help      key.Binding
 	Quit      key.Binding
+
+	NewContext    key.Binding
+	EditContext   key.Binding
+	DeleteContext key.Binding
+
+	// The next three describe the form's own dispatch (up/down move the row,
+	// left/right change a select or toggle, enter activates a button) —
+	// display only, since the form reads raw key types rather than matching
+	// these bindings.
+	FormMove     key.Binding
+	FormChange   key.Binding
+	FormActivate key.Binding
+
+	// Confirm and ToggleKeep belong to the delete confirmation screen.
+	Confirm    key.Binding
+	ToggleKeep key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -43,9 +59,20 @@ func defaultKeys() keyMap {
 		AllScope:  key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all vCenters")),
 		Reload:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
 		ReloadAll: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "reload all")),
-		Doctor:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "diagnose")),
+		Doctor:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "test/diagnose")),
 		Help:      key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Quit:      key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
+
+		NewContext:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new context")),
+		EditContext:   key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit context")),
+		DeleteContext: key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "delete context")),
+
+		FormMove:     key.NewBinding(key.WithHelp("↑/↓", "move")),
+		FormChange:   key.NewBinding(key.WithHelp("←/→", "change")),
+		FormActivate: key.NewBinding(key.WithHelp("enter", "activate")),
+
+		Confirm:    key.NewBinding(key.WithHelp("y", "delete")),
+		ToggleKeep: key.NewBinding(key.WithHelp("c", "keep password")),
 	}
 }
 
@@ -56,6 +83,7 @@ func (k keyMap) helpSections() []helpSection {
 		{"Navigate", []key.Binding{k.NextTab, k.PrevTab, k.NextPane, k.Open, k.Back}},
 		{"Scope", []key.Binding{k.AllScope, k.Filter}},
 		{"Connection", []key.Binding{k.Reload, k.ReloadAll, k.Doctor}},
+		{"Contexts", []key.Binding{k.NewContext, k.EditContext, k.DeleteContext}},
 		{"Other", []key.Binding{k.Help, k.Quit}},
 	}
 }
@@ -75,7 +103,11 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		return []key.Binding{k.Reload, k.Back, k.Help, k.Quit}
 	case modeHelp:
 		return []key.Binding{k.Back, k.Quit}
+	case modeForm:
+		return []key.Binding{k.FormMove, k.FormChange, k.FormActivate, k.Back}
+	case modeConfirmDelete:
+		return []key.Binding{k.Confirm, k.ToggleKeep, k.Back}
 	default:
-		return []key.Binding{k.NextTab, k.NextPane, k.Open, k.Filter, k.AllScope, k.Reload, k.Doctor, k.Help, k.Quit}
+		return []key.Binding{k.NextTab, k.NextPane, k.Open, k.Filter, k.AllScope, k.Reload, k.Doctor, k.NewContext, k.EditContext, k.DeleteContext, k.Help, k.Quit}
 	}
 }

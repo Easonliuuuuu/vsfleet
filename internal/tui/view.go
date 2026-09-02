@@ -43,6 +43,10 @@ func (m *Model) View() string {
 		body = strings.Join(m.viewDoctor(), "\n")
 	case modeHelp:
 		body = strings.Join(m.viewHelp(), "\n")
+	case modeForm:
+		body = strings.Join(m.viewForm(), "\n")
+	case modeConfirmDelete:
+		body = strings.Join(m.viewConfirmDelete(), "\n")
 	default:
 		body = m.viewBrowse()
 	}
@@ -335,7 +339,27 @@ func (m *Model) viewDoctor() []string {
 		lines = append(lines, "  "+t.label.Render(pad(f.label, 12, false))+t.value.Render(humanize.Dash(f.value)))
 	}
 	lines = append(lines, "")
-	for _, c := range d.Checks {
+	lines = append(lines, m.renderChecks(d.Checks)...)
+	lines = append(lines, "")
+	if d.OK() {
+		lines = append(lines, "  "+t.ok.Render("Connection successful.")+t.dim.Render("  "+humanize.Duration(d.Latency)))
+	} else {
+		lines = append(lines, "  "+t.bad.Render("Stopped at the first failing stage."))
+	}
+	if d.Thumbprint != "" {
+		lines = append(lines, "", "  "+t.label.Render(pad("Served thumbprint", labelColumnPad, false)))
+		lines = append(lines, "  "+t.value.Render(d.Thumbprint))
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+// renderChecks renders a diagnosis's stages, shared by the doctor panel and
+// the form's "last test" summary so a connection reads the same way in
+// either place.
+func (m *Model) renderChecks(checks []vsphere.Check) []string {
+	t := m.theme
+	lines := make([]string, 0, len(checks))
+	for _, c := range checks {
 		glyph, style := glyphSkip, t.faint
 		switch c.Status {
 		case vsphere.CheckPass:
@@ -350,16 +374,113 @@ func (m *Model) viewDoctor() []string {
 		line := fmt.Sprintf("  %s %s  %s", style.Render(glyph), pad(c.Name, 24, false), t.dim.Render(detail))
 		lines = append(lines, truncate(line, m.width))
 	}
+	return lines
+}
+
+// viewForm renders the add/edit context form: one row per field, a cursor
+// marker on the active one, and the outcome of the last test or discovery
+// below it. There is no separate "review" screen — the form is always
+// showing exactly what will be saved.
+func (m *Model) viewForm() []string {
+	t := m.theme
+	f := m.form
+	if f == nil {
+		return []string{t.dim.Render("no form open")}
+	}
+	title := "Add a vCenter"
+	if f.editing {
+		title = "Edit " + f.origName
+	}
+	lines := []string{t.title.Render(title)}
+	if len(m.states) == 0 && !f.editing {
+		lines = append(lines, t.dim.Render("No contexts are configured yet — this is the first one."))
+	}
 	lines = append(lines, "")
-	if d.OK() {
-		lines = append(lines, "  "+t.ok.Render("Connection successful.")+t.dim.Render("  "+humanize.Duration(d.Latency)))
+
+	const labelWidth = 30
+	rows := f.rows()
+	for i, r := range rows {
+		marker := "  "
+		if i == f.cursor {
+			marker = t.accent.Render("▸ ")
+		}
+		switch r.kind {
+		case rowButton:
+			style := t.dim
+			if i == f.cursor {
+				style = t.focused
+			}
+			lines = append(lines, marker+style.Render("[ "+r.static+" ]"))
+		case rowStatic:
+			lines = append(lines, marker+t.label.Render(pad(r.label, labelWidth, false))+t.value.Render(r.static))
+		case rowSelect:
+			opts := make([]string, len(r.options))
+			for oi, o := range r.options {
+				if oi == *r.idx {
+					opts[oi] = t.accent.Render("[" + o + "]")
+				} else {
+					opts[oi] = t.faint.Render(" " + o + " ")
+				}
+			}
+			lines = append(lines, marker+t.label.Render(pad(r.label, labelWidth, false))+strings.Join(opts, " "))
+		case rowToggle:
+			v, style := "no", t.faint
+			if *r.flag {
+				v, style = "yes", t.ok
+			}
+			lines = append(lines, marker+t.label.Render(pad(r.label, labelWidth, false))+style.Render(v))
+		default: // rowText, rowSecret
+			lines = append(lines, marker+t.label.Render(pad(r.label, labelWidth, false))+r.input.View())
+		}
+		if r.hint != "" && i == f.cursor {
+			lines = append(lines, "    "+t.faint.Render(r.hint))
+		}
+	}
+
+	lines = append(lines, "")
+	switch {
+	case f.testing:
+		lines = append(lines, "  "+m.spin.View()+t.dim.Render("testing connection…"))
+	case f.discovering:
+		lines = append(lines, "  "+m.spin.View()+t.dim.Render("fetching certificate…"))
+	case f.saving:
+		lines = append(lines, "  "+m.spin.View()+t.dim.Render("saving…"))
+	}
+	if f.err != "" {
+		lines = append(lines, "  "+t.bad.Render(f.err))
+	} else if f.note != "" {
+		lines = append(lines, "  "+t.ok.Render(f.note))
+	}
+	if f.diag != nil {
+		lines = append(lines, "", t.header.Render("Last test"))
+		lines = append(lines, m.renderChecks(f.diag.Checks)...)
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+// viewConfirmDelete asks once, plainly, before a context and — by default —
+// its stored password are gone.
+func (m *Model) viewConfirmDelete() []string {
+	t := m.theme
+	st := m.confirmDelete
+	if st == nil {
+		return []string{t.dim.Render("nothing selected")}
+	}
+	lines := []string{
+		t.title.Render("Delete " + st.cc.Name + "?"),
+		"",
+		"  " + t.label.Render(pad("Endpoint", 12, false)) + t.value.Render(st.cc.Endpoint),
+		"  " + t.label.Render(pad("Route", 12, false)) + t.value.Render(st.cc.Transport.Describe()),
+		"",
+	}
+	credLine := "  " + t.label.Render(pad("Stored password", 12, false))
+	if m.confirmAlsoCredential {
+		credLine += t.bad.Render("deleted with it")
 	} else {
-		lines = append(lines, "  "+t.bad.Render("Stopped at the first failing stage."))
+		credLine += t.ok.Render("kept in the keyring")
 	}
-	if d.Thumbprint != "" {
-		lines = append(lines, "", "  "+t.label.Render(pad("Served thumbprint", labelColumnPad, false)))
-		lines = append(lines, "  "+t.value.Render(d.Thumbprint))
-	}
+	lines = append(lines, credLine, "  "+t.faint.Render("(c to toggle)"), "")
+	lines = append(lines, "  "+t.bad.Render("y")+t.dim.Render(" delete    ")+t.accent.Render("n")+t.dim.Render(" cancel"))
 	return scrollLines(lines, 0, m.bodyHeight())
 }
 

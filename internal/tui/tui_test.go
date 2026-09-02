@@ -3,14 +3,18 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/easonliuuuuu/vc-tui/internal/config"
+	"github.com/easonliuuuuu/vc-tui/internal/contextops"
 	"github.com/easonliuuuuu/vc-tui/internal/session"
 	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
 )
@@ -18,12 +22,29 @@ import (
 // fakeBackend answers instantly from fixtures. The whole point of the Backend
 // interface is that everything below is exercised here without a vCenter, a
 // proxy or a certificate anywhere in sight.
+//
+// SaveContext, RemoveContext and TestContext apply to an in-memory context
+// list rather than exercising contextops itself — that package has its own
+// tests against a real simulated vCenter. What these tests are exercising is
+// how the model reacts to the outcome: the sidebar rebuilding after a save,
+// the form staying open on a failure, the last context's removal reopening
+// setup.
 type fakeBackend struct {
 	contexts    []*config.Context
 	inventories map[string]*vsphere.Inventory
 	failures    map[string]error
 	diagnoses   map[string]*vsphere.Diagnosis
 	calls       map[string]int
+
+	// testDiag, keyed by the input's context name, overrides what
+	// TestContext and a tested SaveContext report; unset names get a passing
+	// stub. saveErr forces SaveContext to fail outright, past any test.
+	testDiag       map[string]*vsphere.Diagnosis
+	saveErr        map[string]error
+	discoverErr    error
+	discoverThumb  string
+	discoverSubj   string
+	currentContext string
 }
 
 func (b *fakeBackend) Contexts() []*config.Context { return b.contexts }
@@ -36,7 +57,13 @@ func (b *fakeBackend) Inventory(_ context.Context, cc *config.Context) (*vsphere
 	if err, ok := b.failures[cc.Name]; ok {
 		return nil, err
 	}
-	return b.inventories[cc.Name], nil
+	if inv, ok := b.inventories[cc.Name]; ok {
+		return inv, nil
+	}
+	// A context with no fixture registered — a freshly saved context in the
+	// form tests, say — connects successfully to an empty vCenter rather
+	// than to nothing at all.
+	return &vsphere.Inventory{Context: cc.Name}, nil
 }
 
 func (b *fakeBackend) Status(name string) (session.Status, bool) {
@@ -45,6 +72,80 @@ func (b *fakeBackend) Status(name string) (session.Status, bool) {
 
 func (b *fakeBackend) Diagnose(_ context.Context, cc *config.Context) *vsphere.Diagnosis {
 	return b.diagnoses[cc.Name]
+}
+
+func (b *fakeBackend) diagnosisFor(name string) *vsphere.Diagnosis {
+	if d, ok := b.testDiag[name]; ok {
+		return d
+	}
+	return &vsphere.Diagnosis{
+		Context: name,
+		Checks:  []vsphere.Check{{Name: "Configuration valid", Status: vsphere.CheckPass}, {Name: "Authentication", Status: vsphere.CheckPass}},
+	}
+}
+
+func (b *fakeBackend) TestContext(_ context.Context, in contextops.Input) (*config.Context, *vsphere.Diagnosis) {
+	return contextops.Build(in), b.diagnosisFor(in.Name)
+}
+
+func (b *fakeBackend) SaveContext(_ context.Context, in contextops.Input, test bool) (*contextops.Result, error) {
+	cc := contextops.Build(in)
+	res := &contextops.Result{Context: cc}
+	if err := cc.Validate(); err != nil {
+		return res, err
+	}
+	if test {
+		res.Diagnosis = b.diagnosisFor(in.Name)
+		if !res.Diagnosis.OK() && !in.SaveOnTestFailure {
+			return res, errors.New("connection test failed")
+		}
+	}
+	if err, ok := b.saveErr[in.Name]; ok && err != nil {
+		return res, err
+	}
+	replaced := false
+	for i, existing := range b.contexts {
+		if existing.Name == cc.Name {
+			b.contexts[i] = cc
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		b.contexts = append(b.contexts, cc)
+	}
+	if in.SetCurrent {
+		b.currentContext = cc.Name
+	}
+	return res, nil
+}
+
+func (b *fakeBackend) RemoveContext(_ context.Context, name string, _ bool) (*config.Context, error) {
+	for i, cc := range b.contexts {
+		if cc.Name == name {
+			b.contexts = append(b.contexts[:i:i], b.contexts[i+1:]...)
+			if b.currentContext == name {
+				b.currentContext = ""
+			}
+			return cc, nil
+		}
+	}
+	return nil, fmt.Errorf("context %q not found", name)
+}
+
+func (b *fakeBackend) DiscoverThumbprint(_ context.Context, cc *config.Context) (sha256, sha1, subject string, notAfter time.Time, err error) {
+	if b.discoverErr != nil {
+		return "", "", "", time.Time{}, b.discoverErr
+	}
+	thumb := b.discoverThumb
+	if thumb == "" {
+		thumb = "AA:BB:CC:DD:EE:FF"
+	}
+	subj := b.discoverSubj
+	if subj == "" {
+		subj = cc.Host()
+	}
+	return thumb, thumb, subj, time.Now().AddDate(1, 0, 0), nil
 }
 
 func ctx(name, endpoint string) *config.Context {
@@ -117,7 +218,26 @@ func newTestModel(t *testing.T, b *fakeBackend, opts Options) *Model {
 	// commands synchronously rather than through the Bubble Tea runtime.
 	m.filter.Cursor.SetMode(cursor.CursorStatic)
 	drive(t, m, m.Init())
+	settleForm(m)
 	return m
+}
+
+// settleForm strips the blink timer from every field of an open form, the
+// same reason newTestModel does it for the filter: typing a character that
+// moves the cursor position schedules a real ~500ms timer once per
+// keystroke, which a synchronous test harness blocks on rather than letting
+// run in the background the way the real Bubble Tea event loop would.
+func settleForm(m *Model) {
+	if m.form == nil {
+		return
+	}
+	f := m.form
+	for _, ti := range []*textinput.Model{
+		&f.name, &f.endpoint, &f.username, &f.password,
+		&f.datacenter, &f.socksAddr, &f.socksUser, &f.thumbprint,
+	} {
+		ti.Cursor.SetMode(cursor.CursorStatic)
+	}
 }
 
 // drive runs every command a model produced and feeds the resulting messages
@@ -178,6 +298,13 @@ func press(t *testing.T, m *Model, keys ...string) {
 		}
 		drive(t, m, discard(m.Update(msg)))
 	}
+}
+
+// typeText sends a whole string as one key message, the way pasting or a
+// fast typist would, rather than one press call per rune.
+func typeText(t *testing.T, m *Model, s string) {
+	t.Helper()
+	drive(t, m, discard(m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)})))
 }
 
 func twoHealthy() *fakeBackend {
@@ -444,5 +571,257 @@ func TestRowsAreFlattenedForEveryKind(t *testing.T) {
 				t.Errorf("%s row %q has no detail fields", kind, r.name)
 			}
 		}
+	}
+}
+
+// TestSetupFormOpensWithNoContexts is the entry-experience requirement from
+// the v0.1.0 plan: a fresh install has nowhere to browse, so the interface
+// opens straight into adding the first context instead of an empty table.
+func TestSetupFormOpensWithNoContexts(t *testing.T) {
+	m := newTestModel(t, &fakeBackend{}, Options{})
+	if m.mode != modeForm {
+		t.Fatalf("mode is %v, want modeForm", m.mode)
+	}
+	out := m.View()
+	if !strings.Contains(out, "Add a vCenter") || !strings.Contains(out, "first one") {
+		t.Errorf("setup form did not open as expected:\n%s", out)
+	}
+}
+
+// fillNewContextBasics types name, endpoint and username and leaves the
+// cursor on the Credential row, which is where every new-context test above
+// diverges (prompt vs. keyring, direct vs. socks5, and so on).
+func fillNewContextBasics(t *testing.T, m *Model, name, endpoint, username string) {
+	t.Helper()
+	typeText(t, m, name)
+	press(t, m, "down")
+	typeText(t, m, endpoint)
+	press(t, m, "down")
+	typeText(t, m, username)
+	press(t, m, "down") // -> Credential
+}
+
+func TestNewContextFormSavesAndSelectsIt(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "n")
+	settleForm(m)
+	if m.mode != modeForm {
+		t.Fatalf("'n' should open the form, mode is %v", m.mode)
+	}
+	if m.form.editing {
+		t.Fatal("'n' should open a blank form, not an edit")
+	}
+
+	fillNewContextBasics(t, m, "staging", "https://vcsa.staging.internal", "operator@vsphere.local")
+	press(t, m, "right")                                // Credential: keyring -> prompt, skips the password field
+	press(t, m, "down", "down", "down", "down", "down") // Route, TLS, Datacenter, Current, Test
+	press(t, m, "down")                                 // Save
+	press(t, m, "enter")
+
+	if m.mode != modeBrowse {
+		t.Fatalf("save should return to browse, mode is %v", m.mode)
+	}
+	if len(b.contexts) != 3 {
+		t.Fatalf("backend has %d contexts, want 3", len(b.contexts))
+	}
+	cur := m.current()
+	if cur == nil || cur.cc.Name != "staging" {
+		t.Fatalf("selected context is %v, want staging", cur)
+	}
+	if b.calls["staging"] == 0 {
+		t.Error("the new context should have been loaded right after saving")
+	}
+}
+
+func TestFormBlocksSaveOnFailedTestUntilSaveAnyway(t *testing.T) {
+	b := twoHealthy()
+	b.testDiag = map[string]*vsphere.Diagnosis{
+		"broken": {
+			Context: "broken",
+			Checks:  []vsphere.Check{{Name: "TCP connection", Status: vsphere.CheckFail, Err: errors.New("connection refused")}},
+		},
+	}
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "n")
+	settleForm(m)
+	fillNewContextBasics(t, m, "broken", "https://vcsa.broken.internal", "operator@vsphere.local")
+	press(t, m, "right")                                // prompt credential
+	press(t, m, "down", "down", "down", "down", "down") // Route, TLS, Datacenter, Current, Test
+	press(t, m, "enter")                                // run the test — fails
+
+	if m.mode != modeForm {
+		t.Fatalf("a failed test must not close the form, mode is %v", m.mode)
+	}
+	if !strings.Contains(m.View(), "connection refused") {
+		t.Errorf("form should show the failing diagnosis:\n%s", m.View())
+	}
+
+	press(t, m, "down") // -> Save
+	press(t, m, "enter")
+	if m.mode != modeForm {
+		t.Fatalf("save should be blocked by the failing test, mode is %v", m.mode)
+	}
+	if len(b.contexts) != 2 {
+		t.Fatalf("nothing should be saved yet, have %d contexts", len(b.contexts))
+	}
+	if !m.form.forceSave {
+		t.Fatal("a failed save should flip the Save row to \"Save anyway\"")
+	}
+
+	press(t, m, "enter") // same row, now "Save anyway"
+	if m.mode != modeBrowse {
+		t.Fatalf("save anyway should go through, mode is %v", m.mode)
+	}
+	if len(b.contexts) != 3 {
+		t.Errorf("context should be saved despite the failing test, have %d", len(b.contexts))
+	}
+}
+
+func TestEditContextPrefillsAndUpdatesInPlace(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "e")
+	settleForm(m)
+	if m.mode != modeForm {
+		t.Fatalf("'e' should open the form, mode is %v", m.mode)
+	}
+	if !m.form.editing || m.form.origName != "prod" {
+		t.Fatalf("form is not editing prod: editing=%v origName=%q", m.form.editing, m.form.origName)
+	}
+	if got := m.form.endpoint.Value(); got != "https://vcsa.prod.internal" {
+		t.Errorf("endpoint not prefilled: %q", got)
+	}
+
+	// Row order while editing: Name(static) Endpoint Username Credential
+	// Password Route TLS Datacenter Current Test Save Cancel.
+	for range 7 {
+		press(t, m, "down") // -> Datacenter
+	}
+	typeText(t, m, "Lab-DC")
+	for range 3 {
+		press(t, m, "down") // Current, Test, Save
+	}
+	press(t, m, "enter")
+
+	if m.mode != modeBrowse {
+		t.Fatalf("save should return to browse, mode is %v", m.mode)
+	}
+	if len(b.contexts) != 2 {
+		t.Fatalf("editing should replace, not add: have %d contexts", len(b.contexts))
+	}
+	edited, err := findContext(b.contexts, "prod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if edited.Datacenter != "Lab-DC" {
+		t.Errorf("datacenter is %q, want Lab-DC", edited.Datacenter)
+	}
+	if edited.Endpoint != "https://vcsa.prod.internal" {
+		t.Errorf("editing changed the endpoint to %q", edited.Endpoint)
+	}
+}
+
+func findContext(contexts []*config.Context, name string) (*config.Context, error) {
+	for _, cc := range contexts {
+		if cc.Name == name {
+			return cc, nil
+		}
+	}
+	return nil, fmt.Errorf("context %q not found among %d", name, len(contexts))
+}
+
+func TestDeleteContextConfirmationRemovesIt(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "x")
+	if m.mode != modeConfirmDelete {
+		t.Fatalf("'x' should open the delete confirmation, mode is %v", m.mode)
+	}
+	if !strings.Contains(m.View(), "Delete prod?") {
+		t.Errorf("confirmation should name the context:\n%s", m.View())
+	}
+
+	press(t, m, "y")
+	if m.mode != modeBrowse {
+		t.Fatalf("confirming should return to browse, mode is %v", m.mode)
+	}
+	if len(b.contexts) != 1 || b.contexts[0].Name != "customer-a" {
+		t.Fatalf("prod should have been removed, contexts: %v", b.contexts)
+	}
+}
+
+func TestDeleteConfirmationCancels(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "x", "n")
+	if m.mode != modeBrowse {
+		t.Fatalf("'n' should cancel back to browse, mode is %v", m.mode)
+	}
+	if len(b.contexts) != 2 {
+		t.Errorf("nothing should have been removed, have %d contexts", len(b.contexts))
+	}
+}
+
+// TestDeleteLastContextReopensSetup is the same principle as the empty-config
+// start-up: a screen with nothing to show and no way back in is never the
+// resting state.
+func TestDeleteLastContextReopensSetup(t *testing.T) {
+	b := &fakeBackend{contexts: []*config.Context{ctx("only", "https://vcsa.only.internal")}}
+	m := newTestModel(t, b, Options{Current: "only"})
+
+	press(t, m, "x", "y")
+	if m.mode != modeForm {
+		t.Fatalf("deleting the last context should reopen setup, mode is %v", m.mode)
+	}
+	if len(b.contexts) != 0 {
+		t.Errorf("context should have been removed, have %d", len(b.contexts))
+	}
+}
+
+func TestDiscoverThumbprintFillsTheField(t *testing.T) {
+	b := twoHealthy()
+	b.discoverThumb = "11:22:33:44"
+	b.discoverSubj = "vcsa.staging.internal"
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "n")
+	settleForm(m)
+	fillNewContextBasics(t, m, "staging", "https://vcsa.staging.internal", "operator@vsphere.local")
+	press(t, m, "down", "down", "down") // Password, Route, TLS
+	press(t, m, "right")                // TLS: system -> thumbprint
+	press(t, m, "down", "down")         // Thumbprint, Discover
+	press(t, m, "enter")
+
+	if got := m.form.thumbprint.Value(); got != "11:22:33:44" {
+		t.Fatalf("thumbprint field is %q, want the discovered value", got)
+	}
+	if !strings.Contains(m.View(), "Discovered vcsa.staging.internal") {
+		t.Errorf("form should report what was discovered:\n%s", m.View())
+	}
+}
+
+func TestFormEscapeCancelsWithoutQuitting(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+
+	press(t, m, "n")
+	settleForm(m)
+	typeText(t, m, "this contains the letters q and colon: q")
+	press(t, m, "esc")
+
+	if m.mode != modeBrowse {
+		t.Fatalf("esc should cancel the form, mode is %v", m.mode)
+	}
+	if m.quitting {
+		t.Error("typing 'q' into a field must not quit the program")
+	}
+	if len(b.contexts) != 2 {
+		t.Errorf("cancelling must not save anything, have %d contexts", len(b.contexts))
 	}
 }

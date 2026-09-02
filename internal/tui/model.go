@@ -25,6 +25,8 @@ const (
 	modeDetail
 	modeDoctor
 	modeHelp
+	modeForm
+	modeConfirmDelete
 )
 
 // pane is which side of the browse view the arrow keys drive.
@@ -109,6 +111,14 @@ type Model struct {
 	offset  int
 	detailY int
 
+	// form holds the add/edit context form while mode is modeForm.
+	form *contextForm
+	// confirmDelete is the context pending removal while mode is
+	// modeConfirmDelete, and confirmAlsoCredential is whether its stored
+	// password is removed along with it.
+	confirmDelete         *contextState
+	confirmAlsoCredential bool
+
 	width, height int
 	message       string
 	messageBad    bool
@@ -151,8 +161,13 @@ func newFilterInput() textinput.Model {
 	return ti
 }
 
-// Init starts the spinner and loads whatever is in scope.
+// Init starts the spinner and loads whatever is in scope. With no contexts
+// configured yet there is nothing to load, so it opens the setup form
+// instead of an empty table with no way to fill it.
 func (m *Model) Init() tea.Cmd {
+	if len(m.states) == 0 {
+		return tea.Batch(m.enterForm(nil), m.spin.Tick)
+	}
 	return tea.Batch(append(m.ensureLoaded(false), m.spin.Tick)...)
 }
 
@@ -283,10 +298,120 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case formTestMsg:
+		if m.form != nil {
+			m.form.testing = false
+			m.form.diag = msg.diagnosis
+			if msg.diagnosis != nil && msg.diagnosis.OK() {
+				m.form.note = "Connected to " + msg.diagnosis.About.FullVersion()
+			}
+		}
+		return m, nil
+
+	case formDiscoverMsg:
+		if m.form != nil {
+			m.form.discovering = false
+			if msg.err != nil {
+				m.form.err = msg.err.Error()
+			} else {
+				m.form.thumbprint.SetValue(msg.sha256)
+				m.form.note = "Discovered " + msg.subject + ", expires " + msg.notAfter.Format("2006-01-02")
+			}
+		}
+		return m, nil
+
+	case formSaveMsg:
+		return m, m.applyFormSave(msg)
+
+	case formDeleteMsg:
+		return m, m.applyFormDelete(msg)
+
 	case tea.KeyMsg:
 		return m, m.handleKey(msg)
 	}
 	return m, nil
+}
+
+// applyFormSave lands the outcome of a save. On success the form closes, the
+// context list is rebuilt from the backend, and the new or edited context is
+// selected and loaded. On failure the form stays open with the diagnosis and
+// error visible, so nothing typed is lost.
+func (m *Model) applyFormSave(msg formSaveMsg) tea.Cmd {
+	if m.form == nil {
+		return nil
+	}
+	m.form.saving = false
+	if msg.err != nil {
+		m.form.err = msg.err.Error()
+		if msg.result != nil {
+			m.form.diag = msg.result.Diagnosis
+			if msg.result.Diagnosis != nil && !msg.result.Diagnosis.OK() {
+				m.form.forceSave = true
+			}
+		}
+		return nil
+	}
+	name := msg.result.Context.Name
+	m.syncContexts()
+	m.selectByName(name)
+	m.form = nil
+	m.mode = modeBrowse
+	m.pane = paneResources
+	note := "saved context " + name
+	if msg.result.StoreWarning != nil {
+		note += " (password not stored: " + msg.result.StoreWarning.Error() + ")"
+	}
+	m.setMessage(note, msg.result.StoreWarning != nil)
+	return tea.Batch(m.reload(false)...)
+}
+
+// applyFormDelete lands the outcome of removing a context. Removing the last
+// one reopens the setup form: an empty screen with no way back in is not a
+// resting state.
+func (m *Model) applyFormDelete(msg formDeleteMsg) tea.Cmd {
+	if msg.err != nil {
+		m.setMessage(msg.err.Error(), true)
+	} else {
+		m.setMessage("removed context "+msg.name, false)
+	}
+	m.confirmDelete = nil
+	m.syncContexts()
+	if len(m.states) == 0 {
+		return m.enterForm(nil)
+	}
+	m.mode = modeBrowse
+	return nil
+}
+
+// syncContexts rebuilds the context list from the backend after a save or a
+// removal, keeping the loaded inventory of every context that still exists.
+func (m *Model) syncContexts() {
+	fresh := m.backend.Contexts()
+	old := m.byName
+	states := make([]*contextState, 0, len(fresh))
+	byName := make(map[string]*contextState, len(fresh))
+	for _, cc := range fresh {
+		st, ok := old[cc.Name]
+		if ok {
+			st.cc = cc
+		} else {
+			st = &contextState{cc: cc}
+		}
+		states = append(states, st)
+		byName[cc.Name] = st
+	}
+	m.states, m.byName = states, byName
+	m.selected = clamp(m.selected, 0, max(0, len(m.states)-1))
+}
+
+// selectByName moves the sidebar cursor onto a context by name, if it exists.
+func (m *Model) selectByName(name string) {
+	for i, st := range m.states {
+		if st.cc.Name == name {
+			m.selected = i
+			return
+		}
+	}
 }
 
 func (m *Model) busy() bool {
@@ -306,11 +431,19 @@ func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
 	st.loading = false
 	st.elapsed = msg.elapsed
 	st.loadedAt = time.Now()
-	if msg.err != nil {
+	switch {
+	case msg.err != nil:
 		st.err = msg.err
 		st.inv = nil
 		m.setMessage(msg.context+": "+msg.err.Error(), true)
-	} else {
+	case msg.inventory == nil:
+		// A Backend contract violation (success with nothing to show) — a
+		// broken implementation must not take the whole interface down with
+		// it, so this renders as a plain empty result rather than a panic.
+		st.err = nil
+		st.inv = &vsphere.Inventory{Context: msg.context}
+		m.setMessage(msg.context+" · nothing to show", false)
+	default:
 		st.err = nil
 		st.inv = msg.inventory
 		m.setMessage(msg.context+" · "+msg.inventory.Counts(), false)
@@ -330,6 +463,16 @@ func (m *Model) setMessage(s string, bad bool) {
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.filtering {
 		return m.handleFilterKey(msg)
+	}
+	// The form and its delete confirmation own every key while they are
+	// open: both can hold free text, where a global "q" or "?" shortcut
+	// would be a keystroke that silently never reaches the field it was
+	// typed into.
+	if m.mode == modeForm {
+		return m.handleFormKey(msg)
+	}
+	if m.mode == modeConfirmDelete {
+		return m.handleConfirmDeleteKey(msg)
 	}
 	if key.Matches(msg, m.keys.Quit) {
 		m.quitting = true
@@ -356,6 +499,98 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	default:
 		return m.handleBrowseKey(msg)
 	}
+}
+
+// handleFormKey drives the add/edit form. Up and down move the row cursor;
+// left and right change a select or a toggle; enter activates a button;
+// every other key goes to the focused text field, including letters that are
+// global shortcuts everywhere else in the interface.
+func (m *Model) handleFormKey(msg tea.KeyMsg) tea.Cmd {
+	if msg.Type == tea.KeyCtrlC {
+		m.quitting = true
+		return tea.Quit
+	}
+	f := m.form
+	if f == nil {
+		m.mode = modeBrowse
+		return nil
+	}
+	if msg.Type == tea.KeyEsc {
+		return m.formCancel()
+	}
+	rows := f.rows()
+	if len(rows) == 0 {
+		return nil
+	}
+	switch msg.Type {
+	case tea.KeyUp:
+		f.cursor = clamp(f.cursor-1, 0, len(rows)-1)
+		f.syncFocus()
+		return nil
+	case tea.KeyDown, tea.KeyTab:
+		f.cursor = clamp(f.cursor+1, 0, len(rows)-1)
+		f.syncFocus()
+		return nil
+	case tea.KeyShiftTab:
+		f.cursor = clamp(f.cursor-1, 0, len(rows)-1)
+		f.syncFocus()
+		return nil
+	}
+	row := rows[clamp(f.cursor, 0, len(rows)-1)]
+	switch row.kind {
+	case rowSelect:
+		switch msg.Type {
+		case tea.KeyLeft:
+			*row.idx = (*row.idx - 1 + len(row.options)) % len(row.options)
+			f.syncFocus()
+		case tea.KeyRight:
+			*row.idx = (*row.idx + 1) % len(row.options)
+			f.syncFocus()
+		}
+		return nil
+	case rowToggle:
+		switch {
+		case msg.Type == tea.KeyLeft, msg.Type == tea.KeyRight, msg.Type == tea.KeyEnter, msg.String() == " ":
+			*row.flag = !*row.flag
+		}
+		return nil
+	case rowButton:
+		if msg.Type == tea.KeyEnter {
+			return row.action(m)
+		}
+		return nil
+	case rowStatic:
+		return nil
+	default: // rowText, rowSecret
+		var cmd tea.Cmd
+		*row.input, cmd = row.input.Update(msg)
+		return cmd
+	}
+}
+
+// handleConfirmDeleteKey drives the delete confirmation screen. It has no
+// free text, so it can use plain letters directly rather than the form's
+// character-by-character dispatch.
+func (m *Model) handleConfirmDeleteKey(msg tea.KeyMsg) tea.Cmd {
+	if m.confirmDelete == nil {
+		m.mode = modeBrowse
+		return nil
+	}
+	switch msg.String() {
+	case "y", "Y":
+		name := m.confirmDelete.cc.Name
+		also := m.confirmAlsoCredential
+		m.mode = modeBrowse
+		return removeContext(m.ctx, m.backend, name, also)
+	case "c", "C":
+		m.confirmAlsoCredential = !m.confirmAlsoCredential
+		return nil
+	case "n", "N", "esc":
+		m.confirmDelete = nil
+		m.mode = modeBrowse
+		return nil
+	}
+	return nil
 }
 
 func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
@@ -427,6 +662,18 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 		return tea.Batch(m.reload(true)...)
 	case key.Matches(msg, m.keys.Doctor):
 		return m.diagnose()
+	case key.Matches(msg, m.keys.NewContext):
+		return m.enterForm(nil)
+	case key.Matches(msg, m.keys.EditContext):
+		if st := m.current(); st != nil {
+			return m.enterForm(st)
+		}
+	case key.Matches(msg, m.keys.DeleteContext):
+		if st := m.current(); st != nil {
+			m.confirmDelete = st
+			m.confirmAlsoCredential = true
+			m.mode = modeConfirmDelete
+		}
 	}
 	return nil
 }

@@ -70,7 +70,9 @@ vctui replaces that with one command per question.
   that grows on you. A rotated certificate is reported as a mismatch, with the
   fingerprint you pinned and the one you were served, and the connection stops.
 - **Inventory across the estate.** VMs, templates, hosts, clusters, datastores
-  and networks, listed per context or across all of them at once.
+  and networks, listed per context or across all of them at once. A resource
+  kind a limited-permission account cannot list is reported next to that kind
+  — everything else it can see still comes back.
 - **Cross-vCenter search.** One query, every vCenter, in parallel.
 - **Failure isolation.** A dead proxy, an expired password or a rotated
   certificate in one environment costs one line of output. Everything else
@@ -82,6 +84,11 @@ vctui replaces that with one command per question.
   detail pane on any row. With no contexts yet, it opens straight into adding
   one instead of sending you to read this file first. It shows nothing the
   command line cannot.
+- **A responsive interface, not a blocking one.** Every context loads in the
+  background, the selected one first, bounded so an estate with many
+  contexts does not open them all in one burst. A context that loaded once
+  keeps showing that data if a later refresh fails — stale beats blank —
+  with the failure noted rather than hidden.
 - **Table output for people, JSON for scripts.** Every command takes `-o json`.
 
 Everything in this release is read-only. There are no power operations, no
@@ -189,6 +196,18 @@ CONTEXTS                   VMs 214   Templates 18   Hosts 22   Clusters 4   ...
 A vCenter that will not answer keeps its row and states why, under a table that
 still holds every result from the vCenters that did. That is the same failure
 isolation the CLI has, made visible.
+
+Opening the interface starts loading every configured context in the
+background at once, not only the one on screen — the selected context first,
+the rest bounded to a handful at a time so an estate with many contexts does
+not open them all in one burst — so switching to a context you have not
+looked at yet usually shows data immediately instead of a fresh spinner. A
+context that has loaded once keeps showing that data even if a later refresh
+fails: the sidebar marks it as stale rather than clearing the table, and the
+status line names what went wrong. The same applies one level down — a
+resource kind a limited-permission account cannot list (say, no privilege on
+datastores) shows a `!` next to that tab instead of taking down every other
+tab's results with it.
 
 | Key | Action |
 |---|---|
@@ -360,6 +379,18 @@ interface's own memory of where it was left — context, tab, sort order — is
 smaller still: `internal/uistate`, a JSON file with no secrets in it and
 nothing `internal/config` needs to know about.
 
+Between the interface and `internal/session` sits `internal/cache`: one entry
+per context holding the last inventory that loaded, when, and whatever the
+most recent attempt after that failed. A read never touches the network — it
+returns whatever is on hand, stale or not — and a refresh keeps that old
+inventory in place if it fails rather than clearing it, which is the whole of
+what "stale-while-revalidate" means here. Its own bounded semaphore, not
+`internal/tui`, is what keeps an estate with many contexts from opening them
+all at once; the interface just asks for a refresh per context and lets the
+cache decide when each one actually runs. It depends on nothing but
+`internal/vsphere`'s types, so nothing about it is specific to a terminal
+interface — a future daemon or a caching `search` could reuse it unchanged.
+
 ## Testing
 
 The whole product is testable without any VMware infrastructure. Integration
@@ -381,21 +412,31 @@ process, covering the parts that are otherwise hard to be confident about:
 - a pinned thumbprint that no longer matches
 - a self-signed certificate rejected under system trust
 - one broken vCenter alongside a healthy one, with the healthy results intact
+- one resource kind denied on an otherwise-healthy connection, proven with
+  the simulator's own fault injector: every other kind still comes back,
+  and the denied one is the only one recorded in `Inventory.Errors`
 
 `doctor`'s own stage sequencing — skipping everything after the first
 failure, and renaming a stage when the failure turns out to be a rejected
 proxy credential rather than a dead connection — has fast unit tests in
 `internal/vsphere` that need no vcsim and no network, alongside the slower
-integration tests that prove the same rules hold end to end.
+integration tests that prove the same rules hold end to end. `internal/cache`
+is tested the same way: a failed refresh keeps the previous inventory rather
+than erasing it, and a bounded cache proven — with goroutines racing against
+each other under `-race` — to never run more than its limit of fetches at
+once.
 
 The interface is tested the same way, against a fake backend: tab switching,
 context switching, filtering, the detail pane, the diagnosis panel, sorting,
 the merged all-contexts table with one vCenter failing, and the add/edit
 form — saving, a failed test blocking the save until "save anyway", editing
 in place, deleting with and without confirmation, and certificate discovery.
-`internal/contextops` has its own tests against a real simulated vCenter:
-a save that passes, one a failed test blocks, and removal including the
-stored credential.
+Also covered: every context prefetching in the background regardless of
+scope, a failed reload leaving a context's last-known-good rows on screen
+instead of blanking them, and a resource kind's listing error flagged on its
+tab. `internal/contextops` has its own tests against a real simulated
+vCenter: a save that passes, one a failed test blocks, and removal including
+the stored credential.
 
 ```sh
 go test ./...
@@ -410,8 +451,8 @@ can operate without learning the CLI subcommand tree first.
 |---|---|---|
 | Entry experience | `vctui` opens the interface directly; add/edit/test/delete a context from inside it; remember the last context, tab and sort mode | **done** |
 | Proxy support | Direct, SOCKS5, HTTP and HTTPS routes; SOCKS5 remote DNS; unauthenticated and basic-auth proxies; passwords only ever in the keyring; explicit TLS modes; never inherit `HTTP_PROXY`/`HTTPS_PROXY` | **done** |
-| Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | proxy reachability (with proxy TLS folded in), proxy auth, DNS/routing, CONNECT, vCenter TLS, vCenter auth and API access all named as their own stage, with a rejected proxy password reported separately from a dead connection; every route has offline and, where applicable, auth-failure integration tests; one unreachable context among several is already isolated — a limited-permission account is not yet |
-| Responsive inventory loading | A shared cache outside the interface; the selected context first, others concurrently, bounded; stale-while-revalidate; per-context refresh timestamps and errors; the keyboard never blocks on the network | not started |
+| Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | **done** — every stage named on its own, every route has offline and, where applicable, auth-failure tests; an unreachable context among several and a limited-permission account within one are both isolated to the smallest thing that actually failed |
+| Responsive inventory loading | A shared cache outside the interface; the selected context first, others concurrently, bounded; stale-while-revalidate; per-context refresh timestamps and errors; the keyboard never blocks on the network | **done** — including a limited-permission account's inventory coming back partial rather than empty |
 | Global search | Search cached inventory across every configured vCenter from inside the interface; selecting a result switches context, tab and selection; partial results survive a failed context | the CLI has cross-vCenter search today; bringing the same query into the interface, over the inventory cache above, is next |
 | Release hardening | Real vSphere 7/8, self-signed certs, enterprise CAs, thumbprints, restricted RBAC accounts; large-vcsim performance; Linux/macOS/Windows smoke tests; a demo GIF; GoReleaser binaries; tag v0.1.0 | not started — needs real VMware infrastructure and multi-platform hands, not just code |
 

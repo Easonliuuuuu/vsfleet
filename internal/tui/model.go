@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -10,10 +11,16 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/easonliuuuuu/vc-tui/internal/cache"
 	"github.com/easonliuuuuu/vc-tui/internal/config"
 	"github.com/easonliuuuuu/vc-tui/internal/session"
 	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
 )
+
+// maxConcurrentLoads bounds how many contexts fetch their inventory at once.
+// Without a bound, an estate with dozens of contexts would open that many
+// connections the instant the interface starts.
+const maxConcurrentLoads = 4
 
 // mode is which full-screen view is showing. Detail, diagnosis and help all
 // replace the table rather than floating over it: a half-covered table invites
@@ -52,12 +59,18 @@ type contextState struct {
 	diagging bool
 }
 
+// A context can be both erroring and holding data at once — the cache keeps
+// the last inventory that loaded successfully even when the most recent
+// refresh failed, so that case gets its own status between "never connected"
+// (bad) and "current" (good) rather than losing the stale data's presence.
 func (s *contextState) rowStatus() rowStatus {
 	switch {
 	case s.loading || s.diagging:
 		return statusWarn
-	case s.err != nil:
+	case s.err != nil && s.inv == nil:
 		return statusBad
+	case s.err != nil:
+		return statusWarn
 	case s.inv != nil:
 		return statusGood
 	default:
@@ -69,8 +82,10 @@ func (s *contextState) glyph() string {
 	switch {
 	case s.loading || s.diagging:
 		return glyphPending
-	case s.err != nil:
+	case s.err != nil && s.inv == nil:
 		return glyphFail
+	case s.err != nil:
+		return glyphOnline
 	case s.inv != nil:
 		return glyphOnline
 	default:
@@ -117,6 +132,7 @@ func (m *Model) Snapshot() Snapshot {
 type Model struct {
 	ctx     context.Context
 	backend Backend
+	cache   *cache.Cache
 	keys    keyMap
 	theme   theme
 	spin    spinner.Model
@@ -165,6 +181,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 	m := &Model{
 		ctx:      ctx,
 		backend:  backend,
+		cache:    cache.New(maxConcurrentLoads),
 		keys:     defaultKeys(),
 		theme:    newTheme(),
 		spin:     spinner.New(spinner.WithSpinner(spinner.Dot)),
@@ -196,14 +213,14 @@ func newFilterInput() textinput.Model {
 	return ti
 }
 
-// Init starts the spinner and loads whatever is in scope. With no contexts
-// configured yet there is nothing to load, so it opens the setup form
-// instead of an empty table with no way to fill it.
+// Init starts the spinner and prefetches every configured context, selected
+// one first. With no contexts configured yet there is nothing to load, so it
+// opens the setup form instead of an empty table with no way to fill it.
 func (m *Model) Init() tea.Cmd {
 	if len(m.states) == 0 {
 		return tea.Batch(m.enterForm(nil), m.spin.Tick)
 	}
-	return tea.Batch(append(m.ensureLoaded(false), m.spin.Tick)...)
+	return tea.Batch(m.prefetch()...)
 }
 
 // inScope returns the contexts currently being displayed.
@@ -220,20 +237,56 @@ func (m *Model) inScope() []*contextState {
 // showContext reports whether rows need to say which vCenter they came from.
 func (m *Model) showContext() bool { return m.allScope && len(m.states) > 1 }
 
+// startLoad begins loading one context if it is not already loading and,
+// unless force is set, does not already have a result — success, failure or
+// stale-but-cached, all count. It returns nil when there is nothing to do.
+func (m *Model) startLoad(st *contextState, force bool) tea.Cmd {
+	if st.loading {
+		return nil
+	}
+	if !force && (st.inv != nil || st.err != nil) {
+		return nil
+	}
+	st.loading = true
+	return loadInventory(m.ctx, m.cache, m.backend, st.cc)
+}
+
 // ensureLoaded returns load commands for everything in scope. force reloads
 // contexts that already have an inventory.
 func (m *Model) ensureLoaded(force bool) []tea.Cmd {
 	var cmds []tea.Cmd
 	for _, st := range m.inScope() {
-		if st.loading {
+		if cmd := m.startLoad(st, force); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	if len(cmds) > 0 {
+		cmds = append(cmds, m.spin.Tick)
+	}
+	return cmds
+}
+
+// prefetch starts a background load for every configured context, not only
+// what is currently in scope, so switching to a context not yet visited
+// shows cached data immediately instead of a fresh spinner. The selected
+// context's command is issued first, giving it the earliest claim on the
+// cache's bounded concurrency — not a hard guarantee of which finishes
+// first, but enough of a head start that it is the one most likely to.
+func (m *Model) prefetch() []tea.Cmd {
+	var cmds []tea.Cmd
+	cur := m.current()
+	if cur != nil {
+		if cmd := m.startLoad(cur, false); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	for _, st := range m.states {
+		if st == cur {
 			continue
 		}
-		if !force && (st.inv != nil || st.err != nil) {
-			continue
+		if cmd := m.startLoad(st, false); cmd != nil {
+			cmds = append(cmds, cmd)
 		}
-		st.loading = true
-		st.err = nil
-		cmds = append(cmds, loadInventory(m.ctx, m.backend, st.cc))
 	}
 	if len(cmds) > 0 {
 		cmds = append(cmds, m.spin.Tick)
@@ -261,16 +314,37 @@ func (m *Model) rows() []row {
 	return out
 }
 
-// failuresInScope lists the contexts that could not be read, so the browse
-// view can say so without the reader having to notice a missing row.
+// failuresInScope lists the contexts with no usable data at all, so the
+// browse view can say so without the reader having to notice a missing row.
+// A context that loaded once and is merely stale — the last refresh failed
+// but earlier data is still on hand — belongs in the table above, with its
+// sidebar glyph carrying the warning, not in this banner: showing both a row
+// of real (if aging) data and a "this context is broken" notice at once
+// would tell the reader two contradictory things.
 func (m *Model) failuresInScope() []*contextState {
 	var out []*contextState
 	for _, st := range m.inScope() {
-		if st.err != nil {
+		if st.err != nil && st.inv == nil {
 			out = append(out, st)
 		}
 	}
 	return out
+}
+
+// kindErrorInScope reports whether any context in scope failed to list kind —
+// a connected context missing one privilege, not a context that never
+// connected at all — so the tab bar can flag it without the reader having to
+// open every context's detail to notice.
+func (m *Model) kindErrorInScope(kind vsphere.Kind) bool {
+	for _, st := range m.inScope() {
+		if st.inv == nil {
+			continue
+		}
+		if _, ok := st.inv.ErrorFor(kind); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) current() *contextState {
@@ -466,23 +540,36 @@ func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
 	}
 	st.loading = false
 	st.elapsed = msg.elapsed
-	st.loadedAt = time.Now()
+	st.err = msg.err
+	// inv and loadedAt reflect the cache's last successful fetch, which on a
+	// failed refresh is the same stale-but-real data the row already had —
+	// never nil just because the latest attempt failed.
+	wasEmpty := msg.err == nil && msg.inventory == nil
 	switch {
-	case msg.err != nil:
-		st.err = msg.err
-		st.inv = nil
-		m.setMessage(msg.context+": "+msg.err.Error(), true)
-	case msg.inventory == nil:
+	case msg.inventory != nil:
+		st.inv = msg.inventory
+	case wasEmpty:
 		// A Backend contract violation (success with nothing to show) — a
 		// broken implementation must not take the whole interface down with
 		// it, so this renders as a plain empty result rather than a panic.
-		st.err = nil
 		st.inv = &vsphere.Inventory{Context: msg.context}
+	}
+	if msg.err == nil {
+		st.loadedAt = msg.loadedAt
+	}
+	switch {
+	case msg.err != nil && st.inv == nil:
+		m.setMessage(msg.context+": "+msg.err.Error(), true)
+	case msg.err != nil:
+		m.setMessage(msg.context+": refresh failed, still showing data from "+st.loadedAt.Format("15:04:05")+": "+msg.err.Error(), true)
+	case wasEmpty:
 		m.setMessage(msg.context+" · nothing to show", false)
 	default:
-		st.err = nil
-		st.inv = msg.inventory
-		m.setMessage(msg.context+" · "+msg.inventory.Counts(), false)
+		note := ""
+		if n := len(st.inv.Errors); n > 0 {
+			note = fmt.Sprintf(" (%d listing error(s), see tabs)", n)
+		}
+		m.setMessage(msg.context+" · "+st.inv.Counts()+note, false)
 	}
 	m.clampCursor()
 	if m.busy() {

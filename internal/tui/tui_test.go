@@ -317,6 +317,12 @@ func twoHealthy() *fakeBackend {
 	}
 }
 
+// TestBrowseShowsOnlyTheSelectedContext checks that a single-context scope
+// controls what the table displays, not what gets fetched: Init prefetches
+// every configured context in the background (Section 4) precisely so that
+// switching to customer-a later shows data immediately instead of a fresh
+// spinner, but the table itself must still only show the selected context's
+// rows until the reader asks for more.
 func TestBrowseShowsOnlyTheSelectedContext(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
@@ -324,12 +330,18 @@ func TestBrowseShowsOnlyTheSelectedContext(t *testing.T) {
 	if got := b.calls["prod"]; got != 1 {
 		t.Fatalf("prod fetched %d times, want 1", got)
 	}
-	if got := b.calls["customer-a"]; got != 0 {
-		t.Errorf("customer-a was fetched %d times; a single-context scope must not touch the others", got)
+	if got := b.calls["customer-a"]; got != 1 {
+		t.Errorf("customer-a fetched %d times, want 1 — Init prefetches every context", got)
 	}
 	out := m.View()
 	if !strings.Contains(out, "app-01") {
 		t.Errorf("VM list is missing app-01:\n%s", out)
+	}
+	// Both contexts' fake inventories are identical (same VM names), so the
+	// count is what proves scope: merged, it would be 4; scoped to prod
+	// alone, 2.
+	if n := len(m.rows()); n != 2 {
+		t.Errorf("a single-context scope must show only prod's rows, got %d", n)
 	}
 	// Both contexts belong in the sidebar even though only one is in scope:
 	// the sidebar is the switcher.
@@ -510,19 +522,83 @@ func TestHelpListsEveryBinding(t *testing.T) {
 	}
 }
 
+// TestReloadRefetches checks 'r' against 'R': both start from a customer-a
+// call count of 1, not 0, because Init already prefetched it in the
+// background (Section 4) even though prod alone is in scope.
 func TestReloadRefetches(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
+	if b.calls["customer-a"] != 1 {
+		t.Fatalf("customer-a calls after Init = %d, want 1 from the background prefetch", b.calls["customer-a"])
+	}
 	press(t, m, "r")
 	if b.calls["prod"] != 2 {
 		t.Errorf("'r' should refetch the context in scope, calls: %d", b.calls["prod"])
 	}
-	if b.calls["customer-a"] != 0 {
+	if b.calls["customer-a"] != 1 {
 		t.Errorf("'r' must not reach out of scope, customer-a calls: %d", b.calls["customer-a"])
 	}
 	press(t, m, "R")
-	if b.calls["customer-a"] != 1 {
+	if b.calls["customer-a"] != 2 {
 		t.Errorf("'R' should refetch every context, customer-a calls: %d", b.calls["customer-a"])
+	}
+}
+
+// TestReloadFailureKeepsShowingTheStaleData is the stale-while-revalidate
+// half of Section 4: a context that loaded once and whose next refresh fails
+// must keep showing what it already had, with the failure noted rather than
+// the table going blank.
+func TestReloadFailureKeepsShowingTheStaleData(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	if n := len(m.rows()); n == 0 {
+		t.Fatalf("prod has no rows after the initial load")
+	}
+	st := m.byName["prod"]
+	if st.rowStatus() != statusGood {
+		t.Fatalf("status after a healthy load = %v, want good", st.rowStatus())
+	}
+
+	if b.failures == nil {
+		b.failures = map[string]error{}
+	}
+	b.failures["prod"] = errors.New("connection reset")
+	press(t, m, "r")
+
+	if n := len(m.rows()); n == 0 {
+		t.Errorf("a failed refresh erased the stale rows instead of keeping them")
+	}
+	if st.err == nil {
+		t.Error("a failed refresh left no error recorded")
+	}
+	if st.rowStatus() != statusWarn {
+		t.Errorf("status after a stale-but-failing refresh = %v, want warn (not bad — there is still real data)", st.rowStatus())
+	}
+	if !m.messageBad || !strings.Contains(m.message, "refresh failed") {
+		t.Errorf("message does not report the failed refresh: bad=%v %q", m.messageBad, m.message)
+	}
+}
+
+// TestTabBarFlagsAKindWithAListingError checks that a resource kind
+// ListInventory could not enumerate (Inventory.Errors) is visible from the
+// tab bar, not just discoverable by opening that tab and finding it empty.
+func TestTabBarFlagsAKindWithAListingError(t *testing.T) {
+	b := twoHealthy()
+	inv := *b.inventories["prod"]
+	inv.Datastores = nil
+	inv.Errors = []vsphere.InventoryError{{Kind: vsphere.KindDatastore, Message: "permission denied"}}
+	b.inventories["prod"] = &inv
+
+	m := newTestModel(t, b, Options{Current: "prod"})
+	out := m.View()
+	if !strings.Contains(out, "Datastores") {
+		t.Fatalf("tab bar is missing the Datastores tab:\n%s", out)
+	}
+	if !m.kindErrorInScope(vsphere.KindDatastore) {
+		t.Error("kindErrorInScope(KindDatastore) = false, want true")
+	}
+	if m.kindErrorInScope(vsphere.KindHost) {
+		t.Error("kindErrorInScope(KindHost) = true, want false — hosts were never denied")
 	}
 }
 

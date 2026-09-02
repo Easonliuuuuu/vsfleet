@@ -286,6 +286,9 @@ func (m *Model) viewTabs(w int) string {
 	parts := make([]string, 0, len(vsphere.AllKinds))
 	for _, k := range vsphere.AllKinds {
 		label := fmt.Sprintf("%s %d", tabTitle(k), m.count(k))
+		if m.kindErrorInScope(k) {
+			label += " " + t.warn.Render("!")
+		}
 		if k == m.kind {
 			parts = append(parts, t.tabOn.Render(label))
 		} else {

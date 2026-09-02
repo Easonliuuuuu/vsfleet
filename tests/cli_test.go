@@ -224,3 +224,19 @@ func TestFailureIsolation(t *testing.T) {
 		t.Errorf("status did not show the broken vCenter as failed:\n%s\n%s", stdout, stderr)
 	}
 }
+
+// TestUIRefusesWithoutContexts checks the terminal interface is wired into the
+// command tree and declines to open on an empty configuration. Anything past
+// that point needs a terminal; the interface itself is tested in internal/tui,
+// where its model is driven directly.
+func TestUIRefusesWithoutContexts(t *testing.T) {
+	r := newRunner(t)
+
+	_, _, err := r.run("", "ui")
+	if err == nil {
+		t.Fatal("vctui ui on an empty configuration should fail")
+	}
+	if !strings.Contains(err.Error(), "context add") {
+		t.Errorf("error should point at the fix, got: %v", err)
+	}
+}

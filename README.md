@@ -53,14 +53,18 @@ vctui replaces that with one command per question.
 
 - **Multiple independent vCenters.** Every context is self-contained. Nothing
   is global, so nothing leaks between environments.
-- **Per-context networking.** Direct or SOCKS5, chosen per vCenter, with
-  optional resolution of the vCenter hostname *at the proxy* for names that
-  only exist inside the remote network. Ambient `HTTPS_PROXY` is deliberately
-  ignored: a route is configuration, not an accident of the environment.
+- **Per-context networking.** Direct, SOCKS5, HTTP CONNECT or HTTPS CONNECT,
+  chosen per vCenter. SOCKS5 can resolve the vCenter hostname *at the proxy*
+  for names that only exist inside the remote network; HTTP and HTTPS proxies
+  always do. Any of the three proxy routes can require a username and
+  password. Ambient `HTTP_PROXY`/`HTTPS_PROXY` is deliberately ignored: a
+  route is configuration, not an accident of the environment.
 - **Credentials that stay out of the config file.** The file holds a reference
   such as `keyring:customer-a`; the password lives in the macOS Keychain, the
   Linux Secret Service or the Windows Credential Manager. `prompt` is a
-  first-class alternative for machines where nothing should be stored.
+  first-class alternative for machines where nothing should be stored. Proxy
+  passwords follow the exact same rule — a `keyring:customer-a-proxy`
+  reference by default, never the password itself, in `config.toml`.
 - **Certificate policy you can actually explain.** Three named modes —
   `system`, `thumbprint`, `insecure` — instead of one `insecure = true` flag
   that grows on you. A rotated certificate is reported as a mismatch, with the
@@ -117,9 +121,26 @@ vctui context add \
   --endpoint https://vcsa.customer-a.internal \
   --username operator@vsphere.local \
   --credential keyring:customer-a \
-  --transport socks5 --socks-address 127.0.0.1:1080 --remote-dns \
+  --transport socks5 --proxy-address 127.0.0.1:1080 --remote-dns \
   --tls thumbprint \
   --password-stdin < /run/secrets/customer-a
+```
+
+A proxy that itself needs a username and password takes the same shape as the
+vCenter credential — a keyring reference, `prompt`, or piped on stdin. With
+both `--password-stdin` and `--proxy-password-stdin` set, the vCenter
+password is read first and the proxy password second — one per line:
+
+```sh
+printf '%s\n%s\n' "$VCENTER_PASSWORD" "$PROXY_PASSWORD" | \
+vctui context add \
+  --name customer-b \
+  --endpoint https://vcsa.customer-b.internal \
+  --username operator@vsphere.local \
+  --credential keyring:customer-b \
+  --transport https --proxy-address proxy.customer-b.internal:3128 \
+  --proxy-username svc-proxy --proxy-credential keyring:customer-b-proxy \
+  --password-stdin --proxy-password-stdin --tls thumbprint
 ```
 
 Passing `--tls thumbprint` without `--thumbprint` fetches the certificate the
@@ -245,6 +266,22 @@ remote_dns = true
 
 [contexts.tls]
 mode = "system"
+
+[[contexts]]
+name = "customer-b"
+endpoint = "https://vcsa.customer-b.internal"
+username = "operator@vsphere.local"
+credential = "keyring:customer-b"
+
+[contexts.transport]
+type = "https"
+address = "proxy.customer-b.internal:3128"
+username = "svc-proxy"
+credential = "keyring:customer-b-proxy"
+
+[contexts.tls]
+mode = "thumbprint"
+thumbprint = "4C:3D:58:C2:80:EA:08:A0:67:53:79:A8:D5:3B:7C:77:6A:8A:40:EE:D1:80:4E:17:26:39:5B:D7:07:23:D4:D8"
 ```
 
 ### Credential references
@@ -262,6 +299,13 @@ No form of this file ever contains a password.
 |---|---|
 | `direct` | Connect from this host, resolving names locally |
 | `socks5` | Connect through `address`. With `remote_dns = true` the hostname is handed to the proxy; otherwise it is resolved here first |
+| `http` | Tunnel through `address` with an HTTP `CONNECT` request. The proxy always resolves the hostname; there is no `remote_dns` toggle for it |
+| `https` | The same `CONNECT` tunnel, over a TLS connection to the proxy itself, verified against the system trust store — there is no thumbprint-pinning mode for the proxy's own certificate, unlike the vCenter's |
+
+Any of the three proxy transports accepts an optional `username` and a
+`credential` reference, resolved and sent as HTTP Basic auth (`http`/`https`)
+or RFC 1929 username/password (`socks5`). A route with no `username` needs no
+proxy authentication.
 
 ### TLS modes
 
@@ -298,8 +342,8 @@ driven in tests with no vCenter present.
                                │
                      internal/transport
                      (per-context dialer)
-                        ┌──────┴──────┐
-                     direct        socks5
+                ┌────────┬────────┬────────┐
+             direct    socks5    http     https
 ```
 
 Two rules hold the design together: `govmomi` types never leave
@@ -320,13 +364,19 @@ nothing `internal/config` needs to know about.
 
 The whole product is testable without any VMware infrastructure. Integration
 tests run against [vcsim](https://github.com/vmware/govmomi/tree/main/vcsim)
-through a real SOCKS5 proxy started inside the test process, covering the parts
-that are otherwise hard to be confident about:
+through real SOCKS5 and HTTP/HTTPS CONNECT proxies started inside the test
+process, covering the parts that are otherwise hard to be confident about:
 
 - routing one context through a proxy while another goes direct
 - resolving the vCenter hostname *at the proxy*, verified by inspecting what the
   proxy was asked for
 - a proxy that is offline, reported as the proxy rather than as the vCenter
+- a proxy that requires username/password authentication, and one where the
+  password is wrong
+- an HTTPS proxy whose own certificate is untrusted, rejected before the
+  CONNECT tunnel is ever opened
+- a proxy credential resolved exactly once per diagnosis, not once per
+  internal dialer, even when it comes from an interactive prompt
 - a pinned thumbprint that no longer matches
 - a self-signed certificate rejected under system trust
 - one broken vCenter alongside a healthy one, with the healthy results intact
@@ -352,8 +402,8 @@ can operate without learning the CLI subcommand tree first.
 | Area | Objective | Status |
 |---|---|---|
 | Entry experience | `vctui` opens the interface directly; add/edit/test/delete a context from inside it; remember the last context, tab and sort mode | **done** |
-| Proxy support | Direct, SOCKS5, HTTP and HTTPS routes; SOCKS5 remote DNS; unauthenticated and basic-auth proxies; passwords only ever in the keyring; explicit TLS modes; never inherit `HTTP_PROXY`/`HTTPS_PROXY` | SOCKS5 and direct done; HTTP/HTTPS proxy routes and proxy authentication next |
-| Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | direct and SOCKS5 stages done; HTTP CONNECT and proxy-auth stages pending |
+| Proxy support | Direct, SOCKS5, HTTP and HTTPS routes; SOCKS5 remote DNS; unauthenticated and basic-auth proxies; passwords only ever in the keyring; explicit TLS modes; never inherit `HTTP_PROXY`/`HTTPS_PROXY` | **done** |
+| Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | proxy reachability, auth and CONNECT stages done for all three proxy types; still no dedicated stage separating proxy TLS from vCenter TLS |
 | Responsive inventory loading | A shared cache outside the interface; the selected context first, others concurrently, bounded; stale-while-revalidate; per-context refresh timestamps and errors; the keyboard never blocks on the network | not started |
 | Global search | Search cached inventory across every configured vCenter from inside the interface; selecting a result switches context, tab and selection; partial results survive a failed context | the CLI has cross-vCenter search today; bringing the same query into the interface, over the inventory cache above, is next |
 | Release hardening | Real vSphere 7/8, self-signed certs, enterprise CAs, thumbprints, restricted RBAC accounts; large-vcsim performance; Linux/macOS/Windows smoke tests; a demo GIF; GoReleaser binaries; tag v0.1.0 | not started — needs real VMware infrastructure and multi-platform hands, not just code |

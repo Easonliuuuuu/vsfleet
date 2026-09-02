@@ -8,10 +8,10 @@ import (
 
 	"github.com/vmware/govmomi/simulator"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/contextops"
-	"github.com/easonliuuuuu/vcfleet/internal/credentials"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/contextops"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // staticResolver builds a credentials.Resolver over an in-memory keyring

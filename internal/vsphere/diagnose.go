@@ -9,9 +9,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/credentials"
-	"github.com/easonliuuuuu/vcfleet/internal/transport"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
+	"github.com/easonliuuuuu/vsfleet/internal/transport"
 )
 
 // CheckStatus is the outcome of one diagnostic stage.
@@ -292,7 +292,7 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 
 // fetchCertificate performs a TLS handshake and returns the leaf certificate.
 // When trustAny is set the context's TLS policy is bypassed, which is how
-// "vcfleet context add" discovers a thumbprint to pin.
+// "vsfleet context add" discovers a thumbprint to pin.
 func fetchCertificate(ctx context.Context, cc *config.Context, dialer transport.Dialer, addr string, trustAny bool) (*x509.Certificate, error) {
 	var cfg *tls.Config
 	if trustAny {

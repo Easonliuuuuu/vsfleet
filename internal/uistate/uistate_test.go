@@ -15,7 +15,7 @@ func TestLoadOfMissingFileReturnsZeroValue(t *testing.T) {
 }
 
 func TestSaveThenLoadRoundTrips(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "vcfleet", "state.json")
+	path := filepath.Join(t.TempDir(), "vsfleet", "state.json")
 	want := State{Context: "prod", Kind: "host", Sort: "status"}
 
 	if err := Save(path, want); err != nil {
@@ -79,7 +79,7 @@ func TestDefaultPathHonoursTheEnvironmentVariable(t *testing.T) {
 
 // TestLoadAndSaveDefaultToTheEnvOverride checks that passing an empty path,
 // the way the CLI actually calls this package, resolves through
-// VCFLEET_STATE rather than needing every caller to look the path up itself.
+// VSFLEET_STATE rather than needing every caller to look the path up itself.
 func TestLoadAndSaveDefaultToTheEnvOverride(t *testing.T) {
 	t.Setenv(EnvStatePath, filepath.Join(t.TempDir(), "state.json"))
 

@@ -8,9 +8,9 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// KeyringService is the service name vcfleet registers under in the operating
+// KeyringService is the service name vsfleet registers under in the operating
 // system secret store.
-const KeyringService = "vcfleet"
+const KeyringService = "vsfleet"
 
 // Keyring stores credentials in the operating system secret store: Keychain on
 // macOS, Secret Service on Linux, Credential Manager on Windows.

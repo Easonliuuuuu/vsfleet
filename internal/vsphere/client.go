@@ -14,9 +14,9 @@ import (
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/soap"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/credentials"
-	"github.com/easonliuuuuu/vcfleet/internal/transport"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
+	"github.com/easonliuuuuu/vsfleet/internal/transport"
 )
 
 // Client is an authenticated connection to one vCenter.

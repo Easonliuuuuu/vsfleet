@@ -6,10 +6,10 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/contextops"
-	"github.com/easonliuuuuu/vcfleet/internal/credentials"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/contextops"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // formRowKind is what a row does with a key press: text and secret rows take

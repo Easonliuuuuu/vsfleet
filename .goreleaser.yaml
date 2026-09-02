@@ -1,24 +1,24 @@
 version: 2
 
-project_name: vcfleet
+project_name: vsfleet
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: vcfleet
-    main: ./cmd/vcfleet
-    binary: vcfleet
+  - id: vsfleet
+    main: ./cmd/vsfleet
+    binary: vsfleet
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
     ldflags:
       - -s -w
-      - -X github.com/easonliuuuuu/vcfleet/internal/version.Version={{ .Version }}
-      - -X github.com/easonliuuuuu/vcfleet/internal/version.Commit={{ .ShortCommit }}
-      - -X github.com/easonliuuuuu/vcfleet/internal/version.Date={{ .Date }}
+      - -X github.com/easonliuuuuu/vsfleet/internal/version.Version={{ .Version }}
+      - -X github.com/easonliuuuuu/vsfleet/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/easonliuuuuu/vsfleet/internal/version.Date={{ .Date }}
 
 archives:
   - formats: [tar.gz]

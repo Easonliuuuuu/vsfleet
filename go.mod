@@ -1,4 +1,4 @@
-module github.com/easonliuuuuu/vcfleet
+module github.com/easonliuuuuu/vsfleet
 
 go 1.25.0
 

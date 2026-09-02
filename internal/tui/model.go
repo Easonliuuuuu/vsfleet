@@ -11,10 +11,10 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/easonliuuuuu/vcfleet/internal/cache"
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/session"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/cache"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/session"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // maxConcurrentLoads bounds how many contexts fetch their inventory at once.

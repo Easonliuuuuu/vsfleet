@@ -3,8 +3,8 @@ package search_test
 import (
 	"testing"
 
-	"github.com/easonliuuuuu/vcfleet/internal/search"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/search"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 func inventory() *vsphere.Inventory {

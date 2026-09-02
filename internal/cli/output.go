@@ -9,7 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/easonliuuuuu/vcfleet/internal/humanize"
+	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 )
 
 // Output formats.
@@ -49,7 +49,7 @@ func (t *table) row(cells ...string) {
 
 func (t *table) flush() { _ = t.w.Flush() }
 
-// writeJSON renders v as indented JSON, which is what makes vcfleet scriptable.
+// writeJSON renders v as indented JSON, which is what makes vsfleet scriptable.
 func writeJSON(out io.Writer, v any) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")

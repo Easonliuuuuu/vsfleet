@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
 )
 
 // HTTPProxy routes connections through an HTTP CONNECT proxy — over TLS to

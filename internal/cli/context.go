@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/contextops"
-	"github.com/easonliuuuuu/vcfleet/internal/credentials"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/contextops"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 func newContextCommand(a *App) *cobra.Command {
@@ -214,7 +214,7 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 	}
 	if res.StoreWarning != nil {
 		fmt.Fprintf(a.errOut(), "warning: %v\n", res.StoreWarning)
-		fmt.Fprintf(a.errOut(), "vcfleet will ask for it on each run. Set the credential to \"prompt\" to make that explicit.\n")
+		fmt.Fprintf(a.errOut(), "vsfleet will ask for it on each run. Set the credential to \"prompt\" to make that explicit.\n")
 	}
 	fmt.Fprintf(a.out(), "Saved context %q to %s\n", res.Context.Name, cfg.Path())
 	return nil
@@ -383,7 +383,7 @@ func newContextListCommand(a *App) *cobra.Command {
 				return writeJSON(a.out(), cfg.Contexts)
 			}
 			if len(cfg.Contexts) == 0 {
-				fmt.Fprintf(a.out(), "No contexts configured. Run \"vcfleet context add\".\n")
+				fmt.Fprintf(a.out(), "No contexts configured. Run \"vsfleet context add\".\n")
 				return nil
 			}
 			t := newTable(a.out(), "", "NAME", "ENDPOINT", "USERNAME", "ROUTE", "TLS")

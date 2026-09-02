@@ -13,9 +13,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
-	"github.com/easonliuuuuu/vcfleet/internal/config"
-	"github.com/easonliuuuuu/vcfleet/internal/session"
-	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/session"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // Result is one matching inventory object.

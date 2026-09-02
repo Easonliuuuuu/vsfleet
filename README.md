@@ -401,6 +401,19 @@ stored credential.
 go test ./...
 ```
 
+## Releasing
+
+Releases are driven by [Conventional Commits](https://www.conventionalcommits.org/).
+After changes land on `main`, Release Please opens or updates a release pull
+request. Merging that pull request creates the version tag and GitHub release;
+the same workflow then builds and attaches the platform archives with
+GoReleaser.
+
+Use `feat:` for user-visible features, `fix:` for bug fixes, and `feat!:` (or
+the `BREAKING CHANGE` footer) for breaking changes. Documentation, tests and
+CI-only changes do not create a release by themselves. The initial release is
+bootstrapped as `v0.1.0` from the existing feature history.
+
 ## Roadmap to 0.1.0
 
 The goal is a fast, resilient, read-only multi-vCenter interface a new user

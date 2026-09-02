@@ -20,6 +20,10 @@ type Prompt struct {
 	// Label describes what is being asked for when the reference carries no
 	// value of its own.
 	Label string
+
+	// buf is shared by every read so that a buffered line read cannot swallow
+	// input meant for the next question.
+	buf *bufio.Reader
 }
 
 // NewPrompt returns a Prompt bound to the process terminal.
@@ -39,6 +43,23 @@ func (p *Prompt) out() io.Writer {
 		return p.Out
 	}
 	return os.Stderr
+}
+
+func (p *Prompt) reader() *bufio.Reader {
+	if p.buf == nil {
+		p.buf = bufio.NewReader(p.in())
+	}
+	return p.buf
+}
+
+// ReadLine writes prompt to the output and reads one echoed line.
+func (p *Prompt) ReadLine(prompt string) (string, error) {
+	fmt.Fprint(p.out(), prompt)
+	line, err := p.reader().ReadString('\n')
+	if err != nil && (err != io.EOF || line == "") {
+		return "", fmt.Errorf("read input: %w", err)
+	}
+	return strings.TrimRight(line, "\r\n"), nil
 }
 
 // Interactive reports whether a password can actually be read from the user.
@@ -79,7 +100,7 @@ func (p *Prompt) ReadSecret(prompt string) (string, error) {
 	}
 	// Not a terminal: read a line so the tool stays scriptable, but the input
 	// is echoed by whatever is feeding it, which is the caller's choice.
-	line, err := bufio.NewReader(p.in()).ReadString('\n')
+	line, err := p.reader().ReadString('\n')
 	if err != nil && (err != io.EOF || line == "") {
 		return "", fmt.Errorf("read password: %w", err)
 	}

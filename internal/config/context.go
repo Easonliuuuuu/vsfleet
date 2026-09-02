@@ -26,15 +26,15 @@ const (
 // per-context on purpose: one process routes some vCenters directly and others
 // through a proxy at the same time.
 type TransportConfig struct {
-	Type string `toml:"type"`
+	Type string `toml:"type" json:"type"`
 	// Address is the SOCKS5 proxy, host:port.
-	Address string `toml:"address,omitempty"`
+	Address string `toml:"address,omitempty" json:"address,omitempty"`
 	// RemoteDNS resolves the vCenter hostname at the proxy rather than
 	// locally. Required when the name only exists inside the remote network.
-	RemoteDNS bool `toml:"remote_dns,omitempty"`
+	RemoteDNS bool `toml:"remote_dns,omitempty" json:"remote_dns,omitempty"`
 	// Username and Credential authenticate to the proxy itself, if it asks.
-	Username   string          `toml:"username,omitempty"`
-	Credential credentials.Ref `toml:"credential,omitempty"`
+	Username   string          `toml:"username,omitempty" json:"username,omitempty"`
+	Credential credentials.Ref `toml:"credential,omitempty" json:"credential,omitempty"`
 }
 
 // Describe renders the route in one short line for status output.
@@ -75,10 +75,10 @@ func (t TransportConfig) validate() error {
 // deliberately no bare "insecure = true": disabling verification is a named
 // mode an operator has to choose.
 type TLSConfig struct {
-	Mode string `toml:"mode"`
+	Mode string `toml:"mode" json:"mode"`
 	// Thumbprint is the expected certificate fingerprint, SHA-256 or SHA-1,
 	// colon separated (AB:CD:...). Only used in thumbprint mode.
-	Thumbprint string `toml:"thumbprint,omitempty"`
+	Thumbprint string `toml:"thumbprint,omitempty" json:"thumbprint,omitempty"`
 }
 
 // Describe renders the TLS policy for status output.
@@ -137,14 +137,14 @@ func NormalizeThumbprint(s string) string {
 // Context is one vCenter and everything needed to reach it: where it is, who
 // to log in as, how to route there, and how to verify its certificate.
 type Context struct {
-	Name       string          `toml:"name"`
-	Endpoint   string          `toml:"endpoint"`
-	Username   string          `toml:"username"`
-	Credential credentials.Ref `toml:"credential,omitempty"`
+	Name       string          `toml:"name" json:"name"`
+	Endpoint   string          `toml:"endpoint" json:"endpoint"`
+	Username   string          `toml:"username" json:"username"`
+	Credential credentials.Ref `toml:"credential,omitempty" json:"credential,omitempty"`
 	// Datacenter is an optional default for inventory queries.
-	Datacenter string          `toml:"datacenter,omitempty"`
-	Transport  TransportConfig `toml:"transport"`
-	TLS        TLSConfig       `toml:"tls"`
+	Datacenter string          `toml:"datacenter,omitempty" json:"datacenter,omitempty"`
+	Transport  TransportConfig `toml:"transport" json:"transport"`
+	TLS        TLSConfig       `toml:"tls" json:"tls"`
 }
 
 // URL returns the vCenter SDK URL for the context.

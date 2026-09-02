@@ -2,6 +2,15 @@
 
 Operate multiple VMware vCenter servers from one terminal.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/vsfleet.png">
+    <img src="docs/assets/vsfleet.gif" alt="vsfleet browsing virtual machines across three vCenters, filtering inventory, and diagnosing an unavailable site" width="1200">
+  </picture>
+</p>
+
+<p align="center"><sub>Healthy inventory stays usable even when another vCenter is offline.</sub></p>
+
 ## About
 
 vsfleet is an open-source Go CLI and terminal UI for VMware vSphere operators.
@@ -275,6 +284,20 @@ go build ./...
 
 The integration tests use VMware’s vSphere simulator and in-process proxy
 servers, so they do not require access to a real vCenter.
+
+### Regenerate the README demo
+
+The presentation uses deterministic sample inventory and never reads your
+configuration, credentials, or network. With
+[VHS](https://github.com/charmbracelet/vhs) installed, regenerate both the
+animated demo and its reduced-motion screenshot from the repository root:
+
+```sh
+vhs docs/demo.tape
+```
+
+The tape builds `cmd/vsfleet-demo` as a temporary `vsfleet` binary, records the
+same command users run, and writes the assets in `docs/assets/`.
 
 ## License
 

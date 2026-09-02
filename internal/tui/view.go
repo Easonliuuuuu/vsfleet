@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
@@ -549,8 +550,8 @@ func pad(s string, w int, right bool) string {
 	if w <= 0 {
 		return ""
 	}
-	s = runewidth.Truncate(s, w, "…")
-	gap := w - runewidth.StringWidth(s)
+	s = ansi.Truncate(s, w, "…")
+	gap := w - ansi.StringWidth(s)
 	if gap <= 0 {
 		return s
 	}
@@ -565,10 +566,7 @@ func truncate(s string, w int) string {
 	if w <= 0 {
 		return ""
 	}
-	if lipgloss.Width(s) <= w {
-		return s
-	}
-	return runewidth.Truncate(s, w, "…")
+	return ansi.Truncate(s, w, "…")
 }
 
 // padBlock forces a block of lines to an exact width and height so that two

@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
@@ -627,6 +628,30 @@ func TestNarrowTerminalKeepsTheNameColumn(t *testing.T) {
 	}
 	if width := glyphGutter + total + cellGap*(drawn-1); width > 40 {
 		t.Errorf("laid out %d columns of total width %d in 40 columns", drawn, width)
+	}
+}
+
+// TestPaddingMeasuresStyledTextByTerminalCells guards the colored interface:
+// ANSI escape sequences change presentation but occupy no terminal columns.
+// Counting their bytes used to truncate sidebar names to one character as
+// soon as color output was enabled.
+func TestPaddingMeasuresStyledTextByTerminalCells(t *testing.T) {
+	styled := "\x1b[38;2;126;231;135m●\x1b[0m prod-vc"
+	got := pad(styled, 18, false)
+
+	if width := ansi.StringWidth(got); width != 18 {
+		t.Fatalf("pad produced width %d, want 18: %q", width, got)
+	}
+	if !strings.Contains(got, "prod-vc") {
+		t.Fatalf("pad truncated visible text while measuring ANSI styling: %q", got)
+	}
+
+	got = truncate(styled, 9)
+	if width := ansi.StringWidth(got); width > 9 {
+		t.Fatalf("truncate produced width %d, want at most 9: %q", width, got)
+	}
+	if !strings.Contains(got, "prod-vc") {
+		t.Fatalf("truncate removed text that fits in nine terminal cells: %q", got)
 	}
 }
 

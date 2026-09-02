@@ -15,6 +15,7 @@ import (
 // host and grows from there; nothing below assumes more.
 const (
 	cellGap        = 2
+	glyphGutter    = 2 // status glyph plus its separating space
 	minNameWidth   = 16
 	sidebarMin     = 18
 	sidebarMax     = 26
@@ -213,7 +214,7 @@ func (m *Model) viewContent() []string {
 	lines := []string{m.viewTabs(w), t.rule.Render(strings.Repeat("─", w))}
 
 	cols := columnsFor(m.kind, m.showContext())
-	widths := layoutColumns(cols, w)
+	widths := layoutColumns(cols, w-glyphGutter)
 	head := make([]string, 0, len(cols))
 	for i, c := range cols {
 		if widths[i] == 0 {
@@ -221,7 +222,7 @@ func (m *Model) viewContent() []string {
 		}
 		head = append(head, pad(c.title, widths[i], c.right))
 	}
-	lines = append(lines, t.header.Render(strings.Join(head, strings.Repeat(" ", cellGap))))
+	lines = append(lines, t.header.Render(strings.Repeat(" ", glyphGutter)+strings.Join(head, strings.Repeat(" ", cellGap))))
 
 	rows := m.rows()
 	h := m.tableHeight()
@@ -265,12 +266,15 @@ func (m *Model) renderRow(r row, cols []column, widths []int, selected bool) str
 	line := strings.Join(cells, strings.Repeat(" ", cellGap))
 	switch {
 	case selected && m.pane == paneResources:
-		return t.focused.Render(line)
+		line = t.focused.Render(line)
 	case selected:
-		return t.selected.Render(line)
+		line = t.selected.Render(line)
 	default:
-		return t.text.Render(line)
+		line = t.text.Render(line)
 	}
+	// The glyph sits in its own gutter, outside the selection highlight, so a
+	// powered-off VM still reads as powered off while the cursor is on it.
+	return t.statusStyle(r.status).Render(r.glyph) + " " + line
 }
 
 func (m *Model) viewTabs(w int) string {

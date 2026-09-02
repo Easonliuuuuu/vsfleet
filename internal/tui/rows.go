@@ -64,7 +64,7 @@ func columnsFor(kind vsphere.Kind, withContext bool) []column {
 	case vsphere.KindVM:
 		cols = append(cols,
 			column{title: "NAME"},
-			column{title: "POWER", width: 8},
+			column{title: "POWER", width: 10},
 			column{title: "CPU", width: 4, right: true},
 			column{title: "MEM", width: 6, right: true},
 			column{title: "IP ADDRESS", width: 16},

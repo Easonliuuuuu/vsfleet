@@ -107,10 +107,11 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 	r := &diagRunner{d: d}
 
 	var (
-		dialer transport.Dialer
-		cred   credentials.Credential
-		addr   string
-		client *Client
+		dialer    transport.Dialer
+		cred      credentials.Credential
+		proxyCred *credentials.Credential
+		addr      string
+		client    *Client
 	)
 
 	r.run("Configuration valid", func() (string, error) {
@@ -139,10 +140,22 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 	})
 
 	r.run("Route configured", func() (string, error) {
+		// Resolved here, once, and threaded through as an override from this
+		// point on — including into the dialer Connect builds internally for
+		// the Authentication stage below — so a prompt-scheme proxy
+		// credential is asked for once per diagnosis, not once per dialer.
+		proxyCred = opts.ProxyCredential
+		if proxyCred == nil && cc.Transport.Username != "" {
+			pw, err := transport.ResolveProxyCredential(ctx, cc.Transport, transport.Options{Resolver: opts.Resolver})
+			if err != nil {
+				return "", err
+			}
+			proxyCred = &credentials.Credential{Password: pw}
+		}
 		dl, err := transport.New(ctx, cc.Transport, transport.Options{
 			Timeout:         opts.DialTimeout,
 			Resolver:        opts.Resolver,
-			ProxyCredential: opts.ProxyCredential,
+			ProxyCredential: proxyCred,
 		})
 		if err != nil {
 			return "", err
@@ -221,6 +234,7 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 	r.run("Authentication", func() (string, error) {
 		co := opts
 		co.Credential = &cred
+		co.ProxyCredential = proxyCred
 		c, err := Connect(ctx, cc, co)
 		if err != nil {
 			return "", err

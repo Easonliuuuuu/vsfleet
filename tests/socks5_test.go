@@ -29,10 +29,18 @@ type socksServer struct {
 	// Routes maps a hostname the proxy is asked for onto the address it
 	// actually dials, standing in for names that only resolve remotely.
 	Routes map[string]string
+	// RequireAuth, when set before the first connection arrives, requires
+	// RFC 1929 username/password authentication with exactly this pair.
+	RequireAuth *socksAuth
 
 	listener net.Listener
 	mu       sync.Mutex
 	requests []socksRequest
+}
+
+// socksAuth is one SOCKS5 username/password pair.
+type socksAuth struct {
+	Username, Password string
 }
 
 func startSOCKS(t *testing.T, routes map[string]string) *socksServer {
@@ -74,6 +82,52 @@ func (s *socksServer) serve() {
 	}
 }
 
+// authenticate runs the RFC 1929 username/password sub-negotiation. offered
+// is the method list from the client's greeting.
+func (s *socksServer) authenticate(conn net.Conn, offered []byte) error {
+	wants := false
+	for _, m := range offered {
+		if m == 2 {
+			wants = true
+		}
+	}
+	if !wants {
+		_, _ = conn.Write([]byte{5, 0xFF}) // no acceptable methods
+		return fmt.Errorf("client did not offer username/password authentication")
+	}
+	if _, err := conn.Write([]byte{5, 2}); err != nil {
+		return err
+	}
+	head := make([]byte, 2) // auth version, username length
+	if _, err := io.ReadFull(conn, head); err != nil {
+		return err
+	}
+	uname := make([]byte, int(head[1]))
+	if _, err := io.ReadFull(conn, uname); err != nil {
+		return err
+	}
+	pl := make([]byte, 1)
+	if _, err := io.ReadFull(conn, pl); err != nil {
+		return err
+	}
+	passwd := make([]byte, int(pl[0]))
+	if _, err := io.ReadFull(conn, passwd); err != nil {
+		return err
+	}
+	ok := string(uname) == s.RequireAuth.Username && string(passwd) == s.RequireAuth.Password
+	status := byte(0)
+	if !ok {
+		status = 1
+	}
+	if _, err := conn.Write([]byte{1, status}); err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("socks5 auth rejected for user %q", uname)
+	}
+	return nil
+}
+
 func (s *socksServer) handle(conn net.Conn) error {
 	// Greeting: version, method count, methods.
 	head := make([]byte, 2)
@@ -83,11 +137,15 @@ func (s *socksServer) handle(conn net.Conn) error {
 	if head[0] != 5 {
 		return fmt.Errorf("unsupported socks version %d", head[0])
 	}
-	if _, err := io.ReadFull(conn, make([]byte, int(head[1]))); err != nil {
+	methods := make([]byte, int(head[1]))
+	if _, err := io.ReadFull(conn, methods); err != nil {
 		return err
 	}
-	// Accept without authentication.
-	if _, err := conn.Write([]byte{5, 0}); err != nil {
+	if s.RequireAuth != nil {
+		if err := s.authenticate(conn, methods); err != nil {
+			return err
+		}
+	} else if _, err := conn.Write([]byte{5, 0}); err != nil {
 		return err
 	}
 

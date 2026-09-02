@@ -196,3 +196,67 @@ func TestTLSThumbprintDiscovery(t *testing.T) {
 		t.Errorf("the discovered thumbprint was not stored:\n%s", show)
 	}
 }
+
+// TestSOCKS5BasicAuth checks that a SOCKS5 proxy requiring RFC 1929
+// username/password authentication can actually be reached — the dialer
+// already supported it, but nothing before this section's work could
+// configure a proxy credential from the command line, so this never had a
+// path to a real proxy.
+func TestSOCKS5BasicAuth(t *testing.T) {
+	vc := startVCenter(t, nil)
+	proxy := startSOCKS(t, nil)
+	proxy.RequireAuth = &socksAuth{Username: "svc-proxy", Password: "proxy-secret"}
+
+	r := newRunner(t)
+	r.mustRun(testPassword+"\nproxy-secret\n", "context", "add",
+		"--name", "via-authed-socks5",
+		"--endpoint", vc.URL,
+		"--username", "operator@vsphere.local",
+		"--credential", "prompt",
+		"--password-stdin",
+		"--transport", "socks5",
+		"--proxy-address", proxy.Address(),
+		"--proxy-username", "svc-proxy",
+		"--proxy-credential", "prompt",
+		"--proxy-password-stdin",
+		"--tls", "thumbprint",
+		"--thumbprint", vc.Thumbprint,
+	)
+
+	// The same credential is asked for again here, in a fresh process with
+	// nothing carried over from "context add" — proof that resolving it
+	// happens exactly once per run rather than once per dialer it happens
+	// to build along the way.
+	out := r.mustRun(testPassword+"\nproxy-secret\n", "context", "test", "via-authed-socks5")
+	if !strings.Contains(out, "Connection successful.") {
+		t.Fatalf("connection through the authenticated socks5 proxy failed:\n%s", out)
+	}
+}
+
+func TestSOCKS5WrongCredentialFails(t *testing.T) {
+	vc := startVCenter(t, nil)
+	proxy := startSOCKS(t, nil)
+	proxy.RequireAuth = &socksAuth{Username: "svc-proxy", Password: "proxy-secret"}
+
+	r := newRunner(t)
+	r.mustRun(testPassword+"\n", "context", "add",
+		"--name", "via-wrong-socks5-password",
+		"--endpoint", vc.URL,
+		"--username", "operator@vsphere.local",
+		"--credential", "prompt",
+		"--password-stdin",
+		"--transport", "socks5",
+		"--proxy-address", proxy.Address(),
+		"--proxy-username", "svc-proxy",
+		"--proxy-credential", "prompt",
+		"--no-test",
+	)
+
+	stdout, _, err := r.run(testPassword+"\nnot-the-right-password\n", "doctor", "via-wrong-socks5-password")
+	if err == nil {
+		t.Fatalf("a wrong socks5 password must not connect:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "TCP connection") {
+		t.Errorf("a rejected socks5 login should surface at the TCP connection stage:\n%s", stdout)
+	}
+}

@@ -234,6 +234,19 @@ func (m *Manager) Statuses() []Status {
 	return out
 }
 
+// Status returns a snapshot of one session by context name. The second result
+// is false when nothing has ever been attempted for that context, which the UI
+// shows as "not connected" rather than as a failure.
+func (m *Manager) Status(name string) (Status, bool) {
+	m.mu.Lock()
+	s, ok := m.sessions[name]
+	m.mu.Unlock()
+	if !ok {
+		return Status{Name: name}, false
+	}
+	return s.Snapshot(), true
+}
+
 // Close logs out of every session. Errors are joined so that one vCenter that
 // will not answer does not hide the rest.
 func (m *Manager) Close(ctx context.Context) error {

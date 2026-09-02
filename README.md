@@ -73,6 +73,9 @@ vctui replaces that with one command per question.
   still answers.
 - **Diagnostics that name the fault.** `vctui doctor` walks the connection one
   stage at a time and stops at the first real problem.
+- **A terminal interface over the same layers.** `vctui ui` puts every
+  configured vCenter in a sidebar, one resource kind per tab, and a detail
+  pane on any row. It shows nothing the command line cannot.
 - **Table output for people, JSON for scripts.** Every command takes `-o json`.
 
 Everything in this release is read-only. There are no power operations, no
@@ -122,7 +125,53 @@ vctui datastore list --all-contexts
 vctui host list --context prod -f esxi-07
 vctui search ubuntu-24
 vctui search nvme --kind datastore -o json
+
+vctui ui                           # the same estate, interactively
+vctui ui --all-contexts            # open with every vCenter merged
 ```
+
+## The terminal interface
+
+`vctui ui` opens the estate rather than one vCenter. The sidebar lists every
+configured context whether or not it answers, the tabs are the resource kinds,
+and `a` widens the table from the selected vCenter to all of them at once.
+
+```
+vctui  all 3 vCenters  ·  2 connected · 1 failed
+────────────────────────────────────────────────────────────────────────────────
+CONTEXTS                   VMs 214   Templates 18   Hosts 22   Clusters 4   ...
+ ✕ customer-a              ─────────────────────────────────────────────────────
+   socks5 proxy 127.0.0.…  VCENTER      NAME               POWER   CPU   MEM
+▸● prod                    prod         app-01             on        4   16G
+   Direct · 12 ms          prod         build-runner-3     off       8   32G
+ ● lab                     lab          ubuntu-24-test     on        2    4G
+   Direct · 4 ms           ✕ customer-a: socks5 proxy 127.0.0.1:1080 unreachable
+────────────────────────────────────────────────────────────────────────────────
+→/l next tab  tab switch pane  enter open  / filter  a all vCenters  d diagnose
+```
+
+A vCenter that will not answer keeps its row and states why, under a table that
+still holds every result from the vCenters that did. That is the same failure
+isolation the CLI has, made visible.
+
+| Key | Action |
+|---|---|
+| `←` `→` / `h` `l` | Previous, next resource tab |
+| `tab` | Move focus between the context sidebar and the table |
+| `↑` `↓` / `k` `j` | Move within the focused pane |
+| `enter` | Open the row, or switch to the selected vCenter |
+| `/` | Filter by name; `esc` clears it |
+| `a` | Toggle between one vCenter and all of them |
+| `r` / `R` | Reload what is in scope / every context |
+| `d` | Diagnose the selected context, stage by stage |
+| `?` | Keys |
+| `q` | Quit |
+
+The interface holds no state of its own beyond selection and scroll: everything
+it displays comes from `internal/session`, `internal/vsphere` and
+`internal/config`, the same three packages the commands use. It can be thrown
+away and rewritten without taking any behaviour with it, which is why it was
+built last.
 
 ## Configuration
 
@@ -189,13 +238,17 @@ No form of this file ever contains a password.
 
 ## Architecture
 
-The terminal UI is deliberately not the first thing built. Everything below it
-exists as an ordinary Go API and an ordinary CLI, so the UI is a rendering
-layer rather than the only way to reach a vCenter.
+The terminal interface is deliberately not the first thing built. Everything
+below it exists as an ordinary Go API and an ordinary CLI, so the interface is
+a rendering layer rather than the only way to reach a vCenter. It reaches the
+rest of the program through one small interface, which is also how its model is
+driven in tests with no vCenter present.
 
 ```
-                       cmd/vctui  ──►  internal/cli
-                                            │
+                       cmd/vctui  ──►  internal/cli  ──►  internal/tui
+                                            │                  │
+                                            └────────┬─────────┘
+                                                     │
                   ┌─────────────────────────┼─────────────────────────┐
                   │                         │                         │
           internal/session          internal/search           internal/config
@@ -233,6 +286,10 @@ that are otherwise hard to be confident about:
 - a self-signed certificate rejected under system trust
 - one broken vCenter alongside a healthy one, with the healthy results intact
 
+The interface is tested the same way, against a fake backend: tab switching,
+context switching, filtering, the detail pane, the diagnosis panel and the
+merged all-contexts table with one vCenter failing.
+
 ```sh
 go test ./...
 ```
@@ -242,7 +299,7 @@ go test ./...
 | Version | Objective |
 |---|---|
 | 0.0.1–0.0.5 | Contexts, SOCKS5, keyring, inventory API — **done** |
-| 0.0.6 | Terminal UI: context switcher, resource tabs, detail view |
+| 0.0.6 | Terminal UI: context switcher, resource tabs, detail view — **done** |
 | 0.0.7 | Inventory cache with concurrent background refresh |
 | 0.0.8 | Global search in the UI |
 | 0.1.0 | First public release |

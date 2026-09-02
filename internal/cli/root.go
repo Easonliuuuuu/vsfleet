@@ -1,6 +1,7 @@
 // Package cli implements the vctui command line. Every command is a thin
-// wrapper over the configuration, session and inventory layers, so that the
-// terminal UI added later shares exactly the same backend.
+// wrapper over the configuration, session and inventory layers, which is what
+// lets the terminal interface be a second front end rather than a second
+// implementation.
 package cli
 
 import (
@@ -178,6 +179,7 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 		newDoctorCommand(a),
 		newSearchCommand(a),
 		newStatusCommand(a),
+		newUICommand(a),
 	)
 	root.AddCommand(newInventoryCommands(a)...)
 	return root

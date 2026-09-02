@@ -191,34 +191,53 @@ func retrieve(ctx context.Context, c *Client, viewKinds, propKinds, props []stri
 // ListInventory enumerates everything in one vCenter. The individual List
 // functions exist for callers that need only one kind; this one is what the
 // cache and the cross-context search use.
+//
+// It only fails outright when the path index itself cannot be built — every
+// object's inventory path depends on it, so nothing else is usable either.
+// A kind that fails to list on its own (a limited-permission account missing
+// one privilege, say) is recorded in Inventory.Errors and does not stop the
+// rest from being enumerated.
 func (c *Client) ListInventory(ctx context.Context) (*Inventory, error) {
 	idx, err := newIndex(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 	inv := &Inventory{Context: c.Context.Name}
-	vms, err := c.listVMs(ctx, idx)
-	if err != nil {
-		return nil, err
+	fail := func(kind Kind, err error) {
+		inv.Errors = append(inv.Errors, InventoryError{Kind: kind, Message: err.Error()})
 	}
-	for _, vm := range vms {
-		if vm.IsTemplate {
-			inv.Templates = append(inv.Templates, vm)
-		} else {
-			inv.VMs = append(inv.VMs, vm)
+
+	if vms, err := c.listVMs(ctx, idx); err != nil {
+		fail(KindVM, err)
+		fail(KindTemplate, err)
+	} else {
+		for _, vm := range vms {
+			if vm.IsTemplate {
+				inv.Templates = append(inv.Templates, vm)
+			} else {
+				inv.VMs = append(inv.VMs, vm)
+			}
 		}
 	}
-	if inv.Hosts, err = c.listHosts(ctx, idx); err != nil {
-		return nil, err
+	if hosts, err := c.listHosts(ctx, idx); err != nil {
+		fail(KindHost, err)
+	} else {
+		inv.Hosts = hosts
 	}
-	if inv.Clusters, err = c.listClusters(ctx, idx); err != nil {
-		return nil, err
+	if clusters, err := c.listClusters(ctx, idx); err != nil {
+		fail(KindCluster, err)
+	} else {
+		inv.Clusters = clusters
 	}
-	if inv.Datastores, err = c.listDatastores(ctx, idx); err != nil {
-		return nil, err
+	if datastores, err := c.listDatastores(ctx, idx); err != nil {
+		fail(KindDatastore, err)
+	} else {
+		inv.Datastores = datastores
 	}
-	if inv.Networks, err = c.listNetworks(ctx, idx); err != nil {
-		return nil, err
+	if networks, err := c.listNetworks(ctx, idx); err != nil {
+		fail(KindNetwork, err)
+	} else {
+		inv.Networks = networks
 	}
 	return inv, nil
 }

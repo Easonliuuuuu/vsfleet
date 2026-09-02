@@ -153,14 +153,38 @@ type Network struct {
 }
 
 // Inventory is everything enumerated from one vCenter at one moment.
+//
+// A partial result is a valid result: ListInventory keeps going after one
+// kind fails to list — a limited-permission account that can see VMs but not
+// Datastores is a normal shape, not a reason to discard everything it could
+// read. Errors records what did not come back; every kind missing from it
+// enumerated cleanly, even if empty.
 type Inventory struct {
-	Context    string      `json:"context"`
-	VMs        []VM        `json:"vms"`
-	Templates  []VM        `json:"templates"`
-	Hosts      []Host      `json:"hosts"`
-	Clusters   []Cluster   `json:"clusters"`
-	Datastores []Datastore `json:"datastores"`
-	Networks   []Network   `json:"networks"`
+	Context    string           `json:"context"`
+	VMs        []VM             `json:"vms"`
+	Templates  []VM             `json:"templates"`
+	Hosts      []Host           `json:"hosts"`
+	Clusters   []Cluster        `json:"clusters"`
+	Datastores []Datastore      `json:"datastores"`
+	Networks   []Network        `json:"networks"`
+	Errors     []InventoryError `json:"errors,omitempty"`
+}
+
+// InventoryError is one resource kind ListInventory could not enumerate.
+type InventoryError struct {
+	Kind    Kind   `json:"kind"`
+	Message string `json:"message"`
+}
+
+// ErrorFor returns the reason kind failed to list, or false if it enumerated
+// cleanly (which includes kinds this Inventory never attempted).
+func (i *Inventory) ErrorFor(kind Kind) (string, bool) {
+	for _, e := range i.Errors {
+		if e.Kind == kind {
+			return e.Message, true
+		}
+	}
+	return "", false
 }
 
 // Counts renders a one-line summary, used by status output and by the

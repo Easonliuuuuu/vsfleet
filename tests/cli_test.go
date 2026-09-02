@@ -225,18 +225,53 @@ func TestFailureIsolation(t *testing.T) {
 	}
 }
 
-// TestUIRefusesWithoutContexts checks the terminal interface is wired into the
-// command tree and declines to open on an empty configuration. Anything past
-// that point needs a terminal; the interface itself is tested in internal/tui,
-// where its model is driven directly.
-func TestUIRefusesWithoutContexts(t *testing.T) {
+// TestUINamedContextMustExist checks that "vctui ui --context" is validated
+// before the terminal interface opens, on an empty configuration where no
+// name could possibly resolve. With no --context, an empty configuration is
+// exactly when the interface is supposed to open — into its own setup form —
+// so that path needs a real terminal and is exercised in internal/tui, where
+// the model is driven directly rather than through a live TTY.
+func TestUINamedContextMustExist(t *testing.T) {
 	r := newRunner(t)
 
-	_, _, err := r.run("", "ui")
+	_, _, err := r.run("", "ui", "--context", "does-not-exist")
 	if err == nil {
-		t.Fatal("vctui ui on an empty configuration should fail")
+		t.Fatal("vctui ui --context does-not-exist on an empty configuration should fail")
 	}
-	if !strings.Contains(err.Error(), "context add") {
-		t.Errorf("error should point at the fix, got: %v", err)
+	if !strings.Contains(err.Error(), "does-not-exist") {
+		t.Errorf("error should name the context that was asked for, got: %v", err)
+	}
+}
+
+// TestBareCommandLaunchesTheInterface checks that "vctui" with no subcommand
+// is routed to the same place "vctui ui" is, rather than printing help the
+// way a command with no Run does by default. It cannot get further than
+// that without a real terminal, so it only tells the two failure modes
+// apart: reaching the interface (and failing on the missing TTY) versus
+// cobra rejecting the invocation outright.
+func TestBareCommandLaunchesTheInterface(t *testing.T) {
+	r := newRunner(t)
+
+	_, _, err := r.run("")
+	if err == nil {
+		t.Fatal("a bare invocation with no TTY available should fail")
+	}
+	if strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("bare vctui should reach the interface, not cobra's unknown-command path: %v", err)
+	}
+}
+
+// TestUnknownSubcommandIsRejected checks that a real typo is still reported
+// as such rather than being silently swallowed by the interface launch that
+// a bare "vctui" now performs.
+func TestUnknownSubcommandIsRejected(t *testing.T) {
+	r := newRunner(t)
+
+	_, _, err := r.run("", "statas")
+	if err == nil {
+		t.Fatal("an unknown subcommand should fail")
+	}
+	if !strings.Contains(err.Error(), "unknown command") {
+		t.Errorf("expected an unknown-command error, got: %v", err)
 	}
 }

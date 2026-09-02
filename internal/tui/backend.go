@@ -6,9 +6,13 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/easonliuuuuu/vc-tui/internal/config"
+	"github.com/easonliuuuuu/vc-tui/internal/contextops"
+	"github.com/easonliuuuuu/vc-tui/internal/credentials"
 	"github.com/easonliuuuuu/vc-tui/internal/session"
 	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
 )
@@ -17,10 +21,12 @@ import (
 //
 // It exists as an interface for one reason: a UI that can only be exercised
 // against a real vCenter is a UI nobody refactors. With this seam the whole
-// model — tabs, selection, filtering, failure rendering — is driven in tests
-// by a fake that answers instantly.
+// model — tabs, selection, filtering, failure rendering, and the context
+// setup form — is driven in tests by a fake that answers instantly.
 type Backend interface {
-	// Contexts lists the configured vCenters in display order.
+	// Contexts lists the configured vCenters in display order. It reflects
+	// the configuration as it stands right now, so it changes after
+	// SaveContext or RemoveContext without needing to be re-fetched.
 	Contexts() []*config.Context
 	// Inventory connects if necessary and enumerates one vCenter.
 	Inventory(ctx context.Context, cc *config.Context) (*vsphere.Inventory, error)
@@ -30,22 +36,39 @@ type Backend interface {
 	// Diagnose walks the connection stages for one context, for the panel
 	// that answers "why is this one red".
 	Diagnose(ctx context.Context, cc *config.Context) *vsphere.Diagnosis
+
+	// TestContext walks the connection for a context that has not been saved
+	// yet, so the form can show whether it works before committing to it.
+	TestContext(ctx context.Context, in contextops.Input) (*config.Context, *vsphere.Diagnosis)
+	// SaveContext validates, optionally tests, and writes a context — adding
+	// it or, when in.Replace is set, replacing the one of the same name.
+	SaveContext(ctx context.Context, in contextops.Input, test bool) (*contextops.Result, error)
+	// RemoveContext deletes a context and, when alsoCredential is set, its
+	// stored password. It returns the context as it was just before removal.
+	RemoveContext(ctx context.Context, name string, alsoCredential bool) (*config.Context, error)
+	// DiscoverThumbprint fetches the certificate an endpoint presents,
+	// without verifying it against any policy — the trust-on-first-use step
+	// behind pinning a certificate that has never been seen before.
+	DiscoverThumbprint(ctx context.Context, cc *config.Context) (sha256, sha1, subject string, notAfter time.Time, err error)
 }
 
-// sessionBackend is the production Backend, over the same session manager the
-// command line uses.
+// sessionBackend is the production Backend, over the same session manager,
+// configuration and credential resolver the command line uses.
 type sessionBackend struct {
-	contexts []*config.Context
-	mgr      *session.Manager
-	opts     vsphere.ConnectOptions
+	cfg  *config.Config
+	res  *credentials.Resolver
+	mgr  *session.Manager
+	opts vsphere.ConnectOptions
 }
 
-// NewBackend returns a Backend backed by a live session manager.
-func NewBackend(contexts []*config.Context, mgr *session.Manager, opts vsphere.ConnectOptions) Backend {
-	return &sessionBackend{contexts: contexts, mgr: mgr, opts: opts}
+// NewBackend returns a Backend backed by a live session manager and the
+// configuration file, so saving or removing a context from the interface is
+// the same write the command line makes.
+func NewBackend(cfg *config.Config, res *credentials.Resolver, mgr *session.Manager, opts vsphere.ConnectOptions) Backend {
+	return &sessionBackend{cfg: cfg, res: res, mgr: mgr, opts: opts}
 }
 
-func (b *sessionBackend) Contexts() []*config.Context { return b.contexts }
+func (b *sessionBackend) Contexts() []*config.Context { return b.cfg.Contexts }
 
 func (b *sessionBackend) Inventory(ctx context.Context, cc *config.Context) (*vsphere.Inventory, error) {
 	s, err := b.mgr.Connect(ctx, cc)
@@ -69,4 +92,29 @@ func (b *sessionBackend) Diagnose(ctx context.Context, cc *config.Context) *vsph
 		_ = client.Close(context.WithoutCancel(ctx))
 	}
 	return d
+}
+
+func (b *sessionBackend) TestContext(ctx context.Context, in contextops.Input) (*config.Context, *vsphere.Diagnosis) {
+	return contextops.Test(ctx, in, b.opts)
+}
+
+func (b *sessionBackend) SaveContext(ctx context.Context, in contextops.Input, test bool) (*contextops.Result, error) {
+	return contextops.Save(ctx, b.cfg, b.res, b.opts, in, test)
+}
+
+func (b *sessionBackend) RemoveContext(ctx context.Context, name string, alsoCredential bool) (*config.Context, error) {
+	cc, err := contextops.Remove(b.cfg, name)
+	if err != nil {
+		return nil, err
+	}
+	if alsoCredential && cc.Credential.Scheme == credentials.SchemeKeyring {
+		if err := contextops.DeleteCredential(ctx, b.res, cc.Credential); err != nil && !errors.Is(err, credentials.ErrNotFound) {
+			return cc, fmt.Errorf("context %q removed, but could not delete its stored password: %w", cc.Name, err)
+		}
+	}
+	return cc, nil
+}
+
+func (b *sessionBackend) DiscoverThumbprint(ctx context.Context, cc *config.Context) (sha256, sha1, subject string, notAfter time.Time, err error) {
+	return vsphere.FetchThumbprint(ctx, cc, b.opts)
 }

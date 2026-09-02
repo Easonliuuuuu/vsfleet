@@ -159,8 +159,16 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.String(),
+		// A bare "vctui" opens the terminal interface: that is the product,
+		// not the subcommand tree. Args stays NoArgs so a genuine typo like
+		// "vctui statas" still reports "unknown command" instead of quietly
+		// launching the interface with an argument it ignores.
+		Args: cobra.NoArgs,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
 			return a.checkFormat()
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runUI(a, cmd)
 		},
 	}
 	root.SetOut(a.out())

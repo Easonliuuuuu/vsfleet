@@ -35,21 +35,23 @@ func newContextCommand(a *App) *cobra.Command {
 // contextFlags mirror every field of a context so that "context add" works
 // unattended in a provisioning script as well as interactively.
 type contextFlags struct {
-	name          string
-	endpoint      string
-	username      string
-	credential    string
-	datacenter    string
-	transport     string
-	socksAddress  string
-	socksUser     string
-	remoteDNS     bool
-	tlsMode       string
-	thumbprint    string
-	passwordStdin bool
-	skipTest      bool
-	force         bool
-	setCurrent    bool
+	name               string
+	endpoint           string
+	username           string
+	credential         string
+	datacenter         string
+	transport          string
+	proxyAddress       string
+	proxyUsername      string
+	proxyCredential    string
+	remoteDNS          bool
+	tlsMode            string
+	thumbprint         string
+	passwordStdin      bool
+	proxyPasswordStdin bool
+	skipTest           bool
+	force              bool
+	setCurrent         bool
 }
 
 func (f *contextFlags) register(cmd *cobra.Command) {
@@ -59,13 +61,15 @@ func (f *contextFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.username, "username", "", "vCenter username, e.g. administrator@vsphere.local")
 	fl.StringVar(&f.credential, "credential", "", "credential reference: keyring:<key> or prompt")
 	fl.StringVar(&f.datacenter, "datacenter", "", "default datacenter for inventory queries")
-	fl.StringVar(&f.transport, "transport", "", "network route: direct or socks5")
-	fl.StringVar(&f.socksAddress, "socks-address", "", "SOCKS5 proxy address, host:port")
-	fl.StringVar(&f.socksUser, "socks-username", "", "username for a SOCKS5 proxy that requires authentication")
-	fl.BoolVar(&f.remoteDNS, "remote-dns", false, "resolve the vCenter hostname at the SOCKS5 proxy")
+	fl.StringVar(&f.transport, "transport", "", "network route: direct, socks5, http or https")
+	fl.StringVar(&f.proxyAddress, "proxy-address", "", "proxy address for socks5/http/https, host:port")
+	fl.StringVar(&f.proxyUsername, "proxy-username", "", "username for a proxy that requires authentication")
+	fl.StringVar(&f.proxyCredential, "proxy-credential", "", "credential reference for the proxy password: keyring:<key> (default keyring:<name>-proxy)")
+	fl.BoolVar(&f.remoteDNS, "remote-dns", false, "resolve the vCenter hostname at the proxy (socks5 only; http and https always do)")
 	fl.StringVar(&f.tlsMode, "tls", "", "certificate policy: system, thumbprint or insecure")
 	fl.StringVar(&f.thumbprint, "thumbprint", "", "certificate fingerprint to pin; with --tls thumbprint and no value, the presented certificate is fetched")
 	fl.BoolVar(&f.passwordStdin, "password-stdin", false, "read the password from standard input")
+	fl.BoolVar(&f.proxyPasswordStdin, "proxy-password-stdin", false, "read the proxy password from standard input, after the vCenter password if both are piped in")
 	fl.BoolVar(&f.skipTest, "no-test", false, "save without testing the connection")
 	fl.BoolVar(&f.force, "force", false, "replace an existing context of the same name")
 	fl.BoolVar(&f.setCurrent, "use", false, "make this the current context")
@@ -109,8 +113,8 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		Datacenter: f.datacenter,
 		Transport: config.TransportConfig{
 			Type:      f.transport,
-			Address:   f.socksAddress,
-			Username:  f.socksUser,
+			Address:   f.proxyAddress,
+			Username:  f.proxyUsername,
 			RemoteDNS: f.remoteDNS,
 		},
 		TLS: config.TLSConfig{Mode: f.tlsMode, Thumbprint: f.thumbprint},
@@ -125,6 +129,15 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		}
 		password, havePassword = s, true
 	}
+	var proxyPassword string
+	var haveProxyPassword bool
+	if f.proxyPasswordStdin {
+		s, err := p.ReadSecret("")
+		if err != nil {
+			return err
+		}
+		proxyPassword, haveProxyPassword = s, true
+	}
 
 	if interactive {
 		if err := runAddWizard(a, cc, f); err != nil {
@@ -137,6 +150,13 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 			}
 			password, havePassword = s, true
 		}
+		if cc.Transport.Username != "" && !haveProxyPassword {
+			s, err := p.ReadSecret(fmt.Sprintf("Password for proxy user %s: ", cc.Transport.Username))
+			if err != nil {
+				return err
+			}
+			proxyPassword, haveProxyPassword = s, true
+		}
 	}
 
 	var credRef credentials.Ref
@@ -146,6 +166,14 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 			return err
 		}
 		credRef = ref
+	}
+	var proxyCredRef credentials.Ref
+	if f.proxyCredential != "" {
+		ref, err := credentials.ParseRef(f.proxyCredential)
+		if err != nil {
+			return err
+		}
+		proxyCredRef = ref
 	}
 	// A pinned context with no fingerprint yet: fetch what the server presents
 	// so the operator can look at it before trusting it. This runs before
@@ -160,6 +188,7 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		Name: cc.Name, Endpoint: cc.Endpoint, Username: cc.Username, Datacenter: cc.Datacenter,
 		Transport: cc.Transport, TLS: cc.TLS, Credential: credRef,
 		Password: password, HavePassword: havePassword,
+		ProxyCredential: proxyCredRef, ProxyPassword: proxyPassword, HaveProxyPassword: haveProxyPassword,
 		Replace: f.force, SaveOnTestFailure: f.force, SetCurrent: f.setCurrent,
 	}
 
@@ -184,8 +213,8 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		return err
 	}
 	if res.StoreWarning != nil {
-		fmt.Fprintf(a.errOut(), "warning: could not store the password (%v)\n", res.StoreWarning)
-		fmt.Fprintf(a.errOut(), "vctui will ask for it on each run. Set credential = \"prompt\" to make that explicit.\n")
+		fmt.Fprintf(a.errOut(), "warning: %v\n", res.StoreWarning)
+		fmt.Fprintf(a.errOut(), "vctui will ask for it on each run. Set the credential to \"prompt\" to make that explicit.\n")
 	}
 	fmt.Fprintf(a.out(), "Saved context %q to %s\n", res.Context.Name, cfg.Path())
 	return nil
@@ -268,18 +297,23 @@ func runAddWizard(a *App, cc *config.Context, f *contextFlags) error {
 		return err
 	}
 	if f.transport == "" {
-		if cc.Transport.Type, err = choose("Connection", []string{config.TransportDirect, config.TransportSOCKS5}, config.TransportDirect); err != nil {
+		if cc.Transport.Type, err = choose("Connection", []string{
+			config.TransportDirect, config.TransportSOCKS5, config.TransportHTTPProxy, config.TransportHTTPSProxy,
+		}, config.TransportDirect); err != nil {
 			return err
 		}
 	}
-	if cc.Transport.Type == config.TransportSOCKS5 {
-		if cc.Transport.Address, err = ask("SOCKS5 address", firstNonEmpty(cc.Transport.Address, "127.0.0.1:1080"), true); err != nil {
+	if cc.Transport.Type != config.TransportDirect {
+		if cc.Transport.Address, err = ask("Proxy address", firstNonEmpty(cc.Transport.Address, "127.0.0.1:1080"), true); err != nil {
 			return err
 		}
-		if !f.remoteDNS {
+		if cc.Transport.Type == config.TransportSOCKS5 && !f.remoteDNS {
 			if cc.Transport.RemoteDNS, err = yes("Resolve DNS through the proxy?", true); err != nil {
 				return err
 			}
+		}
+		if cc.Transport.Username, err = ask("Proxy username (optional)", cc.Transport.Username, false); err != nil {
+			return err
 		}
 	}
 	if f.tlsMode == "" {
@@ -414,6 +448,10 @@ func newContextShowCommand(a *App) *cobra.Command {
 			f.add("Credential", dash(c.Credential.String()))
 			f.add("Datacenter", c.Datacenter)
 			f.add("Route", c.Transport.Describe())
+			if c.Transport.Username != "" {
+				f.add("Proxy username", c.Transport.Username)
+				f.add("Proxy credential", dash(c.Transport.Credential.String()))
+			}
 			f.add("TLS", c.TLS.Describe())
 			f.add("Thumbprint", c.TLS.Thumbprint)
 			f.flush()

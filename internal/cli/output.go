@@ -8,6 +8,8 @@ import (
 	"strings"
 	"text/tabwriter"
 	"time"
+
+	"github.com/easonliuuuuu/vc-tui/internal/humanize"
 )
 
 // Output formats.
@@ -73,67 +75,15 @@ func (f *fields) add(label, value string) {
 
 func (f *fields) flush() { _ = f.w.Flush() }
 
-// humanMB renders a memory size the way an operator says it out loud: 32G,
-// not 32768.
-func humanMB(mb int64) string {
-	switch {
-	case mb <= 0:
-		return "-"
-	case mb >= 1<<20 && mb%(1<<20) == 0:
-		return strconv.FormatInt(mb/(1<<20), 10) + "T"
-	case mb >= 1024:
-		g := float64(mb) / 1024
-		if g == float64(int64(g)) {
-			return strconv.FormatInt(int64(g), 10) + "G"
-		}
-		return strconv.FormatFloat(g, 'f', 1, 64) + "G"
-	default:
-		return strconv.FormatInt(mb, 10) + "M"
-	}
-}
+// The rendering rules live in internal/humanize because the terminal UI has
+// to produce identical figures; these are the names the commands read with.
+func humanMB(mb int64) string { return humanize.MB(mb) }
 
-// humanBytes renders a storage size with binary units.
-func humanBytes(b int64) string {
-	if b <= 0 {
-		return "-"
-	}
-	const unit = 1024
-	units := []string{"K", "M", "G", "T", "P"}
-	if b < unit {
-		return strconv.FormatInt(b, 10) + "B"
-	}
-	div, exp := int64(unit), 0
-	for n := b / unit; n >= unit && exp < len(units)-1; n /= unit {
-		div *= unit
-		exp++
-	}
-	v := float64(b) / float64(div)
-	if v >= 100 {
-		return strconv.FormatFloat(v, 'f', 0, 64) + units[exp]
-	}
-	return strconv.FormatFloat(v, 'f', 1, 64) + units[exp]
-}
+func humanBytes(b int64) string { return humanize.Bytes(b) }
 
-// humanDuration renders a latency in the unit that keeps it readable.
-func humanDuration(d time.Duration) string {
-	switch {
-	case d <= 0:
-		return "-"
-	case d < time.Millisecond:
-		return strconv.FormatInt(d.Microseconds(), 10) + " us"
-	case d < time.Second:
-		return strconv.FormatInt(d.Milliseconds(), 10) + " ms"
-	default:
-		return strconv.FormatFloat(d.Seconds(), 'f', 2, 64) + " s"
-	}
-}
+func humanDuration(d time.Duration) string { return humanize.Duration(d) }
 
-func dash(s string) string {
-	if strings.TrimSpace(s) == "" {
-		return "-"
-	}
-	return s
-}
+func dash(s string) string { return humanize.Dash(s) }
 
 func itoa(n int) string { return strconv.Itoa(n) }
 

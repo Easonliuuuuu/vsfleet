@@ -403,7 +403,7 @@ func TestReloadRefetches(t *testing.T) {
 // dropping detail from the right rather than by squeezing names into nothing.
 func TestNarrowTerminalKeepsTheNameColumn(t *testing.T) {
 	cols := columnsFor(vsphere.KindVM, false)
-	widths := layoutColumns(cols, 40)
+	widths := layoutColumns(cols, 40-glyphGutter)
 
 	if widths[0] < minNameWidth {
 		t.Errorf("name column is %d wide, want at least %d", widths[0], minNameWidth)
@@ -422,7 +422,7 @@ func TestNarrowTerminalKeepsTheNameColumn(t *testing.T) {
 	if drawn == len(cols) {
 		t.Error("a 40 column terminal should have dropped something")
 	}
-	if width := total + cellGap*(drawn-1); width > 40 {
+	if width := glyphGutter + total + cellGap*(drawn-1); width > 40 {
 		t.Errorf("laid out %d columns of total width %d in 40 columns", drawn, width)
 	}
 }

@@ -7,7 +7,7 @@
   "bump-minor-pre-major": true,
   "packages": {
     ".": {
-      "component": "vctui"
+      "component": "vcfleet"
     }
   }
 }

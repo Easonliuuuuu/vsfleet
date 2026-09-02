@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vc-tui/internal/search"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/search"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 func newSearchCommand(a *App) *cobra.Command {

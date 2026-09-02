@@ -1,4 +1,4 @@
-module github.com/easonliuuuuu/vc-tui
+module github.com/easonliuuuuu/vcfleet
 
 go 1.25.0
 

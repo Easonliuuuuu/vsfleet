@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/easonliuuuuu/vc-tui/internal/credentials"
+	"github.com/easonliuuuuu/vcfleet/internal/credentials"
 )
 
 // Fixture values, not credentials. These tests never reach a real secret

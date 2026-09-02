@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
-	"github.com/easonliuuuuu/vc-tui/internal/contextops"
-	"github.com/easonliuuuuu/vc-tui/internal/credentials"
-	"github.com/easonliuuuuu/vc-tui/internal/session"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/contextops"
+	"github.com/easonliuuuuu/vcfleet/internal/credentials"
+	"github.com/easonliuuuuu/vcfleet/internal/session"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 // Backend is everything the interface needs from the rest of the program.

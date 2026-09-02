@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
-	"github.com/easonliuuuuu/vc-tui/internal/credentials"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/credentials"
 )
 
 // DefaultDialTimeout bounds a single TCP connect.

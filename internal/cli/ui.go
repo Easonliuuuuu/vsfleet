@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vc-tui/internal/tui"
-	"github.com/easonliuuuuu/vc-tui/internal/uistate"
+	"github.com/easonliuuuuu/vcfleet/internal/tui"
+	"github.com/easonliuuuuu/vcfleet/internal/uistate"
 )
 
 func newUICommand(a *App) *cobra.Command {
@@ -20,10 +20,10 @@ reachable, and the resource tabs show one kind at a time for the selected
 context or, with --all-contexts, for the whole estate at once.
 
 With no contexts configured yet, this opens straight into the setup form
-instead of asking you to run "vctui context add" first.
+instead of asking you to run "vcfleet context add" first.
 
 The context, resource tab and sort order are remembered between runs, so
-closing vctui and opening it again picks up where you left off. --context
+closing vcfleet and opening it again picks up where you left off. --context
 overrides the remembered context for this run without changing what gets
 remembered next time.
 
@@ -36,8 +36,8 @@ ask the same questions, not a second implementation of them.`,
 	}
 }
 
-// runUI is also what a bare "vctui" runs: the terminal interface is the
-// product's front door, and "vctui ui" is kept as an explicit, memorable
+// runUI is also what a bare "vcfleet" runs: the terminal interface is the
+// product's front door, and "vcfleet ui" is kept as an explicit, memorable
 // alias for it.
 func runUI(a *App, cmd *cobra.Command) error {
 	cfg, err := a.Config()

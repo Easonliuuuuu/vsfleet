@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/net/proxy"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
 )
 
 // SOCKS5 routes connections through a SOCKS5 proxy, optionally resolving the

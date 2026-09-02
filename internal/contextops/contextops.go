@@ -10,9 +10,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
-	"github.com/easonliuuuuu/vc-tui/internal/credentials"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/credentials"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 // Input is every field a context needs, already resolved to concrete values.

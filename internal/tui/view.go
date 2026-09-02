@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/easonliuuuuu/vc-tui/internal/humanize"
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/humanize"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 // Layout constants. The interface is built for an 80x24 terminal on a jump
@@ -97,7 +97,7 @@ func (m *Model) viewHeader() string {
 	if m.pendingScope() {
 		summary += " · " + m.spin.View() + "loading"
 	}
-	left := t.title.Render("vctui") + "  " + scope + t.dim.Render("  ·  "+summary)
+	left := t.title.Render("vcfleet") + "  " + scope + t.dim.Render("  ·  "+summary)
 	return truncate(left, m.width)
 }
 
@@ -324,7 +324,7 @@ func (m *Model) viewDetail() []string {
 }
 
 // viewDoctor renders a connection diagnosis stage by stage, which is the same
-// walk "vctui doctor" prints.
+// walk "vcfleet doctor" prints.
 func (m *Model) viewDoctor() []string {
 	t := m.theme
 	st := m.current()
@@ -501,7 +501,7 @@ func (m *Model) viewHelp() []string {
 		lines = append(lines, "")
 	}
 	lines = append(lines,
-		"  "+t.dim.Render("Every view here is also a command: vctui vm list, vctui search, vctui doctor."))
+		"  "+t.dim.Render("Every view here is also a command: vcfleet vm list, vcfleet search, vcfleet doctor."))
 	return scrollLines(lines, 0, m.bodyHeight())
 }
 

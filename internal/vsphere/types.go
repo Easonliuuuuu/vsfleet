@@ -46,7 +46,7 @@ func ParseKind(s string) (Kind, error) {
 // Location says where in the world an object lives. Every domain object embeds
 // it, because with several vCenters in play "which one" is part of identity.
 type Location struct {
-	// Context is the vctui context name, i.e. which vCenter.
+	// Context is the vcfleet context name, i.e. which vCenter.
 	Context string `json:"context"`
 	// Datacenter is the vSphere datacenter the object belongs to.
 	Datacenter string `json:"datacenter"`

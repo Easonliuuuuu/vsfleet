@@ -1,21 +1,21 @@
-# vctui
+# vcfleet
 
 **Operate all your vCenters from one terminal.**
 
-vctui treats every vCenter as a named context, the way `kubectl` treats clusters
+vcfleet treats every vCenter as a named context, the way `kubectl` treats clusters
 and the AWS CLI treats profiles. Each context carries its own endpoint,
 credential reference, network route and TLS policy — so a lab you reach
 directly and a customer vCenter that only exists behind a SOCKS5 bastion work
 side by side, in one process, without exporting anything.
 
 ```
-$ vctui context list
+$ vcfleet context list
     NAME         ENDPOINT                            USERNAME                      ROUTE                              TLS
 *   prod         https://vcsa.prod.internal          svc-ops@vsphere.local         Direct                             thumbprint
     customer-a   https://vcsa.customer-a.internal    operator@vsphere.local        SOCKS5 -> 127.0.0.1:1080 (remote DNS)   thumbprint
     lab          https://10.20.30.10                 administrator@vsphere.local   Direct                             insecure
 
-$ vctui context test customer-a
+$ vcfleet context test customer-a
 Context: customer-a
   Endpoint  https://vcsa.customer-a.internal
   Route     SOCKS5 -> 127.0.0.1:1080 (remote DNS)
@@ -26,7 +26,7 @@ Context: customer-a
   Latency   67 ms
 Connection successful.
 
-$ vctui search ubuntu-24
+$ vcfleet search ubuntu-24
 VCENTER      TYPE       NAME                  DATACENTER   PATH
 customer-a   template   ubuntu-24.04-golden   Frankfurt    /Frankfurt/vm/Templates/ubuntu-24.04-golden
 lab          template   ubuntu-24-test        Lab          /Lab/vm/ubuntu-24-test
@@ -47,7 +47,7 @@ The usual workflow is: remember the address, remember the route, start the
 tunnel, find the password, open a browser, click through the certificate
 warning, log in, and only then start looking for the thing you came for.
 
-vctui replaces that with one command per question.
+vcfleet replaces that with one command per question.
 
 ## What it does today
 
@@ -77,9 +77,9 @@ vctui replaces that with one command per question.
 - **Failure isolation.** A dead proxy, an expired password or a rotated
   certificate in one environment costs one line of output. Everything else
   still answers.
-- **Diagnostics that name the fault.** `vctui doctor` walks the connection one
+- **Diagnostics that name the fault.** `vcfleet doctor` walks the connection one
   stage at a time and stops at the first real problem.
-- **A terminal interface that opens by default.** Run `vctui` and it puts
+- **A terminal interface that opens by default.** Run `vcfleet` and it puts
   every configured vCenter in a sidebar, one resource kind per tab, and a
   detail pane on any row. With no contexts yet, it opens straight into adding
   one instead of sending you to read this file first. It shows nothing the
@@ -98,7 +98,7 @@ change anything.
 ## Install
 
 ```sh
-go install github.com/easonliuuuuu/vc-tui/cmd/vctui@latest
+go install github.com/easonliuuuuu/vcfleet/cmd/vcfleet@latest
 ```
 
 Requires Go 1.25 or newer to build.
@@ -106,7 +106,7 @@ Requires Go 1.25 or newer to build.
 ## Getting started
 
 ```sh
-vctui
+vcfleet
 ```
 
 That's it. With no configuration file yet, this opens straight into adding
@@ -120,10 +120,10 @@ The command line does the same work for scripting and provisioning:
 ```sh
 # Interactive: asks for the endpoint, route, certificate policy and password,
 # tests the connection, and only then saves.
-vctui context add
+vcfleet context add
 
 # Unattended, for a provisioning script.
-vctui context add \
+vcfleet context add \
   --name customer-a \
   --endpoint https://vcsa.customer-a.internal \
   --username operator@vsphere.local \
@@ -140,7 +140,7 @@ password is read first and the proxy password second — one per line:
 
 ```sh
 printf '%s\n%s\n' "$VCENTER_PASSWORD" "$PROXY_PASSWORD" | \
-vctui context add \
+vcfleet context add \
   --name customer-b \
   --endpoint https://vcsa.customer-b.internal \
   --username operator@vsphere.local \
@@ -156,31 +156,31 @@ server presents and shows it to you before pinning it.
 Then:
 
 ```sh
-vctui context list
-vctui context test customer-a
-vctui status                       # every context, connection state and latency
-vctui doctor customer-a            # stage-by-stage diagnosis
+vcfleet context list
+vcfleet context test customer-a
+vcfleet status                       # every context, connection state and latency
+vcfleet doctor customer-a            # stage-by-stage diagnosis
 
-vctui vm list --context prod
-vctui template list --all-contexts
-vctui datastore list --all-contexts
-vctui host list --context prod -f esxi-07
-vctui search ubuntu-24
-vctui search nvme --kind datastore -o json
+vcfleet vm list --context prod
+vcfleet template list --all-contexts
+vcfleet datastore list --all-contexts
+vcfleet host list --context prod -f esxi-07
+vcfleet search ubuntu-24
+vcfleet search nvme --kind datastore -o json
 
-vctui                               # the same estate, interactively
-vctui ui --all-contexts             # an explicit alias, open with every vCenter merged
+vcfleet                               # the same estate, interactively
+vcfleet ui --all-contexts             # an explicit alias, open with every vCenter merged
 ```
 
 ## The terminal interface
 
-`vctui` — or, spelled out, `vctui ui` — opens the estate rather than one
+`vcfleet` — or, spelled out, `vcfleet ui` — opens the estate rather than one
 vCenter. The sidebar lists every configured context whether or not it
 answers, the tabs are the resource kinds, and `a` widens the table from the
 selected vCenter to all of them at once.
 
 ```
-vctui  all 3 vCenters  ·  2 connected · 1 failed
+vcfleet  all 3 vCenters  ·  2 connected · 1 failed
 ────────────────────────────────────────────────────────────────────────────────
 CONTEXTS                   VMs 214   Templates 18   Hosts 22   Clusters 4   ...
  ✕ customer-a              ─────────────────────────────────────────────────────
@@ -225,9 +225,9 @@ tab's results with it.
 | `q` | Quit |
 
 Adding or editing a context opens a form over the same fields
-`vctui context add` asks for — endpoint, username, credential, route, TLS
+`vcfleet context add` asks for — endpoint, username, credential, route, TLS
 policy — with a **Test connection** row that runs the identical stage-by-stage
-diagnosis `vctui doctor` prints, and a **Discover from the server** action next
+diagnosis `vcfleet doctor` prints, and a **Discover from the server** action next
 to the thumbprint field for trust-on-first-use pinning. A test that fails
 blocks saving once; pressing the now-relabelled **Save anyway** goes through
 regardless, for an operator who wants to fix the fault after saving rather
@@ -235,7 +235,7 @@ than before. Deleting asks once, names the stored password explicitly, and
 defaults to removing it along with the context.
 
 The context, resource tab and sort order are remembered between runs — in
-`~/.config/vctui/state.json` (`VCTUI_STATE` to override), never in
+`~/.config/vcfleet/state.json` (`VCFLEET_STATE` to override), never in
 `config.toml`, which stays exactly what it says it is: contexts, not
 scratch UI state. `--context` overrides the remembered context for one run
 without changing what gets remembered next time.
@@ -250,10 +250,10 @@ is why it was built last.
 
 ## Configuration
 
-`vctui context add` writes the file for you; this is what it looks like. The
+`vcfleet context add` writes the file for you; this is what it looks like. The
 location is the platform user configuration directory
-(`~/.config/vctui/config.toml` on Linux), overridable with `--config` or
-`VCTUI_CONFIG`. It is written atomically with `0600` permissions.
+(`~/.config/vcfleet/config.toml` on Linux), overridable with `--config` or
+`VCFLEET_CONFIG`. It is written atomically with `0600` permissions.
 
 ```toml
 version = 1
@@ -307,7 +307,7 @@ thumbprint = "4C:3D:58:C2:80:EA:08:A0:67:53:79:A8:D5:3B:7C:77:6A:8A:40:EE:D1:80:
 
 | Reference | Meaning |
 |---|---|
-| `keyring:<key>` | Read from the OS secret store under service `vctui` |
+| `keyring:<key>` | Read from the OS secret store under service `vcfleet` |
 | `prompt` | Ask on each run; store nothing |
 
 No form of this file ever contains a password.
@@ -343,7 +343,7 @@ rest of the program through one small interface, which is also how its model is
 driven in tests with no vCenter present.
 
 ```
-                       cmd/vctui  ──►  internal/cli  ──►  internal/tui
+                       cmd/vcfleet  ──►  internal/cli  ──►  internal/tui
                                             │                  │
                                             └────────┬─────────┘
                                                      │
@@ -462,7 +462,7 @@ can operate without learning the CLI subcommand tree first.
 
 | Area | Objective | Status |
 |---|---|---|
-| Entry experience | `vctui` opens the interface directly; add/edit/test/delete a context from inside it; remember the last context, tab and sort mode | **done** |
+| Entry experience | `vcfleet` opens the interface directly; add/edit/test/delete a context from inside it; remember the last context, tab and sort mode | **done** |
 | Proxy support | Direct, SOCKS5, HTTP and HTTPS routes; SOCKS5 remote DNS; unauthenticated and basic-auth proxies; passwords only ever in the keyring; explicit TLS modes; never inherit `HTTP_PROXY`/`HTTPS_PROXY` | **done** |
 | Diagnostics and test coverage | `doctor` distinguishing proxy reachability, proxy auth, DNS/routing, CONNECT, proxy TLS, vCenter TLS, vCenter auth and API access; integration tests per route; graceful behaviour against unreachable contexts and limited-permission accounts | **done** — every stage named on its own, every route has offline and, where applicable, auth-failure tests; an unreachable context among several and a limited-permission account within one are both isolated to the smallest thing that actually failed |
 | Responsive inventory loading | A shared cache outside the interface; the selected context first, others concurrently, bounded; stale-while-revalidate; per-context refresh timestamps and errors; the keyboard never blocks on the network | **done** — including a limited-permission account's inventory coming back partial rather than empty |
@@ -471,7 +471,7 @@ can operate without learning the CLI subcommand tree first.
 
 ### Definition of done
 
-A new user can install vctui, run `vctui`, configure a direct or proxied
+A new user can install vcfleet, run `vcfleet`, configure a direct or proxied
 vCenter entirely inside the interface, inspect all supported inventory,
 search across contexts, and keep using the contexts that are healthy or
 cached when another one fails.

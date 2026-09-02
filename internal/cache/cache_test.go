@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/easonliuuuuu/vc-tui/internal/vsphere"
+	"github.com/easonliuuuuu/vcfleet/internal/vsphere"
 )
 
 func TestGetOnAnUnknownContextIsNotLoaded(t *testing.T) {

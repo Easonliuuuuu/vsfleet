@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/easonliuuuuu/vc-tui/internal/config"
-	"github.com/easonliuuuuu/vc-tui/internal/transport"
+	"github.com/easonliuuuuu/vcfleet/internal/config"
+	"github.com/easonliuuuuu/vcfleet/internal/transport"
 )
 
 func TestNewDirect(t *testing.T) {

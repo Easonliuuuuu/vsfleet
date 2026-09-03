@@ -432,6 +432,93 @@ func TestFilterNarrowsTheTable(t *testing.T) {
 	}
 }
 
+func TestFocusedFilterControls(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "/")
+	typeText(t, m, "q")
+	if got := m.filter.Value(); got != "q" {
+		t.Fatalf("typing q into the focused filter produced %q, want q", got)
+	}
+	if m.quitting {
+		t.Fatal("typing q into the focused filter must not quit")
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c in the focused filter should return tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("ctrl+c in the focused filter should quit the program")
+	}
+	if !m.quitting {
+		t.Fatal("ctrl+c in the focused filter should set quitting")
+	}
+}
+
+func TestFocusedFilterEscapeClearsLocalFilter(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "/")
+	typeText(t, m, "build")
+	press(t, m, "esc")
+
+	if m.mode != modeBrowse {
+		t.Fatalf("esc from a focused local filter should stay in browse mode, got %v", m.mode)
+	}
+	if m.filtering {
+		t.Fatal("esc should leave the local filter input")
+	}
+	if got := m.filter.Value(); got != "" {
+		t.Errorf("esc should clear the local filter, got %q", got)
+	}
+	if got := len(m.rows()); got != 2 {
+		t.Errorf("esc should restore all local rows, got %d", got)
+	}
+}
+
+func TestFocusedSearchControls(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "tab")
+	if m.mode != modeSearch || !m.filtering {
+		t.Fatalf("tab should open a focused estate search, mode=%v filtering=%v", m.mode, m.filtering)
+	}
+	typeText(t, m, "q")
+	if got := m.filter.Value(); got != "q" {
+		t.Fatalf("typing q into the focused search produced %q, want q", got)
+	}
+
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c in the focused search should return tea.Quit")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok {
+		t.Fatal("ctrl+c in the focused search should quit the program")
+	}
+	if !m.quitting {
+		t.Fatal("ctrl+c in the focused search should set quitting")
+	}
+}
+
+func TestFocusedSearchEscapeReturnsToBrowse(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "tab")
+	typeText(t, m, "ubuntu")
+	press(t, m, "esc")
+
+	if m.mode != modeBrowse {
+		t.Fatalf("one esc from a focused estate search should return to browse, got %v", m.mode)
+	}
+	if m.filtering {
+		t.Fatal("esc should leave the estate search input")
+	}
+	if got := m.filter.Value(); got != "ubuntu" {
+		t.Errorf("leaving estate search should preserve the shared query, got %q", got)
+	}
+}
+
 func TestAllContextsMergesAndLabelsRows(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 

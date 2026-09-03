@@ -9,6 +9,7 @@ import (
 
 	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
@@ -30,6 +31,16 @@ func newSimulator(t *testing.T, tune func(*simulator.Model)) (*vsphere.Client, *
 	}
 	t.Cleanup(model.Remove)
 
+	gc, endpoint := dialSimulator(t, model)
+	return clientFor(gc, endpoint, ""), model.Service.FaultInjector()
+}
+
+// dialSimulator starts model's server and connects to it, without wrapping
+// the connection in a vsphere.Client — for a test that needs more than one
+// Client, at different Context.Datacenter scopes, against the same running
+// simulator.
+func dialSimulator(t *testing.T, model *simulator.Model) (*govmomi.Client, string) {
+	t.Helper()
 	server := model.Service.NewServer()
 	t.Cleanup(server.Close)
 
@@ -39,15 +50,18 @@ func newSimulator(t *testing.T, tune func(*simulator.Model)) (*vsphere.Client, *
 		t.Fatalf("connect to simulator: %v", err)
 	}
 	t.Cleanup(func() { _ = gc.Logout(context.Background()) })
+	return gc, server.URL.String()
+}
 
+// clientFor wraps an existing simulator connection in a vsphere.Client
+// scoped to datacenter ("" for the whole vCenter).
+func clientFor(gc *govmomi.Client, endpoint, datacenter string) *vsphere.Client {
 	cc := &config.Context{
-		Name:     "sim",
-		Endpoint: server.URL.String(),
-		Username: "user",
-		TLS:      config.TLSConfig{Mode: config.TLSInsecure},
+		Name: "sim", Endpoint: endpoint, Username: "user", Datacenter: datacenter,
+		TLS: config.TLSConfig{Mode: config.TLSInsecure},
 	}
 	cc.Normalize()
-	return vsphere.NewClientForTest(cc, gc), model.Service.FaultInjector()
+	return vsphere.NewClientForTest(cc, gc)
 }
 
 func TestListInventory(t *testing.T) {
@@ -316,5 +330,134 @@ func TestStageTrackerReflectsListInventoryProgress(t *testing.T) {
 	}
 	if got := tracker.Current(); got != vsphere.StageLoadingNetworks {
 		t.Fatalf("tracker.Current() = %q, want %q", got, vsphere.StageLoadingNetworks)
+	}
+}
+
+// twoDatacenterModel builds a vcsim model with two independent datacenters,
+// DC0 and DC1, each with its own cluster, host, VM and datastore — vcsim
+// names everything under a datacenter with that datacenter's name as a
+// prefix (DC0_H0, DC0_H0_VM0, ...), which is what the tests below use to
+// tell one datacenter's objects apart from the other's.
+func twoDatacenterModel(t *testing.T) *simulator.Model {
+	t.Helper()
+	model := simulator.VPX()
+	model.Datacenter = 2
+	model.Cluster = 1
+	model.ClusterHost = 1
+	model.Machine = 1
+	model.Datastore = 1
+	if err := model.Create(); err != nil {
+		t.Fatalf("create simulator model: %v", err)
+	}
+	t.Cleanup(model.Remove)
+	return model
+}
+
+// TestListInventoryScopesToConfiguredDatacenter covers issue #29's
+// datacenter-scoping requirement: a context with Context.Datacenter set only
+// ever sees that datacenter's objects, across every resource kind, and
+// nothing from the other one configured in the same vCenter.
+func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
+	model := twoDatacenterModel(t)
+	gc, endpoint := dialSimulator(t, model)
+	c := clientFor(gc, endpoint, "DC0")
+
+	inv, err := c.ListInventory(context.Background())
+	if err != nil {
+		t.Fatalf("ListInventory: %v", err)
+	}
+	if len(inv.VMs) == 0 || len(inv.Hosts) == 0 || len(inv.Clusters) == 0 ||
+		len(inv.Datastores) == 0 || len(inv.Networks) == 0 {
+		t.Fatalf("expected every kind to have at least one DC0 object, got %s", inv.Counts())
+	}
+
+	check := func(kind string, names []string) {
+		t.Helper()
+		for _, n := range names {
+			if strings.HasPrefix(n, "DC1") {
+				t.Errorf("%s leaked a DC1 object into a DC0-scoped inventory: %q", kind, n)
+			}
+		}
+	}
+	var vmNames, hostNames, clusterNames, dsNames, netNames []string
+	for _, vm := range inv.VMs {
+		vmNames = append(vmNames, vm.Name)
+		if vm.Datacenter != "DC0" {
+			t.Errorf("vm %s has datacenter %q, want DC0", vm.Name, vm.Datacenter)
+		}
+	}
+	for _, h := range inv.Hosts {
+		hostNames = append(hostNames, h.Name)
+	}
+	for _, cl := range inv.Clusters {
+		clusterNames = append(clusterNames, cl.Name)
+	}
+	for _, ds := range inv.Datastores {
+		dsNames = append(dsNames, ds.Name)
+	}
+	for _, n := range inv.Networks {
+		netNames = append(netNames, n.Name)
+	}
+	check("vm", vmNames)
+	check("host", hostNames)
+	check("cluster", clusterNames)
+	check("datastore", dsNames)
+	check("network", netNames)
+
+	// The single-kind listers thread the same scoping through idx.root, not
+	// only ListInventory's own path — "vsfleet host list" must be scoped the
+	// same way "vsfleet ui" is.
+	hosts, err := c.ListHosts(context.Background())
+	if err != nil {
+		t.Fatalf("ListHosts: %v", err)
+	}
+	for _, h := range hosts {
+		if strings.HasPrefix(h.Name, "DC1") {
+			t.Errorf("ListHosts leaked a DC1 host into a DC0-scoped client: %q", h.Name)
+		}
+	}
+}
+
+// TestListInventoryUnknownDatacenterFails checks the other acceptance
+// criterion: a missing or misspelled datacenter is an explicit configuration
+// error, never a silent fall back to the vCenter-wide root.
+func TestListInventoryUnknownDatacenterFails(t *testing.T) {
+	model := twoDatacenterModel(t)
+	gc, endpoint := dialSimulator(t, model)
+	c := clientFor(gc, endpoint, "does-not-exist")
+
+	_, err := c.ListInventory(context.Background())
+	if err == nil {
+		t.Fatal("ListInventory should have failed: the configured datacenter does not exist")
+	}
+	if !strings.Contains(err.Error(), "does-not-exist") {
+		t.Errorf("error should name the missing datacenter, got: %v", err)
+	}
+}
+
+// TestListInventoryAmbiguousDatacenterFails covers the other configuration
+// error the issue calls for: vSphere only requires a datacenter's name to be
+// unique within its parent folder, not across the whole vCenter, so two
+// datacenters can legitimately share a name. Resolving one by name alone
+// must fail rather than silently pick one of them.
+func TestListInventoryAmbiguousDatacenterFails(t *testing.T) {
+	model := twoDatacenterModel(t)
+	gc, endpoint := dialSimulator(t, model)
+	ctx := context.Background()
+
+	root := object.NewRootFolder(gc.Client)
+	extra, err := root.CreateFolder(ctx, "Extra")
+	if err != nil {
+		t.Fatalf("create folder: %v", err)
+	}
+	if _, err := extra.CreateDatacenter(ctx, "DC0"); err != nil {
+		t.Fatalf("create duplicate datacenter: %v", err)
+	}
+
+	c := clientFor(gc, endpoint, "DC0")
+	if _, err := c.ListInventory(ctx); err == nil {
+		t.Fatal("ListInventory should have failed: two datacenters share the name DC0")
+	} else if !strings.Contains(err.Error(), "DC0") || !strings.Contains(err.Error(), "ambiguous") {
+		t.Errorf("error should say the datacenter reference is ambiguous and name it, got: %v", err)
 	}
 }

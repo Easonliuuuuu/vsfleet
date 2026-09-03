@@ -22,7 +22,7 @@ func (c *Client) ListNetworks(ctx context.Context) ([]Network, error) {
 
 func (c *Client) listNetworks(ctx context.Context, idx *index) ([]Network, error) {
 	var raw []mo.Network
-	if err := retrieve(ctx, c, networkKinds, []string{"Network"}, networkProps, &raw); err != nil {
+	if err := retrieve(ctx, c, idx.root, networkKinds, []string{"Network"}, networkProps, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]Network, 0, len(raw))

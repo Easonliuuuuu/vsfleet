@@ -25,10 +25,10 @@ func (c *Client) ListClusters(ctx context.Context) ([]Cluster, error) {
 
 func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error) {
 	var raw []mo.ComputeResource
-	if err := retrieve(ctx, c, computeResourceKinds, []string{"ComputeResource"}, clusterProps, &raw); err != nil {
+	if err := retrieve(ctx, c, idx.root, computeResourceKinds, []string{"ComputeResource"}, clusterProps, &raw); err != nil {
 		return nil, err
 	}
-	settings, err := c.clusterSettings(ctx)
+	settings, err := c.clusterSettings(ctx, idx.root)
 	if err != nil {
 		return nil, err
 	}
@@ -67,9 +67,9 @@ type clusterSetting struct{ drs, ha bool }
 
 // clusterSettings reads DRS and HA state, which only exists on the cluster
 // subtype and so cannot be part of the ComputeResource property set.
-func (c *Client) clusterSettings(ctx context.Context) (map[types.ManagedObjectReference]clusterSetting, error) {
+func (c *Client) clusterSettings(ctx context.Context, root types.ManagedObjectReference) (map[types.ManagedObjectReference]clusterSetting, error) {
 	var raw []mo.ClusterComputeResource
-	err := retrieve(ctx, c, []string{"ClusterComputeResource"}, []string{"ClusterComputeResource"}, []string{"configurationEx"}, &raw)
+	err := retrieve(ctx, c, root, []string{"ClusterComputeResource"}, []string{"ClusterComputeResource"}, []string{"configurationEx"}, &raw)
 	if err != nil {
 		return nil, err
 	}

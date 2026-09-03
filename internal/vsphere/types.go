@@ -16,12 +16,13 @@ const (
 	KindTemplate  Kind = "template"
 	KindHost      Kind = "host"
 	KindCluster   Kind = "cluster"
+	KindVApp      Kind = "vapp"
 	KindDatastore Kind = "datastore"
 	KindNetwork   Kind = "network"
 )
 
 // AllKinds lists every kind the inventory API can enumerate.
-var AllKinds = []Kind{KindVM, KindTemplate, KindHost, KindCluster, KindDatastore, KindNetwork}
+var AllKinds = []Kind{KindVM, KindTemplate, KindHost, KindCluster, KindDatastore, KindNetwork, KindVApp}
 
 // ParseKind maps a user-supplied string onto a Kind, tolerating plurals.
 func ParseKind(s string) (Kind, error) {
@@ -34,12 +35,14 @@ func ParseKind(s string) (Kind, error) {
 		return KindHost, nil
 	case "cluster", "clusters":
 		return KindCluster, nil
+	case "vapp", "vapps", "virtualapp", "virtualapps":
+		return KindVApp, nil
 	case "datastore", "datastores", "ds":
 		return KindDatastore, nil
 	case "network", "networks", "portgroup", "portgroups":
 		return KindNetwork, nil
 	default:
-		return "", fmt.Errorf("unknown resource kind %q (supported: vm, template, host, cluster, datastore, network)", s)
+		return "", fmt.Errorf("unknown resource kind %q (supported: vm, template, host, cluster, vapp, datastore, network)", s)
 	}
 }
 
@@ -115,6 +118,27 @@ type Cluster struct {
 	HAEnabled     bool   `json:"ha_enabled"`
 }
 
+// VApp is a logical vSphere application container. Membership fields contain
+// only direct children; nested vApps and resource pools are represented
+// separately so a detail view never mistakes descendants for direct members.
+type VApp struct {
+	Location
+	ID                     string   `json:"id"`
+	Name                   string   `json:"name"`
+	Status                 string   `json:"status"`
+	ParentContainer        string   `json:"parent_container"`
+	ParentVApp             string   `json:"parent_vapp,omitempty"`
+	DirectVMCount          int      `json:"direct_vm_count"`
+	DirectVMs              []string `json:"direct_vms"`
+	DirectVMRefs           []string `json:"direct_vm_refs,omitempty"`
+	ChildVAppCount         int      `json:"child_vapp_count"`
+	ChildVApps             []string `json:"child_vapps"`
+	ChildResourcePoolCount int      `json:"child_resource_pool_count"`
+	ChildResourcePools     []string `json:"child_resource_pools"`
+	Cluster                string   `json:"cluster"`
+	ComputeResource        string   `json:"compute_resource"`
+}
+
 // Datastore is a backing store for VM files.
 type Datastore struct {
 	Location
@@ -165,6 +189,7 @@ type Inventory struct {
 	Templates  []VM             `json:"templates"`
 	Hosts      []Host           `json:"hosts"`
 	Clusters   []Cluster        `json:"clusters"`
+	VApps      []VApp           `json:"vapps"`
 	Datastores []Datastore      `json:"datastores"`
 	Networks   []Network        `json:"networks"`
 	Errors     []InventoryError `json:"errors,omitempty"`
@@ -200,6 +225,8 @@ func (i *Inventory) Slice(group FetchGroup) *Inventory {
 		part.Hosts = i.Hosts
 	case GroupClusters:
 		part.Clusters = i.Clusters
+	case GroupVApps:
+		part.VApps = i.VApps
 	case GroupDatastores:
 		part.Datastores = i.Datastores
 	case GroupNetworks:
@@ -245,6 +272,8 @@ func (i *Inventory) ApplyGroup(group FetchGroup, part *Inventory) {
 		i.Hosts = part.Hosts
 	case GroupClusters:
 		i.Clusters = part.Clusters
+	case GroupVApps:
+		i.VApps = part.VApps
 	case GroupDatastores:
 		i.Datastores = part.Datastores
 	case GroupNetworks:
@@ -260,6 +289,7 @@ func (i *Inventory) Counts() string {
 		plural(len(i.Templates), "template"),
 		plural(len(i.Hosts), "host"),
 		plural(len(i.Clusters), "cluster"),
+		plural(len(i.VApps), "vApp"),
 		plural(len(i.Datastores), "datastore"),
 		plural(len(i.Networks), "network"),
 	}, ", ")

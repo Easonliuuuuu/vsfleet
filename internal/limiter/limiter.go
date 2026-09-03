@@ -1,6 +1,6 @@
 // Package limiter bounds how many inventory fetches run at once, across
 // every context and every resource-kind fetch group, so an estate with many
-// vCenters — or one context loading all five of its kinds concurrently —
+// vCenters — or one context loading all six of its fetch groups concurrently —
 // does not open unbounded connections at the same moment.
 package limiter
 

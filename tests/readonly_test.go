@@ -135,6 +135,7 @@ func startRecordingVCenter(t *testing.T) (string, *soapRecorder) {
 	model.Datacenter = 1
 	model.Cluster = 1
 	model.ClusterHost = 2
+	model.App = 1
 	model.Machine = 2
 	model.Datastore = 2
 	if err := model.Create(); err != nil {
@@ -192,6 +193,7 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 		{"template", "list"},
 		{"host", "list"},
 		{"cluster", "list"},
+		{"vapp", "list"},
 		{"datastore", "list"},
 		{"network", "list"},
 		{"vm", "list", "--all-contexts"},

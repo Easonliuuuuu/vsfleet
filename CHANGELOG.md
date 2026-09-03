@@ -5,7 +5,7 @@
 
 ### ⚠ BREAKING CHANGES
 
-* **tui:** TUI keybindings changed. tab now opens the estate-wide search instead of switching panes, and n/e/x moved to the contexts screen behind c. Resource kinds gained 1-6 alongside the existing h/l cycling.
+* **tui:** TUI keybindings changed. tab now opens the estate-wide search instead of switching panes, and n/e/x moved to the contexts screen behind c. Resource kinds gained 1-7 alongside the existing h/l cycling.
 
 ### Features
 

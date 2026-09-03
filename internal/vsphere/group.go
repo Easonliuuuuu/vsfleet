@@ -12,12 +12,13 @@ const (
 	GroupVMs        FetchGroup = "vms"
 	GroupHosts      FetchGroup = "hosts"
 	GroupClusters   FetchGroup = "clusters"
+	GroupVApps      FetchGroup = "vapps"
 	GroupDatastores FetchGroup = "datastores"
 	GroupNetworks   FetchGroup = "networks"
 )
 
 // AllGroups lists every fetch group ListInventory enumerates.
-var AllGroups = []FetchGroup{GroupVMs, GroupHosts, GroupClusters, GroupDatastores, GroupNetworks}
+var AllGroups = []FetchGroup{GroupVMs, GroupHosts, GroupClusters, GroupVApps, GroupDatastores, GroupNetworks}
 
 // GroupFor returns the fetch group that populates kind. VMs and templates
 // map onto the same group, since starting on either tab prioritizes the one
@@ -30,6 +31,8 @@ func GroupFor(k Kind) FetchGroup {
 		return GroupHosts
 	case KindCluster:
 		return GroupClusters
+	case KindVApp:
+		return GroupVApps
 	case KindDatastore:
 		return GroupDatastores
 	case KindNetwork:
@@ -100,6 +103,13 @@ func (c *Client) FetchGroup(ctx context.Context, idx *Index, group FetchGroup) *
 			fail(err, KindCluster)
 		} else {
 			inv.Clusters = clusters
+		}
+	case GroupVApps:
+		reportStage(ctx, StageLoadingVApps)
+		if vapps, err := c.listVApps(ctx, idx.idx); err != nil {
+			fail(err, KindVApp)
+		} else {
+			inv.VApps = vapps
 		}
 	case GroupDatastores:
 		reportStage(ctx, StageLoadingDatastores)

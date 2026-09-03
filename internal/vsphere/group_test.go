@@ -18,6 +18,7 @@ func TestGroupForMapsEveryKind(t *testing.T) {
 		{vsphere.KindTemplate, vsphere.GroupVMs},
 		{vsphere.KindHost, vsphere.GroupHosts},
 		{vsphere.KindCluster, vsphere.GroupClusters},
+		{vsphere.KindVApp, vsphere.GroupVApps},
 		{vsphere.KindDatastore, vsphere.GroupDatastores},
 		{vsphere.KindNetwork, vsphere.GroupNetworks},
 	}
@@ -54,6 +55,7 @@ func TestFetchGroupPopulatesOnlyItsOwnKinds(t *testing.T) {
 		m.Datacenter = 1
 		m.Cluster = 1
 		m.ClusterHost = 1
+		m.App = 1
 		m.Machine = 1
 		m.Datastore = 1
 	})
@@ -66,7 +68,7 @@ func TestFetchGroupPopulatesOnlyItsOwnKinds(t *testing.T) {
 
 	empty := func(inv *vsphere.Inventory) bool {
 		return len(inv.VMs) == 0 && len(inv.Templates) == 0 && len(inv.Hosts) == 0 &&
-			len(inv.Clusters) == 0 && len(inv.Datastores) == 0 && len(inv.Networks) == 0
+			len(inv.Clusters) == 0 && len(inv.VApps) == 0 && len(inv.Datastores) == 0 && len(inv.Networks) == 0
 	}
 
 	for _, tc := range []struct {
@@ -76,6 +78,7 @@ func TestFetchGroupPopulatesOnlyItsOwnKinds(t *testing.T) {
 		{vsphere.GroupVMs, func(i *vsphere.Inventory) bool { return len(i.VMs) > 0 }},
 		{vsphere.GroupHosts, func(i *vsphere.Inventory) bool { return len(i.Hosts) > 0 }},
 		{vsphere.GroupClusters, func(i *vsphere.Inventory) bool { return len(i.Clusters) > 0 }},
+		{vsphere.GroupVApps, func(i *vsphere.Inventory) bool { return len(i.VApps) > 0 }},
 		{vsphere.GroupDatastores, func(i *vsphere.Inventory) bool { return len(i.Datastores) > 0 }},
 		{vsphere.GroupNetworks, func(i *vsphere.Inventory) bool { return len(i.Networks) > 0 }},
 	} {
@@ -94,6 +97,8 @@ func TestFetchGroupPopulatesOnlyItsOwnKinds(t *testing.T) {
 			blanked.Hosts = nil
 		case vsphere.GroupClusters:
 			blanked.Clusters = nil
+		case vsphere.GroupVApps:
+			blanked.VApps = nil
 		case vsphere.GroupDatastores:
 			blanked.Datastores = nil
 		case vsphere.GroupNetworks:

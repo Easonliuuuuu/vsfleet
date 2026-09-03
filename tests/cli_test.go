@@ -125,6 +125,7 @@ func TestContextLifecycleAndInventory(t *testing.T) {
 		m.Datacenter = 1
 		m.Cluster = 1
 		m.ClusterHost = 2
+		m.App = 1
 		m.Machine = 3
 	})
 	r := newRunner(t)
@@ -153,6 +154,19 @@ func TestContextLifecycleAndInventory(t *testing.T) {
 	hosts := r.mustRun(testPassword+"\n", "host", "list")
 	if !strings.Contains(hosts, "connected") {
 		t.Errorf("host list did not show a connected host:\n%s", hosts)
+	}
+
+	vapps := r.mustRun(testPassword+"\n", "vapp", "list", "--context", "lab")
+	if !strings.Contains(vapps, "APP0") || !strings.Contains(vapps, "PATH") {
+		t.Errorf("vApp list did not show the simulated vApp and path:\n%s", vapps)
+	}
+	vappsJSON := r.mustRun(testPassword+"\n", "vapps", "list", "--context", "lab", "-o", "json")
+	if !strings.Contains(vappsJSON, `"direct_vm_count"`) {
+		t.Errorf("vApp JSON did not use the domain model:\n%s", vappsJSON)
+	}
+	searchVApp := r.mustRun(testPassword+"\n", "search", "APP0", "--context", "lab")
+	if !strings.Contains(searchVApp, "vapp") {
+		t.Errorf("global search did not include vApps:\n%s", searchVApp)
 	}
 
 	stores := r.mustRun(testPassword+"\n", "datastore", "list")

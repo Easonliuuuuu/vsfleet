@@ -189,6 +189,37 @@ func (i *index) clusterOf(ref *types.ManagedObjectReference) string {
 	return ""
 }
 
+// computeResourceOf returns the first compute resource in an object's
+// ancestor chain. vApps normally live below a cluster's root resource pool;
+// walking the index keeps placement resolution local and also handles a
+// standalone ComputeResource when a server exposes one.
+func (i *index) computeResourceOf(ref *types.ManagedObjectReference) string {
+	if ref == nil {
+		return ""
+	}
+	for _, e := range i.ancestors(*ref) {
+		if e.ref.Type == "ClusterComputeResource" || e.ref.Type == "ComputeResource" {
+			return e.name
+		}
+	}
+	return ""
+}
+
+// clusterFor returns only a ClusterComputeResource placement. A vApp can be
+// hosted by a standalone ComputeResource, which belongs in ComputeResource
+// but should not be mislabeled as a cluster.
+func (i *index) clusterFor(ref *types.ManagedObjectReference) string {
+	if ref == nil {
+		return ""
+	}
+	for _, e := range i.ancestors(*ref) {
+		if e.ref.Type == "ClusterComputeResource" {
+			return e.name
+		}
+	}
+	return ""
+}
+
 // folderPath returns a VM's folder relative to its datacenter, so that
 // /Taipei/vm/Templates/Linux/ubuntu reads as /Templates/Linux.
 func (i *index) folderPath(parent *types.ManagedObjectReference, datacenter string) string {

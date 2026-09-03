@@ -180,6 +180,9 @@ func Match(inv *vsphere.Inventory, needle string, opts Options) []Result {
 	for _, c := range inv.Clusters {
 		add(vsphere.KindCluster, c.Name, c.Datacenter, c.Path, pluralHosts(c.Hosts))
 	}
+	for _, v := range inv.VApps {
+		add(vsphere.KindVApp, v.Name, v.Datacenter, v.Path, v.Status)
+	}
 	for _, d := range inv.Datastores {
 		add(vsphere.KindDatastore, d.Name, d.Datacenter, d.Path, d.Type)
 	}

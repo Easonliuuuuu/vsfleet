@@ -20,6 +20,9 @@ func inventory() *vsphere.Inventory {
 		Templates: []vsphere.VM{
 			{Location: loc("Taipei", "/Taipei/vm/Templates/ubuntu-24.04-v8"), Name: "ubuntu-24.04-v8", IsTemplate: true, GuestOS: "Ubuntu 24.04"},
 		},
+		VApps: []vsphere.VApp{
+			{Location: loc("Taipei", "/Taipei/host/Cluster/Resources/web-stack"), Name: "web-stack", Status: "started"},
+		},
 		Datastores: []vsphere.Datastore{
 			{Location: loc("Taipei", "/Taipei/datastore/ubuntu-images"), Name: "ubuntu-images", Type: "NFS"},
 		},
@@ -57,7 +60,7 @@ func TestMatchRestrictsKinds(t *testing.T) {
 
 func TestMatchEmptyQueryReturnsEverything(t *testing.T) {
 	got := search.Match(inventory(), "", search.Options{})
-	if len(got) != 4 {
+	if len(got) != 5 {
 		t.Fatalf("expected the whole inventory, got %d", len(got))
 	}
 }
@@ -70,6 +73,7 @@ func TestParseKind(t *testing.T) {
 		"esxi":       vsphere.KindHost,
 		"ds":         vsphere.KindDatastore,
 		"portgroups": vsphere.KindNetwork,
+		"vapps":      vsphere.KindVApp,
 	} {
 		got, err := vsphere.ParseKind(in)
 		if err != nil || got != want {

@@ -66,8 +66,9 @@ const (
 // on name the same way "vsfleet search" matches on the command line.
 //
 // It is answered from the inventories already in memory rather than by going
-// back to the vCenters. Init prefetches every context, so by the time anyone
-// asks, the answer is on hand — and a vCenter that never answered is reported
+// back to the vCenters. Opening the search screen loads every context that
+// has not been read yet — see enterSearch — so by the time anyone asks, the
+// answer is on hand or on its way; a vCenter that never answered is reported
 // as not searched rather than quietly narrowing the result.
 type searchState struct {
 	query    string
@@ -333,15 +334,25 @@ func refreshInterval(d time.Duration) time.Duration {
 	}
 }
 
-// Init starts the spinner, prefetches every configured context, selected one
-// first, and arms the background refresh. With no contexts configured yet
-// there is nothing to load, so it opens the setup form instead of an empty
-// table with no way to fill it.
+// Init starts the spinner, loads whatever is in scope at start-up — the
+// selected context alone, or every context when opened with --all-contexts —
+// and arms the background refresh. With no contexts configured yet there is
+// nothing to load, so it opens the setup form instead of an empty table with
+// no way to fill it.
+//
+// A context not in the starting scope is never contacted here: the operator
+// has not asked to see it yet, and reaching out to every configured vCenter
+// merely because the program started would make start-up cost proportional
+// to the size of the estate rather than to what is actually on screen. It
+// loads the moment it is actually needed instead — chosen from the contexts
+// screen (useContext), widened into (enterScope), or pulled in by an
+// operation that clearly needs the whole estate, such as opening the
+// estate-wide search (enterSearch).
 func (m *Model) Init() tea.Cmd {
 	if len(m.states) == 0 {
 		return tea.Batch(m.enterForm(nil), m.spin.Tick)
 	}
-	cmds := m.prefetch()
+	cmds := m.ensureLoaded(false)
 	if cmd := scheduleRefresh(m.refreshInterval); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -503,31 +514,17 @@ func (m *Model) enterScope() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// prefetch starts a background load for every configured context, not only
-// what is currently in scope, so switching to a context not yet visited
-// shows cached data immediately instead of a fresh spinner. The selected
-// context's command is issued first, giving it the earliest claim on the
-// cache's bounded concurrency — not a hard guarantee of which finishes
-// first, but enough of a head start that it is the one most likely to.
-func (m *Model) prefetch() []tea.Cmd {
-	var cmds []tea.Cmd
-	cur := m.current()
-	if cur != nil {
-		if cmd := m.startLoad(cur, false); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	for _, st := range m.states {
-		if st == cur {
-			continue
-		}
-		if cmd := m.startLoad(st, false); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-	if len(cmds) > 0 {
-		cmds = append(cmds, m.spin.Tick)
-	}
+// ensureAllLoaded is ensureLoaded widened to every configured context, not
+// only what is in scope — for an operation that clearly needs the whole
+// estate regardless of what is on screen, such as widening into the
+// all-vCenters view or opening the estate-wide search. It is the one place
+// offscreen contexts are ever contacted without the operator having chosen
+// one of them individually.
+func (m *Model) ensureAllLoaded(force bool) []tea.Cmd {
+	was := m.allScope
+	m.allScope = true
+	cmds := m.ensureLoaded(force)
+	m.allScope = was
 	return cmds
 }
 
@@ -1115,8 +1112,7 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 	case tea.KeyTab:
 		// Widening is offered exactly where the narrow filter runs out: the
 		// same query, against every vCenter and every kind.
-		m.toggleSearch()
-		return nil
+		return m.toggleSearch()
 	case tea.KeyEnter:
 		m.filtering = false
 		m.filter.Blur()
@@ -1294,17 +1290,23 @@ func (m *Model) useContext() tea.Cmd {
 // enterSearch opens the estate-wide results. With nothing typed yet it opens
 // with the query focused, so "tab" is a way in from an empty table as well as
 // a way to widen a filter that did not find enough.
+//
+// An estate-wide search is, unambiguously, an operation that needs the whole
+// estate: it loads every context not read yet rather than leaving them
+// "missing" until something else happens to touch them.
 func (m *Model) enterSearch() tea.Cmd {
 	m.mode = modeSearch
 	m.filter.Placeholder = "search every vCenter"
 	m.cursor, m.offset = 0, 0
+	cmds := m.ensureAllLoaded(false)
 	if strings.TrimSpace(m.filter.Value()) == "" {
 		m.filtering = true
-		return m.filter.Focus()
+		cmds = append(cmds, m.filter.Focus())
+	} else {
+		m.filtering = false
+		m.filter.Blur()
 	}
-	m.filtering = false
-	m.filter.Blur()
-	return nil
+	return tea.Batch(cmds...)
 }
 
 // leaveSearch returns to the table with the query intact, because the filter
@@ -1370,11 +1372,7 @@ func (m *Model) reload(everything bool) []tea.Cmd {
 	if !everything {
 		return m.ensureLoaded(true)
 	}
-	was := m.allScope
-	m.allScope = true
-	cmds := m.ensureLoaded(true)
-	m.allScope = was
-	return cmds
+	return m.ensureAllLoaded(true)
 }
 
 func (m *Model) open() tea.Cmd {

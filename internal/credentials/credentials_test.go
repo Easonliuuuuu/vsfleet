@@ -150,3 +150,67 @@ func TestPromptCannotStore(t *testing.T) {
 		t.Errorf("storing into a prompt should be unsupported, got %v", err)
 	}
 }
+
+// TestResolverPrimeShortCircuitsGet checks the mechanism issue #27's start-up
+// flow relies on: a reference answered once through Prime resolves from that
+// cache afterwards, without consulting the provider registered for its
+// scheme at all — proven here by registering no provider whatsoever for
+// "keyring" and getting an answer anyway.
+func TestResolverPrimeShortCircuitsGet(t *testing.T) {
+	ctx := context.Background()
+	r := credentials.NewResolver() // no providers registered for any scheme
+	ref := credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "lab"}
+
+	if _, err := r.Get(ctx, ref); err == nil {
+		t.Fatal("Get should fail before priming: no provider is registered")
+	}
+
+	r.Prime(ref, credentials.Credential{Password: storedFixture})
+	cred, err := r.Get(ctx, ref)
+	if err != nil {
+		t.Fatalf("Get after Prime: %v", err)
+	}
+	if cred.Password != storedFixture {
+		t.Errorf("primed Get returned %q, want %q", cred.Password, storedFixture)
+	}
+
+	// Priming is per reference: a different value under the same scheme, or
+	// the same value under a different scheme, must still miss.
+	other := credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "other"}
+	if _, err := r.Get(ctx, other); err == nil {
+		t.Error("priming one reference must not answer for another")
+	}
+}
+
+func TestRefWithDefaultLabel(t *testing.T) {
+	cases := []struct {
+		name  string
+		in    credentials.Ref
+		label string
+		want  credentials.Ref
+	}{
+		{
+			name:  "bare prompt takes the label",
+			in:    credentials.Ref{Scheme: credentials.SchemePrompt},
+			label: "lab",
+			want:  credentials.Ref{Scheme: credentials.SchemePrompt, Value: "lab"},
+		},
+		{
+			name:  "a labelled prompt is left alone",
+			in:    credentials.Ref{Scheme: credentials.SchemePrompt, Value: "custom"},
+			label: "lab",
+			want:  credentials.Ref{Scheme: credentials.SchemePrompt, Value: "custom"},
+		},
+		{
+			name:  "a keyring reference is never relabelled",
+			in:    credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "lab"},
+			label: "other",
+			want:  credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "lab"},
+		},
+	}
+	for _, tc := range cases {
+		if got := tc.in.WithDefaultLabel(tc.label); got != tc.want {
+			t.Errorf("%s: WithDefaultLabel(%q) = %+v, want %+v", tc.name, tc.label, got, tc.want)
+		}
+	}
+}

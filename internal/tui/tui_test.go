@@ -338,11 +338,10 @@ func twoHealthy() *fakeBackend {
 }
 
 // TestBrowseShowsOnlyTheSelectedContext checks that a single-context scope
-// controls what the table displays, not what gets fetched: Init prefetches
-// every configured context in the background (Section 4) precisely so that
-// switching to customer-a later shows data immediately instead of a fresh
-// spinner, but the table itself must still only show the selected context's
-// rows until the reader asks for more.
+// controls both what the table displays and what gets fetched: Init loads
+// only what is in scope at start-up (issue #27), so customer-a is left
+// untouched until the reader actually asks for it — by switching to it,
+// widening scope, or opening the estate-wide search.
 func TestBrowseShowsOnlyTheSelectedContext(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
@@ -350,8 +349,8 @@ func TestBrowseShowsOnlyTheSelectedContext(t *testing.T) {
 	if got := b.calls["prod"]; got != 1 {
 		t.Fatalf("prod fetched %d times, want 1", got)
 	}
-	if got := b.calls["customer-a"]; got != 1 {
-		t.Errorf("customer-a fetched %d times, want 1 — Init prefetches every context", got)
+	if got := b.calls["customer-a"]; got != 0 {
+		t.Errorf("customer-a fetched %d times, want 0 — it is off screen and nobody asked for it", got)
 	}
 	out := m.View()
 	if !strings.Contains(out, "app-01") {
@@ -518,10 +517,28 @@ func TestContextsScreenShowsRouteAndFailure(t *testing.T) {
 
 	press(t, m, "c")
 	out := m.View()
-	for _, want := range []string{"Contexts", "prod", "https://vcsa.prod.internal", "customer-a", "socks5 proxy 127.0.0.1:1080 unreachable"} {
+	for _, want := range []string{"Contexts", "prod", "https://vcsa.prod.internal", "customer-a"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("contexts screen is missing %q:\n%s", want, out)
 		}
+	}
+	// customer-a is off screen and was never loaded at start-up (issue #27),
+	// so the screen must not claim it failed before anyone asked it to
+	// connect — that would misreport "not yet tried" as "broken".
+	if !strings.Contains(out, "not connected") {
+		t.Errorf("customer-a has not been reached yet, contexts screen should say so rather than showing a failure:\n%s", out)
+	}
+	if strings.Contains(out, "socks5 proxy 127.0.0.1:1080 unreachable") {
+		t.Errorf("customer-a's failure appeared before it was ever asked to connect:\n%s", out)
+	}
+
+	// Reloading it — what an operator does to find out why a vCenter is not
+	// answering — is what actually surfaces the failure.
+	press(t, m, "up") // customer-a sorts first in the fixture order
+	press(t, m, "r")
+	out = m.View()
+	if !strings.Contains(out, "socks5 proxy 127.0.0.1:1080 unreachable") {
+		t.Errorf("reloading customer-a should surface its failure:\n%s", out)
 	}
 }
 
@@ -752,24 +769,26 @@ func TestHelpListsEveryBinding(t *testing.T) {
 	}
 }
 
-// TestReloadRefetches checks 'r' against 'R': both start from a customer-a
-// call count of 1, not 0, because Init already prefetched it in the
-// background (Section 4) even though prod alone is in scope.
+// TestReloadRefetches checks 'r' against 'R': customer-a starts at a call
+// count of 0 — it is off screen, and Init loads only what is in scope
+// (issue #27) — so 'r' (scoped to prod alone) must leave it untouched, and
+// only 'R' (every configured context) is what reaches it, for the first
+// time.
 func TestReloadRefetches(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
-	if b.calls["customer-a"] != 1 {
-		t.Fatalf("customer-a calls after Init = %d, want 1 from the background prefetch", b.calls["customer-a"])
+	if b.calls["customer-a"] != 0 {
+		t.Fatalf("customer-a calls after Init = %d, want 0 — it is off screen", b.calls["customer-a"])
 	}
 	press(t, m, "r")
 	if b.calls["prod"] != 2 {
 		t.Errorf("'r' should refetch the context in scope, calls: %d", b.calls["prod"])
 	}
-	if b.calls["customer-a"] != 1 {
+	if b.calls["customer-a"] != 0 {
 		t.Errorf("'r' must not reach out of scope, customer-a calls: %d", b.calls["customer-a"])
 	}
 	press(t, m, "R")
-	if b.calls["customer-a"] != 2 {
+	if b.calls["customer-a"] != 1 {
 		t.Errorf("'R' should refetch every context, customer-a calls: %d", b.calls["customer-a"])
 	}
 }
@@ -1458,8 +1477,13 @@ func TestBackgroundRefreshTiersByWhatIsOnScreen(t *testing.T) {
 	// Enabled after construction: Init would otherwise arm a real timer that
 	// this synchronous harness would sit and wait on.
 	m.refreshInterval = time.Minute
+	// customer-a is off screen, so Init (issue #27) never touched it; this
+	// test is about the tiered rate once a context has data, not about
+	// start-up itself, so give it an initial load the way visiting it once
+	// would — the same as a completed background refresh.
+	drive(t, m, m.startLoad(m.byName["customer-a"], false))
 	if b.calls["prod"] != 1 || b.calls["customer-a"] != 1 {
-		t.Fatalf("initial prefetch calls = prod:%d customer-a:%d, want 1 each", b.calls["prod"], b.calls["customer-a"])
+		t.Fatalf("initial load calls = prod:%d customer-a:%d, want 1 each", b.calls["prod"], b.calls["customer-a"])
 	}
 
 	// Nothing is due a moment after loading, so a tick now is a no-op — that
@@ -1519,6 +1543,11 @@ func TestSwitchingScopeRereadsANewlyVisibleContext(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 	m.refreshInterval = time.Minute
+
+	// customer-a is off screen, so Init (issue #27) never loaded it. Give it
+	// one load — a prior visit, or a completed background refresh — so there
+	// is something for this test to leave stale before switching to it.
+	drive(t, m, m.startLoad(m.byName["customer-a"], false))
 
 	// customer-a has been sitting off screen long enough to be stale for a
 	// reader, but not long enough for the background rate to have acted.
@@ -1622,8 +1651,8 @@ func TestBackgroundRefreshFailureIsReported(t *testing.T) {
 }
 
 // TestBackgroundRefreshRetriesAContextThatNeverLoaded checks the recovery
-// path: a vCenter that was unreachable when the interface opened comes back
-// on its own rather than waiting for someone to press a key.
+// path: a vCenter every attempt has failed against comes back on its own
+// rather than waiting for someone to press a key.
 func TestBackgroundRefreshRetriesAContextThatNeverLoaded(t *testing.T) {
 	b := twoHealthy()
 	b.failures = map[string]error{"customer-a": errors.New("no route to host")}
@@ -1631,6 +1660,11 @@ func TestBackgroundRefreshRetriesAContextThatNeverLoaded(t *testing.T) {
 	// Enabled after construction: Init would otherwise arm a real one-minute
 	// timer that this synchronous harness would sit and wait on.
 	m.refreshInterval = time.Minute
+
+	// customer-a is off screen, so Init (issue #27) never attempted it. Give
+	// it the first, failing attempt explicitly — a prior visit — which is
+	// what a background refresh is retrying from here on.
+	drive(t, m, m.startLoad(m.byName["customer-a"], false))
 
 	st := m.byName["customer-a"]
 	if st.err == nil || st.inv != nil {

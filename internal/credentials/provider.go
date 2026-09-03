@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 // ErrNotFound is returned by a Provider when the reference is well formed but
@@ -67,6 +68,20 @@ func ParseRef(s string) (Ref, error) {
 // IsZero reports whether the reference is unset.
 func (r Ref) IsZero() bool { return r.Scheme == "" }
 
+// WithDefaultLabel returns r unchanged, except a bare "prompt" reference —
+// one with no value of its own — is given label as its value. Several
+// contexts may all be configured as plain "prompt", and disambiguating which
+// one is being asked about only matters once a concrete value is needed for
+// it: as what Get shows the operator, or as the key Prime records an answer
+// under. Every other reference, including a labelled "prompt:x", is already
+// specific enough and passes through untouched.
+func (r Ref) WithDefaultLabel(label string) Ref {
+	if r.Scheme == SchemePrompt && r.Value == "" {
+		r.Value = label
+	}
+	return r
+}
+
 // String renders the reference in its configuration form. It never contains a
 // secret, so it is safe to log.
 func (r Ref) String() string {
@@ -108,6 +123,11 @@ type Resolver struct {
 	providers map[string]Provider
 	// Default handles the zero Ref. It is normally the prompt provider.
 	Default Provider
+
+	primedMu sync.RWMutex
+	// primed holds credentials already resolved outside the normal Get path —
+	// see Prime.
+	primed map[Ref]Credential
 }
 
 // NewResolver builds a Resolver from the given providers. The first provider
@@ -145,6 +165,32 @@ func (r *Resolver) SetProvider(p Provider) {
 	}
 }
 
+// Prime records a credential already resolved outside the normal Get path —
+// a password prompted for on a plain terminal before a caller that cannot
+// safely prompt later (Bubble Tea, once it owns the screen) starts. A later
+// Get for the exact same reference returns it directly, without asking the
+// registered provider again; Get for any other reference is unaffected.
+//
+// It exists for the terminal interface's start-up: the selected context's
+// credential is resolved on a normal prompt before the program begins, and
+// priming it here is what stops the background load that reaches the same
+// reference moments later from asking a second time.
+func (r *Resolver) Prime(ref Ref, cred Credential) {
+	r.primedMu.Lock()
+	defer r.primedMu.Unlock()
+	if r.primed == nil {
+		r.primed = map[Ref]Credential{}
+	}
+	r.primed[ref] = cred
+}
+
+func (r *Resolver) primedCredential(ref Ref) (Credential, bool) {
+	r.primedMu.RLock()
+	defer r.primedMu.RUnlock()
+	c, ok := r.primed[ref]
+	return c, ok
+}
+
 func (r *Resolver) lookup(ref Ref) (Provider, error) {
 	if ref.IsZero() {
 		if r.Default == nil {
@@ -164,6 +210,9 @@ func (r *Resolver) Scheme() string { return "" }
 
 // Get implements Provider.
 func (r *Resolver) Get(ctx context.Context, ref Ref) (Credential, error) {
+	if c, ok := r.primedCredential(ref); ok {
+		return c, nil
+	}
 	p, err := r.lookup(ref)
 	if err != nil {
 		return Credential{}, err

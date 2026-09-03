@@ -130,12 +130,9 @@ func resolveCredential(ctx context.Context, cc *config.Context, opts ConnectOpti
 	if opts.Resolver == nil {
 		return credentials.Credential{}, fmt.Errorf("context %q: no credential source available", cc.Name)
 	}
-	ref := cc.Credential
-	if ref.Scheme == credentials.SchemePrompt && ref.Value == "" {
-		// Several contexts may all be set to prompt, and they are connected
-		// to concurrently. Name the one being asked about.
-		ref.Value = cc.Name
-	}
+	// Several contexts may all be set to prompt, and they are connected to
+	// concurrently: name the one being asked about.
+	ref := cc.Credential.WithDefaultLabel(cc.Name)
 	cred, _, err := credentials.Resolve(ctx, opts.Resolver, ref, cc.Name)
 	if err != nil {
 		return credentials.Credential{}, fmt.Errorf("context %q: %w", cc.Name, err)

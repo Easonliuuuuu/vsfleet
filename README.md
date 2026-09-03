@@ -144,6 +144,12 @@ resource kind fills the width, the header names the vCenter in scope, and a
 failed context is reported under the table so results from healthy contexts
 stay usable.
 
+The pane renders before any selected-context credential work begins. A keyring
+credential authenticates in the background; a prompt credential, or a keyring
+that is unavailable, changes that context to **credentials required** and
+opens a masked password overlay inside the UI. Unselected contexts remain
+disconnected until you choose them.
+
 The browse screen:
 
 | Key | Action |
@@ -164,20 +170,16 @@ Inventory re-reads itself in the background, because power state, IP
 addresses and usage all move under a table left open. It happens quietly —
 no spinner, no flicker, the numbers simply become current.
 
-The rate depends on what you are looking at. The vCenter in scope is re-read
-every 20 seconds; the rest are held to ten times that. A full read costs
-roughly 2.7 KiB per inventory object, so holding an entire estate to the
-on-screen rate would multiply that by the number of contexts configured, to
-keep current a set of numbers nobody is reading. Off screen what still has
-to be roughly right is the header count and estate-wide search, and neither
-changes meaning over a few minutes. Switching to a vCenter re-reads it on
-arrival, and the all-vCenters view (`a`) puts every context on screen, so
-there they all get the fast rate.
+The rate depends on what you are looking at. The selected vCenter is re-read
+every 20 seconds; other contexts that have already been visited are held to
+ten times that. Untouched contexts are never contacted by the timer. The
+all-vCenters view (`a`) shows cached data and does not authenticate new
+contexts; use `R` when you explicitly want to load every configured context.
 
 A refresh that *fails* is not quiet: the table keeps showing the last good
 data and says so rather than pretending it is current. A vCenter that was
-unreachable at start-up is retried on the same cycle, so it comes back on
-its own.
+selected and then became unreachable is retried on the same cycle, so it comes
+back on its own.
 
 `r` / `R` still force an immediate re-read. `--refresh` sets the on-screen
 interval (`vsfleet --refresh 5s` for a migration you are watching,
@@ -212,8 +214,9 @@ the query line says so:
 /ubuntu   0 here · 2 in the estate — tab to widen
 ```
 
-`tab` then widens to every vCenter and every kind at once — the same answer
-`vsfleet search ubuntu --all-contexts` prints, in the same columns:
+`tab` then widens to every vCenter and every kind at once using inventory
+already loaded in this process — the same result shape as
+`vsfleet search ubuntu --all-contexts`:
 
 ```text
   VCENTER       TYPE       NAME                    DATACENTER

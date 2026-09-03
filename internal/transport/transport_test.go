@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 	"github.com/easonliuuuuu/vsfleet/internal/transport"
 )
 
@@ -37,6 +38,30 @@ func TestNewDirect(t *testing.T) {
 		t.Fatalf("DialContext: %v", err)
 	}
 	conn.Close()
+}
+
+func TestProxyPromptUsesContextLabel(t *testing.T) {
+	prompt := credentials.NewStatic(credentials.SchemePrompt, map[string]credentials.Credential{
+		"lab proxy": {Password: "proxy-fixture"},
+	})
+	resolver := credentials.NewResolver(prompt)
+	cfg := config.TransportConfig{
+		Type:       config.TransportSOCKS5,
+		Address:    "127.0.0.1:1080",
+		Username:   "proxy-user",
+		Credential: credentials.Ref{Scheme: credentials.SchemePrompt},
+	}
+
+	got, err := transport.ResolveProxyCredential(context.Background(), cfg, transport.Options{
+		Resolver:        resolver,
+		CredentialLabel: "lab proxy",
+	})
+	if err != nil {
+		t.Fatalf("ResolveProxyCredential: %v", err)
+	}
+	if got != "proxy-fixture" {
+		t.Fatalf("proxy password = %q, want the context-labelled prompt fixture", got)
+	}
 }
 
 func TestNewSOCKS5Describe(t *testing.T) {

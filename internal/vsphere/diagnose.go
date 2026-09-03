@@ -173,7 +173,10 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 		// credential is asked for once per diagnosis, not once per dialer.
 		proxyCred = opts.ProxyCredential
 		if proxyCred == nil && cc.Transport.Username != "" {
-			pw, err := transport.ResolveProxyCredential(ctx, cc.Transport, transport.Options{Resolver: opts.Resolver})
+			pw, err := transport.ResolveProxyCredential(ctx, cc.Transport, transport.Options{
+				Resolver:        opts.Resolver,
+				CredentialLabel: cc.Name + " proxy",
+			})
 			if err != nil {
 				return "", err
 			}
@@ -182,6 +185,7 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 		dl, err := transport.New(ctx, cc.Transport, transport.Options{
 			Timeout:         opts.DialTimeout,
 			Resolver:        opts.Resolver,
+			CredentialLabel: cc.Name + " proxy",
 			ProxyCredential: proxyCred,
 		})
 		if err != nil {
@@ -327,6 +331,7 @@ func FetchThumbprint(ctx context.Context, cc *config.Context, opts ConnectOption
 	dialer, err := transport.New(ctx, cc.Transport, transport.Options{
 		Timeout:         opts.DialTimeout,
 		Resolver:        opts.Resolver,
+		CredentialLabel: cc.Name + " proxy",
 		ProxyCredential: opts.ProxyCredential,
 	})
 	if err != nil {

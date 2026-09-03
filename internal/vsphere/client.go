@@ -90,6 +90,7 @@ func Connect(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Cli
 	dialer, err := transport.New(ctx, cc.Transport, transport.Options{
 		Timeout:         opts.DialTimeout,
 		Resolver:        opts.Resolver,
+		CredentialLabel: cc.Name + " proxy",
 		ProxyCredential: opts.ProxyCredential,
 	})
 	if err != nil {

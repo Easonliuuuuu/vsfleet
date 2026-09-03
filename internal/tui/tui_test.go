@@ -388,6 +388,31 @@ func TestBrowseShowsOnlyTheSelectedContext(t *testing.T) {
 	}
 }
 
+// TestInitialViewDoesNotNeedCredentialWork proves the ordering contract at the
+// model boundary: constructing and rendering the pane is side-effect free, and
+// the first connection is only invoked when the command returned by Init is
+// actually run by Bubble Tea.
+func TestInitialViewDoesNotNeedCredentialWork(t *testing.T) {
+	b := twoHealthy()
+	m := New(context.Background(), b, Options{Current: "prod", RefreshInterval: -1})
+	m.width, m.height = 140, 30
+
+	if got := b.calls["prod"]; got != 0 {
+		t.Fatalf("constructing the model contacted prod %d times", got)
+	}
+	if out := m.View(); !strings.Contains(out, "prod") {
+		t.Fatalf("the initial pane does not render the selected context:\n%s", out)
+	}
+	cmd := m.Init()
+	if got := b.calls["prod"]; got != 0 {
+		t.Fatalf("Init performed connection work before its command ran: %d calls", got)
+	}
+	drive(t, m, cmd)
+	if got := b.calls["prod"]; got != 1 {
+		t.Fatalf("running Init's command made %d calls, want 1", got)
+	}
+}
+
 func TestTabsSwitchTheResourceKind(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 
@@ -520,14 +545,23 @@ func TestFocusedSearchEscapeReturnsToBrowse(t *testing.T) {
 }
 
 func TestAllContextsMergesAndLabelsRows(t *testing.T) {
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
 
 	press(t, m, "a")
 	if !m.allScope {
 		t.Fatal("'a' should widen the scope to every vCenter")
 	}
+	if got := len(m.rows()); got != 2 {
+		t.Fatalf("all-contexts shows %d loaded VMs, want 2 until the other context is selected", got)
+	}
+	if got := b.calls["customer-a"]; got != 0 {
+		t.Fatalf("widening the view contacted the unselected context %d times", got)
+	}
+	// Reload-all is an explicit request for the rest of the estate.
+	press(t, m, "R")
 	if got := len(m.rows()); got != 4 {
-		t.Fatalf("all-contexts shows %d VMs, want 4 (two per vCenter)", got)
+		t.Fatalf("explicit reload-all shows %d VMs, want 4 (two per vCenter)", got)
 	}
 	out := m.View()
 	if !strings.Contains(out, "VCENTER") {
@@ -546,6 +580,10 @@ func TestOneBrokenVCenterKeepsTheRest(t *testing.T) {
 	b := twoHealthy()
 	b.failures = map[string]error{"customer-a": errors.New("socks5 proxy 127.0.0.1:1080 unreachable: connection refused")}
 	m := newTestModel(t, b, Options{Current: "prod", AllContexts: true})
+	if b.calls["customer-a"] != 0 {
+		t.Fatalf("the unselected broken context was contacted at startup: %d calls", b.calls["customer-a"])
+	}
+	press(t, m, "R")
 
 	if got := len(m.rows()); got != 2 {
 		t.Fatalf("healthy vCenter contributed %d rows, want 2", got)
@@ -644,7 +682,8 @@ func TestContextsScreenShowsRouteAndFailure(t *testing.T) {
 // TestContextsScreenWidensScope checks the other way out of the screen: "a"
 // asks for every vCenter at once rather than choosing one.
 func TestContextsScreenWidensScope(t *testing.T) {
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
 
 	press(t, m, "c", "a")
 	if m.mode != modeBrowse {
@@ -653,8 +692,11 @@ func TestContextsScreenWidensScope(t *testing.T) {
 	if !m.allScope {
 		t.Fatal("'a' on the contexts screen should widen the scope to every vCenter")
 	}
-	if got := len(m.rows()); got != 4 {
-		t.Errorf("all-contexts shows %d VMs, want 4", got)
+	if got := len(m.rows()); got != 2 {
+		t.Errorf("all-contexts shows %d loaded VMs, want 2 until the other context is selected", got)
+	}
+	if got := b.calls["customer-a"]; got != 0 {
+		t.Errorf("opening all-contexts contacted customer-a %d times", got)
 	}
 }
 
@@ -662,7 +704,8 @@ func TestContextsScreenWidensScope(t *testing.T) {
 // the VM tab of one vCenter has no "ubuntu" in it, and the template on both
 // vCenters is exactly what the reader was looking for.
 func TestSearchWidensAFilterThatFoundNothing(t *testing.T) {
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
 
 	press(t, m, "/")
 	typeText(t, m, "ubuntu")
@@ -679,13 +722,16 @@ func TestSearchWidensAFilterThatFoundNothing(t *testing.T) {
 		t.Fatalf("tab should open the estate-wide search, mode is %v", m.mode)
 	}
 	rows := m.visibleRows()
-	if len(rows) != 2 {
-		t.Fatalf("search found %d matches, want 2 (one template per vCenter)", len(rows))
+	if len(rows) != 1 {
+		t.Fatalf("search found %d matches, want 1 from the selected vCenter until the other is loaded", len(rows))
 	}
 	for _, r := range rows {
 		if r.kind != vsphere.KindTemplate {
 			t.Errorf("match %q is kind %q, want template", r.name, r.kind)
 		}
+	}
+	if b.calls["customer-a"] != 0 {
+		t.Fatalf("opening search contacted customer-a %d times", b.calls["customer-a"])
 	}
 	out := m.View()
 	for _, want := range []string{"VCENTER", "TYPE", "prod", "customer-a", "ubuntu-24.04-golden"} {
@@ -709,22 +755,23 @@ func TestSearchWidensAFilterThatFoundNothing(t *testing.T) {
 // from every vCenter and every kind regardless of which tab is open or which
 // context is in scope.
 func TestSearchIgnoresScopeAndKind(t *testing.T) {
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
 
 	press(t, m, "3") // hosts, still scoped to prod alone
 	press(t, m, "tab")
 	typeText(t, m, "esxi-01")
 
 	rows := m.visibleRows()
-	if len(rows) != 2 {
-		t.Fatalf("search found %d hosts, want 2 — one per vCenter", len(rows))
+	if len(rows) != 1 {
+		t.Fatalf("search found %d hosts, want 1 from the selected vCenter until the other is loaded", len(rows))
 	}
 	seen := map[string]bool{}
 	for _, r := range rows {
 		seen[r.context] = true
 	}
-	if !seen["prod"] || !seen["customer-a"] {
-		t.Errorf("search stayed inside the scope, saw %v", seen)
+	if !seen["prod"] || seen["customer-a"] {
+		t.Errorf("search contacted an unselected context, saw %v", seen)
 	}
 }
 
@@ -740,13 +787,22 @@ func TestSearchNamesTheVCentersItCouldNotRead(t *testing.T) {
 	typeText(t, m, "ubuntu")
 
 	if got := len(m.visibleRows()); got != 1 {
-		t.Fatalf("search found %d matches, want 1 — only prod could be read", got)
+		t.Fatalf("search found %d matches, want 1 — only prod was selected", got)
 	}
 	out := m.View()
-	for _, want := range []string{"customer-a", "not searched", "socks5 proxy 127.0.0.1:1080 unreachable"} {
+	for _, want := range []string{"customer-a", "not searched"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("search must name the vCenter it could not read, missing %q:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "socks5 proxy 127.0.0.1:1080 unreachable") {
+		t.Errorf("search exposed an error for customer-a before it was selected:\n%s", out)
+	}
+	// The explicit reload-all action is allowed to contact it and then reports
+	// its failure without affecting the selected context's result.
+	press(t, m, "enter", "R")
+	if !strings.Contains(m.View(), "socks5 proxy 127.0.0.1:1080 unreachable") {
+		t.Errorf("explicit reload-all should surface customer-a's failure:\n%s", m.View())
 	}
 }
 
@@ -1627,10 +1683,11 @@ func TestAllScopeHoldsEveryContextToTheOnScreenRate(t *testing.T) {
 		st.loadedAt = time.Now().Add(-2 * time.Minute)
 	}
 	tickRefresh(t, m)
-	for _, name := range []string{"prod", "customer-a"} {
-		if b.calls[name] != 2 {
-			t.Errorf("%s calls = %d, want 2 — everything is on screen in the all-vCenters view", name, b.calls[name])
-		}
+	if b.calls["prod"] != 2 {
+		t.Errorf("prod calls = %d, want 2 — it is the selected context and is stale", b.calls["prod"])
+	}
+	if b.calls["customer-a"] != 0 {
+		t.Errorf("customer-a calls = %d, want 0 — a timer must not select an untouched context", b.calls["customer-a"])
 	}
 }
 
@@ -1665,8 +1722,8 @@ func TestSwitchingScopeRereadsANewlyVisibleContext(t *testing.T) {
 	}
 	drive(t, m, m.useContext())
 
-	if b.calls["customer-a"] != 2 {
-		t.Errorf("customer-a calls after switching to it = %d, want 2 — it should be re-read on arrival", b.calls["customer-a"])
+	if b.calls["customer-a"] != 1 {
+		t.Errorf("customer-a calls after switching to it = %d, want 1 — a valid in-process session is reused", b.calls["customer-a"])
 	}
 }
 

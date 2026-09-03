@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -67,10 +68,8 @@ const (
 // on name the same way "vsfleet search" matches on the command line.
 //
 // It is answered from the inventories already in memory rather than by going
-// back to the vCenters. Opening the search screen loads every context that
-// has not been read yet — see enterSearch — so by the time anyone asks, the
-// answer is on hand or on its way; a vCenter that never answered is reported
-// as not searched rather than quietly narrowing the result.
+// back to the vCenters. A vCenter that has not been selected or explicitly
+// reloaded is reported as not searched rather than quietly narrowing the result.
 type searchState struct {
 	query    string
 	rows     []row
@@ -83,14 +82,17 @@ type searchState struct {
 // keeps its row — that a customer environment is unreachable is information,
 // not a reason to hide it.
 type contextState struct {
-	cc       *config.Context
-	inv      *vsphere.Inventory
-	err      error
-	loading  bool
-	elapsed  time.Duration
-	loadedAt time.Time
-	diag     *vsphere.Diagnosis
-	diagging bool
+	cc          *config.Context
+	inv         *vsphere.Inventory
+	err         error
+	loading     bool
+	attempted   bool
+	phase       contextPhase
+	loadingKind vsphere.FetchGroup
+	elapsed     time.Duration
+	loadedAt    time.Time
+	diag        *vsphere.Diagnosis
+	diagging    bool
 	// quiet marks the in-flight read as one nobody asked for — the periodic
 	// background refresh rather than a keystroke. It suppresses the pending
 	// indicator and the success message, so a table being kept current does
@@ -125,7 +127,30 @@ type contextState struct {
 	// fetch groups run through — see Backend.BeginInventory. It is nil
 	// before the connect/index result lands and after the load finishes.
 	handle InventoryHandle
+	// stages carries advisory progress from the production backend. The channel
+	// is bounded so reporting a stage can never stall authentication or loading.
+	stages     chan vsphere.Stage
+	stageDone  chan struct{}
+	generation uint64
 }
+
+// contextPhase is deliberately separate from inventory presence. A context
+// may still show a previous inventory while its next authentication or refresh
+// is waiting, and an untouched context must remain visibly disconnected rather
+// than looking like a failed connection.
+type contextPhase string
+
+const (
+	phaseIdle                 contextPhase = ""
+	phaseCredentials          contextPhase = "credentials required"
+	phaseWaitingCredentials   contextPhase = "waiting for credentials"
+	phaseReadingKeyring       contextPhase = "reading keyring"
+	phaseAuthenticating       contextPhase = "authenticating"
+	phaseLoading              contextPhase = "loading"
+	phaseReady                contextPhase = "ready"
+	phaseAuthenticationFailed contextPhase = "authentication failed"
+	phaseTimedOut             contextPhase = "timed out"
+)
 
 // reset drops everything this state learned from a vCenter, keeping only the
 // configuration. It is what an edited context needs: the name is the same, so
@@ -134,15 +159,27 @@ type contextState struct {
 //
 // loading, outstanding and handle are deliberately left alone. A fetch
 // already in flight still holds the flag that stops a second one starting,
-// and its messages are discarded on arrival by the cc they were issued for
-// no longer matching (see the checks in Update) rather than by clearing
-// state here that would then be wrong.
+// and its messages are discarded on arrival by their context pointer or load
+// generation rather than by clearing state here that would then be wrong.
 func (s *contextState) reset() {
+	s.stopStages()
 	s.inv = nil
 	s.err = nil
+	s.attempted = false
+	s.phase = phaseIdle
+	s.loadingKind = ""
+	s.generation++
 	s.elapsed = 0
 	s.loadedAt = time.Time{}
 	s.diag = nil
+}
+
+func (s *contextState) stopStages() {
+	if s.stageDone != nil {
+		close(s.stageDone)
+		s.stageDone = nil
+	}
+	s.stages = nil
 }
 
 // showsLoading is whether a fetch in flight should be advertised. The loading
@@ -366,25 +403,22 @@ func refreshInterval(d time.Duration) time.Duration {
 	}
 }
 
-// Init starts the spinner, loads whatever is in scope at start-up — the
-// selected context alone, or every context when opened with --all-contexts —
-// and arms the background refresh. With no contexts configured yet there is
+// Init starts the spinner, loads only the selected context at start-up, and
+// arms the background refresh. The all-contexts view is a presentation scope,
+// not permission to contact every configured vCenter. With no contexts
+// configured yet there is
 // nothing to load, so it opens the setup form instead of an empty table with
 // no way to fill it.
 //
-// A context not in the starting scope is never contacted here: the operator
-// has not asked to see it yet, and reaching out to every configured vCenter
-// merely because the program started would make start-up cost proportional
-// to the size of the estate rather than to what is actually on screen. It
-// loads the moment it is actually needed instead — chosen from the contexts
-// screen (useContext), widened into (enterScope), or pulled in by an
-// operation that clearly needs the whole estate, such as opening the
-// estate-wide search (enterSearch).
+// A context not selected here is never contacted merely because the program
+// started, the all-contexts view was opened, a search was opened, or a refresh
+// timer fired. It loads when selected from the contexts screen, or after an
+// explicit reload-all action.
 func (m *Model) Init() tea.Cmd {
 	if len(m.states) == 0 {
 		return tea.Batch(m.enterForm(nil), m.spin.Tick)
 	}
-	cmds := m.ensureLoaded(false)
+	cmds := m.ensureSelectedLoaded(false)
 	if cmd := scheduleRefresh(m.refreshInterval); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -402,6 +436,46 @@ func (m *Model) nextCredPromptCmd() tea.Cmd {
 		return nil
 	}
 	return listenForCredRequest(m.credCoord.reqCh)
+}
+
+// credentialState finds the loading context behind a prompt request. Bare
+// vCenter and proxy references are labeled with the context name by the
+// connection path; explicit prompt labels are matched as a useful fallback.
+func (m *Model) credentialState(label string) *contextState {
+	for _, st := range m.states {
+		if !st.loading {
+			continue
+		}
+		labels := []string{st.cc.Name, st.cc.Name + " proxy", st.cc.Credential.Value, st.cc.Transport.Credential.Value}
+		for _, candidate := range labels {
+			if candidate != "" && candidate == label {
+				return st
+			}
+		}
+	}
+	// A custom prompt reference carries no context identity. There can still
+	// be only one active request because PromptCoordinator serializes them, so
+	// use the first context currently resolving as the best available owner.
+	for _, st := range m.states {
+		if st.loading && (st.phase == phaseAuthenticating || st.phase == phaseReadingKeyring) {
+			return st
+		}
+	}
+	return nil
+}
+
+func (m *Model) markCredentialRequest(label string) {
+	if st := m.credentialState(label); st != nil {
+		st.phase = phaseCredentials
+		st.loadingKind = ""
+	}
+}
+
+func (m *Model) markCredentialResumed(label string) {
+	if st := m.credentialState(label); st != nil {
+		st.phase = phaseAuthenticating
+		st.loadingKind = ""
+	}
 }
 
 // resolveCredPrompt answers the pending request and clears the overlay. The
@@ -453,11 +527,36 @@ func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 		return nil
 	}
 	st.loading = true
+	st.generation++
+	st.attempted = true
+	st.phase = phaseAuthenticating
+	st.loadingKind = ""
 	st.quiet = quiet
 	st.startedAt = time.Now()
 	st.outstanding = 1
 	st.awaitingPriority = false
-	return beginInventoryCmd(m.ctx, m.backend, st.cc)
+	if _, ok := m.backend.(inventoryProgressBackend); !ok {
+		return beginInventoryCmd(m.ctx, m.backend, st.cc, st.generation)
+	}
+	stageCh := make(chan vsphere.Stage, 16)
+	st.stages = stageCh
+	st.stageDone = make(chan struct{})
+	done := st.stageDone
+	report := func(stage vsphere.Stage) {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		select {
+		case stageCh <- stage:
+		default:
+		}
+	}
+	return tea.Batch(
+		beginInventoryWithProgressCmd(m.ctx, m.backend, st.cc, report, st.generation),
+		listenForStage(m.ctx, st.cc.Name, st.cc, st.generation, st.stages, done),
+	)
 }
 
 // refreshDue reports whether a context is old enough to be worth re-reading.
@@ -493,15 +592,14 @@ func (m *Model) refreshDue(st *contextState, onScreen bool) bool {
 	return age >= m.refreshInterval*backgroundRefreshFactor
 }
 
-// refreshStale re-reads every context due for it, quietly. It covers all of
-// them rather than only what is on screen — the header summary and an
-// estate-wide search both answer from contexts not currently in view — but
-// at two different rates: see refreshDue.
+// refreshStale quietly re-reads every already-attempted context due for it. It
+// covers loaded off-screen contexts as well as the one on screen — the header
+// summary and an estate-wide search can answer from their cached data — but at
+// two different rates: see refreshDue. Untouched contexts are skipped.
 //
-// The all-vCenters view puts every context on screen, and there they are all
-// held to the fast interval. That is the reader asking to watch the whole
-// estate at once, and the cache's own concurrency bound is what keeps the
-// answer from arriving as one burst.
+// The all-vCenters view makes already-loaded contexts visible together, so
+// those contexts get the fast interval. It does not authenticate untouched
+// contexts; an explicit reload-all is the action that requests those.
 //
 // Nothing here forces a read past one already in flight, so a vCenter slower
 // than the interval simply refreshes less often instead of queueing work
@@ -516,6 +614,12 @@ func (m *Model) refreshStale() []tea.Cmd {
 	}
 	var cmds []tea.Cmd
 	for _, st := range m.states {
+		// A timer is not an operator selection. It may refresh a context that
+		// has already been visited, but it must never be the first thing that
+		// reads a keyring or opens a connection for an untouched context.
+		if !st.attempted {
+			continue
+		}
 		if !m.refreshDue(st, onScreen[st]) {
 			continue
 		}
@@ -541,25 +645,29 @@ func (m *Model) ensureLoaded(force bool) []tea.Cmd {
 	return cmds
 }
 
-// enterScope is what every change of what is on screen runs. It loads
-// anything never read, and quietly re-reads anything that was being held to
-// the slower off-screen rate and is now being looked at — so arriving at a
-// vCenter shows its current state rather than whatever it looked like up to
-// several minutes ago, without waiting for the next tick.
-func (m *Model) enterScope() tea.Cmd {
-	cmds := m.ensureLoaded(false)
-	// refreshStale skips anything ensureLoaded just started, so a context
-	// cannot be read twice for one keystroke.
-	cmds = append(cmds, m.refreshStale()...)
-	return tea.Batch(cmds...)
+// ensureSelectedLoaded is the lazy entry point used by start-up and context
+// switching. It intentionally ignores allScope: showing all rows does not
+// authorize contacting every configured vCenter.
+func (m *Model) ensureSelectedLoaded(force bool) []tea.Cmd {
+	st := m.current()
+	if st == nil {
+		return nil
+	}
+	if cmd := m.startLoad(st, force); cmd != nil {
+		return []tea.Cmd{cmd, m.spin.Tick}
+	}
+	return nil
 }
 
-// ensureAllLoaded is ensureLoaded widened to every configured context, not
-// only what is in scope — for an operation that clearly needs the whole
-// estate regardless of what is on screen, such as widening into the
-// all-vCenters view or opening the estate-wide search. It is the one place
-// offscreen contexts are ever contacted without the operator having chosen
-// one of them individually.
+// enterScope is what every change of what is on screen runs. It ensures the
+// selected context has been attempted, while reusing a live in-process session
+// and cached inventory when switching back to a context already loaded.
+func (m *Model) enterScope() tea.Cmd {
+	return tea.Batch(m.ensureSelectedLoaded(false)...)
+}
+
+// ensureAllLoaded is reserved for an explicit reload-all action. Presentation
+// changes such as widening the scope or opening search call no network APIs.
 func (m *Model) ensureAllLoaded(force bool) []tea.Cmd {
 	was := m.allScope
 	m.allScope = true
@@ -726,10 +834,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case groupMsg:
 		return m, m.applyGroup(msg)
 
+	case stageMsg:
+		return m, m.applyStage(msg)
+
 	case credRequestMsg:
 		// A second concurrent ask cannot arrive here: the coordinator only
 		// hands out another request after this one is resolved and the
 		// model asks to listen again, see nextCredPromptCmd.
+		m.markCredentialRequest(msg.req.label)
 		m.credPrompt = newCredPromptState(msg.req)
 		return m, nil
 
@@ -871,6 +983,11 @@ func (m *Model) syncContexts() {
 		states = append(states, st)
 		byName[cc.Name] = st
 	}
+	for name, st := range old {
+		if _, ok := byName[name]; !ok {
+			st.stopStages()
+		}
+	}
 	// A removed context's contextState is simply dropped along with it: its
 	// inventory lived on the struct itself, not in a separate cache keyed by
 	// name, so a context later added under the same name starts with nothing
@@ -907,6 +1024,43 @@ func (m *Model) busy() bool {
 	return false
 }
 
+func (m *Model) applyStage(msg stageMsg) tea.Cmd {
+	st, ok := m.byName[msg.context]
+	if !ok || !st.loading || (msg.generation != 0 && st.generation != msg.generation) || (msg.cc != nil && st.cc != msg.cc) {
+		return nil
+	}
+	switch msg.stage {
+	case vsphere.StageResolvingCredentials:
+		st.phase = phaseReadingKeyring
+		st.loadingKind = ""
+	case vsphere.StageAuthenticating:
+		st.phase = phaseAuthenticating
+		st.loadingKind = ""
+	case vsphere.StageLoadingIndex:
+		st.phase = phaseLoading
+		st.loadingKind = ""
+	case vsphere.StageLoadingVMs:
+		st.phase = phaseLoading
+		st.loadingKind = vsphere.GroupVMs
+	case vsphere.StageLoadingHosts:
+		st.phase = phaseLoading
+		st.loadingKind = vsphere.GroupHosts
+	case vsphere.StageLoadingClusters:
+		st.phase = phaseLoading
+		st.loadingKind = vsphere.GroupClusters
+	case vsphere.StageLoadingDatastores:
+		st.phase = phaseLoading
+		st.loadingKind = vsphere.GroupDatastores
+	case vsphere.StageLoadingNetworks:
+		st.phase = phaseLoading
+		st.loadingKind = vsphere.GroupNetworks
+	}
+	if st.stages == nil {
+		return nil
+	}
+	return listenForStage(m.ctx, msg.context, st.cc, msg.generation, st.stages, st.stageDone)
+}
+
 // applyBeginInventory lands the connect/index result a load starts with. On
 // success it kicks off the priority fetch group — the currently visible
 // kind's — alone; the rest follow once that group's own groupMsg lands (see
@@ -917,20 +1071,23 @@ func (m *Model) applyBeginInventory(msg beginInventoryMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if msg.cc != nil && st.cc != msg.cc {
+	if (msg.generation != 0 && st.generation != msg.generation) || (msg.cc != nil && st.cc != msg.cc) {
 		return m.dropStraggler(st)
 	}
 	st.outstanding-- // the connect/index step itself just landed
 	if msg.err != nil {
 		st.err = msg.err
+		st.phase = phaseForLoadError(msg.err)
 		return m.finishLoad(st)
 	}
 	st.err = nil
 	st.handle = msg.handle
+	st.phase = phaseLoading
+	st.loadingKind = vsphere.GroupFor(m.kind)
 	st.outstanding = 1 // just the priority group, dispatched below
 	st.awaitingPriority = true
 	priority := vsphere.GroupFor(m.kind)
-	return fetchGroupCmd(m.ctx, m.limiter, msg.handle, st.cc, priority)
+	return fetchGroupCmd(m.ctx, m.limiter, msg.handle, st.cc, priority, st.generation)
 }
 
 // applyGroup lands one fetch group's result, merging it into st.inv (see
@@ -945,7 +1102,7 @@ func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if msg.cc != nil && st.cc != msg.cc {
+	if (msg.generation != 0 && st.generation != msg.generation) || (msg.cc != nil && st.cc != msg.cc) {
 		return m.dropStraggler(st)
 	}
 	st.outstanding--
@@ -953,6 +1110,8 @@ func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 		st.inv = &vsphere.Inventory{Context: msg.context}
 	}
 	st.inv.ApplyGroup(msg.group, msg.inv)
+	st.phase = phaseLoading
+	st.loadingKind = msg.group
 	m.searchDirty = true
 	if st.awaitingPriority {
 		st.awaitingPriority = false
@@ -961,7 +1120,7 @@ func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 			if g == msg.group {
 				continue
 			}
-			cmds = append(cmds, fetchGroupCmd(m.ctx, m.limiter, st.handle, st.cc, g))
+			cmds = append(cmds, fetchGroupCmd(m.ctx, m.limiter, st.handle, st.cc, g, st.generation))
 		}
 		st.outstanding = len(vsphere.AllGroups) - 1 // the ones just dispatched
 		return tea.Batch(cmds...)
@@ -1002,8 +1161,13 @@ func (m *Model) finishLoad(st *contextState) tea.Cmd {
 	st.quiet = false
 	st.elapsed = time.Since(st.startedAt)
 	st.handle = nil
+	st.stopStages()
 	if st.err == nil {
 		st.loadedAt = time.Now()
+		st.phase = phaseReady
+		st.loadingKind = ""
+	} else {
+		st.loadingKind = ""
 	}
 	// A background refresh that worked says nothing: overwriting the message
 	// line once a minute would bury whatever the operator was reading there.
@@ -1028,6 +1192,16 @@ func (m *Model) finishLoad(st *contextState) tea.Cmd {
 		return m.spin.Tick
 	}
 	return nil
+}
+
+func phaseForLoadError(err error) contextPhase {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return phaseTimedOut
+	}
+	if errors.Is(err, errPromptCanceled) || strings.Contains(strings.ToLower(err.Error()), "credential") || strings.Contains(strings.ToLower(err.Error()), "authenticate") || strings.Contains(strings.ToLower(err.Error()), "canceled") {
+		return phaseAuthenticationFailed
+	}
+	return phaseAuthenticationFailed
 }
 
 // setMessage sets the transient note under the table. An empty string clears
@@ -1106,9 +1280,11 @@ func (m *Model) handleCredPromptKey(msg tea.KeyMsg) tea.Cmd {
 		m.quitting = true
 		return tea.Quit
 	case tea.KeyEsc:
+		m.markCredentialResumed(m.credPrompt.label)
 		m.resolveCredPrompt(credResult{err: errPromptCanceled})
 		return m.nextCredPromptCmd()
 	case tea.KeyEnter:
+		m.markCredentialResumed(m.credPrompt.label)
 		m.resolveCredPrompt(credResult{password: m.credPrompt.input.Value()})
 		return m.nextCredPromptCmd()
 	}
@@ -1394,16 +1570,18 @@ func (m *Model) useContext() tea.Cmd {
 
 // enterSearch opens the estate-wide results. With nothing typed yet it opens
 // with the query focused, so "tab" is a way in from an empty table as well as
-// a way to widen a filter that did not find enough.
-//
-// An estate-wide search is, unambiguously, an operation that needs the whole
-// estate: it loads every context not read yet rather than leaving them
-// "missing" until something else happens to touch them.
+// a way to widen a filter that did not find enough. The result is cache-only:
+// untouched contexts remain "not searched" until selected or explicitly
+// reloaded.
 func (m *Model) enterSearch() tea.Cmd {
 	m.mode = modeSearch
 	m.filter.Placeholder = "search every vCenter"
 	m.cursor, m.offset = 0, 0
-	cmds := m.ensureAllLoaded(false)
+	// Search is answered from the cache. Opening it must not turn an
+	// estate-wide view into an estate-wide login storm; untouched contexts are
+	// listed as "not searched" until the operator selects or explicitly reloads
+	// them.
+	var cmds []tea.Cmd
 	if strings.TrimSpace(m.filter.Value()) == "" {
 		m.filtering = true
 		cmds = append(cmds, m.filter.Focus())
@@ -1471,8 +1649,8 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// reload refetches what is in scope, or every configured context when all is
-// set regardless of the current scope.
+// reload refetches what is in scope, or every configured context when the
+// caller requests an explicit all-contexts reload.
 func (m *Model) reload(everything bool) []tea.Cmd {
 	if !everything {
 		return m.ensureLoaded(true)

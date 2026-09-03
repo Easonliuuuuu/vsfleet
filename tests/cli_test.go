@@ -230,14 +230,11 @@ func TestFailureIsolation(t *testing.T) {
 	}
 }
 
-// TestUIResolvesStartupCredentialsBeforeOpening covers the other half of
-// issue #27: the selected context's credential is resolved on a plain prompt
-// before the terminal interface ever opens, and a failure there is a normal
-// CLI error rather than something the interface would have to recover from
-// once it owns the screen. A "prompt" credential with nothing on stdin to
-// answer it is exactly that failure, and it needs no live TTY to prove: it
-// happens before tui.Run is ever called.
-func TestUIResolvesStartupCredentialsBeforeOpening(t *testing.T) {
+// TestUIStartsTheInterfaceBeforeResolvingCredentials covers issue #36's
+// startup contract. A "prompt" credential with nothing on stdin to answer it
+// must not fail before the interface claims the terminal: in this headless
+// integration test the expected first failure is the missing TTY itself.
+func TestUIStartsTheInterfaceBeforeResolvingCredentials(t *testing.T) {
 	r := newRunner(t)
 	r.mustRun("", "context", "add",
 		"--name", "lab",
@@ -250,10 +247,10 @@ func TestUIResolvesStartupCredentialsBeforeOpening(t *testing.T) {
 
 	_, stderr, err := r.run("", "ui")
 	if err == nil {
-		t.Fatal("vsfleet ui should have failed resolving lab's credential with nothing on stdin to answer the prompt")
+		t.Fatal("vsfleet ui should have failed because this integration test has no TTY")
 	}
-	if !strings.Contains(err.Error(), "lab") {
-		t.Errorf("error should name the context whose credential could not be resolved, got: %v\nstderr: %s", err, stderr)
+	if strings.Contains(err.Error(), "lab") || strings.Contains(stderr, "lab") {
+		t.Errorf("credential resolution happened before the interface opened: %v\nstderr: %s", err, stderr)
 	}
 }
 

@@ -109,6 +109,8 @@ func runUI(a *App, cmd *cobra.Command) error {
 
 		RefreshInterval: a.RefreshInterval,
 		Credentials:     coordinator,
+		In:              a.in(),
+		Out:             a.out(),
 	})
 	// A clean run is the only one worth remembering: a program that never
 	// really started (no TTY, say) has nothing truthful to say about where

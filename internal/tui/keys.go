@@ -75,7 +75,7 @@ func defaultKeys() keyMap {
 		Home:     key.NewBinding(key.WithKeys("home", "g"), key.WithHelp("g", "first")),
 		End:      key.NewBinding(key.WithKeys("end", "G"), key.WithHelp("G", "last")),
 
-		Kind:    key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6"), key.WithHelp("1-6", "kind")),
+		Kind:    key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7"), key.WithHelp("1-6/7", "kind")),
 		NextTab: key.NewBinding(key.WithKeys("right", "l", "]"), key.WithHelp("→/l", "next kind")),
 		PrevTab: key.NewBinding(key.WithKeys("left", "h", "["), key.WithHelp("←/h", "prev kind")),
 

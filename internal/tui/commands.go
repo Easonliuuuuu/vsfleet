@@ -130,7 +130,7 @@ func listenForStage(ctx context.Context, contextName string, cc *config.Context,
 }
 
 // fetchGroupCmd retrieves one fetch group through an already-connected
-// handle, bounded by lim so a context fetching all five of its groups at
+// handle, bounded by lim so a context fetching all six of its groups at
 // once — or an estate with several contexts doing the same — does not open
 // unbounded connections at the same moment. Every group for one context gets
 // its own command, so several run concurrently (bounded by lim) and a slow

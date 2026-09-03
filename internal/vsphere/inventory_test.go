@@ -136,6 +136,37 @@ func TestListInventory(t *testing.T) {
 	t.Logf("network: %+v", inv.Networks[0])
 }
 
+func TestListVApps(t *testing.T) {
+	c, _ := newSimulator(t, func(m *simulator.Model) {
+		m.Datacenter = 1
+		m.Cluster = 1
+		m.ClusterHost = 1
+		m.App = 1
+		m.Machine = 2
+	})
+
+	vapps, err := c.ListVApps(context.Background())
+	if err != nil {
+		t.Fatalf("ListVApps: %v", err)
+	}
+	if len(vapps) != 1 {
+		t.Fatalf("ListVApps returned %d vApps, want 1: %+v", len(vapps), vapps)
+	}
+	v := vapps[0]
+	if v.Name == "" || v.ID == "" || v.Datacenter != "DC0" || v.Path == "" {
+		t.Fatalf("vApp is missing location identity: %+v", v)
+	}
+	if v.Status == "" {
+		t.Errorf("vApp status is empty: %+v", v)
+	}
+	if v.DirectVMCount != len(v.DirectVMs) || v.DirectVMCount == 0 {
+		t.Errorf("direct VM membership = %d/%v, want non-empty and consistent", v.DirectVMCount, v.DirectVMs)
+	}
+	if v.Cluster == "" || v.ComputeResource == "" {
+		t.Errorf("vApp placement is unresolved: %+v", v)
+	}
+}
+
 // markTemplate powers off one VM and converts it to a template, so the split
 // between ListVMs and ListTemplates is exercised rather than assumed.
 func markTemplate(t *testing.T, c *vsphere.Client, name string) {
@@ -235,7 +266,7 @@ func TestListInventoryIsPartialOnOneKindFailing(t *testing.T) {
 		ObjectType:  "*",
 		ObjectName:  "*",
 		Probability: 1,
-		SkipCount:   5,
+		SkipCount:   6,
 		MaxCount:    1,
 		Enabled:     true,
 		FaultType:   simulator.FaultTypeNoPermission,
@@ -308,6 +339,7 @@ func TestListInventoryReportsStages(t *testing.T) {
 		vsphere.StageLoadingVMs,
 		vsphere.StageLoadingHosts,
 		vsphere.StageLoadingClusters,
+		vsphere.StageLoadingVApps,
 		vsphere.StageLoadingDatastores,
 		vsphere.StageLoadingNetworks,
 	}
@@ -344,6 +376,7 @@ func twoDatacenterModel(t *testing.T) *simulator.Model {
 	model.Datacenter = 2
 	model.Cluster = 1
 	model.ClusterHost = 1
+	model.App = 1
 	model.Machine = 1
 	model.Datastore = 1
 	if err := model.Create(); err != nil {
@@ -366,7 +399,7 @@ func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListInventory: %v", err)
 	}
-	if len(inv.VMs) == 0 || len(inv.Hosts) == 0 || len(inv.Clusters) == 0 ||
+	if len(inv.VMs) == 0 || len(inv.Hosts) == 0 || len(inv.Clusters) == 0 || len(inv.VApps) == 0 ||
 		len(inv.Datastores) == 0 || len(inv.Networks) == 0 {
 		t.Fatalf("expected every kind to have at least one DC0 object, got %s", inv.Counts())
 	}
@@ -379,7 +412,7 @@ func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
 			}
 		}
 	}
-	var vmNames, hostNames, clusterNames, dsNames, netNames []string
+	var vmNames, hostNames, clusterNames, vappNames, dsNames, netNames []string
 	for _, vm := range inv.VMs {
 		vmNames = append(vmNames, vm.Name)
 		if vm.Datacenter != "DC0" {
@@ -392,6 +425,12 @@ func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
 	for _, cl := range inv.Clusters {
 		clusterNames = append(clusterNames, cl.Name)
 	}
+	for _, v := range inv.VApps {
+		vappNames = append(vappNames, v.Name)
+		if v.Datacenter != "DC0" {
+			t.Errorf("vApp %s has datacenter %q, want DC0", v.Name, v.Datacenter)
+		}
+	}
 	for _, ds := range inv.Datastores {
 		dsNames = append(dsNames, ds.Name)
 	}
@@ -401,6 +440,7 @@ func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
 	check("vm", vmNames)
 	check("host", hostNames)
 	check("cluster", clusterNames)
+	check("vapp", vappNames)
 	check("datastore", dsNames)
 	check("network", netNames)
 

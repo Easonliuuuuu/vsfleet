@@ -21,7 +21,7 @@ import (
 
 // maxConcurrentLoads bounds how many fetch groups run at once, across every
 // context and every resource kind. Without a bound, an estate with dozens of
-// contexts — each fetching up to five groups concurrently — would open that
+// contexts — each fetching up to six groups concurrently — would open that
 // many connections the instant the interface starts.
 const maxConcurrentLoads = 4
 
@@ -114,7 +114,7 @@ type contextState struct {
 	outstanding int
 	// awaitingPriority is true from the moment the priority fetch group is
 	// dispatched until it lands. applyGroup uses it to tell "the priority
-	// group just landed, fan the rest out" apart from "one of the four
+	// group just landed, fan the rest out" apart from "one of the five
 	// concurrent groups just landed, one fewer left to wait for" — a
 	// distinction outstanding alone cannot make once an edit has changed
 	// how many messages a load ever actually had in flight.
@@ -1048,6 +1048,9 @@ func (m *Model) applyStage(msg stageMsg) tea.Cmd {
 	case vsphere.StageLoadingClusters:
 		st.phase = phaseLoading
 		st.loadingKind = vsphere.GroupClusters
+	case vsphere.StageLoadingVApps:
+		st.phase = phaseLoading
+		st.loadingKind = vsphere.GroupVApps
 	case vsphere.StageLoadingDatastores:
 		st.phase = phaseLoading
 		st.loadingKind = vsphere.GroupDatastores
@@ -1095,7 +1098,7 @@ func (m *Model) applyBeginInventory(msg beginInventoryMsg) tea.Cmd {
 // kind already had, rather than blanking it). The first group to land for a
 // load is always the priority one dispatched by applyBeginInventory — see
 // contextState.awaitingPriority — which is what makes this the moment to fan
-// the remaining four out concurrently; every group after that just counts
+// the remaining five out concurrently; every group after that just counts
 // down toward finishLoad.
 func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 	st, ok := m.byName[msg.context]
@@ -1659,11 +1662,32 @@ func (m *Model) reload(everything bool) []tea.Cmd {
 }
 
 func (m *Model) open() tea.Cmd {
-	if _, ok := m.currentRow(); ok {
-		m.detailFrom = m.mode
-		m.mode = modeDetail
-		m.detailY = 0
+	r, ok := m.currentRow()
+	if !ok {
+		return nil
 	}
+	if m.mode == modeSearch {
+		// A search result can come from a different context and kind than the
+		// table behind the search. Make that result the real browse selection
+		// before opening it, so esc lands on the vApp tab (or the corresponding
+		// tab for another kind) instead of returning to a stale search scope.
+		m.selectByName(r.context)
+		m.allScope = false
+		m.kind = r.kind
+		m.cursor, m.offset = 0, 0
+		for i, candidate := range m.rows() {
+			if candidate.key == r.key {
+				m.cursor = i
+				break
+			}
+		}
+		m.scrollIntoView(len(m.rows()))
+		m.detailFrom = modeBrowse
+	} else {
+		m.detailFrom = m.mode
+	}
+	m.mode = modeDetail
+	m.detailY = 0
 	return nil
 }
 

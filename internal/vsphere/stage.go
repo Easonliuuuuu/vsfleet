@@ -24,6 +24,7 @@ const (
 	StageLoadingVMs           Stage = "loading VMs and templates"
 	StageLoadingHosts         Stage = "loading hosts"
 	StageLoadingClusters      Stage = "loading clusters"
+	StageLoadingVApps         Stage = "loading vApps"
 	StageLoadingDatastores    Stage = "loading datastores"
 	StageLoadingNetworks      Stage = "loading networks"
 )

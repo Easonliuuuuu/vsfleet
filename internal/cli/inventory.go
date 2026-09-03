@@ -121,6 +121,7 @@ func newInventoryCommands(a *App) []*cobra.Command {
 		group("template", []string{"templates", "tpl"}, "VM templates", newTemplateListCommand(a)),
 		group("host", []string{"hosts", "esxi"}, "ESXi hosts", newHostListCommand(a)),
 		group("cluster", []string{"clusters"}, "Compute clusters", newClusterListCommand(a)),
+		group("vapp", []string{"vapps", "virtualapp"}, "vSphere vApps", newVAppListCommand(a)),
 		group("datastore", []string{"datastores", "ds"}, "Datastores", newDatastoreListCommand(a)),
 		group("network", []string{"networks", "portgroup"}, "Networks and port groups", newNetworkListCommand(a)),
 	}
@@ -278,6 +279,40 @@ func newClusterListCommand(a *App) *cobra.Command {
 			row := []string{name, dash(c.Datacenter), itoa(c.Hosts), dash(mhz(c.TotalCPUMHz)), humanMB(c.TotalMemoryMB), onOff(c.DRSEnabled), onOff(c.HAEnabled)}
 			if multi {
 				row = append([]string{c.Context}, row...)
+			}
+			t.row(row...)
+		}
+		t.flush()
+		reportFailures(a, failures)
+		return nil
+	})
+}
+
+func newVAppListCommand(a *App) *cobra.Command {
+	return listCommand(a, "List vSphere vApps", func(cmd *cobra.Command, f *listFlags) error {
+		vapps, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VApp, error) {
+			return c.ListVApps(ctx)
+		})
+		if err != nil {
+			reportFailures(a, failures)
+			return err
+		}
+		vapps = filterSlice(vapps, func(v vsphere.VApp) bool { return f.matches(v.Name) })
+		if a.json() {
+			defer reportFailures(a, failures)
+			return writeJSON(a.out(), vapps)
+		}
+		headers := []string{"NAME", "STATUS", "VMS", "CHILDREN", "DATACENTER", "PATH"}
+		multi := a.multiContext()
+		if multi {
+			headers = append([]string{"CONTEXT"}, headers...)
+		}
+		t := newTable(a.out(), headers...)
+		for _, v := range vapps {
+			children := fmt.Sprintf("%d vApp / %d pool", v.ChildVAppCount, v.ChildResourcePoolCount)
+			row := []string{v.Name, dash(v.Status), itoa(v.DirectVMCount), children, dash(v.Datacenter), dash(v.Path)}
+			if multi {
+				row = append([]string{v.Context}, row...)
 			}
 			t.row(row...)
 		}

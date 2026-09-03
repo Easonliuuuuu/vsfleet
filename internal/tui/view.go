@@ -466,6 +466,8 @@ func loadingGroupLabel(group vsphere.FetchGroup) string {
 		return "hosts"
 	case vsphere.GroupClusters:
 		return "clusters"
+	case vsphere.GroupVApps:
+		return "vApps"
 	case vsphere.GroupDatastores:
 		return "datastores"
 	case vsphere.GroupNetworks:

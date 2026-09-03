@@ -58,7 +58,7 @@ output rather than the whole answer.`,
 			return nil
 		},
 	}
-	cmd.Flags().StringSliceVar(&kinds, "kind", nil, "restrict to these kinds: vm, template, host, cluster, datastore, network")
+	cmd.Flags().StringSliceVar(&kinds, "kind", nil, "restrict to these kinds: vm, template, host, cluster, vapp, datastore, network")
 	cmd.Flags().IntVar(&limit, "limit", 0, "maximum number of matches to show")
 	return cmd
 }

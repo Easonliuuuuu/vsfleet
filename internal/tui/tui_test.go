@@ -207,6 +207,14 @@ func inventoryFor(name string) *vsphere.Inventory {
 				TotalMemoryMB: 2097152, DRSEnabled: true, HAEnabled: true,
 			},
 		},
+		VApps: []vsphere.VApp{
+			{
+				Location: loc("host", "app-container"), ID: name + "-vapp-1", Name: "app-container",
+				Status: "started", ParentContainer: "compute/Resources", DirectVMCount: 1,
+				DirectVMs: []string{"app-01"}, DirectVMRefs: []string{"VirtualMachine:" + name + "-vm-1"},
+				Cluster: "compute", ComputeResource: "compute",
+			},
+		},
 		Datastores: []vsphere.Datastore{
 			{
 				Location: loc("datastore", "nvme-01"), ID: name + "-ds-1", Name: "nvme-01",
@@ -430,9 +438,13 @@ func TestTabsSwitchTheResourceKind(t *testing.T) {
 	if strings.Contains(out, "app-01") {
 		t.Errorf("template tab is still showing virtual machines:\n%s", out)
 	}
-	press(t, m, "left", "left") // wrap backwards to Networks
+	press(t, m, "left", "left") // wrap backwards to the vApp tab
+	if m.kind != vsphere.KindVApp {
+		t.Fatalf("kind is %q, want vApp after wrapping backwards", m.kind)
+	}
+	press(t, m, "6") // numeric shortcuts preserve Network as kind 6
 	if m.kind != vsphere.KindNetwork {
-		t.Fatalf("kind is %q, want network after wrapping backwards", m.kind)
+		t.Fatalf("kind is %q, want network after its numeric shortcut", m.kind)
 	}
 }
 
@@ -523,6 +535,31 @@ func TestFocusedSearchControls(t *testing.T) {
 	}
 	if !m.quitting {
 		t.Fatal("ctrl+c in the focused search should set quitting")
+	}
+}
+
+func TestSearchOpenSwitchesToVAppContextAndTab(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	press(t, m, "R")
+
+	press(t, m, "tab")
+	typeText(t, m, "app-container")
+	press(t, m, "enter")
+	press(t, m, "enter")
+
+	if m.mode != modeDetail {
+		t.Fatalf("opening a search result should show details, mode=%v", m.mode)
+	}
+	if m.kind != vsphere.KindVApp || m.selected != 0 || m.allScope {
+		t.Fatalf("search result did not switch to its context/tab: kind=%q selected=%d all=%v", m.kind, m.selected, m.allScope)
+	}
+	if r, ok := m.currentRow(); !ok || r.name != "app-container" || r.kind != vsphere.KindVApp || r.context != "customer-a" {
+		t.Fatalf("detail selection = %+v, %v", r, ok)
+	}
+	press(t, m, "esc")
+	if m.mode != modeBrowse || m.kind != vsphere.KindVApp || m.allScope {
+		t.Fatalf("leaving search detail did not land on the vApp browse tab: mode=%v kind=%q all=%v", m.mode, m.kind, m.allScope)
 	}
 }
 
@@ -808,7 +845,7 @@ func TestSearchNamesTheVCentersItCouldNotRead(t *testing.T) {
 
 // TestSearchResultOpensItsOwnKind checks that a detail pane opened from a
 // search result describes what the row actually is, not whichever tab happened
-// to be open behind it, and that esc goes back to the results.
+// to be open behind it, and that esc goes back to the selected kind's table.
 func TestSearchResultOpensItsOwnKind(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 
@@ -829,8 +866,8 @@ func TestSearchResultOpensItsOwnKind(t *testing.T) {
 	}
 
 	press(t, m, "esc")
-	if m.mode != modeSearch {
-		t.Fatalf("esc should return to the search results, mode is %v", m.mode)
+	if m.mode != modeBrowse || m.kind != vsphere.KindTemplate || m.allScope {
+		t.Fatalf("esc should return to the selected kind's table, mode=%v kind=%q all=%v", m.mode, m.kind, m.allScope)
 	}
 }
 
@@ -917,7 +954,7 @@ func TestHelpListsEveryBinding(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 	press(t, m, "?")
 	out := m.View()
-	for _, want := range []string{"Keys", "contexts", "all vCenters", "diagnose", "1-6"} {
+	for _, want := range []string{"Keys", "contexts", "all vCenters", "diagnose", "1-6", "7"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help is missing %q:\n%s", want, out)
 		}

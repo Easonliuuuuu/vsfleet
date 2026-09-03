@@ -134,6 +134,12 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 			Path: "/" + datacenter + "/" + kind + "/" + object,
 		}
 	}
+	vappLoc := func(object string) vsphere.Location {
+		return vsphere.Location{
+			Context: name, Datacenter: datacenter,
+			Path: "/" + datacenter + "/host/compute-a/Resources/" + object,
+		}
+	}
 	return &vsphere.Inventory{
 		Context: name,
 		VMs: []vsphere.VM{
@@ -152,6 +158,25 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 		Clusters: []vsphere.Cluster{
 			{Location: loc("host", "compute-a"), ID: name + "-cluster-1", Name: "compute-a", Hosts: 4, EffectiveHost: 4, CPUCores: 128, TotalCPUMHz: 307200, TotalMemoryMB: 2097152, DRSEnabled: true, HAEnabled: true},
 			{Location: loc("host", "compute-b"), ID: name + "-cluster-2", Name: "compute-b", Hosts: 3, EffectiveHost: 3, CPUCores: 96, TotalCPUMHz: 230400, TotalMemoryMB: 1572864, DRSEnabled: true, HAEnabled: true},
+		},
+		VApps: []vsphere.VApp{
+			{
+				Location: vappLoc("api-stack"), ID: name + "-vapp-1", Name: "api-stack", Status: "started",
+				ParentContainer: "compute-a/Resources", DirectVMCount: 1, DirectVMs: []string{"api-01"},
+				DirectVMRefs: []string{"VirtualMachine:" + name + "-vm-1"}, ChildVAppCount: 1,
+				ChildVApps: []string{"api-cache"}, ChildResourcePoolCount: 1,
+				ChildResourcePools: []string{"api-pool"}, Cluster: "compute-a", ComputeResource: "compute-a",
+			},
+			{
+				Location: vappLoc("api-cache"), ID: name + "-vapp-2", Name: "api-cache", Status: "stopped",
+				ParentContainer: "api-stack", ParentVApp: "api-stack", DirectVMCount: 1,
+				DirectVMs: []string{"postgres-01"}, DirectVMRefs: []string{"VirtualMachine:" + name + "-vm-2"},
+				Cluster: "compute-a", ComputeResource: "compute-a",
+			},
+			{
+				Location: vappLoc("empty-vapp"), ID: name + "-vapp-3", Name: "empty-vapp", Status: "stopped",
+				ParentContainer: "compute-a/Resources", Cluster: "compute-a", ComputeResource: "compute-a",
+			},
 		},
 		Datastores: []vsphere.Datastore{
 			{Location: loc("datastore", "nvme-01"), ID: name + "-ds-1", Name: "nvme-01", Type: "VMFS", Accessible: true, CapacityBytes: 8 << 40, FreeBytes: 3 << 40},

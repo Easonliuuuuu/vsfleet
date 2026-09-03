@@ -84,6 +84,7 @@ vsfleet context list
 vsfleet context test prod
 vsfleet status
 vsfleet vm list --context prod
+vsfleet vapp list --context prod
 vsfleet search ubuntu
 ```
 
@@ -112,12 +113,13 @@ vsfleet search ubuntu --all-contexts
 | `vsfleet search <text>` | Search inventory across vCenters |
 | `vsfleet <kind> list` | List a resource kind |
 
-Supported resource kinds are `vm`, `template`, `host`, `cluster`,
+Supported resource kinds are `vm`, `template`, `host`, `cluster`, `vapp`,
 `datastore`, and `network`. Each kind also accepts `--filter` / `-f`:
 
 ```sh
 vsfleet host list --context prod --filter esxi-07
 vsfleet datastore list --all-contexts -f nvme
+vsfleet vapp list --all-contexts
 ```
 
 Use `-o json` with commands that produce data:
@@ -154,7 +156,7 @@ The browse screen:
 
 | Key | Action |
 |---|---|
-| `1`–`6` | Jump to a resource kind; `←` / `→` or `h` / `l` also cycle |
+| `1`–`7` | Jump to a resource kind (`7` is vApps); `←` / `→` or `h` / `l` also cycle |
 | `↑` / `↓` or `k` / `j` | Move through rows |
 | `c` | Open the contexts screen |
 | `a` | Toggle the all-contexts view |

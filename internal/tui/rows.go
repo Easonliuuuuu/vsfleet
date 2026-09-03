@@ -103,7 +103,7 @@ type row struct {
 	context string
 	// kind is what the row is, carried on the row rather than read from the
 	// model's current tab so that a search result — which sits in a list of
-	// six kinds at once — still knows what it is.
+	// seven kinds at once — still knows what it is.
 	kind   vsphere.Kind
 	name   string
 	glyph  string
@@ -166,6 +166,14 @@ func columnsFor(kind vsphere.Kind, withContext bool) []column {
 			column{title: "HA", width: 5},
 			column{title: "DATACENTER", width: 14},
 		)
+	case vsphere.KindVApp:
+		cols = append(cols,
+			column{title: "NAME"},
+			column{title: "STATUS", width: 10},
+			column{title: "VMS", width: 5, right: true},
+			column{title: "CHILDREN", width: 18},
+			column{title: "DATACENTER", width: 14},
+		)
 	case vsphere.KindDatastore:
 		cols = append(cols,
 			column{title: "NAME"},
@@ -197,6 +205,8 @@ func tabTitle(kind vsphere.Kind) string {
 		return "Hosts"
 	case vsphere.KindCluster:
 		return "Clusters"
+	case vsphere.KindVApp:
+		return "vApps"
 	case vsphere.KindDatastore:
 		return "Datastores"
 	case vsphere.KindNetwork:
@@ -207,7 +217,7 @@ func tabTitle(kind vsphere.Kind) string {
 }
 
 // searchColumns are the columns of the estate-wide search result table: the
-// same five, in the same order, that "vsfleet search" prints. It lists six
+// same five, in the same order, that "vsfleet search" prints. It lists seven
 // kinds at once, so it can only use what every object has — which vCenter,
 // what it is, its name, and where it sits.
 func searchColumns() []column {
@@ -250,6 +260,8 @@ func shortTabTitle(kind vsphere.Kind) string {
 		return "Host"
 	case vsphere.KindCluster:
 		return "Clus"
+	case vsphere.KindVApp:
+		return "vApp"
 	case vsphere.KindDatastore:
 		return "DS"
 	case vsphere.KindNetwork:
@@ -271,6 +283,8 @@ func kindLabel(kind vsphere.Kind) string {
 		return "ESXi host"
 	case vsphere.KindCluster:
 		return "Cluster"
+	case vsphere.KindVApp:
+		return "vApp"
 	case vsphere.KindDatastore:
 		return "Datastore"
 	case vsphere.KindNetwork:
@@ -295,6 +309,8 @@ func countFor(inv *vsphere.Inventory, kind vsphere.Kind) int {
 		return len(inv.Hosts)
 	case vsphere.KindCluster:
 		return len(inv.Clusters)
+	case vsphere.KindVApp:
+		return len(inv.VApps)
 	case vsphere.KindDatastore:
 		return len(inv.Datastores)
 	case vsphere.KindNetwork:
@@ -326,6 +342,10 @@ func rowsFor(inv *vsphere.Inventory, kind vsphere.Kind, withContext bool) []row 
 	case vsphere.KindCluster:
 		for _, c := range inv.Clusters {
 			out = append(out, clusterRow(c, withContext))
+		}
+	case vsphere.KindVApp:
+		for _, v := range inv.VApps {
+			out = append(out, vappRow(v, withContext))
 		}
 	case vsphere.KindDatastore:
 		for _, d := range inv.Datastores {
@@ -518,6 +538,53 @@ func clusterRow(c vsphere.Cluster, withContext bool) row {
 			{"Managed object", c.ID},
 		},
 	}
+}
+
+func vappRow(v vsphere.VApp, withContext bool) row {
+	st, glyph := statusIdle, glyphOffline
+	switch v.Status {
+	case "started":
+		st, glyph = statusGood, glyphOnline
+	case "starting", "stopping", "suspended":
+		st, glyph = statusWarn, glyphPending
+	}
+	return row{
+		key:     v.Context + "/" + v.ID,
+		context: v.Context,
+		where:   v.Location,
+		name:    v.Name,
+		glyph:   glyph,
+		status:  st,
+		cells: lead(withContext, v.Context,
+			v.Name,
+			humanize.Dash(v.Status),
+			strconv.Itoa(v.DirectVMCount),
+			childSummary(v.ChildVAppCount, v.ChildResourcePoolCount),
+			humanize.Dash(v.Datacenter),
+		),
+		detail: []field{
+			{"vCenter", v.Context},
+			{"Status", humanize.Dash(v.Status)},
+			{"Parent container", humanize.Dash(v.ParentContainer)},
+			{"Parent vApp", humanize.Dash(v.ParentVApp)},
+			{"Direct VMs", listOrDash(v.DirectVMs)},
+			{"Direct VM references", listOrDash(v.DirectVMRefs)},
+			{"Nested vApps", listOrDash(v.ChildVApps)},
+			{"Resource pools", listOrDash(v.ChildResourcePools)},
+			{"Cluster / compute resource", humanize.Dash(v.Cluster)},
+			{"Datacenter", humanize.Dash(v.Datacenter)},
+			{"Inventory path", humanize.Dash(v.Path)},
+			{"Managed object", v.ID},
+		},
+	}
+}
+
+func childSummary(vapps, pools int) string {
+	return fmt.Sprintf("%d vApp / %d pool", vapps, pools)
+}
+
+func listOrDash(items []string) string {
+	return humanize.Dash(strings.Join(items, ", "))
 }
 
 func datastoreRow(d vsphere.Datastore, withContext bool) row {

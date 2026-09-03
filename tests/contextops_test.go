@@ -21,6 +21,33 @@ func staticResolver() *credentials.Resolver {
 	return credentials.NewResolver(credentials.NewStatic(credentials.SchemeKeyring, nil))
 }
 
+// unavailableKeyring stands in for a machine with no OS secret store at all —
+// a headless Linux box with no Secret Service, a locked-down container — the
+// way go-keyring actually fails there: every call errors, not just Store.
+type unavailableKeyring struct{ err error }
+
+func (k unavailableKeyring) Scheme() string { return credentials.SchemeKeyring }
+func (k unavailableKeyring) Get(context.Context, credentials.Ref) (credentials.Credential, error) {
+	return credentials.Credential{}, k.err
+}
+func (k unavailableKeyring) Store(context.Context, credentials.Ref, credentials.Credential) error {
+	return k.err
+}
+func (k unavailableKeyring) Delete(context.Context, credentials.Ref) error { return k.err }
+
+// resolverWithNoKeyring builds a Resolver whose keyring provider always
+// fails, and a prompt provider so the fallback this test proves has
+// somewhere to land.
+func resolverWithNoKeyring(promptAnswer string) *credentials.Resolver {
+	err := errors.New("no secret service available")
+	return credentials.NewResolver(
+		unavailableKeyring{err: err},
+		credentials.NewStatic(credentials.SchemePrompt, map[string]credentials.Credential{
+			"": {Password: promptAnswer},
+		}),
+	)
+}
+
 func newCfg(t *testing.T) *config.Config {
 	t.Helper()
 	cfg, err := config.Load(filepath.Join(t.TempDir(), "config.toml"))
@@ -64,6 +91,96 @@ func TestContextopsSaveTestsAndStoresTheCredential(t *testing.T) {
 	}
 	if cred.Password != "correct-horse" {
 		t.Errorf("stored password is %q, want correct-horse", cred.Password)
+	}
+}
+
+// TestContextopsSaveFallsBackToPromptWhenTheKeyringIsUnavailable covers a
+// machine with no OS password manager at all — no Secret Service, a locked
+// container. Save must not fail outright, and the context it saves must be
+// indistinguishable from one an operator configured with --credential
+// prompt from the start: nothing in it should suggest a password lives
+// somewhere it does not.
+func TestContextopsSaveFallsBackToPromptWhenTheKeyringIsUnavailable(t *testing.T) {
+	vc := startVCenter(t, func(m *simulator.Model) {})
+	cfg := newCfg(t)
+	resolver := resolverWithNoKeyring(testPassword)
+
+	in := contextops.Input{
+		Name: "prod", Endpoint: vc.URL, Username: "operator@vsphere.local",
+		TLS:          config.TLSConfig{Mode: config.TLSThumbprint, Thumbprint: vc.Thumbprint},
+		Password:     testPassword,
+		HavePassword: true,
+	}
+	res, err := contextops.Save(context.Background(), cfg, resolver, vsphere.ConnectOptions{}, in, true)
+	if err != nil {
+		t.Fatalf("Save should still succeed when only the keyring write fails: %v (diagnosis: %+v)", err, res.Diagnosis)
+	}
+	if res.Diagnosis == nil || !res.Diagnosis.OK() {
+		t.Fatalf("the connection test itself does not touch the keyring and should still pass, got %+v", res.Diagnosis)
+	}
+	if res.StoreWarning == nil {
+		t.Error("expected a StoreWarning when the keyring is unavailable")
+	}
+	if res.Context.Credential.Scheme != credentials.SchemePrompt || res.Context.Credential.Value != "" {
+		t.Errorf("credential = %q, want the bare prompt scheme with no leftover keyring value", res.Context.Credential)
+	}
+
+	saved, err := cfg.Context("prod")
+	if err != nil {
+		t.Fatalf("context was not saved: %v", err)
+	}
+	if saved.Credential.Scheme != credentials.SchemePrompt {
+		t.Errorf("saved config credential = %q, want scheme %q", saved.Credential, credentials.SchemePrompt)
+	}
+
+	// Resolving it afterwards behaves exactly like a context configured with
+	// --credential prompt from the start — the whole point of downgrading.
+	cred, err := resolver.Get(context.Background(), saved.Credential)
+	if err != nil {
+		t.Fatalf("resolving the fallback prompt credential failed: %v", err)
+	}
+	if cred.Password != testPassword {
+		t.Errorf("resolved password = %q, want %q", cred.Password, testPassword)
+	}
+}
+
+// TestContextopsSaveProxyCredentialFallsBackToPromptToo checks the proxy's
+// own password gets the identical treatment, independently of the vCenter's.
+// It reuses testPassword for both rather than a second secret-shaped
+// literal: the test compares each independently, not against each other, so
+// nothing is lost by them being equal here.
+func TestContextopsSaveProxyCredentialFallsBackToPromptToo(t *testing.T) {
+	cfg := newCfg(t)
+	resolver := resolverWithNoKeyring(testPassword)
+
+	in := contextops.Input{
+		Name: "via-proxy", Endpoint: "https://vcsa.internal", Username: "operator@vsphere.local",
+		Transport: config.TransportConfig{Type: config.TransportSOCKS5, Address: "127.0.0.1:1080", Username: "svc-proxy"},
+		TLS:       config.TLSConfig{Mode: config.TLSInsecure},
+
+		Password:     testPassword,
+		HavePassword: true,
+
+		ProxyPassword:     testPassword,
+		HaveProxyPassword: true,
+	}
+	// No connection test: this proves the Store fallback, not proxy
+	// connectivity, and nothing here is actually listening on 127.0.0.1:1080.
+	res, err := contextops.Save(context.Background(), cfg, resolver, vsphere.ConnectOptions{}, in, false)
+	if err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if res.StoreWarning == nil {
+		t.Error("expected a StoreWarning covering the proxy password too")
+	}
+	if res.Context.Transport.Credential.Scheme != credentials.SchemePrompt {
+		t.Errorf("proxy credential = %q, want scheme %q", res.Context.Transport.Credential, credentials.SchemePrompt)
+	}
+	// The vCenter's own credential is an independent failure and must fall
+	// back the same way, not be left pointing at a keyring entry that also
+	// never got written.
+	if res.Context.Credential.Scheme != credentials.SchemePrompt {
+		t.Errorf("vCenter credential = %q, want scheme %q", res.Context.Credential, credentials.SchemePrompt)
 	}
 }
 

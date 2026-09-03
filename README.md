@@ -172,6 +172,13 @@ reason:
 | `d` | Diagnose the highlighted context |
 | `esc` | Back to the table |
 
+A context's name is a label, not an identity. Editing one to point at a
+different vCenter — or to log in as someone else, or to route there another
+way — closes the connection the old settings opened and starts again from
+nothing, so what you are shown after an edit always came from the vCenter the
+context describes now. The same applies to removing a context: it logs out
+rather than leaving a session open on a server that is no longer configured.
+
 ### Filtering and searching
 
 These are the same query at two widths. `/` narrows the table in front of you.

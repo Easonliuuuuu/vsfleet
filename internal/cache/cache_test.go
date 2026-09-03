@@ -199,3 +199,37 @@ func TestRefreshRespectsContextCancellationWhileWaitingForASlot(t *testing.T) {
 		t.Errorf("Err = %v, want context.Canceled", e.Err)
 	}
 }
+
+func TestForgetDropsTheEntry(t *testing.T) {
+	c := New(1)
+	inv := &vsphere.Inventory{Context: "prod"}
+	c.Refresh(context.Background(), "prod", func(context.Context) (*vsphere.Inventory, error) {
+		return inv, nil
+	})
+	if _, ok := c.Get("prod"); !ok {
+		t.Fatal("nothing cached after a successful refresh")
+	}
+
+	c.Forget("prod")
+
+	if e, ok := c.Get("prod"); ok {
+		t.Errorf("Get after Forget returned %+v, want nothing at all", e)
+	}
+	// The point of forgetting is that a later failure has no stale inventory
+	// left to fall back on.
+	e := c.Refresh(context.Background(), "prod", func(context.Context) (*vsphere.Inventory, error) {
+		return nil, errors.New("no route to host")
+	})
+	if e.Inventory != nil {
+		t.Errorf("a failed refresh after Forget resurrected %+v", e.Inventory)
+	}
+	if e.Loaded() {
+		t.Error("entry reports itself loaded after Forget and a failed refresh")
+	}
+}
+
+// Forgetting something that was never there is a no-op, not a panic: a caller
+// invalidating a context cannot know whether it was ever read.
+func TestForgetIsSafeForAnUnknownName(t *testing.T) {
+	New(1).Forget("never-fetched")
+}

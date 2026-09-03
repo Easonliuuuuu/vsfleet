@@ -93,6 +93,22 @@ func (c *Cache) Refresh(ctx context.Context, name string, fetch Fetch) Entry {
 	return c.storeSuccess(name, inv)
 }
 
+// Forget discards everything cached for name. Keeping stale inventory is the
+// whole point of this cache right up until the name stops meaning the same
+// vCenter — an edited or removed context — at which point the stale-preserving
+// behaviour would present another server's inventory as this one's last known
+// good state. Forgetting a name that was never fetched is a no-op.
+//
+// A Refresh already in flight for name is not cancelled and will store its
+// result as usual; a caller that edits a context under a running fetch is
+// expected to discard that result, which it can do because it knows what it
+// asked for and this package does not.
+func (c *Cache) Forget(name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, name)
+}
+
 func (c *Cache) store(name string, err error) Entry {
 	c.mu.Lock()
 	defer c.mu.Unlock()

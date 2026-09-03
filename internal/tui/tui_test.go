@@ -790,6 +790,87 @@ func TestReloadFailureKeepsShowingTheStaleData(t *testing.T) {
 	}
 }
 
+// TestEditingAContextDropsWhatTheOldOneLoaded is the limit of the stale-data
+// rule the previous test pins. Keeping the last inventory through a failed
+// refresh is right while the name still means the same vCenter; once it has
+// been edited to mean another one, that inventory is another server's and must
+// go, however convenient it would look on screen.
+//
+// The edit is arranged to fail its first read on purpose: a cache that still
+// held the old entry would answer with it — that is exactly what it is built
+// to do — and the row would show a stale-but-plausible table for a vCenter it
+// has never actually reached.
+func TestEditingAContextDropsWhatTheOldOneLoaded(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	if n := len(m.rows()); n == 0 {
+		t.Fatalf("prod has no rows after the initial load")
+	}
+	if _, ok := m.cache.Get("prod"); !ok {
+		t.Fatal("prod was not cached after the initial load")
+	}
+
+	press(t, m, "c", "e")
+	settleForm(m)
+	if !m.form.editing {
+		t.Fatalf("'e' did not open an edit of prod")
+	}
+	// Row order while editing: Name(static) Endpoint Username Credential
+	// Password Route TLS Datacenter Current Test Save Cancel.
+	for range 7 {
+		press(t, m, "down") // -> Datacenter
+	}
+	typeText(t, m, "Somewhere-Else")
+
+	// From here the context describes a different vCenter, and that vCenter
+	// does not answer.
+	if b.failures == nil {
+		b.failures = map[string]error{}
+	}
+	b.failures["prod"] = errors.New("no route to host")
+
+	for range 3 {
+		press(t, m, "down") // Current, Test, Save
+	}
+	press(t, m, "enter")
+
+	st := m.byName["prod"]
+	if st.inv != nil {
+		t.Errorf("an edited context is still showing the old vCenter's inventory (%d VMs)", len(st.inv.VMs))
+	}
+	if n := len(m.rows()); n != 0 {
+		t.Errorf("an edited context that cannot be reached is still showing %d rows from the old one", n)
+	}
+	if st.err == nil {
+		t.Error("the failed read of the edited context was not recorded")
+	}
+	if st.rowStatus() != statusBad {
+		t.Errorf("status = %v, want bad: there is no data behind this context, only another one's", st.rowStatus())
+	}
+	if e, ok := m.cache.Get("prod"); ok && e.Inventory != nil {
+		t.Error("the cache kept the old vCenter's inventory under the edited context's name")
+	}
+}
+
+// TestRemovingAContextForgetsItsCachedInventory keeps a removed context from
+// haunting a later one that happens to reuse its name.
+func TestRemovingAContextForgetsItsCachedInventory(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	if _, ok := m.cache.Get("prod"); !ok {
+		t.Fatal("prod was not cached after the initial load")
+	}
+
+	press(t, m, "c", "x", "y")
+
+	if _, err := findContext(b.contexts, "prod"); err == nil {
+		t.Fatal("prod was not removed")
+	}
+	if _, ok := m.cache.Get("prod"); ok {
+		t.Error("a removed context left its inventory in the cache")
+	}
+}
+
 // TestTabBarFlagsAKindWithAListingError checks that a resource kind
 // ListInventory could not enumerate (Inventory.Errors) is visible from the
 // tab bar, not just discoverable by opening that tab and finding it empty.

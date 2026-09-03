@@ -157,6 +157,24 @@ type Context struct {
 	TLS        TLSConfig       `toml:"tls" json:"tls"`
 }
 
+// SameConnection reports whether two contexts describe the same vCenter
+// reached the same way. A name is a label an operator chose, not an identity:
+// editing "prod" to point at a different endpoint, log in as someone else, or
+// route through a different proxy makes it a different connection under an
+// unchanged name. Anything holding a live connection keyed by name has to ask
+// this before reusing it.
+//
+// Every field of a Context is a string or a bool, so this is whole-struct
+// equality — a field added later is covered without touching this method,
+// which is the point: the safe answer to "is this still the same connection"
+// is no whenever anything at all about it changed.
+func (c *Context) SameConnection(other *Context) bool {
+	if c == nil || other == nil {
+		return c == other
+	}
+	return *c == *other
+}
+
 // URL returns the vCenter SDK URL for the context.
 func (c *Context) URL() (*url.URL, error) {
 	raw := strings.TrimSpace(c.Endpoint)

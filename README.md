@@ -5,7 +5,7 @@ Operate multiple VMware vCenter servers from one terminal.
 <p align="center">
   <picture>
     <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/vsfleet.png">
-    <img src="docs/assets/vsfleet.gif" alt="vsfleet browsing virtual machines across three vCenters, filtering inventory, and diagnosing an unavailable site" width="1200">
+    <img src="docs/assets/vsfleet.gif" alt="vsfleet jumping between resource kinds across three vCenters, widening a filter into an estate-wide search, and diagnosing an unavailable site" width="1200">
   </picture>
 </p>
 

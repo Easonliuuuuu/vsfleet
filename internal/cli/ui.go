@@ -4,13 +4,21 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/easonliuuuuu/vsfleet/internal/tui"
 	"github.com/easonliuuuuu/vsfleet/internal/uistate"
 )
 
+// addRefreshFlag registers --refresh on a command that opens the interface.
+func addRefreshFlag(f *pflag.FlagSet, a *App) {
+	f.DurationVar(&a.RefreshInterval, "refresh", 0,
+		"how often to re-read inventory in the background (0 for the default of "+
+			tui.DefaultRefreshInterval.String()+", negative to only read when asked)")
+}
+
 func newUICommand(a *App) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "ui",
 		Short: "Browse every vCenter in one terminal interface",
 		Long: `Open the terminal interface.
@@ -40,6 +48,8 @@ ask the same questions, not a second implementation of them.`,
 			return runUI(a, cmd)
 		},
 	}
+	addRefreshFlag(cmd.Flags(), a)
+	return cmd
 }
 
 // runUI is also what a bare "vsfleet" runs: the terminal interface is the
@@ -79,6 +89,8 @@ func runUI(a *App, cmd *cobra.Command) error {
 		AllContexts: a.AllContexts,
 		Kind:        remembered.Kind,
 		Sort:        remembered.Sort,
+
+		RefreshInterval: a.RefreshInterval,
 	})
 	// A clean run is the only one worth remembering: a program that never
 	// really started (no TTY, say) has nothing truthful to say about where

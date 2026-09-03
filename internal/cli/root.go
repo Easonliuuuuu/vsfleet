@@ -28,6 +28,11 @@ type App struct {
 	AllContexts  bool
 	Format       string
 	Timeout      time.Duration
+	// RefreshInterval is how often the terminal interface re-reads inventory
+	// in the background. Zero takes the built-in default; negative turns it
+	// off. It only reaches the interface, so it is registered on the two
+	// commands that open one rather than on every command in the tree.
+	RefreshInterval time.Duration
 
 	In  io.Reader
 	Out io.Writer
@@ -181,6 +186,10 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 	f.BoolVar(&a.AllContexts, "all-contexts", false, "act on every configured context")
 	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json")
 	f.DurationVar(&a.Timeout, "timeout", 30*time.Second, "per-vCenter timeout")
+	// A bare "vsfleet" opens the interface, so the interface's own flag
+	// belongs here too — on root's own flags, not the persistent set, so
+	// "vsfleet vm list --refresh" is still the error it should be.
+	addRefreshFlag(root.Flags(), a)
 
 	root.AddCommand(
 		newContextCommand(a),

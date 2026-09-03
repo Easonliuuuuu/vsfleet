@@ -271,6 +271,15 @@ The keyring uses the platform’s native secret storage where available:
 macOS Keychain, Linux Secret Service, or Windows Credential Manager. Proxy
 credentials use the same mechanism.
 
+If no secret store is available — a headless Linux host with no Secret
+Service, a locked-down container — `context add`/`edit` still succeeds
+rather than failing outright: the context is saved with `credential =
+"prompt"` instead of `keyring:<name>`, with a warning explaining why. That
+is deliberate, not a silent downgrade: a saved `keyring:<name>` reference
+with nothing actually behind it would behave identically to `prompt` on
+every later connection anyway (it looks the password up, finds nothing, and
+asks), just without saying so up front.
+
 For unattended setup, provide the password through standard input:
 
 ```sh

@@ -112,8 +112,8 @@ func Test(ctx context.Context, in Input, connOpts vsphere.ConnectOptions) (*conf
 }
 
 // Result is the outcome of Save: the context as written (or as it would have
-// been), the diagnosis if a test ran, and a non-fatal warning when the
-// context was saved but its password could not be stored.
+// been), the diagnosis if a test ran, and a non-fatal warning when a keyring
+// write failed and the context was saved as a prompt credential instead.
 type Result struct {
 	Context      *config.Context
 	Diagnosis    *vsphere.Diagnosis
@@ -146,18 +146,31 @@ func Save(ctx context.Context, cfg *config.Config, resolver *credentials.Resolve
 			return res, errors.New("connection test failed")
 		}
 	}
+	// A keyring write can fail for reasons that have nothing to do with this
+	// context — no OS secret store on a headless machine, a locked D-Bus
+	// session, a container with none configured. Leaving cc.Credential as
+	// "keyring:<name>" in that case would save a lie: the config would claim
+	// a password is stored where none is, until the next connection asks the
+	// keyring for it, gets nothing back, and falls through to a prompt
+	// anyway. Downgrading to the prompt scheme here makes the saved context
+	// exactly what choosing --credential prompt from the start would have
+	// produced — no password manager, so it behaves as if there were none —
+	// with the warning as the only difference an operator sees.
 	if in.HavePassword && cc.Credential.Scheme == credentials.SchemeKeyring {
 		if err := resolver.Store(ctx, cc.Credential, credentials.Credential{Password: in.Password}); err != nil {
-			res.StoreWarning = err
+			res.StoreWarning = fmt.Errorf("%w — saved as a prompt credential instead", err)
+			cc.Credential = credentials.Ref{Scheme: credentials.SchemePrompt}
 		}
 	}
 	if in.HaveProxyPassword && cc.Transport.Credential.Scheme == credentials.SchemeKeyring {
 		if err := resolver.Store(ctx, cc.Transport.Credential, credentials.Credential{Password: in.ProxyPassword}); err != nil {
+			warning := fmt.Errorf("proxy: %w — saved as a prompt credential instead", err)
 			if res.StoreWarning != nil {
-				res.StoreWarning = fmt.Errorf("%v; proxy password also not stored: %w", res.StoreWarning, err)
+				res.StoreWarning = fmt.Errorf("%v; %w", res.StoreWarning, warning)
 			} else {
-				res.StoreWarning = fmt.Errorf("proxy password not stored: %w", err)
+				res.StoreWarning = warning
 			}
+			cc.Transport.Credential = credentials.Ref{Scheme: credentials.SchemePrompt}
 		}
 	}
 	if err := cfg.Add(cc, in.Replace); err != nil {

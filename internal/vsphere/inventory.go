@@ -241,9 +241,13 @@ func retrieve(ctx context.Context, c *Client, root types.ManagedObjectReference,
 	return nil
 }
 
-// ListInventory enumerates everything in one vCenter. The individual List
-// functions exist for callers that need only one kind; this one is what the
-// cache and the cross-context search use.
+// ListInventory enumerates everything in one vCenter, one fetch group after
+// another over one shared Index. The individual List functions exist for
+// callers that need only one kind; a caller that wants groups prioritized
+// and retrieved concurrently instead — the terminal interface — calls
+// NewIndex and FetchGroup directly rather than through here. This is what
+// the CLI's own listing commands and the cross-context search use, and is
+// built on exactly the same primitives they are.
 //
 // It only fails outright when the path index itself cannot be built — every
 // object's inventory path depends on it, so nothing else is usable either.
@@ -251,52 +255,13 @@ func retrieve(ctx context.Context, c *Client, root types.ManagedObjectReference,
 // one privilege, say) is recorded in Inventory.Errors and does not stop the
 // rest from being enumerated.
 func (c *Client) ListInventory(ctx context.Context) (*Inventory, error) {
-	reportStage(ctx, StageLoadingIndex)
-	idx, err := newIndex(ctx, c)
+	idx, err := c.NewIndex(ctx)
 	if err != nil {
 		return nil, err
 	}
 	inv := &Inventory{Context: c.Context.Name}
-	fail := func(kind Kind, err error) {
-		inv.Errors = append(inv.Errors, InventoryError{Kind: kind, Message: err.Error()})
-	}
-
-	reportStage(ctx, StageLoadingVMs)
-	if vms, err := c.listVMs(ctx, idx); err != nil {
-		fail(KindVM, err)
-		fail(KindTemplate, err)
-	} else {
-		for _, vm := range vms {
-			if vm.IsTemplate {
-				inv.Templates = append(inv.Templates, vm)
-			} else {
-				inv.VMs = append(inv.VMs, vm)
-			}
-		}
-	}
-	reportStage(ctx, StageLoadingHosts)
-	if hosts, err := c.listHosts(ctx, idx); err != nil {
-		fail(KindHost, err)
-	} else {
-		inv.Hosts = hosts
-	}
-	reportStage(ctx, StageLoadingClusters)
-	if clusters, err := c.listClusters(ctx, idx); err != nil {
-		fail(KindCluster, err)
-	} else {
-		inv.Clusters = clusters
-	}
-	reportStage(ctx, StageLoadingDatastores)
-	if datastores, err := c.listDatastores(ctx, idx); err != nil {
-		fail(KindDatastore, err)
-	} else {
-		inv.Datastores = datastores
-	}
-	reportStage(ctx, StageLoadingNetworks)
-	if networks, err := c.listNetworks(ctx, idx); err != nil {
-		fail(KindNetwork, err)
-	} else {
-		inv.Networks = networks
+	for _, group := range AllGroups {
+		inv.ApplyGroup(group, c.FetchGroup(ctx, idx, group))
 	}
 	return inv, nil
 }

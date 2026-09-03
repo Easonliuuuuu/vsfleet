@@ -12,6 +12,7 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
+	"github.com/easonliuuuuu/vsfleet/internal/tui"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -69,8 +70,11 @@ func newContext(name, endpoint string, route config.TransportConfig) *config.Con
 // Contexts implements tui.Backend.
 func (b *Backend) Contexts() []*config.Context { return b.contexts }
 
-// Inventory implements tui.Backend.
-func (b *Backend) Inventory(_ context.Context, cc *config.Context) (*vsphere.Inventory, error) {
+// BeginInventory implements tui.Backend. The demo estate has each context's
+// whole Inventory assembled up front, so the "handle" it hands back simply
+// slices that fixed Inventory into the group tui.InventoryHandle.FetchGroup
+// asks for, rather than actually connecting to anything.
+func (b *Backend) BeginInventory(_ context.Context, cc *config.Context) (tui.InventoryHandle, error) {
 	if err := b.failures[cc.Name]; err != nil {
 		return nil, err
 	}
@@ -78,7 +82,16 @@ func (b *Backend) Inventory(_ context.Context, cc *config.Context) (*vsphere.Inv
 	if !ok {
 		return nil, fmt.Errorf("demo inventory for %q not found", cc.Name)
 	}
-	return inv, nil
+	return demoInventoryHandle{inv: inv}, nil
+}
+
+// demoInventoryHandle answers each fetch group from the demo estate's
+// pre-built Inventory, so recording or presenting the interface never opens
+// a real connection.
+type demoInventoryHandle struct{ inv *vsphere.Inventory }
+
+func (h demoInventoryHandle) FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory {
+	return h.inv.Slice(group)
 }
 
 // Status implements tui.Backend.

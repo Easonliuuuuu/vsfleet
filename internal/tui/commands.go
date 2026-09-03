@@ -6,30 +6,40 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/easonliuuuuu/vsfleet/internal/cache"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
+	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-// inventoryMsg carries the outcome of reading one vCenter. The error travels
-// in the message rather than being returned: a command that fails must land on
-// its own context's row, never take the program down with it.
+// beginInventoryMsg carries the outcome of connecting to one vCenter and
+// building its shared path index — see Backend.BeginInventory. Success
+// hands back a handle the model uses to fetch the priority group next (see
+// fetchGroupCmd); failure means no group was ever attempted.
 //
-// inventory and loadedAt come from the cache rather than being computed here,
-// so a failed refresh reports the last inventory that did load and when,
-// never a nil that would blank an already-populated row.
+// cc is the configuration the connect was issued against: a context edited
+// while this was in flight is a different vCenter by the time the answer
+// lands, so the result is matched against it and dropped (its slot in
+// contextState.outstanding still counted down, so the load it superseded is
+// known to have fully drained) if it no longer applies — see the case in
+// Update.
+type beginInventoryMsg struct {
+	context string
+	cc      *config.Context
+	handle  InventoryHandle
+	err     error
+}
+
+// groupMsg carries the outcome of retrieving one fetch group for one
+// vCenter. inv is never nil: a group that failed to list reports it through
+// inv.Errors (see vsphere.Client.FetchGroup), not as a separate error here.
 //
-// cc is the configuration the read was issued against. A context edited while
-// its fetch was in flight is a different vCenter by the time the answer lands,
-// so the result is matched against it and dropped if it no longer applies.
-type inventoryMsg struct {
-	context   string
-	cc        *config.Context
-	inventory *vsphere.Inventory
-	err       error
-	elapsed   time.Duration
-	loadedAt  time.Time
+// context and cc serve the same purpose as they do on beginInventoryMsg.
+type groupMsg struct {
+	context string
+	cc      *config.Context
+	group   vsphere.FetchGroup
+	inv     *vsphere.Inventory
 }
 
 // refreshTickMsg is the periodic wake-up that re-reads inventory nobody has
@@ -48,35 +58,59 @@ func scheduleRefresh(d time.Duration) tea.Cmd {
 }
 
 // diagnosisMsg carries a completed connection diagnosis. cc serves the same
-// purpose as it does on inventoryMsg: a diagnosis of the endpoint a context
-// used to have says nothing about the one it has now.
+// purpose as it does on beginInventoryMsg: a diagnosis of the endpoint a
+// context used to have says nothing about the one it has now.
 type diagnosisMsg struct {
 	context   string
 	cc        *config.Context
 	diagnosis *vsphere.Diagnosis
 }
 
-// loadInventory reads one vCenter in the background, through the shared
-// cache so a slow or overcrowded estate does not open every context's
-// connection at once, and so a failed refresh does not erase the inventory
-// the cache already had for it. Every context gets its own command, so
-// several are in flight at once (bounded by the cache) and a slow one only
-// ever delays its own row.
-func loadInventory(ctx context.Context, c *cache.Cache, b Backend, cc *config.Context) tea.Cmd {
+// beginInventoryCmd connects to one vCenter and builds its shared path
+// index in the background. Landing this is what the model uses to kick off
+// the priority fetch group — see (*Model).beginLoad and the beginInventoryMsg
+// case in Update.
+func beginInventoryCmd(ctx context.Context, b Backend, cc *config.Context) tea.Cmd {
 	return func() tea.Msg {
-		start := time.Now()
-		e := c.Refresh(ctx, cc.Name, func(ctx context.Context) (*vsphere.Inventory, error) {
-			return b.Inventory(ctx, cc)
-		})
-		return inventoryMsg{
-			context:   cc.Name,
-			cc:        cc,
-			inventory: e.Inventory,
-			err:       e.Err,
-			elapsed:   time.Since(start),
-			loadedAt:  e.LoadedAt,
+		handle, err := b.BeginInventory(ctx, cc)
+		return beginInventoryMsg{context: cc.Name, cc: cc, handle: handle, err: err}
+	}
+}
+
+// fetchGroupCmd retrieves one fetch group through an already-connected
+// handle, bounded by lim so a context fetching all five of its groups at
+// once — or an estate with several contexts doing the same — does not open
+// unbounded connections at the same moment. Every group for one context gets
+// its own command, so several run concurrently (bounded by lim) and a slow
+// one only ever delays its own kind.
+func fetchGroupCmd(ctx context.Context, lim *limiter.Limiter, handle InventoryHandle, cc *config.Context, group vsphere.FetchGroup) tea.Cmd {
+	return func() tea.Msg {
+		var inv *vsphere.Inventory
+		if err := lim.Run(ctx, func() { inv = handle.FetchGroup(group) }); err != nil {
+			// Never got to run vsphere.Client.FetchGroup at all — cancelled or
+			// timed out waiting for a concurrency slot — so there is no
+			// per-kind error of its own to report. Recording it against every
+			// kind the group covers matches FetchGroup's own convention: a
+			// failure that stops a group before it can even try is reported
+			// the same way one that runs and fails is.
+			inv = &vsphere.Inventory{Context: cc.Name}
+			for _, k := range kindsIn(group) {
+				inv.Errors = append(inv.Errors, vsphere.InventoryError{Kind: k, Message: err.Error()})
+			}
+		}
+		return groupMsg{context: cc.Name, cc: cc, group: group, inv: inv}
+	}
+}
+
+// kindsIn lists every Kind a fetch group populates.
+func kindsIn(group vsphere.FetchGroup) []vsphere.Kind {
+	var kinds []vsphere.Kind
+	for _, k := range vsphere.AllKinds {
+		if vsphere.GroupFor(k) == group {
+			kinds = append(kinds, k)
 		}
 	}
+	return kinds
 }
 
 // diagnose walks the connection stages for one context in the background.

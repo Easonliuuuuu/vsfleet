@@ -12,15 +12,16 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/easonliuuuuu/vsfleet/internal/cache"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-// maxConcurrentLoads bounds how many contexts fetch their inventory at once.
-// Without a bound, an estate with dozens of contexts would open that many
-// connections the instant the interface starts.
+// maxConcurrentLoads bounds how many fetch groups run at once, across every
+// context and every resource kind. Without a bound, an estate with dozens of
+// contexts — each fetching up to five groups concurrently — would open that
+// many connections the instant the interface starts.
 const maxConcurrentLoads = 4
 
 // DefaultRefreshInterval is how often the inventory on screen is re-read.
@@ -96,6 +97,34 @@ type contextState struct {
 	// not flicker through "connecting…" once a minute. A quiet read that
 	// fails is not quiet: that is the moment the reader needs telling.
 	quiet bool
+
+	// outstanding counts messages truly in flight for the load currently
+	// running, at every stage of it: 1 for the connect/index step, then 1
+	// again for just the priority fetch group once that lands, then
+	// len(vsphere.AllGroups)-1 once the priority group lands in turn and
+	// the rest are dispatched. loading clears once it reaches 0 — see
+	// finishLoad. A message that arrives for a context an edit has since
+	// pointed elsewhere (cc no longer matches — see the checks in Update)
+	// still counts down the same way, so the abandoned load is known to
+	// have fully drained — whatever stage it was at when the edit
+	// landed — before the edit's own retry, suppressed while it was still
+	// in flight, actually starts. See dropStraggler.
+	outstanding int
+	// awaitingPriority is true from the moment the priority fetch group is
+	// dispatched until it lands. applyGroup uses it to tell "the priority
+	// group just landed, fan the rest out" apart from "one of the four
+	// concurrent groups just landed, one fewer left to wait for" — a
+	// distinction outstanding alone cannot make once an edit has changed
+	// how many messages a load ever actually had in flight.
+	awaitingPriority bool
+	// startedAt is when beginLoad issued the connect/index command, for
+	// elapsed: the total wall-clock time from asking to the last group
+	// landing, not any one group's own share of it.
+	startedAt time.Time
+	// handle is the connected, index-built session the in-flight load's
+	// fetch groups run through — see Backend.BeginInventory. It is nil
+	// before the connect/index result lands and after the load finishes.
+	handle InventoryHandle
 }
 
 // reset drops everything this state learned from a vCenter, keeping only the
@@ -103,10 +132,11 @@ type contextState struct {
 // the row stays, but every inventory, error and diagnosis behind it came from
 // a server this context no longer points at.
 //
-// loading is deliberately left alone. A fetch already in flight still holds
-// the flag that stops a second one starting, and its result is discarded on
-// arrival by the context it was issued for rather than by clearing a flag that
-// would then be wrong.
+// loading, outstanding and handle are deliberately left alone. A fetch
+// already in flight still holds the flag that stops a second one starting,
+// and its messages are discarded on arrival by the cc they were issued for
+// no longer matching (see the checks in Update) rather than by clearing
+// state here that would then be wrong.
 func (s *contextState) reset() {
 	s.inv = nil
 	s.err = nil
@@ -203,7 +233,9 @@ func (m *Model) Snapshot() Snapshot {
 type Model struct {
 	ctx     context.Context
 	backend Backend
-	cache   *cache.Cache
+	// limiter bounds how many fetch groups run at once, across every
+	// context and every kind — see maxConcurrentLoads.
+	limiter *limiter.Limiter
 	keys    keyMap
 	theme   theme
 	spin    spinner.Model
@@ -282,7 +314,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 	m := &Model{
 		ctx:      ctx,
 		backend:  backend,
-		cache:    cache.New(maxConcurrentLoads),
+		limiter:  limiter.New(maxConcurrentLoads),
 		keys:     defaultKeys(),
 		theme:    newTheme(),
 		spin:     spinner.New(spinner.WithSpinner(spinner.Dot)),
@@ -408,6 +440,11 @@ func (m *Model) startLoad(st *contextState, force bool) tea.Cmd {
 // beginLoad is the shared body of every read. quiet marks it as one nobody
 // asked for, which changes nothing about the fetch and everything about how
 // it is reported: see contextState.quiet.
+//
+// It starts with the connect/index step alone (beginInventoryCmd); the
+// priority fetch group is issued once that lands (the beginInventoryMsg case
+// in Update), and the rest once the priority group lands in turn (the
+// groupMsg case) — see the package doc on that progression.
 func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 	if st.loading {
 		return nil
@@ -417,7 +454,10 @@ func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 	}
 	st.loading = true
 	st.quiet = quiet
-	return loadInventory(m.ctx, m.cache, m.backend, st.cc)
+	st.startedAt = time.Now()
+	st.outstanding = 1
+	st.awaitingPriority = false
+	return beginInventoryCmd(m.ctx, m.backend, st.cc)
 }
 
 // refreshDue reports whether a context is old enough to be worth re-reading.
@@ -680,8 +720,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spin, cmd = m.spin.Update(msg)
 		return m, cmd
 
-	case inventoryMsg:
-		return m, m.applyInventory(msg)
+	case beginInventoryMsg:
+		return m, m.applyBeginInventory(msg)
+
+	case groupMsg:
+		return m, m.applyGroup(msg)
 
 	case credRequestMsg:
 		// A second concurrent ask cannot arrive here: the coordinator only
@@ -820,7 +863,6 @@ func (m *Model) syncContexts() {
 		if ok {
 			if !st.cc.SameConnection(cc) {
 				st.reset()
-				m.cache.Forget(cc.Name)
 			}
 			st.cc = cc
 		} else {
@@ -829,13 +871,10 @@ func (m *Model) syncContexts() {
 		states = append(states, st)
 		byName[cc.Name] = st
 	}
-	// A removed context leaves its inventory in the cache, where a context
-	// later added under the same name would inherit it.
-	for name := range old {
-		if _, ok := byName[name]; !ok {
-			m.cache.Forget(name)
-		}
-	}
+	// A removed context's contextState is simply dropped along with it: its
+	// inventory lived on the struct itself, not in a separate cache keyed by
+	// name, so a context later added under the same name starts with nothing
+	// rather than inheriting what the removed one had.
 	m.states, m.byName = states, byName
 	m.searchDirty = true
 	m.selected = clamp(m.selected, 0, max(0, len(m.states)-1))
@@ -868,63 +907,121 @@ func (m *Model) busy() bool {
 	return false
 }
 
-func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
+// applyBeginInventory lands the connect/index result a load starts with. On
+// success it kicks off the priority fetch group — the currently visible
+// kind's — alone; the rest follow once that group's own groupMsg lands (see
+// applyGroup). On failure, no group was ever attempted and the load ends
+// here.
+func (m *Model) applyBeginInventory(msg beginInventoryMsg) tea.Cmd {
 	st, ok := m.byName[msg.context]
 	if !ok {
 		return nil
 	}
 	if msg.cc != nil && st.cc != msg.cc {
-		// The context was edited while this read was in flight: the answer is
-		// about a vCenter this name no longer refers to. The reload the edit
-		// asked for was suppressed by this very fetch still being in flight,
-		// so issuing it here is what keeps the row from being left empty.
-		st.loading = false
-		if cmd := m.startLoad(st, true); cmd != nil {
-			return tea.Batch(cmd, m.spin.Tick)
+		return m.dropStraggler(st)
+	}
+	st.outstanding-- // the connect/index step itself just landed
+	if msg.err != nil {
+		st.err = msg.err
+		return m.finishLoad(st)
+	}
+	st.err = nil
+	st.handle = msg.handle
+	st.outstanding = 1 // just the priority group, dispatched below
+	st.awaitingPriority = true
+	priority := vsphere.GroupFor(m.kind)
+	return fetchGroupCmd(m.ctx, m.limiter, msg.handle, st.cc, priority)
+}
+
+// applyGroup lands one fetch group's result, merging it into st.inv (see
+// vsphere.Inventory.ApplyGroup — a group that failed keeps whatever that
+// kind already had, rather than blanking it). The first group to land for a
+// load is always the priority one dispatched by applyBeginInventory — see
+// contextState.awaitingPriority — which is what makes this the moment to fan
+// the remaining four out concurrently; every group after that just counts
+// down toward finishLoad.
+func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
+	st, ok := m.byName[msg.context]
+	if !ok {
+		return nil
+	}
+	if msg.cc != nil && st.cc != msg.cc {
+		return m.dropStraggler(st)
+	}
+	st.outstanding--
+	if st.inv == nil {
+		st.inv = &vsphere.Inventory{Context: msg.context}
+	}
+	st.inv.ApplyGroup(msg.group, msg.inv)
+	m.searchDirty = true
+	if st.awaitingPriority {
+		st.awaitingPriority = false
+		var cmds []tea.Cmd
+		for _, g := range vsphere.AllGroups {
+			if g == msg.group {
+				continue
+			}
+			cmds = append(cmds, fetchGroupCmd(m.ctx, m.limiter, st.handle, st.cc, g))
 		}
+		st.outstanding = len(vsphere.AllGroups) - 1 // the ones just dispatched
+		return tea.Batch(cmds...)
+	}
+	if st.outstanding > 0 {
+		return nil
+	}
+	return m.finishLoad(st)
+}
+
+// dropStraggler discards one message from a load an edit has since
+// superseded — st.cc no longer matches the cc it was issued for — counting
+// it toward the abandoned load's outstanding total regardless. Once every
+// straggler has landed this way, the edit's own reload — suppressed by
+// beginLoad's loading guard while the old load was still in flight — is
+// what actually runs, against the context's current configuration.
+func (m *Model) dropStraggler(st *contextState) tea.Cmd {
+	st.outstanding--
+	if st.outstanding > 0 {
 		return nil
 	}
 	st.loading = false
+	st.awaitingPriority = false
+	if cmd := m.startLoad(st, true); cmd != nil {
+		return tea.Batch(cmd, m.spin.Tick)
+	}
+	return nil
+}
+
+// finishLoad runs once a load has nothing left outstanding — either
+// applyBeginInventory failed outright, or applyGroup just landed the last
+// fetch group — and reports it the same way a single-shot fetch used to:
+// silently for a background refresh that worked, otherwise with what
+// changed or what went wrong.
+func (m *Model) finishLoad(st *contextState) tea.Cmd {
+	st.loading = false
 	quiet := st.quiet
 	st.quiet = false
-	st.elapsed = msg.elapsed
-	st.err = msg.err
-	m.searchDirty = true
-	// inv and loadedAt reflect the cache's last successful fetch, which on a
-	// failed refresh is the same stale-but-real data the row already had —
-	// never nil just because the latest attempt failed.
-	wasEmpty := msg.err == nil && msg.inventory == nil
-	switch {
-	case msg.inventory != nil:
-		st.inv = msg.inventory
-	case wasEmpty:
-		// A Backend contract violation (success with nothing to show) — a
-		// broken implementation must not take the whole interface down with
-		// it, so this renders as a plain empty result rather than a panic.
-		st.inv = &vsphere.Inventory{Context: msg.context}
-	}
-	if msg.err == nil {
-		st.loadedAt = msg.loadedAt
+	st.elapsed = time.Since(st.startedAt)
+	st.handle = nil
+	if st.err == nil {
+		st.loadedAt = time.Now()
 	}
 	// A background refresh that worked says nothing: overwriting the message
 	// line once a minute would bury whatever the operator was reading there.
 	// One that failed always speaks, since silently serving data that has
 	// stopped being updated is the failure mode worth avoiding.
 	switch {
-	case msg.err != nil && st.inv == nil:
-		m.setMessage(msg.context+": "+msg.err.Error(), true)
-	case msg.err != nil:
-		m.setMessage(msg.context+": refresh failed, still showing data from "+st.loadedAt.Format("15:04:05")+": "+msg.err.Error(), true)
+	case st.err != nil && st.inv == nil:
+		m.setMessage(st.cc.Name+": "+st.err.Error(), true)
+	case st.err != nil:
+		m.setMessage(st.cc.Name+": refresh failed, still showing data from "+st.loadedAt.Format("15:04:05")+": "+st.err.Error(), true)
 	case quiet:
 		// Nothing to say: the table simply became current.
-	case wasEmpty:
-		m.setMessage(msg.context+" · nothing to show", false)
 	default:
 		note := ""
 		if n := len(st.inv.Errors); n > 0 {
 			note = fmt.Sprintf(" (%d listing error(s), see tabs)", n)
 		}
-		m.setMessage(msg.context+" · "+st.inv.Counts()+note, false)
+		m.setMessage(st.cc.Name+" · "+st.inv.Counts()+note, false)
 	}
 	m.clampCursor()
 	if m.busy() {

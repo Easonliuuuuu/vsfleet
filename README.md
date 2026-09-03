@@ -160,17 +160,28 @@ The browse screen:
 | `?` | Show the key reference |
 | `q` | Quit |
 
-Inventory re-reads itself every minute in the background, because power
-state, IP addresses and usage all move under a table left open. It happens
-quietly — no spinner, no flicker, the numbers simply become current — and
-every configured vCenter is covered, not just the one on screen, since the
-header summary and estate-wide search answer from the others. A refresh that
-*fails* is not quiet: the table keeps showing the last good data and says so
-rather than pretending it is current. A vCenter that was unreachable at
-start-up is retried on the same cycle, so it comes back on its own.
+Inventory re-reads itself in the background, because power state, IP
+addresses and usage all move under a table left open. It happens quietly —
+no spinner, no flicker, the numbers simply become current.
 
-`r` / `R` still force an immediate re-read. Use `--refresh` to change the
-interval (`vsfleet --refresh 30s`) or `--refresh -1` to read only when asked.
+The rate depends on what you are looking at. The vCenter in scope is re-read
+every 20 seconds; the rest are held to ten times that. A full read costs
+roughly 2.7 KiB per inventory object, so holding an entire estate to the
+on-screen rate would multiply that by the number of contexts configured, to
+keep current a set of numbers nobody is reading. Off screen what still has
+to be roughly right is the header count and estate-wide search, and neither
+changes meaning over a few minutes. Switching to a vCenter re-reads it on
+arrival, and the all-vCenters view (`a`) puts every context on screen, so
+there they all get the fast rate.
+
+A refresh that *fails* is not quiet: the table keeps showing the last good
+data and says so rather than pretending it is current. A vCenter that was
+unreachable at start-up is retried on the same cycle, so it comes back on
+its own.
+
+`r` / `R` still force an immediate re-read. `--refresh` sets the on-screen
+interval (`vsfleet --refresh 5s` for a migration you are watching,
+`--refresh 2m` for a large estate); a negative value reads only when asked.
 
 Everything about a vCenter itself lives on the contexts screen (`c`), which
 lists each one with its route, latency, and — when it is not answering — the

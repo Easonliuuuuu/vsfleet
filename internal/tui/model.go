@@ -23,15 +23,28 @@ import (
 // connections the instant the interface starts.
 const maxConcurrentLoads = 4
 
-// DefaultRefreshInterval is how often inventory is re-read in the background.
+// DefaultRefreshInterval is how often the inventory on screen is re-read.
 //
 // Power state, IP addresses and usage all move under a table left open, and
-// nothing else would ever correct them. A minute is chosen to be dull: one
-// inventory read per vCenter per minute is nothing to a vCenter that is also
-// serving a web client, while being short enough that what is on screen is
-// never far behind. Operators who disagree in either direction can say so
-// with --refresh, including --refresh 0 to read only when asked.
-const DefaultRefreshInterval = time.Minute
+// nothing else would ever correct them. Twenty seconds is short enough that
+// a change made elsewhere shows up before anyone reaches for the reload key,
+// which is the number that matters: an interval slower than an operator's
+// patience gets overridden by hand, and then it may as well not exist.
+//
+// It is affordable because it applies to the vCenter being looked at, not to
+// every configured one — see refreshDue. Operators who disagree in either
+// direction can say so with --refresh, including a negative value to read
+// only when asked.
+const DefaultRefreshInterval = 20 * time.Second
+
+// backgroundRefreshFactor is how much slower a vCenter nobody is looking at
+// is re-read. A full read costs roughly 2.7 KiB per inventory object, so
+// holding an entire estate to the on-screen interval would multiply that by
+// the number of contexts configured — continuously, to keep current a set of
+// numbers not on screen. What off-screen freshness actually serves is the
+// header count and estate-wide search, neither of which changes meaning over
+// a few minutes.
+const backgroundRefreshFactor = 10
 
 // mode is which full-screen view is showing. Detail, diagnosis and help all
 // replace the table rather than floating over it: a half-covered table invites
@@ -358,27 +371,46 @@ func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 
 // refreshDue reports whether a context is old enough to be worth re-reading.
 //
-// The threshold is half the interval rather than the whole of it. A tick
-// lands roughly one interval after the last read, but only roughly: a read
-// that took two seconds leaves the next tick arriving at an age of just under
-// the interval, and comparing against the whole interval would skip it and
-// wait another full cycle. Half is comfortably past any such jitter while
-// still leaving a manual reload from a moment ago alone.
+// What is on screen is held to the configured interval; everything else to
+// backgroundRefreshFactor times it. The split is the whole point: a full
+// re-read costs roughly 2.7 KiB per inventory object, so re-reading an
+// estate at the rate a person wants for the table in front of them scales
+// that cost by the number of vCenters configured, to keep current a set of
+// numbers nobody is looking at. Off screen, what still has to be roughly
+// right is the header count and an estate-wide search — neither of which
+// changes meaning over a few minutes.
+//
+// The on-screen threshold is half the interval rather than the whole of it.
+// Ticks land roughly one interval after the last read, but only roughly: a
+// read that took two seconds leaves the next tick arriving just under the
+// interval, and comparing against the whole of it would skip that cycle and
+// wait for another. Half clears that jitter and still leaves a manual reload
+// from a moment ago alone. Off screen the threshold is many ticks long, so
+// there is no jitter to clear and it is compared exactly.
 //
 // A context that has never loaded — including one whose every attempt has
 // failed — is always due, which is what lets a vCenter that was unreachable
 // at start-up come back on its own rather than waiting for a keystroke.
-func (m *Model) refreshDue(st *contextState) bool {
+func (m *Model) refreshDue(st *contextState, onScreen bool) bool {
 	if st.loadedAt.IsZero() {
 		return true
 	}
-	return time.Since(st.loadedAt) >= m.refreshInterval/2
+	age := time.Since(st.loadedAt)
+	if onScreen {
+		return age >= m.refreshInterval/2
+	}
+	return age >= m.refreshInterval*backgroundRefreshFactor
 }
 
 // refreshStale re-reads every context due for it, quietly. It covers all of
-// them rather than only what is on screen: the estate summary in the header
-// and an estate-wide search both answer from contexts that are not currently
-// in view, and a stale answer there is just as wrong as a stale table.
+// them rather than only what is on screen — the header summary and an
+// estate-wide search both answer from contexts not currently in view — but
+// at two different rates: see refreshDue.
+//
+// The all-vCenters view puts every context on screen, and there they are all
+// held to the fast interval. That is the reader asking to watch the whole
+// estate at once, and the cache's own concurrency bound is what keeps the
+// answer from arriving as one burst.
 //
 // Nothing here forces a read past one already in flight, so a vCenter slower
 // than the interval simply refreshes less often instead of queueing work
@@ -387,9 +419,13 @@ func (m *Model) refreshStale() []tea.Cmd {
 	if m.refreshInterval <= 0 {
 		return nil
 	}
+	onScreen := make(map[*contextState]bool, len(m.states))
+	for _, st := range m.inScope() {
+		onScreen[st] = true
+	}
 	var cmds []tea.Cmd
 	for _, st := range m.states {
-		if !m.refreshDue(st) {
+		if !m.refreshDue(st, onScreen[st]) {
 			continue
 		}
 		if cmd := m.beginLoad(st, true, true); cmd != nil {
@@ -412,6 +448,19 @@ func (m *Model) ensureLoaded(force bool) []tea.Cmd {
 		cmds = append(cmds, m.spin.Tick)
 	}
 	return cmds
+}
+
+// enterScope is what every change of what is on screen runs. It loads
+// anything never read, and quietly re-reads anything that was being held to
+// the slower off-screen rate and is now being looked at — so arriving at a
+// vCenter shows its current state rather than whatever it looked like up to
+// several minutes ago, without waiting for the next tick.
+func (m *Model) enterScope() tea.Cmd {
+	cmds := m.ensureLoaded(false)
+	// refreshStale skips anything ensureLoaded just started, so a context
+	// cannot be read twice for one keystroke.
+	cmds = append(cmds, m.refreshStale()...)
+	return tea.Batch(cmds...)
 }
 
 // prefetch starts a background load for every configured context, not only
@@ -1048,7 +1097,7 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 		m.allScope = !m.allScope
 		m.cursor, m.offset = 0, 0
 		m.setMessage("", false)
-		return tea.Batch(m.ensureLoaded(false)...)
+		return m.enterScope()
 	case key.Matches(msg, m.keys.Open):
 		return m.open()
 	case key.Matches(msg, m.keys.Reload):
@@ -1107,7 +1156,7 @@ func (m *Model) handleContextsKey(msg tea.KeyMsg) tea.Cmd {
 		m.cursor, m.offset = 0, 0
 		m.setMessage("", false)
 		m.mode = modeBrowse
-		return tea.Batch(m.ensureLoaded(false)...)
+		return m.enterScope()
 	case key.Matches(msg, m.keys.Reload):
 		if st := m.contextAt(m.ctxCursor); st != nil {
 			if cmd := m.startLoad(st, true); cmd != nil {
@@ -1160,7 +1209,7 @@ func (m *Model) useContext() tea.Cmd {
 	m.cursor, m.offset = 0, 0
 	m.setMessage("", false)
 	m.mode = modeBrowse
-	return tea.Batch(m.ensureLoaded(false)...)
+	return m.enterScope()
 }
 
 // enterSearch opens the estate-wide results. With nothing typed yet it opens

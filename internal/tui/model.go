@@ -68,6 +68,23 @@ type contextState struct {
 	diagging bool
 }
 
+// reset drops everything this state learned from a vCenter, keeping only the
+// configuration. It is what an edited context needs: the name is the same, so
+// the row stays, but every inventory, error and diagnosis behind it came from
+// a server this context no longer points at.
+//
+// loading is deliberately left alone. A fetch already in flight still holds
+// the flag that stops a second one starting, and its result is discarded on
+// arrival by the context it was issued for rather than by clearing a flag that
+// would then be wrong.
+func (s *contextState) reset() {
+	s.inv = nil
+	s.err = nil
+	s.elapsed = 0
+	s.loadedAt = time.Time{}
+	s.diag = nil
+}
+
 // A context can be both erroring and holding data at once — the cache keeps
 // the last inventory that loaded successfully even when the most recent
 // refresh failed, so that case gets its own status between "never connected"
@@ -482,7 +499,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case diagnosisMsg:
 		if st, ok := m.byName[msg.context]; ok {
 			st.diagging = false
-			st.diag = msg.diagnosis
+			// A diagnosis of the endpoint this context had when the walk
+			// started explains nothing about the one it has now.
+			if msg.cc == nil || st.cc == msg.cc {
+				st.diag = msg.diagnosis
+			}
 		}
 		return m, nil
 
@@ -582,7 +603,10 @@ func (m *Model) leaveOverlay() {
 }
 
 // syncContexts rebuilds the context list from the backend after a save or a
-// removal, keeping the loaded inventory of every context that still exists.
+// removal, keeping the loaded inventory of every context that still exists and
+// still points where it did. A context whose name survived an edit but whose
+// connection did not is treated as what it is — a different vCenter under a
+// familiar label — and starts over with nothing.
 func (m *Model) syncContexts() {
 	fresh := m.backend.Contexts()
 	old := m.byName
@@ -591,12 +615,23 @@ func (m *Model) syncContexts() {
 	for _, cc := range fresh {
 		st, ok := old[cc.Name]
 		if ok {
+			if !st.cc.SameConnection(cc) {
+				st.reset()
+				m.cache.Forget(cc.Name)
+			}
 			st.cc = cc
 		} else {
 			st = &contextState{cc: cc}
 		}
 		states = append(states, st)
 		byName[cc.Name] = st
+	}
+	// A removed context leaves its inventory in the cache, where a context
+	// later added under the same name would inherit it.
+	for name := range old {
+		if _, ok := byName[name]; !ok {
+			m.cache.Forget(name)
+		}
 	}
 	m.states, m.byName = states, byName
 	m.searchDirty = true
@@ -633,6 +668,17 @@ func (m *Model) busy() bool {
 func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
 	st, ok := m.byName[msg.context]
 	if !ok {
+		return nil
+	}
+	if msg.cc != nil && st.cc != msg.cc {
+		// The context was edited while this read was in flight: the answer is
+		// about a vCenter this name no longer refers to. The reload the edit
+		// asked for was suppressed by this very fetch still being in flight,
+		// so issuing it here is what keeps the row from being left empty.
+		st.loading = false
+		if cmd := m.startLoad(st, true); cmd != nil {
+			return tea.Batch(cmd, m.spin.Tick)
+		}
 		return nil
 	}
 	st.loading = false

@@ -273,3 +273,60 @@ func TestRejectsFutureVersion(t *testing.T) {
 		t.Fatalf("expected a version error, got %v", err)
 	}
 }
+
+func TestSameConnection(t *testing.T) {
+	base := func() *config.Context {
+		return &config.Context{
+			Name:       "prod",
+			Endpoint:   "https://vcsa.prod.internal",
+			Username:   "operator@vsphere.local",
+			Credential: credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "prod"},
+			Datacenter: "Taipei",
+			Transport:  config.TransportConfig{Type: config.TransportSOCKS5, Address: "127.0.0.1:1080"},
+			TLS:        config.TLSConfig{Mode: config.TLSThumbprint, Thumbprint: "AA:BB:CC"},
+		}
+	}
+
+	if !base().SameConnection(base()) {
+		t.Error("two identical contexts are not the same connection")
+	}
+
+	// Every one of these is a different vCenter, a different identity, or a
+	// different way of getting there, under a name that never changed.
+	changes := map[string]func(*config.Context){
+		"endpoint":         func(c *config.Context) { c.Endpoint = "https://vcsa.dr.internal" },
+		"username":         func(c *config.Context) { c.Username = "someone-else@vsphere.local" },
+		"credential":       func(c *config.Context) { c.Credential.Value = "prod-2" },
+		"datacenter":       func(c *config.Context) { c.Datacenter = "Osaka" },
+		"transport type":   func(c *config.Context) { c.Transport.Type = config.TransportDirect },
+		"proxy address":    func(c *config.Context) { c.Transport.Address = "127.0.0.1:9050" },
+		"remote DNS":       func(c *config.Context) { c.Transport.RemoteDNS = true },
+		"proxy username":   func(c *config.Context) { c.Transport.Username = "proxy-user" },
+		"proxy credential": func(c *config.Context) { c.Transport.Credential.Value = "prod-proxy" },
+		"TLS mode":         func(c *config.Context) { c.TLS.Mode = config.TLSInsecure },
+		"thumbprint":       func(c *config.Context) { c.TLS.Thumbprint = "DD:EE:FF" },
+	}
+	for what, change := range changes {
+		other := base()
+		change(other)
+		if base().SameConnection(other) {
+			t.Errorf("a changed %s still reports the same connection", what)
+		}
+	}
+
+	// A renamed context is a different context, not a different connection,
+	// but nothing keyed by name can act on it either way — so it answers no.
+	renamed := base()
+	renamed.Name = "prod-old"
+	if base().SameConnection(renamed) {
+		t.Error("a renamed context reports the same connection")
+	}
+
+	var nilCtx *config.Context
+	if nilCtx.SameConnection(base()) || base().SameConnection(nilCtx) {
+		t.Error("a nil context is the same connection as a real one")
+	}
+	if !nilCtx.SameConnection(nil) {
+		t.Error("two nil contexts should compare equal rather than panic")
+	}
+}

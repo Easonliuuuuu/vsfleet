@@ -19,17 +19,25 @@ import (
 // inventory and loadedAt come from the cache rather than being computed here,
 // so a failed refresh reports the last inventory that did load and when,
 // never a nil that would blank an already-populated row.
+//
+// cc is the configuration the read was issued against. A context edited while
+// its fetch was in flight is a different vCenter by the time the answer lands,
+// so the result is matched against it and dropped if it no longer applies.
 type inventoryMsg struct {
 	context   string
+	cc        *config.Context
 	inventory *vsphere.Inventory
 	err       error
 	elapsed   time.Duration
 	loadedAt  time.Time
 }
 
-// diagnosisMsg carries a completed connection diagnosis.
+// diagnosisMsg carries a completed connection diagnosis. cc serves the same
+// purpose as it does on inventoryMsg: a diagnosis of the endpoint a context
+// used to have says nothing about the one it has now.
 type diagnosisMsg struct {
 	context   string
+	cc        *config.Context
 	diagnosis *vsphere.Diagnosis
 }
 
@@ -47,6 +55,7 @@ func loadInventory(ctx context.Context, c *cache.Cache, b Backend, cc *config.Co
 		})
 		return inventoryMsg{
 			context:   cc.Name,
+			cc:        cc,
 			inventory: e.Inventory,
 			err:       e.Err,
 			elapsed:   time.Since(start),
@@ -58,7 +67,7 @@ func loadInventory(ctx context.Context, c *cache.Cache, b Backend, cc *config.Co
 // diagnose walks the connection stages for one context in the background.
 func diagnose(ctx context.Context, b Backend, cc *config.Context) tea.Cmd {
 	return func() tea.Msg {
-		return diagnosisMsg{context: cc.Name, diagnosis: b.Diagnose(ctx, cc)}
+		return diagnosisMsg{context: cc.Name, cc: cc, diagnosis: b.Diagnose(ctx, cc)}
 	}
 }
 

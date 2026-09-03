@@ -98,7 +98,20 @@ func (b *sessionBackend) TestContext(ctx context.Context, in contextops.Input) (
 }
 
 func (b *sessionBackend) SaveContext(ctx context.Context, in contextops.Input, test bool) (*contextops.Result, error) {
-	return contextops.Save(ctx, b.cfg, b.res, b.opts, in, test)
+	res, err := contextops.Save(ctx, b.cfg, b.res, b.opts, in, test)
+	if err != nil {
+		return res, err
+	}
+	// Editing a context leaves a session connected to what its name used to
+	// mean. Manager.Connect would notice the configuration changed, but not a
+	// password stored under an unchanged credential reference — and either way
+	// the old login is worth ending now rather than at exit. A failure to log
+	// out politely is not the operator's problem: the context is saved, and
+	// the session is gone from the manager regardless.
+	if in.Replace {
+		_ = b.mgr.Forget(ctx, res.Context.Name)
+	}
+	return res, nil
 }
 
 func (b *sessionBackend) RemoveContext(ctx context.Context, name string, alsoCredential bool) (*config.Context, error) {
@@ -106,6 +119,10 @@ func (b *sessionBackend) RemoveContext(ctx context.Context, name string, alsoCre
 	if err != nil {
 		return nil, err
 	}
+	// A context that is gone from the configuration must not keep a login open
+	// on the vCenter, nor keep reporting a status under a name that no longer
+	// exists.
+	_ = b.mgr.Forget(ctx, cc.Name)
 	if alsoCredential {
 		if err := contextops.DeleteCredentials(ctx, b.res, cc); err != nil {
 			return cc, fmt.Errorf("context %q removed, but could not delete its stored password(s): %w", cc.Name, err)

@@ -110,6 +110,27 @@ func (s *Session) Client() *vsphere.Client {
 	return s.client
 }
 
+// adopt points the session at cc, the current configuration for its name, and
+// reports the client that is now orphaned — non-nil only when cc describes a
+// different connection than the one the session was holding, in which case
+// everything the old vCenter told us is dropped along with it. The caller must
+// hold s.mu and is responsible for closing what comes back.
+func (s *Session) adopt(cc *config.Context) *vsphere.Client {
+	if s.Context.SameConnection(cc) {
+		return nil
+	}
+	s.Context = cc
+	stale := s.client
+	s.client = nil
+	s.state = Disconnected
+	s.err = nil
+	s.latency = 0
+	s.lastOK = time.Time{}
+	s.lastTry = time.Time{}
+	s.attempts = 0
+	return stale
+}
+
 // Manager owns the sessions for every configured context.
 type Manager struct {
 	// ConnectTimeout bounds a single connection attempt.
@@ -162,10 +183,32 @@ func (m *Manager) concurrency() int {
 }
 
 // Connect returns a connected session for a context, reusing an existing
-// connection when one is live.
+// connection when one is live and still describes the same vCenter.
+//
+// A context that was edited keeps its name, so the session found here can be a
+// live connection to somewhere else entirely — the endpoint the name used to
+// mean. Reusing it would answer questions about the new configuration with
+// data from the old one, so the stale connection is closed and replaced
+// instead.
 func (m *Manager) Connect(ctx context.Context, cc *config.Context) (*Session, error) {
 	s := m.session(cc)
 	s.mu.Lock()
+	// Adopt the caller's context first: it is the current configuration, and
+	// the one the session must describe from here on even if nothing else
+	// about it changed.
+	stale := s.adopt(cc)
+	if stale != nil {
+		// Log out of the vCenter this name used to mean, without holding the
+		// session lock and without letting a route that has gone away delay
+		// the new connection — the session is already detached from it. The
+		// logout is a courtesy to the old server, bounded so that a proxy that
+		// no longer answers costs a goroutine for a while rather than forever.
+		go func() {
+			lctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), m.timeout())
+			defer cancel()
+			_ = stale.Close(lctx)
+		}()
+	}
 	if s.state == Connected && s.client != nil {
 		s.mu.Unlock()
 		return s, nil
@@ -245,6 +288,35 @@ func (m *Manager) Status(name string) (Status, bool) {
 		return Status{Name: name}, false
 	}
 	return s.Snapshot(), true
+}
+
+// Forget drops the session for one context and logs out of its vCenter, so a
+// context that was edited or removed leaves nothing of itself behind: no live
+// login on a server that is no longer configured, and no status for a name
+// that may not exist any more.
+//
+// Forgetting a name that has no session is not an error — a context that was
+// never opened has nothing to invalidate.
+func (m *Manager) Forget(ctx context.Context, name string) error {
+	m.mu.Lock()
+	s, ok := m.sessions[name]
+	delete(m.sessions, name)
+	m.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	s.mu.Lock()
+	client := s.client
+	s.client = nil
+	s.state = Disconnected
+	s.mu.Unlock()
+	if client == nil {
+		return nil
+	}
+	if err := client.Close(ctx); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	return nil
 }
 
 // Close logs out of every session. Errors are joined so that one vCenter that

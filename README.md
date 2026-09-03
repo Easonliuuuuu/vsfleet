@@ -160,6 +160,18 @@ The browse screen:
 | `?` | Show the key reference |
 | `q` | Quit |
 
+Inventory re-reads itself every minute in the background, because power
+state, IP addresses and usage all move under a table left open. It happens
+quietly — no spinner, no flicker, the numbers simply become current — and
+every configured vCenter is covered, not just the one on screen, since the
+header summary and estate-wide search answer from the others. A refresh that
+*fails* is not quiet: the table keeps showing the last good data and says so
+rather than pretending it is current. A vCenter that was unreachable at
+start-up is retried on the same cycle, so it comes back on its own.
+
+`r` / `R` still force an immediate re-read. Use `--refresh` to change the
+interval (`vsfleet --refresh 30s`) or `--refresh -1` to read only when asked.
+
 Everything about a vCenter itself lives on the contexts screen (`c`), which
 lists each one with its route, latency, and — when it is not answering — the
 reason:

@@ -181,12 +181,20 @@ func TestFailedGroupPreservesOnlyItsOwnStaleData(t *testing.T) {
 	if len(staleHosts) == 0 {
 		t.Fatal("test fixture has no hosts to go stale")
 	}
-	oldHostLoadedAt := st.kind(vsphere.KindHost).loadedAt
-	oldVMLoadedAt := st.kind(vsphere.KindVM).loadedAt
-	oldBundleLoadedAt := st.loadedAt
-	if oldHostLoadedAt.IsZero() || oldVMLoadedAt.IsZero() {
+	if st.kind(vsphere.KindHost).loadedAt.IsZero() || st.kind(vsphere.KindVM).loadedAt.IsZero() {
 		t.Fatal("successful groups must have per-kind load timestamps")
 	}
+	// Rewind the initial load timestamps slightly so that fast in-memory
+	// reloads on platforms with coarse clock resolution (e.g. Windows ~15.6ms)
+	// unambiguously advance the successful kind's timestamp past oldVMLoadedAt
+	// while confirming the failed kind and bundle timestamps remain unchanged.
+	baseline := time.Now().Add(-time.Second)
+	st.kind(vsphere.KindHost).loadedAt = baseline
+	st.kind(vsphere.KindVM).loadedAt = baseline
+	st.loadedAt = baseline
+	oldHostLoadedAt := baseline
+	oldVMLoadedAt := baseline
+	oldBundleLoadedAt := baseline
 
 	b.failures = nil // per-context whole-load failure is unused here
 	orig := b.inventories["prod"]

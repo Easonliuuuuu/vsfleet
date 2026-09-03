@@ -2,7 +2,9 @@ package vsphere_test
 
 import (
 	"context"
+	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/vmware/govmomi"
@@ -258,5 +260,61 @@ func TestListInventoryIsPartialOnOneKindFailing(t *testing.T) {
 		if _, failed := inv.ErrorFor(kind); failed {
 			t.Errorf("Errors records a failure for %s, which was never denied", kind)
 		}
+	}
+}
+
+// TestListInventoryReportsStages covers the progress side of issue #28: a
+// caller that attaches a stage reporter via WithStageReporter sees each
+// phase of enumeration as ListInventory reaches it, in order, which is what
+// lets a caller show live status or name what was in flight when a deadline
+// cut the operation off.
+func TestListInventoryReportsStages(t *testing.T) {
+	c, _ := newSimulator(t, func(m *simulator.Model) {
+		m.Datacenter = 1
+		m.Cluster = 1
+		m.ClusterHost = 1
+		m.Machine = 1
+		m.Datastore = 1
+	})
+
+	var mu sync.Mutex
+	var stages []vsphere.Stage
+	ctx := vsphere.WithStageReporter(context.Background(), func(s vsphere.Stage) {
+		mu.Lock()
+		defer mu.Unlock()
+		stages = append(stages, s)
+	})
+
+	if _, err := c.ListInventory(ctx); err != nil {
+		t.Fatalf("ListInventory: %v", err)
+	}
+
+	want := []vsphere.Stage{
+		vsphere.StageLoadingIndex,
+		vsphere.StageLoadingVMs,
+		vsphere.StageLoadingHosts,
+		vsphere.StageLoadingClusters,
+		vsphere.StageLoadingDatastores,
+		vsphere.StageLoadingNetworks,
+	}
+	if !reflect.DeepEqual(stages, want) {
+		t.Fatalf("stages = %v, want %v", stages, want)
+	}
+}
+
+// TestStageTrackerReflectsListInventoryProgress covers the other half of the
+// same mechanism: a StageTracker, which is what a timed-out operation's error
+// message names the last stage from, ends up holding the final stage
+// ListInventory reached.
+func TestStageTrackerReflectsListInventoryProgress(t *testing.T) {
+	c, _ := newSimulator(t, nil)
+	tracker := &vsphere.StageTracker{}
+	ctx := vsphere.WithStageReporter(context.Background(), tracker.Report)
+
+	if _, err := c.ListInventory(ctx); err != nil {
+		t.Fatalf("ListInventory: %v", err)
+	}
+	if got := tracker.Current(); got != vsphere.StageLoadingNetworks {
+		t.Fatalf("tracker.Current() = %q, want %q", got, vsphere.StageLoadingNetworks)
 	}
 }

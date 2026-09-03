@@ -198,6 +198,7 @@ func retrieve(ctx context.Context, c *Client, viewKinds, propKinds, props []stri
 // one privilege, say) is recorded in Inventory.Errors and does not stop the
 // rest from being enumerated.
 func (c *Client) ListInventory(ctx context.Context) (*Inventory, error) {
+	reportStage(ctx, StageLoadingIndex)
 	idx, err := newIndex(ctx, c)
 	if err != nil {
 		return nil, err
@@ -207,6 +208,7 @@ func (c *Client) ListInventory(ctx context.Context) (*Inventory, error) {
 		inv.Errors = append(inv.Errors, InventoryError{Kind: kind, Message: err.Error()})
 	}
 
+	reportStage(ctx, StageLoadingVMs)
 	if vms, err := c.listVMs(ctx, idx); err != nil {
 		fail(KindVM, err)
 		fail(KindTemplate, err)
@@ -219,21 +221,25 @@ func (c *Client) ListInventory(ctx context.Context) (*Inventory, error) {
 			}
 		}
 	}
+	reportStage(ctx, StageLoadingHosts)
 	if hosts, err := c.listHosts(ctx, idx); err != nil {
 		fail(KindHost, err)
 	} else {
 		inv.Hosts = hosts
 	}
+	reportStage(ctx, StageLoadingClusters)
 	if clusters, err := c.listClusters(ctx, idx); err != nil {
 		fail(KindCluster, err)
 	} else {
 		inv.Clusters = clusters
 	}
+	reportStage(ctx, StageLoadingDatastores)
 	if datastores, err := c.listDatastores(ctx, idx); err != nil {
 		fail(KindDatastore, err)
 	} else {
 		inv.Datastores = datastores
 	}
+	reportStage(ctx, StageLoadingNetworks)
 	if networks, err := c.listNetworks(ctx, idx); err != nil {
 		fail(KindNetwork, err)
 	} else {

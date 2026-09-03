@@ -70,15 +70,22 @@ func NewBackend(cfg *config.Config, res *credentials.Resolver, mgr *session.Mana
 func (b *sessionBackend) Contexts() []*config.Context { return b.cfg.Contexts }
 
 func (b *sessionBackend) Inventory(ctx context.Context, cc *config.Context) (*vsphere.Inventory, error) {
-	s, err := b.mgr.Connect(ctx, cc)
+	// One deadline covers connecting and enumerating: without it, a vCenter
+	// that connects quickly but hangs listing inventory would run for as
+	// long as the interface itself does, since ctx here is the program's
+	// whole-run context rather than anything bounded by --timeout.
+	opCtx, cancel, tracker := b.mgr.Operation(ctx)
+	defer cancel()
+	s, err := b.mgr.Connect(opCtx, cc)
 	if err != nil {
-		return nil, err
+		return nil, b.mgr.TimeoutError(err, tracker)
 	}
 	client := s.Client()
 	if client == nil {
 		return nil, fmt.Errorf("context %q is not connected", cc.Name)
 	}
-	return client.ListInventory(ctx)
+	inv, err := client.ListInventory(opCtx)
+	return inv, b.mgr.TimeoutError(err, tracker)
 }
 
 func (b *sessionBackend) Status(name string) (session.Status, bool) { return b.mgr.Status(name) }

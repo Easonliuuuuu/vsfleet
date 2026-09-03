@@ -131,9 +131,11 @@ func Search(ctx context.Context, mgr *session.Manager, contexts []*config.Contex
 }
 
 func searchOne(ctx context.Context, mgr *session.Manager, cc *config.Context, needle string, opts Options) ([]Result, error) {
+	tracker := &vsphere.StageTracker{}
+	ctx = vsphere.WithStageReporter(ctx, tracker.Report)
 	s, err := mgr.Connect(ctx, cc)
 	if err != nil {
-		return nil, err
+		return nil, mgr.TimeoutError(err, tracker)
 	}
 	client := s.Client()
 	if client == nil {
@@ -141,7 +143,7 @@ func searchOne(ctx context.Context, mgr *session.Manager, cc *config.Context, ne
 	}
 	inv, err := client.ListInventory(ctx)
 	if err != nil {
-		return nil, err
+		return nil, mgr.TimeoutError(err, tracker)
 	}
 	return Match(inv, needle, opts), nil
 }

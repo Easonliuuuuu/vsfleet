@@ -86,6 +86,7 @@ func Connect(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Cli
 	if err != nil {
 		return nil, err
 	}
+	reportStage(ctx, StageConnecting)
 	dialer, err := transport.New(ctx, cc.Transport, transport.Options{
 		Timeout:         opts.DialTimeout,
 		Resolver:        opts.Resolver,
@@ -94,6 +95,7 @@ func Connect(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Cli
 	if err != nil {
 		return nil, err
 	}
+	reportStage(ctx, StageResolvingCredentials)
 	cred, err := resolveCredential(ctx, cc, opts)
 	if err != nil {
 		return nil, err
@@ -103,11 +105,13 @@ func Connect(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Cli
 		username = cred.Username
 	}
 
+	reportStage(ctx, StageConnecting)
 	start := time.Now()
 	vim, err := newVimClient(ctx, cc, u, dialer, opts.UserAgent)
 	if err != nil {
 		return nil, err
 	}
+	reportStage(ctx, StageAuthenticating)
 	gc := &govmomi.Client{Client: vim, SessionManager: session.NewManager(vim)}
 	if err := gc.Login(ctx, url.UserPassword(username, cred.Password)); err != nil {
 		return nil, fmt.Errorf("authenticate to %s as %s: %w", cc.Endpoint, username, err)

@@ -79,11 +79,12 @@ func (m *Model) View() string {
 func (m *Model) bodyHeight() int { return max(1, m.height-chromeHeight) }
 
 // tableHeight is how many resource rows fit, after the rule, the headings and
-// any line spent reporting a vCenter that could not be read.
+// any lines spent reporting a vCenter or kind that could not be read.
 func (m *Model) tableHeight() int {
 	chrome, unread := tableChrome, len(m.failuresInScope())
 	if m.mode == modeSearch {
-		chrome, unread = searchChrome, len(m.ensureSearch(m.filter.Value()).missing)
+		st := m.ensureSearch(m.filter.Value())
+		chrome, unread = searchChrome, len(st.missing)+len(st.incomplete)
 	}
 	return max(1, m.bodyHeight()-chrome-unread)
 }
@@ -315,6 +316,9 @@ func (m *Model) viewSearchHeader() string {
 	if n := len(st.missing); n > 0 {
 		summary += t.bad.Render(fmt.Sprintf(" · %d not searched", n))
 	}
+	if n := len(st.incomplete); n > 0 {
+		summary += t.warn.Render(fmt.Sprintf(" · %d kind(s) incomplete", n))
+	}
 	return truncate(left+t.dim.Render("  ·  ")+t.value.Render(st.query)+t.dim.Render("  ·  "+summary), m.width)
 }
 
@@ -322,9 +326,10 @@ func (m *Model) viewSearchHeader() string {
 // one list. It is the interface catching up with "vsfleet search", which has
 // been able to answer this from the command line all along.
 //
-// A vCenter with no inventory loaded is named under the results rather than
-// silently left out. Returning fewer matches because a proxy is down, without
-// saying so, is the one way this view could mislead.
+// A vCenter with no inventory loaded, or a kind that has not finished, is
+// named under the results rather than silently left out. Returning fewer
+// matches because a proxy or one resource query is down, without saying so,
+// is the one way this view could mislead.
 func (m *Model) viewSearch() []string {
 	t := m.theme
 	w := m.width
@@ -361,6 +366,10 @@ func (m *Model) viewSearch() []string {
 		lines = append(lines, t.bad.Render(truncate(
 			fmt.Sprintf("%s %s not searched: %s", glyphFail, cs.cc.Name, reason), w)))
 	}
+	for _, incomplete := range st.incomplete {
+		lines = append(lines, t.warn.Render(truncate(
+			fmt.Sprintf("%s %s %s incomplete: %s", glyphPending, incomplete.context.cc.Name, kindWord(incomplete.kind), incomplete.reason), w)))
+	}
 	return scrollLines(lines, 0, m.bodyHeight())
 }
 
@@ -368,6 +377,8 @@ func (m *Model) searchEmptyMessage(st *searchState) string {
 	switch {
 	case st.query == "":
 		return "type a name to search every vCenter and every kind"
+	case len(st.incomplete) > 0:
+		return fmt.Sprintf("still searching %q", st.query)
 	case st.searched == 0:
 		return "no vCenter has answered yet"
 	default:

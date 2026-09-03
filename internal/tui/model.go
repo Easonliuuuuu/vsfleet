@@ -68,13 +68,37 @@ const (
 // on name the same way "vsfleet search" matches on the command line.
 //
 // It is answered from the inventories already in memory rather than by going
-// back to the vCenters. A vCenter that has not been selected or explicitly
-// reloaded is reported as not searched rather than quietly narrowing the result.
+// back to the vCenters. A vCenter or kind that has not been selected or
+// explicitly reloaded is reported as incomplete rather than quietly narrowing
+// the result.
 type searchState struct {
-	query    string
-	rows     []row
-	searched int
-	missing  []*contextState
+	query      string
+	rows       []row
+	searched   int
+	missing    []*contextState
+	incomplete []searchKind
+}
+
+// searchKind is a kind that search could not use as a complete source. It is
+// separate from missing contexts because a context can have useful VM rows
+// while its hosts, datastores, or another kind are still being fetched.
+type searchKind struct {
+	context *contextState
+	kind    vsphere.Kind
+	reason  string
+	loading bool
+}
+
+// kindState is the cache and freshness record for one resource kind. VMs and
+// templates share a fetch group, but keep separate records because search,
+// tabs, and stale preservation address them as separate resource kinds.
+type kindState struct {
+	loaded     bool
+	loading    bool
+	attempted  bool
+	loadedAt   time.Time
+	err        error
+	generation uint64
 }
 
 // contextState is one vCenter as the UI sees it: the configuration, the last
@@ -84,6 +108,7 @@ type searchState struct {
 type contextState struct {
 	cc          *config.Context
 	inv         *vsphere.Inventory
+	kinds       map[vsphere.Kind]*kindState
 	err         error
 	loading     bool
 	attempted   bool
@@ -134,6 +159,86 @@ type contextState struct {
 	generation uint64
 }
 
+func newContextState(cc *config.Context) *contextState {
+	s := &contextState{cc: cc, kinds: make(map[vsphere.Kind]*kindState, len(vsphere.AllKinds))}
+	for _, kind := range vsphere.AllKinds {
+		s.kinds[kind] = &kindState{}
+	}
+	return s
+}
+
+func (s *contextState) kind(kind vsphere.Kind) *kindState {
+	if s.kinds == nil {
+		s.kinds = make(map[vsphere.Kind]*kindState, len(vsphere.AllKinds))
+	}
+	if ks, ok := s.kinds[kind]; ok {
+		return ks
+	}
+	ks := &kindState{}
+	s.kinds[kind] = ks
+	return ks
+}
+
+func (s *contextState) markGroupLoading(group vsphere.FetchGroup, generation uint64) {
+	for _, kind := range kindsIn(group) {
+		ks := s.kind(kind)
+		ks.loading = true
+		ks.attempted = true
+		ks.generation = generation
+	}
+}
+
+func (s *contextState) applyGroupState(group vsphere.FetchGroup, part *vsphere.Inventory, generation uint64, now time.Time) {
+	for _, kind := range kindsIn(group) {
+		ks := s.kind(kind)
+		// The enclosing load generation is checked before this method is called.
+		// Keep the per-kind generation too, so the cache record remains
+		// self-describing and cannot be mistaken for a newer result.
+		if ks.generation != 0 && ks.generation != generation {
+			continue
+		}
+		ks.loading = false
+		if part != nil {
+			if message, failed := part.ErrorFor(kind); failed {
+				ks.err = errors.New(message)
+				continue
+			}
+		}
+		ks.loaded = true
+		ks.loadedAt = now
+		ks.err = nil
+	}
+}
+
+func (s *contextState) markAllKindsError(err error, generation uint64) {
+	for _, kind := range vsphere.AllKinds {
+		ks := s.kind(kind)
+		ks.loading = false
+		ks.attempted = true
+		ks.generation = generation
+		ks.err = err
+	}
+}
+
+func (s *contextState) hasKindErrors() bool {
+	for _, kind := range vsphere.AllKinds {
+		if s.kind(kind).err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *contextState) allKindsLoaded() bool {
+	for _, kind := range vsphere.AllKinds {
+		ks := s.kind(kind)
+		if !ks.loaded || ks.err != nil {
+			return false
+		}
+	}
+	return true
+}
+
 // contextPhase is deliberately separate from inventory presence. A context
 // may still show a previous inventory while its next authentication or refresh
 // is waiting, and an untouched context must remain visibly disconnected rather
@@ -164,6 +269,10 @@ const (
 func (s *contextState) reset() {
 	s.stopStages()
 	s.inv = nil
+	s.kinds = make(map[vsphere.Kind]*kindState, len(vsphere.AllKinds))
+	for _, kind := range vsphere.AllKinds {
+		s.kinds[kind] = &kindState{}
+	}
 	s.err = nil
 	s.attempted = false
 	s.phase = phaseIdle
@@ -197,7 +306,7 @@ func (s *contextState) rowStatus() rowStatus {
 		return statusWarn
 	case s.err != nil && s.inv == nil:
 		return statusBad
-	case s.err != nil:
+	case s.err != nil || s.hasKindErrors():
 		return statusWarn
 	case s.inv != nil:
 		return statusGood
@@ -367,7 +476,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		credCoord:       opts.Credentials,
 	}
 	for i, cc := range contexts {
-		st := &contextState{cc: cc}
+		st := newContextState(cc)
 		m.states = append(m.states, st)
 		m.byName[cc.Name] = st
 		if cc.Name == opts.Current {
@@ -582,14 +691,24 @@ func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 // failed — is always due, which is what lets a vCenter that was unreachable
 // at start-up come back on its own rather than waiting for a keystroke.
 func (m *Model) refreshDue(st *contextState, onScreen bool) bool {
-	if st.loadedAt.IsZero() {
+	threshold := m.refreshInterval * backgroundRefreshFactor
+	if onScreen {
+		threshold = m.refreshInterval / 2
+	}
+	// The aggregate timestamp remains useful for a completed bundle and for
+	// callers that only know the context-level state. A partial inventory must
+	// also be due when any individual kind has never succeeded or has gone
+	// stale, so one healthy kind cannot mask another kind's missing refresh.
+	if !st.loadedAt.IsZero() && time.Since(st.loadedAt) >= threshold {
 		return true
 	}
-	age := time.Since(st.loadedAt)
-	if onScreen {
-		return age >= m.refreshInterval/2
+	for _, kind := range vsphere.AllKinds {
+		ks := st.kind(kind)
+		if !ks.loaded || ks.loadedAt.IsZero() || time.Since(ks.loadedAt) >= threshold {
+			return true
+		}
 	}
-	return age >= m.refreshInterval*backgroundRefreshFactor
+	return false
 }
 
 // refreshStale quietly re-reads every already-attempted context due for it. It
@@ -707,16 +826,35 @@ func (m *Model) ensureSearch(query string) *searchState {
 			st.missing = append(st.missing, cs)
 			continue
 		}
-		st.searched++
-		if q == "" {
-			continue
-		}
+		searchedContext := false
 		for _, k := range vsphere.AllKinds {
-			for _, r := range rowsFor(cs.inv, k, false) {
-				if strings.Contains(strings.ToLower(r.name), q) {
-					st.rows = append(st.rows, r)
+			ks := cs.kind(k)
+			if ks.loaded {
+				searchedContext = true
+				if q != "" {
+					for _, r := range rowsFor(cs.inv, k, false) {
+						if strings.Contains(strings.ToLower(r.name), q) {
+							st.rows = append(st.rows, r)
+						}
+					}
 				}
 			}
+			if ks.loading {
+				st.incomplete = append(st.incomplete, searchKind{
+					context: cs, kind: k, reason: "still loading", loading: true,
+				})
+			} else if ks.err != nil {
+				st.incomplete = append(st.incomplete, searchKind{
+					context: cs, kind: k, reason: firstLine(ks.err.Error()),
+				})
+			} else if !ks.loaded {
+				st.incomplete = append(st.incomplete, searchKind{
+					context: cs, kind: k, reason: "not loaded",
+				})
+			}
+		}
+		if searchedContext {
+			st.searched++
 		}
 	}
 	m.sortMode.apply(st.rows)
@@ -978,7 +1116,7 @@ func (m *Model) syncContexts() {
 			}
 			st.cc = cc
 		} else {
-			st = &contextState{cc: cc}
+			st = newContextState(cc)
 		}
 		states = append(states, st)
 		byName[cc.Name] = st
@@ -1080,6 +1218,7 @@ func (m *Model) applyBeginInventory(msg beginInventoryMsg) tea.Cmd {
 	st.outstanding-- // the connect/index step itself just landed
 	if msg.err != nil {
 		st.err = msg.err
+		st.markAllKindsError(msg.err, st.generation)
 		st.phase = phaseForLoadError(msg.err)
 		return m.finishLoad(st)
 	}
@@ -1090,6 +1229,7 @@ func (m *Model) applyBeginInventory(msg beginInventoryMsg) tea.Cmd {
 	st.outstanding = 1 // just the priority group, dispatched below
 	st.awaitingPriority = true
 	priority := vsphere.GroupFor(m.kind)
+	st.markGroupLoading(priority, st.generation)
 	return fetchGroupCmd(m.ctx, m.limiter, msg.handle, st.cc, priority, st.generation)
 }
 
@@ -1113,6 +1253,7 @@ func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 		st.inv = &vsphere.Inventory{Context: msg.context}
 	}
 	st.inv.ApplyGroup(msg.group, msg.inv)
+	st.applyGroupState(msg.group, msg.inv, msg.generation, time.Now())
 	st.phase = phaseLoading
 	st.loadingKind = msg.group
 	m.searchDirty = true
@@ -1123,6 +1264,7 @@ func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 			if g == msg.group {
 				continue
 			}
+			st.markGroupLoading(g, st.generation)
 			cmds = append(cmds, fetchGroupCmd(m.ctx, m.limiter, st.handle, st.cc, g, st.generation))
 		}
 		st.outstanding = len(vsphere.AllGroups) - 1 // the ones just dispatched
@@ -1166,7 +1308,9 @@ func (m *Model) finishLoad(st *contextState) tea.Cmd {
 	st.handle = nil
 	st.stopStages()
 	if st.err == nil {
-		st.loadedAt = time.Now()
+		if st.allKindsLoaded() {
+			st.loadedAt = time.Now()
+		}
 		st.phase = phaseReady
 		st.loadingKind = ""
 	} else {

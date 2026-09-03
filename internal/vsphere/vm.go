@@ -50,7 +50,7 @@ func (c *Client) listAllVMs(ctx context.Context) ([]VM, error) {
 
 func (c *Client) listVMs(ctx context.Context, idx *index) ([]VM, error) {
 	var raw []mo.VirtualMachine
-	if err := retrieve(ctx, c, []string{"VirtualMachine"}, []string{"VirtualMachine"}, vmProps, &raw); err != nil {
+	if err := retrieve(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, vmProps, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]VM, 0, len(raw))

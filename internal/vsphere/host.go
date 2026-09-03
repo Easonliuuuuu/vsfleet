@@ -30,7 +30,7 @@ func (c *Client) ListHosts(ctx context.Context) ([]Host, error) {
 
 func (c *Client) listHosts(ctx context.Context, idx *index) ([]Host, error) {
 	var raw []mo.HostSystem
-	if err := retrieve(ctx, c, []string{"HostSystem"}, []string{"HostSystem"}, hostProps, &raw); err != nil {
+	if err := retrieve(ctx, c, idx.root, []string{"HostSystem"}, []string{"HostSystem"}, hostProps, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]Host, 0, len(raw))

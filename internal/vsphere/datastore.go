@@ -20,7 +20,7 @@ func (c *Client) ListDatastores(ctx context.Context) ([]Datastore, error) {
 
 func (c *Client) listDatastores(ctx context.Context, idx *index) ([]Datastore, error) {
 	var raw []mo.Datastore
-	if err := retrieve(ctx, c, []string{"Datastore"}, []string{"Datastore"}, datastoreProps, &raw); err != nil {
+	if err := retrieve(ctx, c, idx.root, []string{"Datastore"}, []string{"Datastore"}, datastoreProps, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]Datastore, 0, len(raw))

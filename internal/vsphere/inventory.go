@@ -40,19 +40,69 @@ type entity struct {
 // round trip per object.
 type index struct {
 	byRef map[types.ManagedObjectReference]entity
+	// root is the container-view root every retrieval for this client scopes
+	// to — see resolveRoot. Every per-kind lister reuses it rather than each
+	// resolving the configured datacenter over again.
+	root types.ManagedObjectReference
 }
 
 func newIndex(ctx context.Context, c *Client) (*index, error) {
-	var ents []mo.ManagedEntity
-	err := retrieve(ctx, c, entityKinds, []string{"ManagedEntity"}, []string{"name", "parent"}, &ents)
+	root, seed, err := resolveRoot(ctx, c)
 	if err != nil {
+		return nil, err
+	}
+	var ents []mo.ManagedEntity
+	if err := retrieve(ctx, c, root, entityKinds, []string{"ManagedEntity"}, []string{"name", "parent"}, &ents); err != nil {
 		return nil, fmt.Errorf("build inventory index: %w", err)
 	}
-	idx := &index{byRef: make(map[types.ManagedObjectReference]entity, len(ents))}
+	idx := &index{byRef: make(map[types.ManagedObjectReference]entity, len(ents)+len(seed)), root: root}
+	for _, e := range seed {
+		idx.byRef[e.ref] = e
+	}
 	for _, e := range ents {
 		idx.byRef[e.Self] = entity{ref: e.Self, name: e.Name, parent: e.Parent}
 	}
 	return idx, nil
+}
+
+// resolveRoot returns the container-view root for a client's context: the
+// vCenter-wide root folder when no datacenter is configured, or the named
+// datacenter's own reference when Context.Datacenter is set. Scoping every
+// retrieval directly to that reference — rather than fetching vCenter-wide
+// and filtering locally — is what keeps an object outside the configured
+// datacenter from ever being retrieved in the first place.
+//
+// A container view rooted at an object does not include the object itself,
+// only its descendants, so seed carries the datacenter's own name and
+// reference for the index to record directly; without it, every object's
+// resolved path and datacenter would come up empty, since the ancestor walk
+// (index.ancestors) has nowhere further to go once it reaches a reference
+// the index never recorded.
+func resolveRoot(ctx context.Context, c *Client) (root types.ManagedObjectReference, seed []entity, err error) {
+	name := strings.TrimSpace(c.Context.Datacenter)
+	if name == "" {
+		return c.VIM().ServiceContent.RootFolder, nil, nil
+	}
+	var dcs []mo.Datacenter
+	if err := retrieve(ctx, c, c.VIM().ServiceContent.RootFolder, []string{"Datacenter"}, []string{"Datacenter"}, []string{"name"}, &dcs); err != nil {
+		return types.ManagedObjectReference{}, nil, fmt.Errorf("resolve datacenter %q: %w", name, err)
+	}
+	var match *mo.Datacenter
+	count := 0
+	for i := range dcs {
+		if dcs[i].Name == name {
+			match = &dcs[i]
+			count++
+		}
+	}
+	switch count {
+	case 0:
+		return types.ManagedObjectReference{}, nil, fmt.Errorf("datacenter %q not found", name)
+	case 1:
+		return match.Self, []entity{{ref: match.Self, name: match.Name}}, nil
+	default:
+		return types.ManagedObjectReference{}, nil, fmt.Errorf("datacenter %q is ambiguous: %d datacenters share that name", name, count)
+	}
 }
 
 // ancestors returns the chain from the object up to, but not including, the
@@ -168,12 +218,15 @@ func (i *index) locate(c *Client, ref types.ManagedObjectReference, name string)
 	}
 }
 
-// retrieve enumerates every object of the given view kinds and loads the named
-// properties into dst. propKinds are the types the property specification is
-// written against, which is usually the common base type of the view kinds.
-func retrieve(ctx context.Context, c *Client, viewKinds, propKinds, props []string, dst any) error {
+// retrieve enumerates every object of the given view kinds under root and
+// loads the named properties into dst. propKinds are the types the property
+// specification is written against, which is usually the common base type of
+// the view kinds. root scopes the container view — see resolveRoot — so that
+// an object outside it is never retrieved to begin with, rather than fetched
+// and then filtered out locally.
+func retrieve(ctx context.Context, c *Client, root types.ManagedObjectReference, viewKinds, propKinds, props []string, dst any) error {
 	m := view.NewManager(c.VIM())
-	v, err := m.CreateContainerView(ctx, c.VIM().ServiceContent.RootFolder, viewKinds, true)
+	v, err := m.CreateContainerView(ctx, root, viewKinds, true)
 	if err != nil {
 		return fmt.Errorf("create container view: %w", err)
 	}

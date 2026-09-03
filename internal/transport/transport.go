@@ -41,6 +41,10 @@ type Options struct {
 	Timeout time.Duration
 	// Resolver looks up credentials for proxies that require authentication.
 	Resolver *credentials.Resolver
+	// CredentialLabel names the context whose proxy credential is being
+	// resolved. A bare prompt reference uses it to distinguish multiple
+	// context-local proxy asks in the interactive UI.
+	CredentialLabel string
 	// ProxyCredential, when set, is used as-is for proxy authentication and
 	// the resolver is not consulted. This is the same bootstrapping escape
 	// hatch vsphere.ConnectOptions.Credential gives the vCenter's own
@@ -80,9 +84,10 @@ func ResolveProxyCredential(ctx context.Context, cfg config.TransportConfig, opt
 	if opts.Resolver == nil {
 		return "", fmt.Errorf("%s proxy credential %s configured but no credential resolver available", cfg.Type, cfg.Credential)
 	}
-	c, err := opts.Resolver.Get(ctx, cfg.Credential)
+	ref := cfg.Credential.WithDefaultLabel(opts.CredentialLabel)
+	c, _, err := credentials.Resolve(ctx, opts.Resolver, ref, opts.CredentialLabel)
 	if err != nil {
-		return "", fmt.Errorf("resolve %s proxy credential %s: %w", cfg.Type, cfg.Credential, err)
+		return "", fmt.Errorf("resolve %s proxy credential %s: %w", cfg.Type, ref, err)
 	}
 	return c.Password, nil
 }

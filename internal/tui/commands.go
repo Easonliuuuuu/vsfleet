@@ -24,10 +24,11 @@ import (
 // known to have fully drained) if it no longer applies — see the case in
 // Update.
 type beginInventoryMsg struct {
-	context string
-	cc      *config.Context
-	handle  InventoryHandle
-	err     error
+	context    string
+	cc         *config.Context
+	generation uint64
+	handle     InventoryHandle
+	err        error
 }
 
 // groupMsg carries the outcome of retrieving one fetch group for one
@@ -36,10 +37,21 @@ type beginInventoryMsg struct {
 //
 // context and cc serve the same purpose as they do on beginInventoryMsg.
 type groupMsg struct {
-	context string
-	cc      *config.Context
-	group   vsphere.FetchGroup
-	inv     *vsphere.Inventory
+	context    string
+	cc         *config.Context
+	generation uint64
+	group      vsphere.FetchGroup
+	inv        *vsphere.Inventory
+}
+
+// stageMsg carries live progress from the production connection path. It is
+// advisory: a backend that does not implement the optional progress extension
+// still gets the same correct load behavior, just with coarser labels.
+type stageMsg struct {
+	context    string
+	cc         *config.Context
+	generation uint64
+	stage      vsphere.Stage
 }
 
 // refreshTickMsg is the periodic wake-up that re-reads inventory nobody has
@@ -70,10 +82,50 @@ type diagnosisMsg struct {
 // index in the background. Landing this is what the model uses to kick off
 // the priority fetch group — see (*Model).beginLoad and the beginInventoryMsg
 // case in Update.
-func beginInventoryCmd(ctx context.Context, b Backend, cc *config.Context) tea.Cmd {
+func beginInventoryCmd(ctx context.Context, b Backend, cc *config.Context, generations ...uint64) tea.Cmd {
+	var generation uint64
+	if len(generations) > 0 {
+		generation = generations[0]
+	}
 	return func() tea.Msg {
 		handle, err := b.BeginInventory(ctx, cc)
-		return beginInventoryMsg{context: cc.Name, cc: cc, handle: handle, err: err}
+		return beginInventoryMsg{context: cc.Name, cc: cc, generation: generation, handle: handle, err: err}
+	}
+}
+
+type inventoryProgressBackend interface {
+	BeginInventoryWithProgress(context.Context, *config.Context, func(vsphere.Stage)) (InventoryHandle, error)
+}
+
+func beginInventoryWithProgressCmd(ctx context.Context, b Backend, cc *config.Context, report func(vsphere.Stage), generations ...uint64) tea.Cmd {
+	var generation uint64
+	if len(generations) > 0 {
+		generation = generations[0]
+	}
+	return func() tea.Msg {
+		var (
+			handle InventoryHandle
+			err    error
+		)
+		if pb, ok := b.(inventoryProgressBackend); ok {
+			handle, err = pb.BeginInventoryWithProgress(ctx, cc, report)
+		} else {
+			handle, err = b.BeginInventory(ctx, cc)
+		}
+		return beginInventoryMsg{context: cc.Name, cc: cc, generation: generation, handle: handle, err: err}
+	}
+}
+
+func listenForStage(ctx context.Context, contextName string, cc *config.Context, generation uint64, ch <-chan vsphere.Stage, done <-chan struct{}) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case stage := <-ch:
+			return stageMsg{context: contextName, cc: cc, generation: generation, stage: stage}
+		case <-done:
+			return nil
+		case <-ctx.Done():
+			return nil
+		}
 	}
 }
 
@@ -83,7 +135,11 @@ func beginInventoryCmd(ctx context.Context, b Backend, cc *config.Context) tea.C
 // unbounded connections at the same moment. Every group for one context gets
 // its own command, so several run concurrently (bounded by lim) and a slow
 // one only ever delays its own kind.
-func fetchGroupCmd(ctx context.Context, lim *limiter.Limiter, handle InventoryHandle, cc *config.Context, group vsphere.FetchGroup) tea.Cmd {
+func fetchGroupCmd(ctx context.Context, lim *limiter.Limiter, handle InventoryHandle, cc *config.Context, group vsphere.FetchGroup, generations ...uint64) tea.Cmd {
+	var generation uint64
+	if len(generations) > 0 {
+		generation = generations[0]
+	}
 	return func() tea.Msg {
 		var inv *vsphere.Inventory
 		if err := lim.Run(ctx, func() { inv = handle.FetchGroup(group) }); err != nil {
@@ -98,7 +154,7 @@ func fetchGroupCmd(ctx context.Context, lim *limiter.Limiter, handle InventoryHa
 				inv.Errors = append(inv.Errors, vsphere.InventoryError{Kind: k, Message: err.Error()})
 			}
 		}
-		return groupMsg{context: cc.Name, cc: cc, group: group, inv: inv}
+		return groupMsg{context: cc.Name, cc: cc, generation: generation, group: group, inv: inv}
 	}
 }
 

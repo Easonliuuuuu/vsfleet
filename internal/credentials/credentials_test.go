@@ -122,6 +122,35 @@ func TestPromptFallback(t *testing.T) {
 	}
 }
 
+type unavailableKeyring struct{}
+
+func (unavailableKeyring) Scheme() string { return credentials.SchemeKeyring }
+func (unavailableKeyring) Get(context.Context, credentials.Ref) (credentials.Credential, error) {
+	return credentials.Credential{}, errors.New("secret service is locked")
+}
+func (unavailableKeyring) Store(context.Context, credentials.Ref, credentials.Credential) error {
+	return errors.New("secret service is locked")
+}
+func (unavailableKeyring) Delete(context.Context, credentials.Ref) error {
+	return errors.New("secret service is locked")
+}
+
+func TestPromptFallbackWhenKeyringIsUnavailable(t *testing.T) {
+	prompt := credentials.NewStatic(credentials.SchemePrompt, map[string]credentials.Credential{
+		"lab": {Password: promptedFixture},
+	})
+	r := credentials.NewResolver(unavailableKeyring{}, prompt)
+	ref := credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "lab"}
+
+	cred, prompted, err := credentials.Resolve(context.Background(), r, ref, "lab")
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if !prompted || cred.Password != promptedFixture {
+		t.Fatalf("Resolve returned prompted=%v credential=%q, want prompt fallback", prompted, cred.Password)
+	}
+}
+
 // TestPromptSharesReader guards against a buffered read swallowing the input
 // meant for the next question, which the interactive wizard depends on.
 func TestPromptSharesReader(t *testing.T) {

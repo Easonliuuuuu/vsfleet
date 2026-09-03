@@ -421,7 +421,7 @@ func (m *Model) viewContexts() []string {
 func (m *Model) contextDetail(st *contextState) string {
 	switch {
 	case st.showsLoading():
-		return "connecting…"
+		return contextPhaseDetail(st)
 	case st.diagging:
 		return "diagnosing…"
 	case st.err != nil:
@@ -435,6 +435,43 @@ func (m *Model) contextDetail(st *contextState) string {
 		return route
 	default:
 		return shortRoute(st.cc.Transport.Describe()) + " · not connected"
+	}
+}
+
+func contextPhaseDetail(st *contextState) string {
+	switch st.phase {
+	case phaseCredentials:
+		return "credentials required"
+	case phaseWaitingCredentials:
+		return "waiting for credentials"
+	case phaseReadingKeyring:
+		return "reading keyring…"
+	case phaseAuthenticating:
+		return "authenticating…"
+	case phaseLoading:
+		if st.loadingKind != "" {
+			return "loading " + loadingGroupLabel(st.loadingKind) + "…"
+		}
+		return "loading inventory…"
+	default:
+		return "authenticating…"
+	}
+}
+
+func loadingGroupLabel(group vsphere.FetchGroup) string {
+	switch group {
+	case vsphere.GroupVMs:
+		return "VMs and templates"
+	case vsphere.GroupHosts:
+		return "hosts"
+	case vsphere.GroupClusters:
+		return "clusters"
+	case vsphere.GroupDatastores:
+		return "datastores"
+	case vsphere.GroupNetworks:
+		return "networks"
+	default:
+		return "inventory"
 	}
 }
 
@@ -455,6 +492,9 @@ func firstLine(s string) string {
 func (m *Model) emptyMessage() string {
 	switch {
 	case m.pendingScope():
+		if st := m.current(); st != nil && st.showsLoading() {
+			return contextPhaseDetail(st)
+		}
 		return m.spin.View() + "loading inventory…"
 	case m.filter.Value() != "":
 		return fmt.Sprintf("no %s matching %q", tabTitle(m.kind), m.filter.Value())

@@ -1,14 +1,10 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vsfleet/internal/config"
-	"github.com/easonliuuuuu/vsfleet/internal/credentials"
-	"github.com/easonliuuuuu/vsfleet/internal/transport"
 	"github.com/easonliuuuuu/vsfleet/internal/tui"
 	"github.com/easonliuuuuu/vsfleet/internal/uistate"
 )
@@ -33,6 +29,10 @@ The numbered tabs show one resource kind at a time for the vCenter in scope
 or, with --all-contexts, for the whole estate at once. Press "c" for the
 contexts screen, which lists every configured vCenter whether or not it is
 reachable and is where you switch, add, edit and remove them.
+
+The pane renders before credentials are requested. Keyring authentication runs
+in the background; prompt credentials are collected by a masked overlay inside
+the interface, and untouched contexts remain disconnected until selected.
 
 "/" filters the table in front of you and "tab" widens the same query into
 every vCenter and every kind at once, which is "vsfleet search" without
@@ -89,29 +89,14 @@ func runUI(a *App, cmd *cobra.Command) error {
 		current = a.ContextNames[0]
 	}
 
-	// The context the interface is about to open on gets its credentials
-	// resolved right here, on a plain terminal prompt, before Bubble Tea
-	// takes the screen — see resolveStartupCredentials. A context nobody has
-	// asked to see yet is never touched merely because the program started
-	// (issue #27): it loads, and resolves its own credentials, only once the
-	// operator actually selects it, widens into it, or opens an operation
-	// that clearly needs it.
-	if startCC := startingContext(cfg, current); startCC != nil {
-		if err := resolveStartupCredentials(cmd.Context(), a, startCC); err != nil {
-			return err
-		}
-	}
-
 	// A background load's credential prompt cannot read the password from
 	// os.Stdin the way the command line does: Bubble Tea already owns the
 	// terminal, and a second reader racing it for the same input is what let
 	// a keystroke meant for the password field reach a global shortcut
 	// instead (issue #26). The coordinator answers "prompt" references
 	// through the interface itself, so it replaces the resolver's usual
-	// prompt provider for the lifetime of this run. It only ever gets asked
-	// about a context reached after start-up: the starting one primed its
-	// answer into the resolver above and so never reaches the coordinator at
-	// all.
+	// prompt provider for the lifetime of this run. Credential resolution starts
+	// only after the first pane has rendered.
 	coordinator := tui.NewPromptCoordinator()
 	a.Resolver().SetProvider(coordinator)
 
@@ -134,68 +119,4 @@ func runUI(a *App, cmd *cobra.Command) error {
 		}
 	}
 	return runErr
-}
-
-// startingContext returns the context the interface is about to open on, the
-// same one tui.Options.Current names — current when it names one, otherwise
-// whichever context the Model itself falls back to (the first configured
-// one, absent any other choice). It returns nil with nothing configured yet,
-// which is the one case start-up has no context to resolve credentials for:
-// the interface opens straight into the setup form instead.
-func startingContext(cfg *config.Config, current string) *config.Context {
-	if current != "" {
-		if cc, err := cfg.Context(current); err == nil {
-			return cc
-		}
-	}
-	if len(cfg.Contexts) > 0 {
-		return cfg.Contexts[0]
-	}
-	return nil
-}
-
-// resolveStartupCredentials asks for the starting context's own password —
-// and its proxy's, if the route needs one — on a plain terminal prompt
-// before Bubble Tea claims the screen, exactly the way "vsfleet context
-// test" already asks. A credential already stored (keyring) resolves here
-// with no prompt at all; only a genuinely missing secret costs the operator
-// a question, and it is asked once, up front, rather than through an overlay
-// opened just to immediately show a password field.
-//
-// The answer is primed into the resolver (see credentials.Resolver.Prime) so
-// that the background load which reaches this same context moments later —
-// the first thing Model.Init does — finds it already resolved instead of
-// asking a second time.
-//
-// A failure or cancellation here is returned to the caller as a plain CLI
-// error: the interface never opens on a context it could not even get
-// credentials for.
-func resolveStartupCredentials(ctx context.Context, a *App, cc *config.Context) error {
-	ref := cc.Credential.WithDefaultLabel(cc.Name)
-	cred, _, err := credentials.Resolve(ctx, a.Resolver(), ref, cc.Name)
-	if err != nil {
-		return fmt.Errorf("context %q: %w", cc.Name, err)
-	}
-	a.Resolver().Prime(ref, cred)
-
-	if cc.Transport.Username == "" {
-		return nil
-	}
-	proxyRef := cc.Transport.Credential
-	proxyPass, err := transport.ResolveProxyCredential(ctx, cc.Transport, transport.Options{Resolver: a.Resolver()})
-	if err != nil {
-		return fmt.Errorf("context %q: proxy credential: %w", cc.Name, err)
-	}
-	// A bare "prompt" reference (no value of its own) is not disambiguated
-	// for a proxy credential the way it is for the vCenter's own — see
-	// WithDefaultLabel — so priming it here could hand this context's proxy
-	// password to a different context whose proxy credential happens to be
-	// the same bare reference. Leaving it unprimed only costs one more
-	// prompt, on the rare background load that reaches this exact context's
-	// proxy again.
-	if proxyRef.Scheme == credentials.SchemePrompt && proxyRef.Value == "" {
-		return nil
-	}
-	a.Resolver().Prime(proxyRef, credentials.Credential{Password: proxyPass})
-	return nil
 }

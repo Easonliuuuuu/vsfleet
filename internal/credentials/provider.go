@@ -165,16 +165,9 @@ func (r *Resolver) SetProvider(p Provider) {
 	}
 }
 
-// Prime records a credential already resolved outside the normal Get path —
-// a password prompted for on a plain terminal before a caller that cannot
-// safely prompt later (Bubble Tea, once it owns the screen) starts. A later
-// Get for the exact same reference returns it directly, without asking the
-// registered provider again; Get for any other reference is unaffected.
-//
-// It exists for the terminal interface's start-up: the selected context's
-// credential is resolved on a normal prompt before the program begins, and
-// priming it here is what stops the background load that reaches the same
-// reference moments later from asking a second time.
+// Prime records a credential already resolved outside the normal Get path. A
+// later Get for the exact same reference returns it directly, without asking
+// the registered provider again; Get for any other reference is unaffected.
 func (r *Resolver) Prime(ref Ref, cred Credential) {
 	r.primedMu.Lock()
 	defer r.primedMu.Unlock()

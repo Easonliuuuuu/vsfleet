@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -237,4 +238,23 @@ func TestCredPromptSerializesConcurrentAskers(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("second asker never unblocked")
 	}
+}
+
+func TestCredPromptMarksTheSelectedContextAsCredentialsRequired(t *testing.T) {
+	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
+	m := New(context.Background(), b, Options{Credentials: NewPromptCoordinator()})
+	st := m.byName["lab"]
+	if m.beginLoad(st, false, false) == nil {
+		t.Fatal("expected the selected context to begin loading")
+	}
+	request := credRequest{label: "lab", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: request})
+
+	if st.phase != phaseCredentials {
+		t.Fatalf("context phase = %q, want %q", st.phase, phaseCredentials)
+	}
+	if m.credPrompt == nil || !strings.Contains(strings.Join(m.viewCredPrompt(), "\n"), "Password for lab") {
+		t.Fatal("the credential request did not open a context-labelled overlay")
+	}
+	m.resolveCredPrompt(credResult{err: errPromptCanceled})
 }

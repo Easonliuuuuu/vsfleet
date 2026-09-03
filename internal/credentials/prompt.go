@@ -125,8 +125,8 @@ func (p *Prompt) Delete(context.Context, Ref) error {
 }
 
 // Resolve fetches a credential for ref, falling back to the prompt provider
-// when nothing is stored for it. label names the thing being unlocked,
-// typically the context name.
+// when a keyring entry is missing or the keyring is unavailable. label names
+// the thing being unlocked, typically the context name.
 //
 // It reports whether the credential came from the prompt, so callers can offer
 // to persist it.
@@ -135,7 +135,13 @@ func Resolve(ctx context.Context, r *Resolver, ref Ref, label string) (c Credent
 	if err == nil {
 		return c, false, nil
 	}
-	if !errors.Is(err, ErrNotFound) {
+	// A keyring can be present but unavailable while its desktop secret store
+	// is locked. The interactive interface can still make progress by asking
+	// for this one credential, so treat every keyring read failure like a
+	// missing entry when a prompt provider is available. Prompt references
+	// themselves retain their original error: asking the prompt provider twice
+	// would only obscure the real failure.
+	if ref.Scheme != SchemeKeyring && !errors.Is(err, ErrNotFound) {
 		return Credential{}, false, err
 	}
 	p, ok := r.Provider(SchemePrompt)

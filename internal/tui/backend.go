@@ -86,6 +86,18 @@ func NewBackend(cfg *config.Config, res *credentials.Resolver, mgr *session.Mana
 func (b *sessionBackend) Contexts() []*config.Context { return b.cfg.Contexts }
 
 func (b *sessionBackend) BeginInventory(ctx context.Context, cc *config.Context) (InventoryHandle, error) {
+	return b.beginInventory(ctx, cc, nil)
+}
+
+// BeginInventoryWithProgress is the production-only extension used by the
+// TUI. Keeping it outside Backend lets existing test and demo backends remain
+// small while allowing the real connection path to report keyring,
+// authentication and inventory stages in the pane that owns them.
+func (b *sessionBackend) BeginInventoryWithProgress(ctx context.Context, cc *config.Context, report func(vsphere.Stage)) (InventoryHandle, error) {
+	return b.beginInventory(ctx, cc, report)
+}
+
+func (b *sessionBackend) beginInventory(ctx context.Context, cc *config.Context, report func(vsphere.Stage)) (InventoryHandle, error) {
 	// One deadline covers connecting, building the index and every group
 	// fetched through the handle: without it, a vCenter that connects
 	// quickly but hangs enumerating would run for as long as the interface
@@ -93,6 +105,15 @@ func (b *sessionBackend) BeginInventory(ctx context.Context, cc *config.Context)
 	// than anything bounded by --timeout. sessionInventoryHandle releases it
 	// once every fetch group has landed — see its FetchGroup.
 	opCtx, cancel, tracker := b.mgr.Operation(ctx)
+	if report != nil {
+		// Operation already installed tracker.Report. Replace that reporter with
+		// a small fan-out so timeout errors retain their stage while the TUI gets
+		// the same live information.
+		opCtx = vsphere.WithStageReporter(opCtx, func(stage vsphere.Stage) {
+			tracker.Report(stage)
+			report(stage)
+		})
+	}
 	s, err := b.mgr.Connect(opCtx, cc)
 	if err != nil {
 		cancel()

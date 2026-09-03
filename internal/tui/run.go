@@ -2,9 +2,24 @@ package tui
 
 import (
 	"context"
+	"errors"
+	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/term"
 )
+
+type terminalFile interface {
+	Fd() uintptr
+}
+
+func isTerminal(v any) bool {
+	f, ok := v.(terminalFile)
+	if !ok {
+		return false
+	}
+	return term.IsTerminal(int(f.Fd()))
+}
 
 // Run starts the interface and blocks until the operator quits. The alternate
 // screen is used so the terminal is left exactly as it was found.
@@ -13,11 +28,25 @@ import (
 // error, since a canceled context still exits through the same path and the
 // caller decides for itself whether a partial run is worth remembering.
 func Run(ctx context.Context, b Backend, opts Options) (Snapshot, error) {
+	in := opts.In
+	if in == nil {
+		in = os.Stdin
+	}
+	out := opts.Out
+	if out == nil {
+		out = os.Stdout
+	}
+	if !isTerminal(in) || !isTerminal(out) {
+		return Snapshot{}, errors.New("terminal interface requires a terminal")
+	}
+
 	m := New(ctx, b, opts)
 	p := tea.NewProgram(
 		m,
 		tea.WithAltScreen(),
 		tea.WithContext(ctx),
+		tea.WithInput(in),
+		tea.WithOutput(out),
 	)
 	final, err := p.Run()
 	if fm, ok := final.(*Model); ok {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -243,6 +244,11 @@ type Options struct {
 	// which is correct for callers — tests, the demo binary — whose backend
 	// never has a context configured with a prompt credential.
 	Credentials *PromptCoordinator
+
+	// In and Out configure the streams Bubble Tea reads input from and writes
+	// terminal output to. When nil, os.Stdin and os.Stdout are used.
+	In  io.Reader
+	Out io.Writer
 }
 
 // Snapshot is what is worth remembering about the interface between runs:

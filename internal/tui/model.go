@@ -1047,6 +1047,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.credPrompt != nil {
 		return m.handleCredPromptKey(msg)
 	}
+	if msg.Type == tea.KeyCtrlC {
+		m.quitting = true
+		return tea.Quit
+	}
 	if m.filtering {
 		return m.handleFilterKey(msg)
 	}
@@ -1216,6 +1220,10 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 		m.clampCursor()
 		return nil
 	case tea.KeyEsc:
+		if m.mode == modeSearch {
+			m.leaveSearch()
+			return nil
+		}
 		m.filtering = false
 		m.filter.Blur()
 		m.filter.SetValue("")

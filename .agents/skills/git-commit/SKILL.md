@@ -135,6 +135,119 @@ Commits and PRs are authored by the human running the work. An AI assistant is a
 
 4. **Show the proposed commit and ask for confirmation**
 
+   Help the user understand the proposed changes visually before asking for confirmation. Skip preamble and keep prose brief. Pick the smallest view that makes the key point clear:
+
+   - **Show logic or an algorithm as pseudocode:**
+     ```text
+     on(Authenticate)
+       if session token is valid
+         return cached client
+       prompt for credentials
+       init soap session
+       return authenticated client
+     ```
+
+   - **Show runtime control flow as a call tree:**
+     ```text
+     runSearch
+       loadContexts
+         parseConfig
+       queryClustersConcurrently
+         fetchVMs
+         fetchHosts
+       renderResultsTable
+     ```
+
+   - **Show UI/TUI structure as a component tree**, including state and module boundaries that matter:
+     ```text
+     <AppModel> (internal/tui/app.go)
+       contextState (internal/uistate)
+       <ContextListView>
+         <SearchInput>
+       <DetailPane>
+         <VMTableView>
+     ```
+
+   - **Show file responsibility or a broad refactor as a shallow file tree:**
+     ```text
+     internal/
+     ├── credentials/    # owns keyring and auth prompts
+     ├── search/         # orchestrates concurrent queries
+     └── transport/      # client connections and pool
+     ```
+
+   - **Show component interaction, control flow, or data flow with Mermaid:**
+     ```mermaid
+     sequenceDiagram
+         participant CLI
+         participant Auth
+         participant vCenter
+         CLI->>Auth: ResolveCredentials(context)
+         Auth-->>CLI: User/Password
+         CLI->>vCenter: Login(credentials)
+         vCenter-->>CLI: SessionToken
+     ```
+
+   - **Use `diff` when the point is what changes and the surrounding shape already exists.** Match the diff shape to the topic:
+     - For a component/view change:
+       ```diff
+        <AppModel>
+          contextState
+          <ContextListView>
+       +    <SearchInput />
+          <DetailPane>
+       +    <VMTableView />
+       ```
+     - For a file-layout change:
+       ```diff
+        internal/
+        ├── credentials/
+       +│   └── keyring.go       # platform-native keyring storage
+        ├── search/
+       -└── transport.go
+       +└── transport/
+       +    ├── client.go
+       +    └── pool.go
+       ```
+     - For a call-tree or call-stack change:
+       ```diff
+        runSearch
+          loadContexts
+            parseConfig
+       +    validateCredentials
+          queryClustersConcurrently
+       -  renderResultsTable
+       +  renderResultsTable
+       +    highlightMatches
+       ```
+     - For a state or control-flow change:
+       ```diff
+        on(connect)
+       -  dialEndpoint()
+       +  if session.IsActive()
+       +    return session.Client()
+       +  dialEndpoint()
+       +  persistSession()
+       ```
+
+   - **Show the whole block** when most of it is new, when omitted context would hide ownership or order, or when the user needs a copyable target shape:
+     ```go
+     func (s *SessionPool) Get(ctx context.Context, name string) (*Client, error) {
+         if client, ok := s.active[name]; ok {
+             return client, nil
+         }
+         return s.dialNew(ctx, name)
+     }
+     ```
+
+   - **For a visual UI, layout, state comparison, or concept too dense for Mermaid**, write one focused HTML file — a diagram, an infographic, or a short slide deck, whichever fits the point. Match the product's colors, type, spacing, and components; use real labels and data; support desktop and mobile. Then open it for the user:
+     ```bash
+     open path/to/show-me-{description}.html
+     ```
+
+   **Visual summary guidance**:
+   Place each visual next to the short text it supports. Keep only the calls, files, props, states, and boundaries needed to clarify what is being committed. You may use one of these, you may use several; it is unlikely you will use all of them. Use your judgement and don't overwhelm the user.
+
    Display:
    ```
    ## Proposed commit
@@ -221,6 +334,8 @@ Commits and PRs are authored by the human running the work. An AI assistant is a
         ## Testing
         <same content as the commit's Testing line>
         ```
+
+        **Visual aids in PRs**: For non-trivial PRs (new features, architectural refactors, multi-package reorganizations, or state/control-flow changes), include a concise visual aid in the PR body (e.g. in `## Summary` or as a companion diagram) using the formats from Step 4 (such as a Mermaid sequence/architecture diagram, shallow file tree diff, or call-tree diff) to help reviewers understand the architectural delta at a glance.
 
       Never add a `Co-Authored-By`, "Generated with Claude Code", `Claude-Session`, or similar footer to the PR title or body. See **Authorship** above.
 

@@ -4,7 +4,6 @@
   <a href="https://github.com/easonliuuuuu/vsfleet/actions/workflows/ci.yml"><img src="https://github.com/easonliuuuuu/vsfleet/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
   <a href="https://github.com/easonliuuuuu/vsfleet/releases"><img src="https://img.shields.io/github/v/release/easonliuuuuu/vsfleet?include_prereleases&color=blue" alt="Latest Release"></a>
   <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/easonliuuuuu/vsfleet" alt="Go Version"></a>
-  <a href="https://goreportcard.com/report/github.com/easonliuuuuu/vsfleet"><img src="https://goreportcard.com/badge/github.com/easonliuuuuu/vsfleet" alt="Go Report Card"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 

@@ -189,7 +189,7 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 	// A bare "vsfleet" opens the interface, so the interface's own flag
 	// belongs here too — on root's own flags, not the persistent set, so
 	// "vsfleet vm list --refresh" is still the error it should be.
-	addRefreshFlag(root.Flags(), a)
+	addRefreshFlag(root, a)
 
 	root.AddCommand(
 		newContextCommand(a),

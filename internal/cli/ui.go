@@ -4,15 +4,17 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/easonliuuuuu/vsfleet/internal/tui"
 	"github.com/easonliuuuuu/vsfleet/internal/uistate"
 )
 
 // addRefreshFlag registers --refresh on a command that opens the interface.
-func addRefreshFlag(f *pflag.FlagSet, a *App) {
-	f.DurationVar(&a.RefreshInterval, "refresh", 0,
+// It takes the command rather than its flag set so that this package does not
+// need to import pflag directly, which would promote it from an indirect
+// dependency to a direct one for the sake of one parameter type.
+func addRefreshFlag(cmd *cobra.Command, a *App) {
+	cmd.Flags().DurationVar(&a.RefreshInterval, "refresh", 0,
 		"how often to re-read inventory in the background (0 for the default of "+
 			tui.DefaultRefreshInterval.String()+", negative to only read when asked)")
 }
@@ -48,7 +50,7 @@ ask the same questions, not a second implementation of them.`,
 			return runUI(a, cmd)
 		},
 	}
-	addRefreshFlag(cmd.Flags(), a)
+	addRefreshFlag(cmd, a)
 	return cmd
 }
 

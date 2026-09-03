@@ -676,6 +676,9 @@ func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
 	return nil
 }
 
+// setMessage sets the transient note under the table. An empty string clears
+// it, which is what a scope change does: a note naming one vCenter is not
+// describing the rows on screen any more.
 func (m *Model) setMessage(s string, bad bool) {
 	m.message = s
 	m.messageBad = bad
@@ -880,6 +883,7 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.AllScope):
 		m.allScope = !m.allScope
 		m.cursor, m.offset = 0, 0
+		m.setMessage("", false)
 		return tea.Batch(m.ensureLoaded(false)...)
 	case key.Matches(msg, m.keys.Open):
 		return m.open()
@@ -937,6 +941,7 @@ func (m *Model) handleContextsKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.AllScope):
 		m.allScope = true
 		m.cursor, m.offset = 0, 0
+		m.setMessage("", false)
 		m.mode = modeBrowse
 		return tea.Batch(m.ensureLoaded(false)...)
 	case key.Matches(msg, m.keys.Reload):
@@ -989,6 +994,7 @@ func (m *Model) useContext() tea.Cmd {
 	m.selected = clamp(m.ctxCursor, 0, len(m.states)-1)
 	m.allScope = false
 	m.cursor, m.offset = 0, 0
+	m.setMessage("", false)
 	m.mode = modeBrowse
 	return tea.Batch(m.ensureLoaded(false)...)
 }

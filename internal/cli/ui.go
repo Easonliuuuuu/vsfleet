@@ -85,6 +85,16 @@ func runUI(a *App, cmd *cobra.Command) error {
 		current = a.ContextNames[0]
 	}
 
+	// A background load's credential prompt cannot read the password from
+	// os.Stdin the way the command line does: Bubble Tea already owns the
+	// terminal, and a second reader racing it for the same input is what let
+	// a keystroke meant for the password field reach a global shortcut
+	// instead (issue #26). The coordinator answers "prompt" references
+	// through the interface itself, so it replaces the resolver's usual
+	// prompt provider for the lifetime of this run.
+	coordinator := tui.NewPromptCoordinator()
+	a.Resolver().SetProvider(coordinator)
+
 	backend := tui.NewBackend(cfg, a.Resolver(), a.Sessions(), a.ConnectOptions())
 	snap, runErr := tui.Run(cmd.Context(), backend, tui.Options{
 		Current:     current,
@@ -93,6 +103,7 @@ func runUI(a *App, cmd *cobra.Command) error {
 		Sort:        remembered.Sort,
 
 		RefreshInterval: a.RefreshInterval,
+		Credentials:     coordinator,
 	})
 	// A clean run is the only one worth remembering: a program that never
 	// really started (no TTY, say) has nothing truthful to say about where

@@ -169,6 +169,12 @@ type Options struct {
 	// Zero means DefaultRefreshInterval; negative means never, leaving the
 	// table exactly as last read until someone asks for more.
 	RefreshInterval time.Duration
+	// Credentials answers "prompt" credential references raised by
+	// background loads with a masked overlay instead of a second stdin
+	// reader racing Bubble Tea for keystrokes. Nil disables the overlay,
+	// which is correct for callers — tests, the demo binary — whose backend
+	// never has a context configured with a prompt credential.
+	Credentials *PromptCoordinator
 }
 
 // Snapshot is what is worth remembering about the interface between runs:
@@ -247,6 +253,14 @@ type Model struct {
 	// Zero disables it entirely.
 	refreshInterval time.Duration
 
+	// credCoord answers "prompt" credential references raised by background
+	// loads; see Options.Credentials. credPrompt is the overlay currently
+	// showing one such request, if any, and while it is non-nil it owns
+	// every keystroke ahead of the filter, the form, and every global
+	// shortcut — see handleCredPromptKey.
+	credCoord  *PromptCoordinator
+	credPrompt *credPromptState
+
 	width, height int
 	message       string
 	messageBad    bool
@@ -280,6 +294,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		height:   30,
 
 		refreshInterval: refreshInterval(opts.RefreshInterval),
+		credCoord:       opts.Credentials,
 	}
 	for i, cc := range contexts {
 		st := &contextState{cc: cc}
@@ -330,7 +345,32 @@ func (m *Model) Init() tea.Cmd {
 	if cmd := scheduleRefresh(m.refreshInterval); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
+	if cmd := m.nextCredPromptCmd(); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
 	return tea.Batch(cmds...)
+}
+
+// nextCredPromptCmd resumes listening for the next password ask. It is what
+// lets a background load queued behind the one just resolved take its turn,
+// and what arms the very first ask at start-up.
+func (m *Model) nextCredPromptCmd() tea.Cmd {
+	if m.credCoord == nil {
+		return nil
+	}
+	return listenForCredRequest(m.credCoord.reqCh)
+}
+
+// resolveCredPrompt answers the pending request and clears the overlay. The
+// response channel is buffered by one, so this never blocks even when the
+// background load already gave up on it because its own context canceled
+// first.
+func (m *Model) resolveCredPrompt(res credResult) {
+	if m.credPrompt == nil {
+		return
+	}
+	m.credPrompt.resp <- res
+	m.credPrompt = nil
 }
 
 // inScope returns the contexts currently being displayed.
@@ -646,6 +686,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case inventoryMsg:
 		return m, m.applyInventory(msg)
 
+	case credRequestMsg:
+		// A second concurrent ask cannot arrive here: the coordinator only
+		// hands out another request after this one is resolved and the
+		// model asks to listen again, see nextCredPromptCmd.
+		m.credPrompt = newCredPromptState(msg.req)
+		return m, nil
+
 	case refreshTickMsg:
 		// The next tick is armed whatever happens here, including when this
 		// one refreshes nothing: a paused cycle must not be a stopped one.
@@ -898,6 +945,14 @@ func (m *Model) setMessage(s string, bad bool) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
+	// The credential overlay owns every key ahead of anything else, filter
+	// and form included: it can appear over any screen, since it answers a
+	// background load rather than something the operator opened. Letting a
+	// shortcut like "q" fall through here instead of into the password field
+	// is the exact race this overlay exists to close (issue #26).
+	if m.credPrompt != nil {
+		return m.handleCredPromptKey(msg)
+	}
 	if m.filtering {
 		return m.handleFilterKey(msg)
 	}
@@ -938,6 +993,30 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	default:
 		return m.handleBrowseKey(msg)
 	}
+}
+
+// handleCredPromptKey drives the credential overlay. Enter answers the
+// pending request with what was typed; esc answers it with cancellation and
+// keeps the interface open, moving on to whatever the failed load reports;
+// ctrl+c also cancels it but quits outright, matching ctrl+c's meaning
+// everywhere else in the interface rather than being one more shortcut this
+// screen swallows.
+func (m *Model) handleCredPromptKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.Type {
+	case tea.KeyCtrlC:
+		m.resolveCredPrompt(credResult{err: errPromptCanceled})
+		m.quitting = true
+		return tea.Quit
+	case tea.KeyEsc:
+		m.resolveCredPrompt(credResult{err: errPromptCanceled})
+		return m.nextCredPromptCmd()
+	case tea.KeyEnter:
+		m.resolveCredPrompt(credResult{password: m.credPrompt.input.Value()})
+		return m.nextCredPromptCmd()
+	}
+	var cmd tea.Cmd
+	m.credPrompt.input, cmd = m.credPrompt.input.Update(msg)
+	return cmd
 }
 
 // handleFormKey drives the add/edit form. Up and down move the row cursor;

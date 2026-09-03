@@ -1,6 +1,16 @@
 # vsfleet
 
-Operate multiple VMware vCenter servers from one terminal.
+<p align="center">
+  <a href="https://github.com/easonliuuuuu/vsfleet/actions/workflows/ci.yml"><img src="https://github.com/easonliuuuuu/vsfleet/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
+  <a href="https://github.com/easonliuuuuu/vsfleet/releases"><img src="https://img.shields.io/github/v/release/easonliuuuuu/vsfleet?include_prereleases&color=blue" alt="Latest Release"></a>
+  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/easonliuuuuu/vsfleet" alt="Go Version"></a>
+  <a href="https://goreportcard.com/report/github.com/easonliuuuuu/vsfleet"><img src="https://goreportcard.com/badge/github.com/easonliuuuuu/vsfleet" alt="Go Report Card"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <strong>Operate multiple VMware vCenter servers from one terminal.</strong>
+</p>
 
 <p align="center">
   <picture>
@@ -11,46 +21,119 @@ Operate multiple VMware vCenter servers from one terminal.
 
 <p align="center"><sub>Healthy inventory stays usable even when another vCenter is offline.</sub></p>
 
+---
+
+<details>
+<summary><strong>Table of Contents</strong></summary>
+
+- [About](#about)
+- [Why vsfleet?](#why-vsfleet)
+- [Feature Comparison](#feature-comparison)
+- [Install](#install)
+  - [Pre-built Binaries](#pre-built-binaries-recommended)
+  - [With Go](#with-go)
+  - [From a Checkout](#from-a-checkout)
+  - [Shell Autocompletion](#shell-autocompletion)
+- [Quick Start](#quick-start)
+- [Common Commands](#common-commands)
+- [Terminal UI](#terminal-ui)
+  - [Keybindings Reference](#keybindings-reference)
+  - [Background Refresh & Caching](#background-refresh--caching)
+  - [Filtering and Searching](#filtering-and-searching)
+- [Operator Recipes](#operator-recipes)
+- [Configuration](#configuration)
+  - [Credentials](#credentials)
+  - [Network Routes](#network-routes)
+  - [TLS Policies](#tls-policies)
+- [Troubleshooting](#troubleshooting)
+- [Architecture & Design](#architecture--design)
+- [Development & Contributing](#development--contributing)
+- [Security](#security)
+- [License](#license)
+
+</details>
+
+---
+
 ## About
 
-vsfleet is an open-source Go CLI and terminal UI for VMware vSphere operators.
-It keeps each vCenter in a named **context**, so endpoints, credentials,
-network routes, and certificate policies stay separate. You can inspect VMs,
-templates, hosts, clusters, datastores, and networks across one vCenter or an
-entire estate without repeatedly switching between browser sessions.
+**vsfleet** is an open-source Go CLI and interactive terminal UI (TUI) built for
+VMware vSphere operators and site reliability engineers.
 
-vsfleet is currently read-only: it does not power on VMs, create snapshots,
-provision resources, or delete inventory objects.
+It organizes each vCenter into a named **context**—analogous to contexts in
+`kubectl`—keeping endpoints, credentials, network routes, and certificate
+policies strictly separated. You can inspect VMs, templates, hosts, clusters,
+vApps, datastores, and networks across a single vCenter or an entire multi-datacenter
+estate without juggling browser tabs or writing brittle scripts.
 
-## Why use it?
+> [!IMPORTANT]
+> **Strict Read-Only Safety Guarantee**
+> vsfleet is an inspection and diagnostic tool. It is strictly read-only: it does
+> not power on/off VMs, create or revert snapshots, modify networks, provision
+> resources, or delete inventory objects.
 
-It is useful when your vCenters have different access paths or security
-requirements—for example, a lab reached directly and customer environments
-reached through different proxies. A single context can use a direct route,
-SOCKS5, HTTP CONNECT, or HTTPS CONNECT, with its own TLS policy.
+---
 
-The main benefits are:
+## Why vsfleet?
 
-- Query several vCenters with one command.
-- Search inventory across all configured contexts.
-- Keep passwords out of `config.toml` by using the operating system keyring or
-  an interactive prompt.
-- Pin vCenter certificates with SHA-256 or SHA-1 thumbprints.
-- Continue showing results from healthy vCenters when another one is offline.
-- Diagnose failures by stage instead of receiving one generic connection error.
-- Use tables for people and JSON output for scripts.
+Modern infrastructure often distributes vCenters across different network paths
+and security tiers: a local lab reached directly, production clusters behind
+corporate HTTP/HTTPS CONNECT proxies, and customer enclaves reached via
+isolated SOCKS5 tunnels.
+
+vsfleet bridges this divide:
+
+* **Single-Command Estate Queries:** Query resources across all vCenters with `--all-contexts`.
+* **Instant Cross-Estate Search:** Locate VMs, templates, or networks across every configured vCenter simultaneously.
+* **Fault-Tolerant Resilience:** If one vCenter is offline or timing out, results from healthy vCenters remain fully usable.
+* **Zero Plaintext Passwords:** Passwords stay in the operating system's native secret store (Keyring/Keychain) or interactive prompt, never in `config.toml`.
+* **Pin Pinned TLS Thumbprints:** Enforce SHA-256 or SHA-1 fingerprints against untrusted or self-signed certificates.
+* **Granular Failure Diagnosis:** Step-by-step stage diagnosis (`vsfleet doctor`) pinpoints proxy, DNS, TCP, TLS, and auth issues.
+* **Interactive & Scriptable:** Rich Bubble Tea TUI for humans; clean JSON output (`-o json`) for automation and `jq`.
+
+---
+
+## Feature Comparison
+
+| Capability | `vsfleet` | `govc` | PowerCLI | vSphere Web Client |
+|---|:---:|:---:|:---:|:---:|
+| **Multi-vCenter querying in 1 command** | **Yes (`--all-contexts`)** | No (1 target per run) | Script loop required | No (separate logins) |
+| **Estate-wide cross-resource search** | **Yes (`vsfleet search`)** | No | Slow custom script | Per-vCenter search |
+| **Fault-tolerant partial results** | **Yes (retains healthy data)** | No (fails entire run) | Requires custom `try/catch` | Browser tab timeout |
+| **Heterogeneous proxy routing** | **Per-context (SOCKS5/HTTP/HTTPS)** | Global env vars only | Global env vars only | Browser proxy |
+| **Zero plaintext passwords on disk** | **OS Keyring / Prompt** | Env / Session file | Credential store / script | Browser cache |
+| **Interactive Terminal UI (TUI)** | **Yes (live background refresh)** | No (CLI only) | No | Web browser only |
+| **Accidental mutation risk** | **Zero (Read-only guarantee)** | Moderate (Read/Write) | High (Read/Write) | High (Read/Write) |
+
+---
 
 ## Install
 
+### Pre-built Binaries (Recommended)
+
+Download the latest pre-compiled binary for your operating system and CPU architecture
+from [GitHub Releases](https://github.com/easonliuuuuu/vsfleet/releases):
+
+```sh
+# Example for Linux (x86_64)
+curl -sSL https://github.com/easonliuuuuu/vsfleet/releases/latest/download/vsfleet_linux_amd64.tar.gz | tar -xz vsfleet
+sudo install -m 0755 vsfleet /usr/local/bin/
+```
+
+Available binary archives are provided for:
+* **Linux:** `amd64`, `arm64` (`.tar.gz`)
+* **macOS:** Apple Silicon (`arm64`), Intel (`amd64`) (`.tar.gz`)
+* **Windows:** `amd64`, `arm64` (`.zip`)
+
 ### With Go
 
-Requires Go 1.25 or newer.
+Requires Go 1.25 or newer:
 
 ```sh
 go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest
 ```
 
-### From a checkout
+### From a Checkout
 
 ```sh
 git clone https://github.com/easonliuuuuu/vsfleet.git
@@ -58,60 +141,80 @@ cd vsfleet
 go build -o vsfleet ./cmd/vsfleet
 ```
 
-## Quick start
+### Shell Autocompletion
 
-The simplest first run is interactive:
+vsfleet includes built-in autocompletion for Bash, Zsh, Fish, and PowerShell:
+
+```sh
+# Bash (Linux)
+vsfleet completion bash > ~/.local/share/bash-completion/completions/vsfleet
+
+# Bash (macOS with Homebrew bash-completion)
+vsfleet completion bash > $(brew --prefix)/etc/bash_completion.d/vsfleet
+
+# Zsh
+vsfleet completion zsh > "${fpath[1]}/_vsfleet"
+
+# Fish
+vsfleet completion fish > ~/.config/fish/completions/vsfleet.fish
+```
+
+---
+
+## Quick Start
+
+### 1. Interactive First Run
+If no contexts exist, running `vsfleet` launches the setup wizard directly:
 
 ```sh
 vsfleet
 ```
 
-With no contexts configured, vsfleet opens the setup form. You can also use
-the command line:
+You can also run the setup wizard from the command line:
 
 ```sh
 vsfleet context add
 ```
 
-The wizard asks for the vCenter endpoint, username, connection route,
-certificate policy, and password. It tests the connection before saving the
-context.
+The wizard prompts for endpoint, username, connection route, certificate policy,
+and password, validating the connection before saving.
 
-After adding a context:
+### 2. Basic Exploration
 
 ```sh
+# List and test configured contexts
 vsfleet context list
 vsfleet context test prod
 vsfleet status
-vsfleet vm list --context prod
-vsfleet vapp list --context prod
-vsfleet search ubuntu
-```
 
-Use `--all-contexts` to query every configured vCenter:
+# Inspect inventory on the current context
+vsfleet vm list
+vsfleet vapp list
+vsfleet host list
+vsfleet datastore list
 
-```sh
-vsfleet vm list --all-contexts
-vsfleet template list --all-contexts
+# Search across the entire estate
 vsfleet search ubuntu --all-contexts
 ```
 
-## Common commands
+---
+
+## Common Commands
 
 | Command | Purpose |
 |---|---|
-| `vsfleet` | Open the terminal UI |
+| `vsfleet` | Open the interactive terminal UI (default) |
 | `vsfleet ui` | Open the terminal UI explicitly |
-| `vsfleet context add` | Add a vCenter context |
-| `vsfleet context list` | List configured contexts |
-| `vsfleet context show [name]` | Show a context’s settings |
-| `vsfleet context use <name>` | Select the current context |
-| `vsfleet context test <name>` | Test one connection |
-| `vsfleet context remove <name>` | Remove a context |
-| `vsfleet status` | Test and summarize every selected context |
-| `vsfleet doctor [context...]` | Diagnose connection stages |
-| `vsfleet search <text>` | Search inventory across vCenters |
-| `vsfleet <kind> list` | List a resource kind |
+| `vsfleet context add` | Add a new vCenter context via wizard |
+| `vsfleet context list` | List all configured contexts |
+| `vsfleet context show [name]` | Show configuration and route details for a context |
+| `vsfleet context use <name>` | Select the active context |
+| `vsfleet context test <name>` | Test connectivity and authentication for a context |
+| `vsfleet context remove <name>` | Remove a context and invalidate open sessions |
+| `vsfleet status` | Health check and summary of selected contexts |
+| `vsfleet doctor [context...]` | Run an 8-stage connection diagnosis |
+| `vsfleet search <text>` | Search inventory across all resource kinds |
+| `vsfleet <kind> list` | List resources (`vm`, `template`, `host`, `cluster`, `vapp`, `datastore`, `network`) |
 
 Supported resource kinds are `vm`, `template`, `host`, `cluster`, `vapp`,
 `datastore`, and `network`. Each kind also accepts `--filter` / `-f`:
@@ -122,129 +225,150 @@ vsfleet datastore list --all-contexts -f nvme
 vsfleet vapp list --all-contexts
 ```
 
-Use `-o json` with commands that produce data:
+Emit machine-readable JSON using `-o json` for scripting:
 
 ```sh
 vsfleet vm list --all-contexts -o json
 vsfleet search nvme --kind datastore -o json
 ```
 
-Useful global options:
+### Useful Global Flags
 
-| Option | Purpose |
+| Option | Description |
 |---|---|
-| `--context <name>` | Limit the command to a context; repeatable |
-| `--all-contexts` | Act on every configured context |
-| `--config <path>` | Use a specific configuration file |
-| `--timeout <duration>` | Set the per-vCenter timeout; default is `30s` |
-| `-o, --output json` | Emit machine-readable JSON instead of a table |
+| `--context <name>` | Scope command to a specific context (repeatable) |
+| `--all-contexts` | Target every configured context |
+| `--config <path>` | Override configuration file path |
+| `--timeout <duration>` | Per-vCenter request timeout (default: `30s`) |
+| `-o, --output json` | Emit JSON output instead of formatted tables |
+| `--refresh <duration>` | Set background TUI polling interval (default: `20s`) |
+
+---
 
 ## Terminal UI
 
-Run `vsfleet` or `vsfleet ui` to browse the estate interactively. One
-resource kind fills the width, the header names the vCenter in scope, and a
-failed context is reported under the table so results from healthy contexts
-stay usable.
+Run `vsfleet` to browse your estate interactively. The interface gives you a
+dense, real-time table of your resources with immediate context switching and
+diagnostics.
 
-The pane renders before any selected-context credential work begins. A keyring
-credential authenticates in the background; a prompt credential, or a keyring
-that is unavailable, changes that context to **credentials required** and
-opens a masked password overlay inside the UI. Unselected contexts remain
-disconnected until you choose them.
+### Keybindings Reference
 
-The browse screen:
+#### Browse Screen
 
-| Key | Action |
-|---|---|
-| `1`–`7` | Jump to a resource kind (`7` is vApps); `←` / `→` or `h` / `l` also cycle |
-| `↑` / `↓` or `k` / `j` | Move through rows |
-| `c` | Open the contexts screen |
-| `a` | Toggle the all-contexts view |
-| `/` | Filter the table by name; `esc` clears the filter |
-| `tab` | Search every vCenter and every kind |
-| `enter` | Open the selected row |
-| `r` / `R` | Reload the current scope / all contexts |
-| `d` | Diagnose the vCenter the selected row came from |
-| `?` | Show the key reference |
-| `q` | Quit |
+| Workflow | Key | Action |
+|---|---|---|
+| **Resource Switching** | <kbd>1</kbd>–<kbd>7</kbd> | Jump directly to a resource tab (`1`: VMs, `2`: Templates, `3`: Hosts, `4`: Clusters, `5`: Datastores, `6`: Networks, `7`: vApps) |
+| | <kbd>h</kbd> / <kbd>l</kbd> or <kbd>←</kbd> / <kbd>→</kbd> | Cycle horizontally between resource tabs |
+| **Row Navigation** | <kbd>k</kbd> / <kbd>j</kbd> or <kbd>↑</kbd> / <kbd>↓</kbd> | Move up / down through rows |
+| | <kbd>Enter</kbd> | Open detail inspector for highlighted row |
+| **Scope & Contexts** | <kbd>c</kbd> | Open the Contexts management screen |
+| | <kbd>a</kbd> | Toggle between current context and all-contexts view |
+| **Search & Filter** | <kbd>/</kbd> | Filter current table in real-time |
+| | <kbd>Tab</kbd> | Widen active filter to an estate-wide global search |
+| | <kbd>Esc</kbd> | Clear filter and restore normal view |
+| **Operations** | <kbd>r</kbd> / <kbd>R</kbd> | Reload current context / Reload all contexts |
+| | <kbd>d</kbd> | Run diagnostic doctor on the selected row's vCenter |
+| | <kbd>?</kbd> | Show on-screen key reference overlay |
+| | <kbd>q</kbd> | Quit |
 
-Inventory re-reads itself in the background, because power state, IP
-addresses and usage all move under a table left open. It happens quietly —
-no spinner, no flicker, the numbers simply become current.
-
-The rate depends on what you are looking at. The selected vCenter is re-read
-every 20 seconds; other contexts that have already been visited are held to
-ten times that. Untouched contexts are never contacted by the timer. The
-all-vCenters view (`a`) shows cached data and does not authenticate new
-contexts; use `R` when you explicitly want to load every configured context.
-
-A refresh that *fails* is not quiet: the table keeps showing the last good
-data and says so rather than pretending it is current. A vCenter that was
-selected and then became unreachable is retried on the same cycle, so it comes
-back on its own.
-
-`r` / `R` still force an immediate re-read. `--refresh` sets the on-screen
-interval (`vsfleet --refresh 5s` for a migration you are watching,
-`--refresh 2m` for a large estate); a negative value reads only when asked.
-
-Everything about a vCenter itself lives on the contexts screen (`c`), which
-lists each one with its route, latency, and — when it is not answering — the
-reason:
+#### Contexts Screen (<kbd>c</kbd>)
 
 | Key | Action |
 |---|---|
-| `enter` | Narrow the view to the highlighted vCenter |
-| `a` | Show every vCenter at once |
-| `n` / `e` / `x` | Add / edit / remove a context |
-| `d` | Diagnose the highlighted context |
-| `esc` | Back to the table |
+| <kbd>Enter</kbd> | Select highlighted context and return to table |
+| <kbd>a</kbd> | Show all contexts simultaneously |
+| <kbd>n</kbd> / <kbd>e</kbd> / <kbd>x</kbd> | Add / Edit / Remove context |
+| <kbd>d</kbd> | Diagnose connectivity to highlighted context |
+| <kbd>Esc</kbd> | Return to the browse screen |
 
-A context's name is a label, not an identity. Editing one to point at a
-different vCenter — or to log in as someone else, or to route there another
-way — closes the connection the old settings opened and starts again from
-nothing, so what you are shown after an edit always came from the vCenter the
-context describes now. The same applies to removing a context: it logs out
-rather than leaving a session open on a server that is no longer configured.
+### Background Refresh & Caching
 
-### Filtering and searching
+Inventory updates quietly in the background without flickering or resetting
+cursor position:
 
-These are the same query at two widths. `/` narrows the table in front of you.
-When the estate holds more matches than the current tab and context can show,
-the query line says so:
+* **Selected Context:** Re-read every 20 seconds.
+* **Visited Contexts:** Re-read every 200 seconds.
+* **Unvisited Contexts:** Never contacted until explicitly accessed.
+* **Failure Tolerance:** If a refresh fails, cached inventory remains on screen
+  with a visual warning rather than clearing the display.
+* **Custom Intervals:** Adjust with `--refresh` (e.g., `vsfleet --refresh 5s` or
+  `vsfleet --refresh -1` to disable background timers).
 
-```text
-/ubuntu   0 here · 2 in the estate — tab to widen
+### Filtering and Searching
+
+1. Press <kbd>/</kbd> to filter the current view by name.
+2. If more matches exist outside the current view, the query line alerts you:
+   ```text
+   /ubuntu   0 here · 2 in the estate — tab to widen
+   ```
+3. Press <kbd>Tab</kbd> to widen the query to every vCenter and resource kind
+   across inventory already cached in memory.
+4. Press <kbd>Tab</kbd> again or <kbd>Esc</kbd> to narrow back to your previous
+   context with the query preserved.
+
+---
+
+## Operator Recipes
+
+### 1. Estate-wide Search with `jq`
+Audit all VMs matching a specific OS across all vCenters and extract IP addresses:
+
+```sh
+vsfleet vm list --all-contexts -o json | \
+  jq -r '.[] | select(.Name | test("ubuntu"; "i")) | "\(.Context)\t\(.Name)\t\(.IPAddress)"'
 ```
 
-`tab` then widens to every vCenter and every kind at once using inventory
-already loaded in this process — the same result shape as
-`vsfleet search ubuntu --all-contexts`:
+### 2. Unattended Setup in CI / Automation
+Configure a context without interactive prompts using `--password-stdin`:
 
-```text
-  VCENTER       TYPE       NAME                    DATACENTER
-● prod-vc       template   ubuntu-24.04-golden     Taipei
-● edge-vc       template   ubuntu-22.04-base       Hsinchu
-✕ dr-site not searched: proxy 10.24.0.8:3128: connection refused
+```sh
+printf '%s\n' "$VCENTER_PASSWORD" | \
+  vsfleet context add \
+    --name prod \
+    --endpoint https://vcsa.example.internal \
+    --username administrator@vsphere.local \
+    --credential keyring:prod \
+    --password-stdin \
+    --tls system
 ```
 
-`tab` or `esc` narrows back with the query intact, and `enter` opens a result
-whatever kind it is. Results come from the inventory already loaded, so a
-vCenter that has not answered is named as **not searched** rather than
-silently left out.
+### 3. Isolated Customer Enclave via SOCKS5 & Remote DNS
+Reach an isolated vCenter whose hostname only resolves inside an internal bastion:
+
+```sh
+vsfleet context add \
+  --name customer-a \
+  --endpoint https://vcsa.customer-a.internal \
+  --username operator@vsphere.local \
+  --credential keyring:customer-a \
+  --transport socks5 \
+  --proxy-address 127.0.0.1:1080 \
+  --remote-dns \
+  --tls thumbprint
+```
+
+### 4. Real-time Migration Watcher
+Monitor live VM movements across hosts and datastores with an accelerated refresh rate:
+
+```sh
+vsfleet --refresh 3s
+```
+
+---
 
 ## Configuration
 
-The normal configuration path is:
+The default configuration file is located at:
 
 ```text
 ~/.config/vsfleet/config.toml
 ```
 
-Use `--config` or the `VSFLEET_CONFIG` environment variable to override it.
-The file is created with restricted permissions and contains no passwords.
+Override this location using `--config <path>` or the `VSFLEET_CONFIG`
+environment variable. The configuration file is created with `0600` permissions
+and contains **no passwords**.
 
-Most users should create contexts with `vsfleet context add`. A minimal
-configuration looks like this:
+### Example `config.toml`
 
 ```toml
 version = 1
@@ -261,127 +385,130 @@ type = "direct"
 
 [contexts.tls]
 mode = "system"
+
+[[contexts]]
+name = "customer-enclave"
+endpoint = "https://vcsa.enclave.internal"
+username = "readonly@vsphere.local"
+credential = "keyring:customer-enclave"
+
+[contexts.transport]
+type = "socks5"
+proxy_address = "127.0.0.1:1080"
+remote_dns = true
+
+[contexts.tls]
+mode = "thumbprint"
+thumbprint = "1A:2B:3C:4D:5E:6F:..."
 ```
 
 ### Credentials
 
-The `credential` field is a reference, not a password:
+The `credential` field specifies how passwords are resolved:
 
 | Value | Behavior |
 |---|---|
-| `keyring:<name>` | Read the password from the OS secret store |
-| `prompt` | Ask for the password on each run and store nothing |
+| `keyring:<name>` | Read password securely from the OS secret store |
+| `prompt` | Prompt interactively on each run; store nothing on disk |
 
-The keyring uses the platform’s native secret storage where available:
-macOS Keychain, Linux Secret Service, or Windows Credential Manager. Proxy
-credentials use the same mechanism.
+> [!NOTE]
+> **Headless Environments**
+> On systems without an active desktop Secret Service (such as headless servers,
+> SSH bastions, or containers), `context add` automatically records `credential = "prompt"`
+> with an explanatory warning. This ensures automated workflows proceed smoothly.
 
-If no secret store is available — a headless Linux host with no Secret
-Service, a locked-down container — `context add`/`edit` still succeeds
-rather than failing outright: the context is saved with `credential =
-"prompt"` instead of `keyring:<name>`, with a warning explaining why. That
-is deliberate, not a silent downgrade: a saved `keyring:<name>` reference
-with nothing actually behind it would behave identically to `prompt` on
-every later connection anyway (it looks the password up, finds nothing, and
-asks), just without saying so up front.
-
-For unattended setup, provide the password through standard input:
-
-```sh
-printf '%s\n' "$VCENTER_PASSWORD" | \
-  vsfleet context add \
-    --name prod \
-    --endpoint https://vcsa.example.internal \
-    --username administrator@vsphere.local \
-    --credential keyring:prod \
-    --password-stdin \
-    --tls system
-```
-
-### Network routes
-
-Set `--transport` when adding a context:
+### Network Routes
 
 | Transport | Behavior |
 |---|---|
-| `direct` | Connect directly and resolve names locally |
-| `socks5` | Connect through a SOCKS5 proxy |
-| `http` | Connect through an HTTP CONNECT proxy |
-| `https` | Connect through an HTTPS CONNECT proxy |
+| `direct` | Connect directly with local DNS resolution |
+| `socks5` | Connect through SOCKS5 proxy; `--remote-dns` resolves hostnames via proxy |
+| `http` | Tunnel through an HTTP CONNECT forward proxy |
+| `https` | Tunnel through an HTTPS CONNECT forward proxy with TLS |
 
-Proxy transports require `--proxy-address host:port`. SOCKS5 supports
-`--remote-dns` when the vCenter hostname can only be resolved by the proxy;
-HTTP and HTTPS CONNECT always resolve the target through the proxy.
-
-Example:
-
-```sh
-vsfleet context add \
-  --name customer-a \
-  --endpoint https://vcsa.customer-a.internal \
-  --username operator@vsphere.local \
-  --credential keyring:customer-a \
-  --transport socks5 \
-  --proxy-address 127.0.0.1:1080 \
-  --remote-dns \
-  --tls thumbprint
-```
-
-### TLS policies
+### TLS Policies
 
 | Policy | Behavior |
 |---|---|
-| `system` | Verify the certificate using the system trust store |
-| `thumbprint` | Pin a SHA-256 or SHA-1 certificate fingerprint |
-| `insecure` | Disable certificate verification; use only when intentional |
+| `system` | Verify certificates against system trust store |
+| `thumbprint` | Pin SHA-256 or SHA-1 certificate fingerprint |
+| `insecure` | Disable verification (use only when strictly necessary) |
 
-With `--tls thumbprint` and no `--thumbprint`, the add wizard fetches the
-presented certificate and shows its fingerprints before pinning it. A later
-certificate change is reported as a mismatch and the connection is stopped.
+When `--tls thumbprint` is chosen without an explicit thumbprint, the setup wizard
+fetches the remote certificate, displays its fingerprints, and pins it with your
+confirmation.
+
+---
 
 ## Troubleshooting
 
-Start with the command that best matches the symptom:
+Diagnose connection issues step-by-step:
 
 ```sh
-vsfleet context show prod       # inspect endpoint, route, and TLS settings
-vsfleet context test prod       # test the complete connection
-vsfleet doctor prod             # identify the failing stage
-vsfleet status                  # compare all selected contexts
+vsfleet context show prod       # Inspect endpoint, route, and TLS parameters
+vsfleet context test prod       # Test the complete connection end-to-end
+vsfleet doctor prod             # Run 8-stage connection diagnosis
+vsfleet status                  # Health-check every selected context
 ```
 
-`doctor` checks configuration, credentials, routing, proxy access, DNS, TCP,
-TLS, authentication, and API access in order. If one context fails during a
-multi-context query, the error is reported separately and successful results
-are retained.
+### The 8-Stage Diagnostic Pipeline
+`vsfleet doctor` verifies connection stages in order:
+1. **Configuration:** Validates TOML properties.
+2. **Credentials:** Tests keyring or prompt resolution.
+3. **Routing & Proxy:** Confirms proxy reachability and auth.
+4. **DNS Resolution:** Resolves hostname (locally or remotely).
+5. **TCP Handshake:** Verifies port 443 connectivity.
+6. **TLS Negotiation:** Validates certificate chain or pinned thumbprint.
+7. **SSO Authentication:** Authenticates vSphere credentials.
+8. **API Handshake:** Tests read access to vSphere ServiceContent.
 
-## Development
+---
 
-Run the test suite and build locally with:
+## Architecture & Design
 
+vsfleet is structured into modular layers designed for high concurrency,
+memory safety, and partial-failure resilience.
+
+* See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full architecture diagrams,
+  component models, design invariants, and package codemaps.
+
+---
+
+## Development & Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for complete
+guidelines on local setup, testing, and code conventions.
+
+### Running Tests
 ```sh
-go test ./...
+go test -race ./...
 go vet ./...
-go build ./...
 ```
 
-The integration tests use VMware’s vSphere simulator and in-process proxy
-servers, so they do not require access to a real vCenter.
+### Developing Offline with the Synthetic Testbed
+You do not need real vCenter credentials or hardware to work on vsfleet. Launch
+the deterministic presentation backend:
 
-### Regenerate the README demo
+```sh
+go run ./cmd/vsfleet-demo
+```
 
-The presentation uses deterministic sample inventory and never reads your
-configuration, credentials, or network. With
-[VHS](https://github.com/charmbracelet/vhs) installed, regenerate both the
-animated demo and its reduced-motion screenshot from the repository root:
+### Regenerating the Demo GIF
+To regenerate `docs/assets/vsfleet.gif` and `docs/assets/vsfleet.png` using [VHS](https://github.com/charmbracelet/vhs):
 
 ```sh
 vhs docs/demo.tape
 ```
 
-The tape builds `cmd/vsfleet-demo` as a temporary `vsfleet` binary, records the
-same command users run, and writes the assets in `docs/assets/`.
+---
+
+## Security
+
+For security policies, credential storage details, and vulnerability reporting
+procedures, please refer to [SECURITY.md](SECURITY.md).
+
+---
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE) © Eason Liu

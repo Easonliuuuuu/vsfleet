@@ -50,7 +50,10 @@ type fakeBackend struct {
 
 func (b *fakeBackend) Contexts() []*config.Context { return b.contexts }
 
-func (b *fakeBackend) Inventory(_ context.Context, cc *config.Context) (*vsphere.Inventory, error) {
+// BeginInventory implements tui.Backend. calls counts one per call here —
+// one per load — not one per fetch group, so the many existing assertions
+// on b.calls[name] keep meaning "how many times was this context loaded".
+func (b *fakeBackend) BeginInventory(_ context.Context, cc *config.Context) (InventoryHandle, error) {
 	if b.calls == nil {
 		b.calls = map[string]int{}
 	}
@@ -58,13 +61,22 @@ func (b *fakeBackend) Inventory(_ context.Context, cc *config.Context) (*vsphere
 	if err, ok := b.failures[cc.Name]; ok {
 		return nil, err
 	}
-	if inv, ok := b.inventories[cc.Name]; ok {
-		return inv, nil
+	inv, ok := b.inventories[cc.Name]
+	if !ok {
+		// A context with no fixture registered — a freshly saved context in
+		// the form tests, say — connects successfully to an empty vCenter
+		// rather than to nothing at all.
+		inv = &vsphere.Inventory{Context: cc.Name}
 	}
-	// A context with no fixture registered — a freshly saved context in the
-	// form tests, say — connects successfully to an empty vCenter rather
-	// than to nothing at all.
-	return &vsphere.Inventory{Context: cc.Name}, nil
+	return fakeInventoryHandle{inv: inv}, nil
+}
+
+// fakeInventoryHandle answers each fetch group by slicing it out of the
+// fixture's whole Inventory, the same way the demo backend does.
+type fakeInventoryHandle struct{ inv *vsphere.Inventory }
+
+func (h fakeInventoryHandle) FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory {
+	return h.inv.Slice(group)
 }
 
 func (b *fakeBackend) Status(name string) (session.Status, bool) {
@@ -844,8 +856,8 @@ func TestEditingAContextDropsWhatTheOldOneLoaded(t *testing.T) {
 	if n := len(m.rows()); n == 0 {
 		t.Fatalf("prod has no rows after the initial load")
 	}
-	if _, ok := m.cache.Get("prod"); !ok {
-		t.Fatal("prod was not cached after the initial load")
+	if st := m.byName["prod"]; st == nil || st.inv == nil {
+		t.Fatal("prod has no inventory after the initial load")
 	}
 
 	press(t, m, "c", "e")
@@ -885,18 +897,17 @@ func TestEditingAContextDropsWhatTheOldOneLoaded(t *testing.T) {
 	if st.rowStatus() != statusBad {
 		t.Errorf("status = %v, want bad: there is no data behind this context, only another one's", st.rowStatus())
 	}
-	if e, ok := m.cache.Get("prod"); ok && e.Inventory != nil {
-		t.Error("the cache kept the old vCenter's inventory under the edited context's name")
-	}
 }
 
-// TestRemovingAContextForgetsItsCachedInventory keeps a removed context from
-// haunting a later one that happens to reuse its name.
-func TestRemovingAContextForgetsItsCachedInventory(t *testing.T) {
+// TestRemovingAContextDropsItsState keeps a removed context from haunting a
+// later one that happens to reuse its name: inventory now lives on the
+// contextState itself rather than in a separate cache keyed by name, so
+// removing the context removes its data along with it.
+func TestRemovingAContextDropsItsState(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
-	if _, ok := m.cache.Get("prod"); !ok {
-		t.Fatal("prod was not cached after the initial load")
+	if st := m.byName["prod"]; st == nil || st.inv == nil {
+		t.Fatal("prod has no inventory after the initial load")
 	}
 
 	press(t, m, "c", "x", "y")
@@ -904,8 +915,8 @@ func TestRemovingAContextForgetsItsCachedInventory(t *testing.T) {
 	if _, err := findContext(b.contexts, "prod"); err == nil {
 		t.Fatal("prod was not removed")
 	}
-	if _, ok := m.cache.Get("prod"); ok {
-		t.Error("a removed context left its inventory in the cache")
+	if _, ok := m.byName["prod"]; ok {
+		t.Error("a removed context left its state behind")
 	}
 }
 

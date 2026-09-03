@@ -187,6 +187,71 @@ func (i *Inventory) ErrorFor(kind Kind) (string, bool) {
 	return "", false
 }
 
+// Slice extracts one fetch group's share of i as its own Inventory — the
+// inverse of ApplyGroup, and the counterpart a Backend whose data is already
+// fully assembled (a fixed test fixture, a demo estate) uses to answer
+// InventoryHandle.FetchGroup without a real per-group retrieval behind it.
+func (i *Inventory) Slice(group FetchGroup) *Inventory {
+	part := &Inventory{Context: i.Context}
+	switch group {
+	case GroupVMs:
+		part.VMs, part.Templates = i.VMs, i.Templates
+	case GroupHosts:
+		part.Hosts = i.Hosts
+	case GroupClusters:
+		part.Clusters = i.Clusters
+	case GroupDatastores:
+		part.Datastores = i.Datastores
+	case GroupNetworks:
+		part.Networks = i.Networks
+	}
+	for _, e := range i.Errors {
+		if GroupFor(e.Kind) == group {
+			part.Errors = append(part.Errors, e)
+		}
+	}
+	return part
+}
+
+// ApplyGroup folds one FetchGroup's result into i: on success it replaces
+// i's fields for that group's kinds with part's; on failure it leaves them
+// exactly as they were. i.Errors is updated for the group's kinds either
+// way, replacing whatever i previously recorded for them.
+//
+// This is what lets a refresh that fails for one kind keep showing the last
+// data that kind did have while every other kind still updates normally —
+// stale-while-revalidate applied per kind, the same promise ListInventory
+// already made per context. It is also what a first-ever load uses to
+// assemble the whole Inventory: called once per group against a blank
+// Inventory, "leave it as it was" and "replace it" agree, since a blank
+// field either way is blank.
+func (i *Inventory) ApplyGroup(group FetchGroup, part *Inventory) {
+	failed := len(part.Errors) > 0
+	kept := i.Errors[:0]
+	for _, e := range i.Errors {
+		if GroupFor(e.Kind) != group {
+			kept = append(kept, e)
+		}
+	}
+	i.Errors = append(kept, part.Errors...)
+	if failed {
+		return
+	}
+	switch group {
+	case GroupVMs:
+		i.VMs = part.VMs
+		i.Templates = part.Templates
+	case GroupHosts:
+		i.Hosts = part.Hosts
+	case GroupClusters:
+		i.Clusters = part.Clusters
+	case GroupDatastores:
+		i.Datastores = part.Datastores
+	case GroupNetworks:
+		i.Networks = part.Networks
+	}
+}
+
 // Counts renders a one-line summary, used by status output and by the
 // interface's message line.
 func (i *Inventory) Counts() string {

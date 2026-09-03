@@ -7,6 +7,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
@@ -27,8 +28,13 @@ type Backend interface {
 	// the configuration as it stands right now, so it changes after
 	// SaveContext or RemoveContext without needing to be re-fetched.
 	Contexts() []*config.Context
-	// Inventory connects if necessary and enumerates one vCenter.
-	Inventory(ctx context.Context, cc *config.Context) (*vsphere.Inventory, error)
+	// BeginInventory connects if necessary and builds one context's shared
+	// path index (see vsphere.Client.NewIndex), returning a handle that
+	// every FetchGroup call for this same load reuses it through rather
+	// than rebuilding it once per group. This is what lets the model
+	// prioritize the visible kind's group and retrieve the rest
+	// concurrently — see loadPriorityGroup and loadRemainingGroups.
+	BeginInventory(ctx context.Context, cc *config.Context) (InventoryHandle, error)
 	// Status reports the connection state of one context. The second result
 	// is false when no connection has been attempted yet.
 	Status(name string) (session.Status, bool)
@@ -51,6 +57,16 @@ type Backend interface {
 	DiscoverThumbprint(ctx context.Context, cc *config.Context) (sha256, sha1, subject string, notAfter time.Time, err error)
 }
 
+// InventoryHandle is one context's connected, index-built inventory
+// operation, returned by Backend.BeginInventory. Every FetchGroup call made
+// through it reuses the same shared vsphere.Index rather than rebuilding it,
+// and is safe to call concurrently with itself for different groups on the
+// same handle — which is exactly how the model drives it: the priority
+// group alone first, then the rest together once it lands.
+type InventoryHandle interface {
+	FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory
+}
+
 // sessionBackend is the production Backend, over the same session manager,
 // configuration and credential resolver the command line uses.
 type sessionBackend struct {
@@ -69,23 +85,54 @@ func NewBackend(cfg *config.Config, res *credentials.Resolver, mgr *session.Mana
 
 func (b *sessionBackend) Contexts() []*config.Context { return b.cfg.Contexts }
 
-func (b *sessionBackend) Inventory(ctx context.Context, cc *config.Context) (*vsphere.Inventory, error) {
-	// One deadline covers connecting and enumerating: without it, a vCenter
-	// that connects quickly but hangs listing inventory would run for as
-	// long as the interface itself does, since ctx here is the program's
-	// whole-run context rather than anything bounded by --timeout.
+func (b *sessionBackend) BeginInventory(ctx context.Context, cc *config.Context) (InventoryHandle, error) {
+	// One deadline covers connecting, building the index and every group
+	// fetched through the handle: without it, a vCenter that connects
+	// quickly but hangs enumerating would run for as long as the interface
+	// itself does, since ctx here is the program's whole-run context rather
+	// than anything bounded by --timeout. sessionInventoryHandle releases it
+	// once every fetch group has landed — see its FetchGroup.
 	opCtx, cancel, tracker := b.mgr.Operation(ctx)
-	defer cancel()
 	s, err := b.mgr.Connect(opCtx, cc)
 	if err != nil {
+		cancel()
 		return nil, b.mgr.TimeoutError(err, tracker)
 	}
 	client := s.Client()
 	if client == nil {
+		cancel()
 		return nil, fmt.Errorf("context %q is not connected", cc.Name)
 	}
-	inv, err := client.ListInventory(opCtx)
-	return inv, b.mgr.TimeoutError(err, tracker)
+	idx, err := client.NewIndex(opCtx)
+	if err != nil {
+		cancel()
+		return nil, b.mgr.TimeoutError(err, tracker)
+	}
+	h := &sessionInventoryHandle{client: client, idx: idx, ctx: opCtx, cancel: cancel}
+	h.remaining.Store(int32(len(vsphere.AllGroups)))
+	return h, nil
+}
+
+// sessionInventoryHandle is the production InventoryHandle. It owns the
+// per-operation deadline BeginInventory created and cancels it itself once
+// every fetch group has been retrieved — exactly len(vsphere.AllGroups)
+// FetchGroup calls, always, since the model issues one for every group on
+// every load — so the caller never has to track that lifecycle separately.
+type sessionInventoryHandle struct {
+	client *vsphere.Client
+	idx    *vsphere.Index
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	remaining atomic.Int32
+}
+
+func (h *sessionInventoryHandle) FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory {
+	inv := h.client.FetchGroup(h.ctx, h.idx, group)
+	if h.remaining.Add(-1) == 0 {
+		h.cancel()
+	}
+	return inv
 }
 
 func (b *sessionBackend) Status(name string) (session.Status, bool) { return b.mgr.Status(name) }

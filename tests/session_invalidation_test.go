@@ -13,6 +13,24 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
+// fetchWholeInventory drives Backend.BeginInventory and every fetch group
+// through to completion, assembling the whole bundle the way vsphere.Client
+// itself does for a plain ListInventory. The interface itself never does
+// this — it prioritizes one group and fetches the rest concurrently — but
+// these tests want one full read to compare against a control connection,
+// not to exercise that scheduling.
+func fetchWholeInventory(ctx context.Context, backend tui.Backend, cc *config.Context) (*vsphere.Inventory, error) {
+	handle, err := backend.BeginInventory(ctx, cc)
+	if err != nil {
+		return nil, err
+	}
+	inv := &vsphere.Inventory{Context: cc.Name}
+	for _, g := range vsphere.AllGroups {
+		inv.ApplyGroup(g, handle.FetchGroup(g))
+	}
+	return inv, nil
+}
+
 // TestEditedContextTalksToTheNewVCenter pins the rule that a context's name is
 // not its identity: editing a connected context to point somewhere else must
 // reach the new vCenter, not keep answering from the connection the old
@@ -42,7 +60,7 @@ func TestEditedContextTalksToTheNewVCenter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("context prod: %v", err)
 	}
-	first, err := backend.Inventory(ctx, cc)
+	first, err := fetchWholeInventory(ctx, backend, cc)
 	if err != nil {
 		t.Fatalf("inventory of the first vCenter: %v", err)
 	}
@@ -60,7 +78,7 @@ func TestEditedContextTalksToTheNewVCenter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("context prod after the edit: %v", err)
 	}
-	second, err := backend.Inventory(ctx, cc)
+	second, err := fetchWholeInventory(ctx, backend, cc)
 	if err != nil {
 		t.Fatalf("inventory after the edit: %v", err)
 	}
@@ -124,7 +142,7 @@ func TestRemovedContextClosesItsSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("context prod: %v", err)
 	}
-	if _, err := backend.Inventory(ctx, cc); err != nil {
+	if _, err := fetchWholeInventory(ctx, backend, cc); err != nil {
 		t.Fatalf("inventory: %v", err)
 	}
 

@@ -2,7 +2,9 @@ package tui
 
 import (
 	"context"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
@@ -116,6 +118,18 @@ func TestPriorityGroupRendersBeforeTheRestLand(t *testing.T) {
 	if len(st.inv.Hosts) != 0 {
 		t.Error("hosts should not have arrived yet — only the priority group has landed")
 	}
+	if !st.kind(vsphere.KindVM).loaded || !st.kind(vsphere.KindTemplate).loaded {
+		t.Error("the VM fetch group should mark both VM and template kinds loaded")
+	}
+	for _, kind := range []vsphere.Kind{vsphere.KindHost, vsphere.KindCluster, vsphere.KindVApp, vsphere.KindDatastore, vsphere.KindNetwork} {
+		ks := st.kind(kind)
+		if !ks.loading {
+			t.Errorf("%s should have its own loading state after fan-out", kind)
+		}
+		if ks.loaded {
+			t.Errorf("%s was marked loaded before its fetch result landed", kind)
+		}
+	}
 }
 
 // TestRemainingGroupsDispatchTogetherOncePriorityLands checks the other
@@ -167,6 +181,12 @@ func TestFailedGroupPreservesOnlyItsOwnStaleData(t *testing.T) {
 	if len(staleHosts) == 0 {
 		t.Fatal("test fixture has no hosts to go stale")
 	}
+	oldHostLoadedAt := st.kind(vsphere.KindHost).loadedAt
+	oldVMLoadedAt := st.kind(vsphere.KindVM).loadedAt
+	oldBundleLoadedAt := st.loadedAt
+	if oldHostLoadedAt.IsZero() || oldVMLoadedAt.IsZero() {
+		t.Fatal("successful groups must have per-kind load timestamps")
+	}
 
 	b.failures = nil // per-context whole-load failure is unused here
 	orig := b.inventories["prod"]
@@ -197,6 +217,26 @@ func TestFailedGroupPreservesOnlyItsOwnStaleData(t *testing.T) {
 	}
 	if !found {
 		t.Error("VMs should have refreshed normally despite hosts failing")
+	}
+	if got := st.kind(vsphere.KindHost).loadedAt; !got.Equal(oldHostLoadedAt) {
+		t.Errorf("failed host refresh changed its last-success timestamp from %v to %v", oldHostLoadedAt, got)
+	}
+	if got := st.kind(vsphere.KindVM).loadedAt; !got.After(oldVMLoadedAt) {
+		t.Errorf("successful VM refresh did not advance its last-success timestamp: old=%v new=%v", oldVMLoadedAt, got)
+	}
+	if got := st.loadedAt; !got.Equal(oldBundleLoadedAt) {
+		t.Errorf("partial refresh changed the complete-bundle timestamp from %v to %v", oldBundleLoadedAt, got)
+	}
+	if !st.kind(vsphere.KindHost).loaded || st.kind(vsphere.KindHost).loading {
+		t.Error("failed host refresh should retain loaded data while clearing only its loading state")
+	}
+	if st.kind(vsphere.KindHost).err == nil {
+		t.Error("failed host refresh did not retain its per-kind error")
+	}
+	st.kind(vsphere.KindHost).loadedAt = time.Now().Add(-time.Minute)
+	st.loadedAt = time.Now()
+	if !m.refreshDue(st, true) {
+		t.Error("a stale host kind was hidden by the fresh complete-bundle timestamp")
 	}
 }
 
@@ -343,5 +383,21 @@ func TestSearchSeesDataAsSoonAsItLands(t *testing.T) {
 	}
 	if len(search.rows) == 0 {
 		t.Error("search should already find the VM the priority group brought in")
+	}
+	if got, want := len(search.incomplete), len(vsphere.AllKinds)-2; got != want {
+		t.Fatalf("incomplete kinds = %d, want %d after only the VM/template group landed", got, want)
+	}
+	for _, incomplete := range search.incomplete {
+		if !incomplete.loading || incomplete.reason != "still loading" {
+			t.Errorf("incomplete search state for %s/%s = loading:%v reason:%q, want still loading", incomplete.context.cc.Name, incomplete.kind, incomplete.loading, incomplete.reason)
+		}
+	}
+	m.mode = modeSearch
+	out := m.View()
+	for _, kind := range []vsphere.Kind{vsphere.KindHost, vsphere.KindCluster, vsphere.KindVApp, vsphere.KindDatastore, vsphere.KindNetwork} {
+		want := string(kind) + " incomplete: still loading"
+		if !strings.Contains(out, want) {
+			t.Errorf("search view does not report %s as still loading:\n%s", kind, out)
+		}
 	}
 }

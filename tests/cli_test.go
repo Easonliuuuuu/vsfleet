@@ -230,6 +230,33 @@ func TestFailureIsolation(t *testing.T) {
 	}
 }
 
+// TestUIResolvesStartupCredentialsBeforeOpening covers the other half of
+// issue #27: the selected context's credential is resolved on a plain prompt
+// before the terminal interface ever opens, and a failure there is a normal
+// CLI error rather than something the interface would have to recover from
+// once it owns the screen. A "prompt" credential with nothing on stdin to
+// answer it is exactly that failure, and it needs no live TTY to prove: it
+// happens before tui.Run is ever called.
+func TestUIResolvesStartupCredentialsBeforeOpening(t *testing.T) {
+	r := newRunner(t)
+	r.mustRun("", "context", "add",
+		"--name", "lab",
+		"--endpoint", "https://vcsa.example.internal",
+		"--username", "operator@vsphere.local",
+		"--credential", "prompt",
+		"--tls", "insecure",
+		"--no-test",
+	)
+
+	_, stderr, err := r.run("", "ui")
+	if err == nil {
+		t.Fatal("vsfleet ui should have failed resolving lab's credential with nothing on stdin to answer the prompt")
+	}
+	if !strings.Contains(err.Error(), "lab") {
+		t.Errorf("error should name the context whose credential could not be resolved, got: %v\nstderr: %s", err, stderr)
+	}
+}
+
 // TestUINamedContextMustExist checks that "vsfleet ui --context" is validated
 // before the terminal interface opens, on an empty configuration where no
 // name could possibly resolve. With no --context, an empty configuration is

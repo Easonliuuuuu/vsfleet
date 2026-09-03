@@ -213,6 +213,14 @@ func inventoryFor(name string) *vsphere.Inventory {
 
 func newTestModel(t *testing.T, b *fakeBackend, opts Options) *Model {
 	t.Helper()
+	if opts.RefreshInterval == 0 {
+		// The real default arms a one-minute timer. These tests run commands
+		// synchronously rather than through the Bubble Tea runtime, so a live
+		// timer would not tick in the background — it would block the test
+		// that ran it. Refresh behaviour is driven explicitly instead, by
+		// tickRefresh below.
+		opts.RefreshInterval = -1
+	}
 	m := New(context.Background(), b, opts)
 	m.width, m.height = 140, 30
 	// A blinking cursor schedules a real half-second timer, and these tests run
@@ -273,6 +281,17 @@ func collect(cmd tea.Cmd) []tea.Msg {
 }
 
 func discard(_ tea.Model, cmd tea.Cmd) tea.Cmd { return cmd }
+
+// tickRefresh applies one background-refresh cycle and drives the reads it
+// starts. It calls the policy directly rather than sending refreshTickMsg,
+// because handling that message also arms the next real timer, which a
+// synchronous harness would then sit and wait on.
+func tickRefresh(t *testing.T, m *Model) {
+	t.Helper()
+	for _, cmd := range m.refreshStale() {
+		drive(t, m, cmd)
+	}
+}
 
 // press sends a key by name, the way a person would type it.
 func press(t *testing.T, m *Model, keys ...string) {
@@ -1397,5 +1416,191 @@ func TestEditContextPrefillsAnHTTPProxyRoute(t *testing.T) {
 	}
 	if hasLabel(m.form.rows(), "Resolve DNS at the proxy") {
 		t.Error("http should not show the remote-DNS toggle even when editing")
+	}
+}
+
+// TestScheduleRefreshOnlyArmsWhenEnabled checks the switch itself, without
+// waiting on a timer: a positive interval produces a command, anything else
+// produces none at all.
+func TestScheduleRefreshOnlyArmsWhenEnabled(t *testing.T) {
+	if scheduleRefresh(time.Minute) == nil {
+		t.Error("a positive interval should arm a refresh")
+	}
+	for _, d := range []time.Duration{0, -time.Second} {
+		if scheduleRefresh(d) != nil {
+			t.Errorf("scheduleRefresh(%v) armed a refresh; it should not", d)
+		}
+	}
+}
+
+func TestRefreshIntervalResolution(t *testing.T) {
+	for _, tc := range []struct {
+		in   time.Duration
+		want time.Duration
+	}{
+		{0, DefaultRefreshInterval},
+		{30 * time.Second, 30 * time.Second},
+		{-1, 0},
+		{-time.Hour, 0},
+	} {
+		if got := refreshInterval(tc.in); got != tc.want {
+			t.Errorf("refreshInterval(%v) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestBackgroundRefreshRereadsEveryContext covers the point of the whole
+// thing: state moves on a vCenter, so a table left open must be re-read —
+// including the vCenters not currently on screen, since the header summary
+// and an estate-wide search both answer from them.
+func TestBackgroundRefreshRereadsEveryContext(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	// Enabled after construction: Init would otherwise arm a real one-minute
+	// timer that this synchronous harness would sit and wait on.
+	m.refreshInterval = time.Minute
+	if b.calls["prod"] != 1 || b.calls["customer-a"] != 1 {
+		t.Fatalf("initial prefetch calls = prod:%d customer-a:%d, want 1 each", b.calls["prod"], b.calls["customer-a"])
+	}
+
+	// Nothing is due a moment after loading, so a tick now is a no-op — that
+	// is what keeps a manual reload from being immediately repeated.
+	tickRefresh(t, m)
+	if b.calls["prod"] != 1 {
+		t.Errorf("a tick straight after loading re-read prod; calls = %d", b.calls["prod"])
+	}
+
+	// Age both contexts past the threshold and tick again.
+	for _, st := range m.states {
+		st.loadedAt = time.Now().Add(-2 * time.Minute)
+	}
+	tickRefresh(t, m)
+	if b.calls["prod"] != 2 {
+		t.Errorf("prod calls after a due tick = %d, want 2", b.calls["prod"])
+	}
+	if b.calls["customer-a"] != 2 {
+		t.Errorf("customer-a calls after a due tick = %d, want 2 — a context off screen still goes stale", b.calls["customer-a"])
+	}
+}
+
+// TestBackgroundRefreshIsQuiet checks that keeping the table current is not
+// something the operator has to watch happen: no pending glyph, no spinner,
+// and the message line left alone.
+func TestBackgroundRefreshIsQuiet(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	// Enabled after construction: Init would otherwise arm a real one-minute
+	// timer that this synchronous harness would sit and wait on.
+	m.refreshInterval = time.Minute
+	st := m.byName["prod"]
+
+	m.setMessage("something the operator was reading", false)
+	for _, s := range m.states {
+		s.loadedAt = time.Now().Add(-2 * time.Minute)
+	}
+
+	// Mid-flight: the read is in progress but nothing advertises it.
+	cmds := m.refreshStale()
+	if !st.loading {
+		t.Fatal("a due context did not start loading")
+	}
+	if st.showsLoading() {
+		t.Error("a background refresh is advertising itself as loading")
+	}
+	if st.rowStatus() != statusGood {
+		t.Errorf("status during a background refresh = %v, want good — the data on screen is still good", st.rowStatus())
+	}
+	if m.pendingScope() || m.busy() {
+		t.Error("a background refresh put the header into a loading state")
+	}
+
+	for _, cmd := range cmds {
+		drive(t, m, cmd)
+	}
+	if m.message != "something the operator was reading" {
+		t.Errorf("a successful background refresh overwrote the message line with %q", m.message)
+	}
+	if st.quiet {
+		t.Error("quiet was left set after the read landed")
+	}
+}
+
+// TestBackgroundRefreshFailureIsReported is the other half of quiet: silence
+// while it works, but never silence about it having stopped working. Serving
+// data that is no longer being updated without saying so is the failure mode
+// this whole feature exists to avoid.
+func TestBackgroundRefreshFailureIsReported(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	// Enabled after construction: Init would otherwise arm a real one-minute
+	// timer that this synchronous harness would sit and wait on.
+	m.refreshInterval = time.Minute
+	st := m.byName["prod"]
+	rowsBefore := len(m.rows())
+
+	if b.failures == nil {
+		b.failures = map[string]error{}
+	}
+	b.failures["prod"] = errors.New("connection reset")
+	for _, s := range m.states {
+		s.loadedAt = time.Now().Add(-2 * time.Minute)
+	}
+	tickRefresh(t, m)
+
+	if st.err == nil {
+		t.Fatal("a failed background refresh recorded no error")
+	}
+	if !m.messageBad || !strings.Contains(m.message, "refresh failed") {
+		t.Errorf("a failed background refresh said nothing: bad=%v %q", m.messageBad, m.message)
+	}
+	if got := len(m.rows()); got != rowsBefore {
+		t.Errorf("rows after a failed background refresh = %d, want the stale %d kept", got, rowsBefore)
+	}
+	if st.rowStatus() != statusWarn {
+		t.Errorf("status = %v, want warn — stale data present but the last read failed", st.rowStatus())
+	}
+}
+
+// TestBackgroundRefreshRetriesAContextThatNeverLoaded checks the recovery
+// path: a vCenter that was unreachable when the interface opened comes back
+// on its own rather than waiting for someone to press a key.
+func TestBackgroundRefreshRetriesAContextThatNeverLoaded(t *testing.T) {
+	b := twoHealthy()
+	b.failures = map[string]error{"customer-a": errors.New("no route to host")}
+	m := newTestModel(t, b, Options{Current: "prod"})
+	// Enabled after construction: Init would otherwise arm a real one-minute
+	// timer that this synchronous harness would sit and wait on.
+	m.refreshInterval = time.Minute
+
+	st := m.byName["customer-a"]
+	if st.err == nil || st.inv != nil {
+		t.Fatalf("customer-a should have failed outright, got err=%v inv=%v", st.err, st.inv)
+	}
+	if !m.refreshDue(st) {
+		t.Error("a context that never loaded is not due a retry; it always should be")
+	}
+
+	delete(b.failures, "customer-a")
+	tickRefresh(t, m)
+
+	if st.err != nil {
+		t.Errorf("customer-a did not recover on its own: %v", st.err)
+	}
+	if st.inv == nil {
+		t.Error("customer-a recovered without an inventory")
+	}
+}
+
+// TestBackgroundRefreshDisabledDoesNothing checks that --refresh with a
+// negative value really is off, not merely slower.
+func TestBackgroundRefreshDisabledDoesNothing(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod", RefreshInterval: -1})
+	for _, st := range m.states {
+		st.loadedAt = time.Now().Add(-24 * time.Hour)
+	}
+	tickRefresh(t, m)
+	if b.calls["prod"] != 1 {
+		t.Errorf("prod calls = %d, want 1 — refresh is disabled", b.calls["prod"])
 	}
 }

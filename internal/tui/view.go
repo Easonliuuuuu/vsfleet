@@ -348,7 +348,7 @@ func (m *Model) viewSearch() []string {
 	}
 	for _, cs := range st.missing {
 		reason := "not connected"
-		if cs.loading {
+		if cs.showsLoading() {
 			reason = "still loading"
 		} else if cs.err != nil {
 			reason = firstLine(cs.err.Error())
@@ -415,7 +415,7 @@ func (m *Model) viewContexts() []string {
 // contextDetail is what a context costs to reach, or what went wrong instead.
 func (m *Model) contextDetail(st *contextState) string {
 	switch {
-	case st.loading:
+	case st.showsLoading():
 		return "connecting…"
 	case st.diagging:
 		return "diagnosing…"

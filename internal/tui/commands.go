@@ -32,6 +32,21 @@ type inventoryMsg struct {
 	loadedAt  time.Time
 }
 
+// refreshTickMsg is the periodic wake-up that re-reads inventory nobody has
+// asked about. It carries nothing: what is due for a re-read is decided when
+// it lands, against the state as it stands then, not when it was scheduled.
+type refreshTickMsg struct{}
+
+// scheduleRefresh arms the next background refresh. Each tick arms the one
+// after it rather than a repeating ticker, so a refresh that takes longer
+// than the interval cannot have the next one queued up behind it.
+func scheduleRefresh(d time.Duration) tea.Cmd {
+	if d <= 0 {
+		return nil
+	}
+	return tea.Tick(d, func(time.Time) tea.Msg { return refreshTickMsg{} })
+}
+
 // diagnosisMsg carries a completed connection diagnosis. cc serves the same
 // purpose as it does on inventoryMsg: a diagnosis of the endpoint a context
 // used to have says nothing about the one it has now.

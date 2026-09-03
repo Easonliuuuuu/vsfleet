@@ -23,6 +23,16 @@ import (
 // connections the instant the interface starts.
 const maxConcurrentLoads = 4
 
+// DefaultRefreshInterval is how often inventory is re-read in the background.
+//
+// Power state, IP addresses and usage all move under a table left open, and
+// nothing else would ever correct them. A minute is chosen to be dull: one
+// inventory read per vCenter per minute is nothing to a vCenter that is also
+// serving a web client, while being short enough that what is on screen is
+// never far behind. Operators who disagree in either direction can say so
+// with --refresh, including --refresh 0 to read only when asked.
+const DefaultRefreshInterval = time.Minute
+
 // mode is which full-screen view is showing. Detail, diagnosis and help all
 // replace the table rather than floating over it: a half-covered table invites
 // you to read a number that is no longer the number you are looking at.
@@ -66,6 +76,12 @@ type contextState struct {
 	loadedAt time.Time
 	diag     *vsphere.Diagnosis
 	diagging bool
+	// quiet marks the in-flight read as one nobody asked for — the periodic
+	// background refresh rather than a keystroke. It suppresses the pending
+	// indicator and the success message, so a table being kept current does
+	// not flicker through "connecting…" once a minute. A quiet read that
+	// fails is not quiet: that is the moment the reader needs telling.
+	quiet bool
 }
 
 // reset drops everything this state learned from a vCenter, keeping only the
@@ -85,13 +101,18 @@ func (s *contextState) reset() {
 	s.diag = nil
 }
 
+// showsLoading is whether a fetch in flight should be advertised. The loading
+// flag itself stays true for a background refresh — it is what stops a second
+// read starting — but nothing on screen changes for it.
+func (s *contextState) showsLoading() bool { return s.loading && !s.quiet }
+
 // A context can be both erroring and holding data at once — the cache keeps
 // the last inventory that loaded successfully even when the most recent
 // refresh failed, so that case gets its own status between "never connected"
 // (bad) and "current" (good) rather than losing the stale data's presence.
 func (s *contextState) rowStatus() rowStatus {
 	switch {
-	case s.loading || s.diagging:
+	case s.showsLoading() || s.diagging:
 		return statusWarn
 	case s.err != nil && s.inv == nil:
 		return statusBad
@@ -106,7 +127,7 @@ func (s *contextState) rowStatus() rowStatus {
 
 func (s *contextState) glyph() string {
 	switch {
-	case s.loading || s.diagging:
+	case s.showsLoading() || s.diagging:
 		return glyphPending
 	case s.err != nil && s.inv == nil:
 		return glyphFail
@@ -131,6 +152,10 @@ type Options struct {
 	// Sort is the sort mode to start in: "status", or anything else
 	// (including empty) for the default name order.
 	Sort string
+	// RefreshInterval is how often inventory is re-read in the background.
+	// Zero means DefaultRefreshInterval; negative means never, leaving the
+	// table exactly as last read until someone asks for more.
+	RefreshInterval time.Duration
 }
 
 // Snapshot is what is worth remembering about the interface between runs:
@@ -205,6 +230,10 @@ type Model struct {
 	confirmDelete         *contextState
 	confirmAlsoCredential bool
 
+	// refreshInterval is how often inventory is re-read without being asked.
+	// Zero disables it entirely.
+	refreshInterval time.Duration
+
 	width, height int
 	message       string
 	messageBad    bool
@@ -236,6 +265,8 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		allScope: opts.AllContexts,
 		width:    100,
 		height:   30,
+
+		refreshInterval: refreshInterval(opts.RefreshInterval),
 	}
 	for i, cc := range contexts {
 		st := &contextState{cc: cc}
@@ -260,14 +291,33 @@ func newFilterInput() textinput.Model {
 	return ti
 }
 
-// Init starts the spinner and prefetches every configured context, selected
-// one first. With no contexts configured yet there is nothing to load, so it
-// opens the setup form instead of an empty table with no way to fill it.
+// refreshInterval resolves the configured interval: zero takes the default,
+// negative means never. Only New calls it, so the model's own field is
+// afterwards the single answer to "is background refresh on".
+func refreshInterval(d time.Duration) time.Duration {
+	switch {
+	case d == 0:
+		return DefaultRefreshInterval
+	case d < 0:
+		return 0
+	default:
+		return d
+	}
+}
+
+// Init starts the spinner, prefetches every configured context, selected one
+// first, and arms the background refresh. With no contexts configured yet
+// there is nothing to load, so it opens the setup form instead of an empty
+// table with no way to fill it.
 func (m *Model) Init() tea.Cmd {
 	if len(m.states) == 0 {
 		return tea.Batch(m.enterForm(nil), m.spin.Tick)
 	}
-	return tea.Batch(m.prefetch()...)
+	cmds := m.prefetch()
+	if cmd := scheduleRefresh(m.refreshInterval); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	return tea.Batch(cmds...)
 }
 
 // inScope returns the contexts currently being displayed.
@@ -288,6 +338,13 @@ func (m *Model) showContext() bool { return m.allScope && len(m.states) > 1 }
 // unless force is set, does not already have a result — success, failure or
 // stale-but-cached, all count. It returns nil when there is nothing to do.
 func (m *Model) startLoad(st *contextState, force bool) tea.Cmd {
+	return m.beginLoad(st, force, false)
+}
+
+// beginLoad is the shared body of every read. quiet marks it as one nobody
+// asked for, which changes nothing about the fetch and everything about how
+// it is reported: see contextState.quiet.
+func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 	if st.loading {
 		return nil
 	}
@@ -295,7 +352,51 @@ func (m *Model) startLoad(st *contextState, force bool) tea.Cmd {
 		return nil
 	}
 	st.loading = true
+	st.quiet = quiet
 	return loadInventory(m.ctx, m.cache, m.backend, st.cc)
+}
+
+// refreshDue reports whether a context is old enough to be worth re-reading.
+//
+// The threshold is half the interval rather than the whole of it. A tick
+// lands roughly one interval after the last read, but only roughly: a read
+// that took two seconds leaves the next tick arriving at an age of just under
+// the interval, and comparing against the whole interval would skip it and
+// wait another full cycle. Half is comfortably past any such jitter while
+// still leaving a manual reload from a moment ago alone.
+//
+// A context that has never loaded — including one whose every attempt has
+// failed — is always due, which is what lets a vCenter that was unreachable
+// at start-up come back on its own rather than waiting for a keystroke.
+func (m *Model) refreshDue(st *contextState) bool {
+	if st.loadedAt.IsZero() {
+		return true
+	}
+	return time.Since(st.loadedAt) >= m.refreshInterval/2
+}
+
+// refreshStale re-reads every context due for it, quietly. It covers all of
+// them rather than only what is on screen: the estate summary in the header
+// and an estate-wide search both answer from contexts that are not currently
+// in view, and a stale answer there is just as wrong as a stale table.
+//
+// Nothing here forces a read past one already in flight, so a vCenter slower
+// than the interval simply refreshes less often instead of queueing work
+// behind itself.
+func (m *Model) refreshStale() []tea.Cmd {
+	if m.refreshInterval <= 0 {
+		return nil
+	}
+	var cmds []tea.Cmd
+	for _, st := range m.states {
+		if !m.refreshDue(st) {
+			continue
+		}
+		if cmd := m.beginLoad(st, true, true); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	return cmds
 }
 
 // ensureLoaded returns load commands for everything in scope. force reloads
@@ -496,6 +597,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case inventoryMsg:
 		return m, m.applyInventory(msg)
 
+	case refreshTickMsg:
+		// The next tick is armed whatever happens here, including when this
+		// one refreshes nothing: a paused cycle must not be a stopped one.
+		cmds := m.refreshStale()
+		if cmd := scheduleRefresh(m.refreshInterval); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+
 	case diagnosisMsg:
 		if st, ok := m.byName[msg.context]; ok {
 			st.diagging = false
@@ -658,7 +768,7 @@ func (m *Model) selectByName(name string) {
 
 func (m *Model) busy() bool {
 	for _, st := range m.states {
-		if st.loading || st.diagging {
+		if st.showsLoading() || st.diagging {
 			return true
 		}
 	}
@@ -682,6 +792,8 @@ func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
 		return nil
 	}
 	st.loading = false
+	quiet := st.quiet
+	st.quiet = false
 	st.elapsed = msg.elapsed
 	st.err = msg.err
 	m.searchDirty = true
@@ -701,11 +813,17 @@ func (m *Model) applyInventory(msg inventoryMsg) tea.Cmd {
 	if msg.err == nil {
 		st.loadedAt = msg.loadedAt
 	}
+	// A background refresh that worked says nothing: overwriting the message
+	// line once a minute would bury whatever the operator was reading there.
+	// One that failed always speaks, since silently serving data that has
+	// stopped being updated is the failure mode worth avoiding.
 	switch {
 	case msg.err != nil && st.inv == nil:
 		m.setMessage(msg.context+": "+msg.err.Error(), true)
 	case msg.err != nil:
 		m.setMessage(msg.context+": refresh failed, still showing data from "+st.loadedAt.Format("15:04:05")+": "+msg.err.Error(), true)
+	case quiet:
+		// Nothing to say: the table simply became current.
 	case wasEmpty:
 		m.setMessage(msg.context+" · nothing to show", false)
 	default:
@@ -1279,7 +1397,7 @@ func (m *Model) clampCursor() {
 // the header shows rather than blanking the table.
 func (m *Model) pendingScope() bool {
 	for _, st := range m.inScope() {
-		if st.loading {
+		if st.showsLoading() {
 			return true
 		}
 	}

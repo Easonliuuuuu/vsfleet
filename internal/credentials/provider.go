@@ -129,6 +129,22 @@ func (r *Resolver) Provider(scheme string) (Provider, bool) {
 	return p, ok
 }
 
+// SetProvider registers or replaces the provider for one scheme, updating
+// Default too when that scheme is "prompt".
+//
+// It exists for callers that already built a Resolver around the process's
+// real providers but need to swap out one of them for a context they did not
+// anticipate at construction time — namely the terminal interface, which
+// cannot let a background load read a password from the same stdin Bubble
+// Tea is reading keystrokes from, and so registers its own prompt provider
+// that asks through the UI instead.
+func (r *Resolver) SetProvider(p Provider) {
+	r.providers[p.Scheme()] = p
+	if p.Scheme() == SchemePrompt {
+		r.Default = p
+	}
+}
+
 func (r *Resolver) lookup(ref Ref) (Provider, error) {
 	if ref.IsZero() {
 		if r.Default == nil {

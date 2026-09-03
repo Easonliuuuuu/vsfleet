@@ -43,20 +43,25 @@ func (m *Model) View() string {
 	// leaving a tab highlighted over it would be saying something untrue.
 	second := m.theme.rule.Render(strings.Repeat("─", m.width))
 	var body string
-	switch m.mode {
-	case modeDetail:
+	switch {
+	// The credential overlay can appear over any screen, since it answers a
+	// background load rather than something the operator opened, so it takes
+	// priority ahead of m.mode instead of being one more case inside it.
+	case m.credPrompt != nil:
+		body = strings.Join(m.viewCredPrompt(), "\n")
+	case m.mode == modeDetail:
 		body = strings.Join(m.viewDetail(), "\n")
-	case modeDoctor:
+	case m.mode == modeDoctor:
 		body = strings.Join(m.viewDoctor(), "\n")
-	case modeHelp:
+	case m.mode == modeHelp:
 		body = strings.Join(m.viewHelp(), "\n")
-	case modeForm:
+	case m.mode == modeForm:
 		body = strings.Join(m.viewForm(), "\n")
-	case modeConfirmDelete:
+	case m.mode == modeConfirmDelete:
 		body = strings.Join(m.viewConfirmDelete(), "\n")
-	case modeContexts:
+	case m.mode == modeContexts:
 		body = strings.Join(m.viewContexts(), "\n")
-	case modeSearch:
+	case m.mode == modeSearch:
 		body = strings.Join(m.viewSearch(), "\n")
 	default:
 		second = m.viewTabs(m.width)
@@ -668,6 +673,30 @@ func (m *Model) viewConfirmDelete() []string {
 	}
 	lines = append(lines, credLine, "  "+t.faint.Render("(c to toggle)"), "")
 	lines = append(lines, "  "+t.bad.Render("y")+t.dim.Render(" delete    ")+t.accent.Render("n")+t.dim.Render(" cancel"))
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+// viewCredPrompt renders the credential overlay: a background load is
+// waiting on a password, and until this answers, every keystroke belongs to
+// it rather than to whatever screen sits underneath.
+func (m *Model) viewCredPrompt() []string {
+	t := m.theme
+	cp := m.credPrompt
+	title := "Password required"
+	if cp.label != "" {
+		title = "Password for " + cp.label
+	}
+	lines := []string{
+		t.title.Render(title),
+		"",
+		"  " + cp.input.View(),
+		"",
+		"  " + t.dim.Render("A background load is waiting on this credential; nothing else responds until it is answered."),
+		"",
+		"  " + t.accent.Render("enter") + t.dim.Render(" continue    ") +
+			t.accent.Render("esc") + t.dim.Render(" cancel this load    ") +
+			t.accent.Render("ctrl+c") + t.dim.Render(" quit"),
+	}
 	return scrollLines(lines, 0, m.bodyHeight())
 }
 

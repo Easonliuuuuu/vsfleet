@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.1.0...v0.2.0) (2026-09-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **tui:** TUI keybindings changed. tab now opens the estate-wide search instead of switching panes, and n/e/x moved to the contexts screen behind c. Resource kinds gained 1-6 alongside the existing h/l cycling.
+
+### Features
+
+* **tui:** flatten the browse screen and add estate-wide search ([42cb93b](https://github.com/Easonliuuuuu/vsfleet/commit/42cb93b0bcd5a641177dd518ab618d16ea60fa8c))
+
+
+### Bug Fixes
+
+* **model.go:** clear the load note when the scope changes ([f89f93f](https://github.com/Easonliuuuuu/vsfleet/commit/f89f93f035b0a9e1e2ac4b6798f2a2eb81001ac9))
+* **session:** invalidate a context's session and cache when it is edited ([b50762e](https://github.com/Easonliuuuuu/vsfleet/commit/b50762e03c13f72941fbc1f33de4531fe09c76b7))
+
 ## [0.1.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.0.1...v0.1.0) (2026-09-02)
 
 

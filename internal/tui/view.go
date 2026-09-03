@@ -63,6 +63,12 @@ func (m *Model) View() string {
 		body = strings.Join(m.viewContexts(), "\n")
 	case m.mode == modeSearch:
 		body = strings.Join(m.viewSearch(), "\n")
+	case m.mode == modeChanges:
+		body = strings.Join(m.viewChanges(), "\n")
+	case m.mode == modeChangeDetail:
+		body = strings.Join(m.viewChangeDetail(), "\n")
+	case m.mode == modeHistoryRuns:
+		body = strings.Join(m.viewHistoryRuns(), "\n")
 	default:
 		second = m.viewTabs(m.width)
 		body = strings.Join(m.viewBrowse(), "\n")
@@ -96,6 +102,9 @@ func (m *Model) viewHeader() string {
 	t := m.theme
 	if m.mode == modeSearch {
 		return m.viewSearchHeader()
+	}
+	if m.mode == modeChanges || m.mode == modeChangeDetail || m.mode == modeHistoryRuns {
+		return m.viewChangesHeader()
 	}
 	scope := t.accent.Render(m.scopeName())
 	if st := m.current(); st != nil && !m.allScope {
@@ -782,8 +791,7 @@ func (m *Model) helpLines() []string {
 	for _, l := range body {
 		lines = append(lines, "  "+l)
 	}
-	return append(lines,
-		"  "+t.dim.Render("Every view here is also a command: vsfleet vm list, vsfleet search, vsfleet doctor."))
+	return lines
 }
 
 func (m *Model) viewHelp() []string {

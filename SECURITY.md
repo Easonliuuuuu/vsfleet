@@ -32,7 +32,17 @@ and read-only information collection APIs are implemented.
   containers or headless minimal Linux), vsfleet safely falls back to prompt
   mode (`prompt`) rather than failing or storing credentials insecurely.
 
-### 3. Network Isolation & Transport Security
+### 3. Local Assessment History
+Historical assessments are opt-in, explicit captures written to a local SQLite
+database. The database is created with `0700` directory and `0600` file
+permissions and may contain VM names, UUIDs, inventory paths, annotations,
+host/datastore placement, and snapshot metadata. It never contains passwords,
+keyring material, session cookies, or private keys. Treat the history file as
+sensitive operational inventory: protect it with the host's normal disk and
+backup controls, and remove runs explicitly with `vsfleet assessment delete
+<id> --force` when retention policy requires it.
+
+### 4. Network Isolation & Transport Security
 * **Per-Context Isolation:** Each configured vCenter maintains its own isolated
   transport dialer and TLS policy. A compromised or misbehaving proxy route for
   one context cannot intercept traffic meant for another.

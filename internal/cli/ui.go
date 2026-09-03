@@ -34,10 +34,14 @@ The pane renders before credentials are requested. Keyring authentication runs
 in the background; prompt credentials are collected by a masked overlay inside
 the interface, and untouched contexts remain disconnected until selected.
 
-"/" filters the table in front of you and "tab" widens the same query into
-every vCenter and every kind at once, which is "vsfleet search" without
-leaving the interface. A vCenter that has not answered is reported as not
-searched rather than quietly narrowing the result.
+	"/" filters the table in front of you and "tab" widens the same query into
+	every vCenter and every kind at once, which is "vsfleet search" without
+	leaving the interface. A vCenter that has not answered is reported as not
+	searched rather than quietly narrowing the result.
+
+	"H" opens the historical Changes screen. It compares the newest two explicit
+	assessments, lets you choose another baseline or target, and captures all
+	configured vCenters with "n".
 
 With no contexts configured yet, this opens straight into the setup form
 instead of asking you to run "vsfleet context add" first.
@@ -101,6 +105,10 @@ func runUI(a *App, cmd *cobra.Command) error {
 	a.Resolver().SetProvider(coordinator)
 
 	backend := tui.NewBackend(cfg, a.Resolver(), a.Sessions(), a.ConnectOptions())
+	assessmentService, historyErr := a.Assessment()
+	if historyErr != nil {
+		fmt.Fprintf(a.errOut(), "warning: historical assessments unavailable: %v\n", historyErr)
+	}
 	snap, runErr := tui.Run(cmd.Context(), backend, tui.Options{
 		Current:     current,
 		AllContexts: a.AllContexts,
@@ -111,6 +119,7 @@ func runUI(a *App, cmd *cobra.Command) error {
 		Credentials:     coordinator,
 		In:              a.in(),
 		Out:             a.out(),
+		Assessment:      assessmentService,
 	})
 	// A clean run is the only one worth remembering: a program that never
 	// really started (no TTY, say) has nothing truthful to say about where

@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
@@ -63,6 +64,9 @@ const (
 	modeConfirmDelete
 	modeContexts
 	modeSearch
+	modeChanges
+	modeChangeDetail
+	modeHistoryRuns
 )
 
 // searchState is one estate-wide search: every kind, every vCenter, matched
@@ -358,6 +362,8 @@ type Options struct {
 	// terminal output to. When nil, os.Stdin and os.Stdout are used.
 	In  io.Reader
 	Out io.Writer
+	// Assessment is the optional persistent historical service.
+	Assessment *assessment.Service
 }
 
 // Snapshot is what is worth remembering about the interface between runs:
@@ -416,8 +422,19 @@ type Model struct {
 	returnTo mode
 	// search holds the last estate-wide result set, and searchDirty marks it
 	// stale after an inventory arrives or the context list changes.
-	search      *searchState
-	searchDirty bool
+	search       *searchState
+	searchDirty  bool
+	assessment   *assessment.Service
+	runs         []assessment.Run
+	changeDiff   *assessment.Diff
+	historyErr   error
+	changeCursor int
+	changeOffset int
+	runCursor    int
+	capturing    bool
+	baseRun      int64
+	targetRun    int64
+	pickerRole   string
 	// detailFrom is the screen the detail pane was opened from, so esc goes
 	// back to the search results rather than always to the table.
 	detailFrom mode
@@ -480,6 +497,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 
 		refreshInterval: refreshInterval(opts.RefreshInterval),
 		credCoord:       opts.Credentials,
+		assessment:      opts.Assessment,
 	}
 	for i, cc := range contexts {
 		st := newContextState(cc)
@@ -730,6 +748,12 @@ func (m *Model) refreshDue(st *contextState, onScreen bool) bool {
 // than the interval simply refreshes less often instead of queueing work
 // behind itself.
 func (m *Model) refreshStale() []tea.Cmd {
+	// A historical capture is an explicit operator action. Keep the live cache
+	// quiet until it finishes so a background refresh cannot compete for the
+	// same vCenter connections or make the changes screen jump underneath it.
+	if m.capturing {
+		return nil
+	}
 	if m.refreshInterval <= 0 {
 		return nil
 	}
@@ -1008,6 +1032,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case historyRunsMsg:
+		m.runs, m.historyErr = msg.runs, msg.err
+		if m.historyErr == nil {
+			m.loadDefaultHistoryDiff()
+			return m, m.historyDiffCommand()
+		}
+		return m, nil
+	case historyDiffMsg:
+		m.changeDiff, m.historyErr = msg.diff, msg.err
+		m.changeCursor, m.changeOffset = 0, 0
+		return m, nil
+	case historyCaptureMsg:
+		m.capturing = false
+		if msg.err != nil {
+			m.historyErr = msg.err
+			return m, nil
+		}
+		m.setMessage(fmt.Sprintf("assessment %d saved (%s)", msg.run.ID, msg.run.Status), msg.run.Status == assessment.RunPartial)
+		return m, loadHistoryRunsCmd(m.ctx, m.assessment)
 
 	case formTestMsg:
 		if m.form != nil {
@@ -1413,6 +1457,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.handleContextsKey(msg)
 	case modeSearch:
 		return m.handleSearchKey(msg)
+	case modeChanges:
+		return m.handleChangesKey(msg)
+	case modeChangeDetail:
+		if key.Matches(msg, m.keys.Back) {
+			m.mode = modeChanges
+		}
+		return nil
+	case modeHistoryRuns:
+		return m.handleHistoryRunsKey(msg)
 	case modeHelp:
 		return m.handleHelpKey(msg)
 	default:
@@ -1574,6 +1627,8 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 		m.selectKindByNumber(msg.String())
 	case key.Matches(msg, m.keys.Contexts):
 		m.openContexts()
+	case key.Matches(msg, m.keys.History):
+		return m.enterChanges()
 	case key.Matches(msg, m.keys.Search):
 		return m.enterSearch()
 	case key.Matches(msg, m.keys.NextTab):

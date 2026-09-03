@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Kind names a class of inventory object. Search results and the interface's
@@ -62,22 +63,38 @@ type Location struct {
 // template views filter on IsTemplate rather than using a parallel type.
 type VM struct {
 	Location
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	PowerState string   `json:"power_state"`
-	IsTemplate bool     `json:"is_template"`
-	CPU        int32    `json:"cpu"`
-	MemoryMB   int64    `json:"memory_mb"`
-	GuestOS    string   `json:"guest_os"`
-	GuestState string   `json:"guest_state"`
-	ToolsState string   `json:"tools_state"`
-	IPAddress  string   `json:"ip_address"`
-	Host       string   `json:"host"`
-	Cluster    string   `json:"cluster"`
-	Folder     string   `json:"folder"`
-	Datastores []string `json:"datastores"`
-	StorageGB  float64  `json:"storage_gb"`
-	Annotation string   `json:"annotation"`
+	ID           string       `json:"id"`
+	InstanceUUID string       `json:"instance_uuid,omitempty"`
+	BIOSUUID     string       `json:"bios_uuid,omitempty"`
+	Name         string       `json:"name"`
+	PowerState   string       `json:"power_state"`
+	IsTemplate   bool         `json:"is_template"`
+	CPU          int32        `json:"cpu"`
+	MemoryMB     int64        `json:"memory_mb"`
+	GuestOS      string       `json:"guest_os"`
+	GuestState   string       `json:"guest_state"`
+	ToolsState   string       `json:"tools_state"`
+	IPAddress    string       `json:"ip_address"`
+	Host         string       `json:"host"`
+	Cluster      string       `json:"cluster"`
+	Folder       string       `json:"folder"`
+	Datastores   []string     `json:"datastores"`
+	StorageGB    float64      `json:"storage_gb"`
+	Annotation   string       `json:"annotation"`
+	Snapshots    []VMSnapshot `json:"snapshots,omitempty"`
+}
+
+// VMSnapshot is one read-only entry in a VM snapshot tree.
+type VMSnapshot struct {
+	ID          string    `json:"id"`
+	NumericID   int32     `json:"numeric_id"`
+	ParentID    string    `json:"parent_id,omitempty"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	CreateTime  time.Time `json:"create_time"`
+	PowerState  string    `json:"power_state"`
+	Quiesced    bool      `json:"quiesced"`
+	Current     bool      `json:"current"`
 }
 
 // Host is an ESXi host.

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -116,8 +117,10 @@ func (f *listFlags) matches(name string) bool {
 // newInventoryCommands builds one command group per resource kind. They all
 // share the same shape so that "vsfleet <kind> list" is predictable.
 func newInventoryCommands(a *App) []*cobra.Command {
+	vm := group("vm", []string{"vms", "virtualmachine"}, "Virtual machines", newVMListCommand(a))
+	vm.AddCommand(newVMHistoryCommand(a))
 	return []*cobra.Command{
-		group("vm", []string{"vms", "virtualmachine"}, "Virtual machines", newVMListCommand(a)),
+		vm,
 		group("template", []string{"templates", "tpl"}, "VM templates", newTemplateListCommand(a)),
 		group("host", []string{"hosts", "esxi"}, "ESXi hosts", newHostListCommand(a)),
 		group("cluster", []string{"clusters"}, "Compute clusters", newClusterListCommand(a)),
@@ -125,6 +128,35 @@ func newInventoryCommands(a *App) []*cobra.Command {
 		group("datastore", []string{"datastores", "ds"}, "Datastores", newDatastoreListCommand(a)),
 		group("network", []string{"networks", "portgroup"}, "Networks and port groups", newNetworkListCommand(a)),
 	}
+}
+
+func newVMHistoryCommand(a *App) *cobra.Command {
+	return &cobra.Command{Use: "history NAME_OR_UUID", Short: "Show a VM's stored assessment history", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		contextName := ""
+		if len(a.ContextNames) == 1 {
+			contextName = a.ContextNames[0]
+		}
+		entries, err := s.History(cmd.Context(), args[0], contextName)
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			return fmt.Errorf("no stored VM history matched %q", args[0])
+		}
+		if a.json() {
+			return writeJSON(a.out(), entries)
+		}
+		t := newTable(a.out(), "RUN", "DATE", "CONTEXT", "VM", "HOST", "CLUSTER", "SNAPSHOTS")
+		for _, e := range entries {
+			t.row(strconv.FormatInt(e.Run.ID, 10), e.Run.StartedAt.Local().Format("2006-01-02 15:04"), e.Observation.Context, e.Observation.VM.Name, dash(e.Observation.VM.Host), dash(e.Observation.VM.Cluster), itoa(len(e.Snapshots)))
+		}
+		t.flush()
+		return nil
+	}}
 }
 
 func group(name string, aliases []string, short string, sub *cobra.Command) *cobra.Command {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
@@ -28,6 +29,7 @@ type App struct {
 	AllContexts  bool
 	Format       string
 	Timeout      time.Duration
+	HistoryPath  string
 	// RefreshInterval is how often the terminal interface re-reads inventory
 	// in the background. Zero takes the built-in default; negative turns it
 	// off. It only reaches the interface, so it is registered on the two
@@ -38,10 +40,12 @@ type App struct {
 	Out io.Writer
 	Err io.Writer
 
-	cfg      *config.Config
-	resolver *credentials.Resolver
-	prompt   *credentials.Prompt
-	mgr      *session.Manager
+	cfg       *config.Config
+	resolver  *credentials.Resolver
+	prompt    *credentials.Prompt
+	mgr       *session.Manager
+	history   *assessment.Store
+	collector *assessment.Collector
 }
 
 // Config loads the configuration once per process.
@@ -95,6 +99,41 @@ func (a *App) ConnectOptions() vsphere.ConnectOptions {
 		DialTimeout: a.Timeout,
 		UserAgent:   version.UserAgent(),
 	}
+}
+
+// History opens the local assessment database once for the process. Callers
+// may treat an open failure as a feature warning: live inventory does not
+// depend on historical storage being available.
+func (a *App) History() (*assessment.Store, error) {
+	if a.history != nil {
+		return a.history, nil
+	}
+	s, err := assessment.Open(a.HistoryPath)
+	if err != nil {
+		return nil, err
+	}
+	a.history = s
+	return s, nil
+}
+
+func (a *App) Collector() (*assessment.Collector, error) {
+	if a.collector != nil {
+		return a.collector, nil
+	}
+	s, err := a.History()
+	if err != nil {
+		return nil, err
+	}
+	a.collector = &assessment.Collector{Store: s, Manager: a.Sessions()}
+	return a.collector, nil
+}
+
+func (a *App) Assessment() (*assessment.Service, error) {
+	c, err := a.Collector()
+	if err != nil {
+		return nil, err
+	}
+	return &assessment.Service{Store: a.history, Collector: c}, nil
 }
 
 // Contexts resolves the contexts a command should act on, honouring --context
@@ -186,6 +225,7 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 	f.BoolVar(&a.AllContexts, "all-contexts", false, "act on every configured context")
 	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json")
 	f.DurationVar(&a.Timeout, "timeout", 30*time.Second, "per-vCenter timeout")
+	f.StringVar(&a.HistoryPath, "history-db", "", "path to the local assessment database")
 	// A bare "vsfleet" opens the interface, so the interface's own flag
 	// belongs here too — on root's own flags, not the persistent set, so
 	// "vsfleet vm list --refresh" is still the error it should be.
@@ -197,6 +237,7 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 		newSearchCommand(a),
 		newStatusCommand(a),
 		newUICommand(a),
+		newAssessmentCommand(a),
 	)
 	root.AddCommand(newInventoryCommands(a)...)
 	return root
@@ -209,6 +250,9 @@ func Execute(ctx context.Context) int {
 	defer func() {
 		if a.mgr != nil {
 			_ = a.mgr.Close(context.WithoutCancel(ctx))
+		}
+		if a.history != nil {
+			_ = a.history.Close()
 		}
 	}()
 	if err := root.ExecuteContext(ctx); err != nil {

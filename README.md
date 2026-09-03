@@ -108,6 +108,14 @@ vsfleet bridges this divide:
 
 ## Install
 
+### Homebrew (macOS and Linux)
+
+Install the latest release from the project's Homebrew tap:
+
+```sh
+brew install --cask easonliuuuuu/tap/vsfleet
+```
+
 ### Pre-built Binaries (Recommended)
 
 Download the latest pre-compiled binary for your operating system and CPU architecture

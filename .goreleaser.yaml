@@ -29,6 +29,18 @@ archives:
       - README.md
       - LICENSE
 
+homebrew_casks:
+  - name: vsfleet
+    ids:
+      - vsfleet
+    binaries:
+      - vsfleet
+    repository:
+      owner: Easonliuuuuu
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+
 checksum:
   name_template: checksums.txt
 

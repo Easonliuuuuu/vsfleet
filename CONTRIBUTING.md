@@ -109,6 +109,16 @@ vhs docs/demo.tape
 This tape builds `cmd/vsfleet-demo` as a temporary binary, executes the scripted
 key strokes, and updates `docs/assets/vsfleet.gif` and `docs/assets/vsfleet.png`.
 
+## Publishing Releases
+
+Releases are built by GoReleaser from the tag created by `release-please`. The
+workflow publishes the archives to GitHub Releases and updates the
+`Easonliuuuuu/homebrew-tap` repository with the matching Homebrew cask.
+
+The repository's `TAP_GITHUB_TOKEN` secret must be a GitHub token with
+write access to `Easonliuuuuu/homebrew-tap`; the default Actions token cannot
+write to a separate tap repository.
+
 ---
 
 ## Commit Guidelines

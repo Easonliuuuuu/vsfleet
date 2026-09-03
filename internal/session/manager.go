@@ -182,6 +182,40 @@ func (m *Manager) concurrency() int {
 	return DefaultConcurrency
 }
 
+// Operation returns a context bounding one complete per-context operation —
+// Connect and whatever the caller does with the connection afterwards — to
+// the manager's configured timeout, together with a StageTracker that both
+// report their progress to.
+//
+// Connect already bounds itself to the same timeout for callers that stop
+// there (see the cctx inside Connect); Operation exists for callers who go
+// on to do more with the connection, such as enumerating inventory, where
+// that work must count against the same budget rather than running
+// unbounded once the connection itself succeeded. Passing the returned
+// context to both Connect and the work after it is what makes that one
+// budget instead of two.
+func (m *Manager) Operation(ctx context.Context) (context.Context, context.CancelFunc, *vsphere.StageTracker) {
+	tracker := &vsphere.StageTracker{}
+	ctx = vsphere.WithStageReporter(ctx, tracker.Report)
+	ctx, cancel := context.WithTimeout(ctx, m.timeout())
+	return ctx, cancel, tracker
+}
+
+// TimeoutError names what a deadline-exceeded error actually means: the
+// configured duration and, when known, the stage the operation was in when
+// time ran out — "timed out after 30s while loading hosts" — rather than the
+// generic "context deadline exceeded" surfacing from deep inside a govmomi
+// call. Any error that is not due to ctx's deadline is returned unchanged.
+func (m *Manager) TimeoutError(err error, tracker *vsphere.StageTracker) error {
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if stage := tracker.Current(); stage != "" {
+		return fmt.Errorf("timed out after %s while %s: %w", m.timeout(), stage, err)
+	}
+	return fmt.Errorf("timed out after %s: %w", m.timeout(), err)
+}
+
 // Connect returns a connected session for a context, reusing an existing
 // connection when one is live and still describes the same vCenter.
 //

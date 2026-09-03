@@ -38,13 +38,19 @@ func gather[T any](ctx context.Context, a *App, fn func(context.Context, *vspher
 	g.SetLimit(session.DefaultConcurrency)
 	for i, cc := range contexts {
 		g.Go(func() error {
-			s, err := mgr.Connect(ctx, cc)
+			// One deadline covers connecting and the listing that follows: a
+			// vCenter that connects quickly but then hangs enumerating must
+			// still be cut off at --timeout, not left to run unbounded once
+			// the connection itself succeeded.
+			opCtx, cancel, tracker := mgr.Operation(ctx)
+			defer cancel()
+			s, err := mgr.Connect(opCtx, cc)
 			if err != nil {
-				results[i] = result{err: err}
+				results[i] = result{err: mgr.TimeoutError(err, tracker)}
 				return nil
 			}
-			items, err := fn(ctx, s.Client())
-			results[i] = result{items: items, err: err}
+			items, err := fn(opCtx, s.Client())
+			results[i] = result{items: items, err: mgr.TimeoutError(err, tracker)}
 			return nil
 		})
 	}

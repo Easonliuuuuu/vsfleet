@@ -28,6 +28,11 @@ type vcenter struct {
 	Port       string
 	Address    string
 	Thumbprint string
+	// Service is the simulator's request handler, exposed so a test can
+	// attach fault injection — an artificial delay on a SOAP method, say —
+	// after the server is already up rather than through the tune callback,
+	// which runs before the simulator's Service exists.
+	Service *simulator.Service
 }
 
 func startVCenter(t *testing.T, tune func(*simulator.Model)) *vcenter {
@@ -51,7 +56,7 @@ func startVCenter(t *testing.T, tune func(*simulator.Model)) *vcenter {
 	u.User = nil
 	u.Path = ""
 
-	vc := &vcenter{URL: u.String(), Host: u.Hostname(), Port: u.Port(), Address: u.Host}
+	vc := &vcenter{URL: u.String(), Host: u.Hostname(), Port: u.Port(), Address: u.Host, Service: model.Service}
 	cc := &config.Context{Name: "probe", Endpoint: vc.URL, Username: "u", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
 	cc.Normalize()
 	sha256, _, _, _, err := vsphere.FetchThumbprint(context.Background(), cc, vsphere.ConnectOptions{})

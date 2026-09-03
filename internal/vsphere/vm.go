@@ -6,12 +6,15 @@ import (
 	"strings"
 
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 var vmProps = []string{
 	"name",
 	"parent",
 	"config.template",
+	"config.uuid",
+	"config.instanceUuid",
 	"config.guestFullName",
 	"config.annotation",
 	"config.hardware.numCPU",
@@ -23,6 +26,7 @@ var vmProps = []string{
 	"guest.toolsRunningStatus",
 	"summary.storage.committed",
 	"datastore",
+	"snapshot",
 }
 
 // ListVMs returns the virtual machines in a vCenter, excluding templates.
@@ -75,10 +79,15 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 	}
 	if cfg := m.Config; cfg != nil {
 		vm.IsTemplate = cfg.Template
+		vm.BIOSUUID = cfg.Uuid
+		vm.InstanceUUID = cfg.InstanceUuid
 		vm.GuestOS = cfg.GuestFullName
 		vm.Annotation = strings.TrimSpace(cfg.Annotation)
 		vm.CPU = cfg.Hardware.NumCPU
 		vm.MemoryMB = int64(cfg.Hardware.MemoryMB)
+	}
+	if snap := m.Snapshot; snap != nil {
+		vm.Snapshots = flattenSnapshots(snap.RootSnapshotList, "", snap.CurrentSnapshot)
 	}
 	if g := m.Guest; g != nil {
 		vm.IPAddress = g.IpAddress
@@ -92,4 +101,20 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.StorageGB = float64(s.Committed) / (1 << 30)
 	}
 	return vm
+}
+
+func flattenSnapshots(tree []types.VirtualMachineSnapshotTree, parent string, current *types.ManagedObjectReference) []VMSnapshot {
+	var out []VMSnapshot
+	for i := range tree {
+		n := tree[i]
+		id := n.Snapshot.Value
+		out = append(out, VMSnapshot{
+			ID: id, NumericID: n.Id, ParentID: parent, Name: n.Name,
+			Description: n.Description, CreateTime: n.CreateTime,
+			PowerState: string(n.State), Quiesced: n.Quiesced,
+			Current: current != nil && current.Value == id,
+		})
+		out = append(out, flattenSnapshots(n.ChildSnapshotList, id, current)...)
+	}
+	return out
 }

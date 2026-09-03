@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
 	"github.com/easonliuuuuu/vsfleet/internal/limiter"
@@ -58,6 +59,39 @@ type stageMsg struct {
 // asked about. It carries nothing: what is due for a re-read is decided when
 // it lands, against the state as it stands then, not when it was scheduled.
 type refreshTickMsg struct{}
+
+type historyRunsMsg struct {
+	runs []assessment.Run
+	err  error
+}
+
+type historyDiffMsg struct {
+	diff *assessment.Diff
+	err  error
+}
+
+type historyCaptureMsg struct {
+	run assessment.Run
+	err error
+}
+
+func loadHistoryRunsCmd(ctx context.Context, service *assessment.Service) tea.Cmd {
+	return func() tea.Msg { runs, err := service.Runs(ctx); return historyRunsMsg{runs: runs, err: err} }
+}
+
+func loadHistoryDiffCmd(ctx context.Context, service *assessment.Service, base, target int64) tea.Cmd {
+	return func() tea.Msg {
+		d, err := service.Diff(ctx, base, target, false)
+		return historyDiffMsg{diff: &d, err: err}
+	}
+}
+
+func captureHistoryCmd(ctx context.Context, service *assessment.Service, contexts []*config.Context) tea.Cmd {
+	return func() tea.Msg {
+		run, err := service.Capture(ctx, assessment.CaptureOptions{Contexts: contexts, Source: "tui"})
+		return historyCaptureMsg{run: run, err: err}
+	}
+}
 
 // scheduleRefresh arms the next background refresh. Each tick arms the one
 // after it rather than a repeating ticker, so a refresh that takes longer

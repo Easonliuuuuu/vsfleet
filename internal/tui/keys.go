@@ -42,6 +42,10 @@ type keyMap struct {
 	Reload    key.Binding
 	ReloadAll key.Binding
 	Doctor    key.Binding
+	History   key.Binding
+	Capture   key.Binding
+	Base      key.Binding
+	Target    key.Binding
 
 	Sort key.Binding
 	Help key.Binding
@@ -90,6 +94,10 @@ func defaultKeys() keyMap {
 		Reload:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
 		ReloadAll: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "reload all")),
 		Doctor:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "diagnose")),
+		History:   key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "changes")),
+		Capture:   key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "capture")),
+		Base:      key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "baseline")),
+		Target:    key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "target")),
 
 		Sort: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
 		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
@@ -116,6 +124,10 @@ func (k keyMap) helpSections() []helpSection {
 		{"Resource kinds", []key.Binding{k.Kind, k.NextTab, k.PrevTab, k.Open, k.Back}},
 		{"Scope", []key.Binding{k.Contexts, k.AllScope, k.Filter, k.Search}},
 		{"Connection", []key.Binding{k.Reload, k.ReloadAll, k.Doctor}},
+		// The changes screen puts its run-picker and capture bindings in the
+		// footer; keeping this section to one line preserves the compact help
+		// overlay at the minimum supported terminal height.
+		{"History", []key.Binding{k.History}},
 		{"Table", []key.Binding{k.Sort}},
 		{"Contexts screen (c)", []key.Binding{k.UseContext, k.NewContext, k.EditContext, k.DeleteContext}},
 		{"Other", []key.Binding{k.Help, k.Quit}},
@@ -145,6 +157,12 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		return []key.Binding{k.UseContext, k.AllScope, k.NewContext, k.EditContext, k.DeleteContext, k.Doctor, k.Back}
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
+	case modeChanges:
+		return []key.Binding{k.Up, k.Down, k.Base, k.Target, k.Capture, k.Back, k.Help, k.Quit}
+	case modeChangeDetail:
+		return []key.Binding{k.Back, k.Help, k.Quit}
+	case modeHistoryRuns:
+		return []key.Binding{k.Up, k.Down, k.Open, k.Back, k.Help, k.Quit}
 	default:
 		return []key.Binding{k.Kind, k.Contexts, k.AllScopeBrief, k.Filter, k.Open, k.Reload, k.Help, k.Quit}
 	}

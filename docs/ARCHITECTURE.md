@@ -28,6 +28,7 @@ flowchart TD
         CACHE["Inventory Cache (internal/session)"]
         LIM["Limiter & Concurrency (internal/limiter)"]
         SEARCH["Search Engine (internal/search)"]
+        ASSESS["Assessment Ledger (internal/assessment + SQLite)"]
     end
 
     subgraph Adapters ["Transport & Security"]
@@ -48,6 +49,8 @@ flowchart TD
     TUI --> CFG
     TUI --> SEARCH
     CLI --> SEARCH
+    TUI --> ASSESS
+    CLI --> ASSESS
 
     SM --> CACHE
     SM --> LIM
@@ -103,6 +106,15 @@ A context name is a label for a configuration set, not an identity:
 * Removing a context sends an explicit logout to the vCenter session rather than
   leaving orphaned sessions on the server.
 
+### 5. Historical Observations Are Immutable and Coverage-Aware
+The assessment ledger is a local observation store, not a second source of
+truth. Each explicit capture records the VM and snapshot state returned by
+vCenter at that point in time. A diff identifies VMs by managed-object
+reference, then instance UUID or BIOS UUID, and reports moves only when both
+observations are unambiguous. Lifecycle claims are made only for vCenters that
+completed collection in both runs; failed or missing coverage produces a
+warning instead of false vanish/appear events.
+
 ---
 
 ## 3. Source Code Organization
@@ -117,6 +129,7 @@ vsfleet/
 │   ├── ARCHITECTURE.md    # System design, invariants, and codemap (this document)
 │   └── demo.tape          # VHS tape definition for generating demo recordings
 ├── internal/
+│   ├── assessment/        # SQLite run ledger, coverage-aware diffs, VM history
 │   ├── cli/               # Cobra command handlers (root, context, doctor, vm, search, etc.)
 │   ├── config/            # TOML config parser, context definitions, path discovery
 │   ├── contextops/        # High-level context lifecycle (add, edit, remove, test)

@@ -35,6 +35,7 @@
   - [Shell Autocompletion](#shell-autocompletion)
 - [Quick Start](#quick-start)
 - [Common Commands](#common-commands)
+- [Assessment History](#assessment-history)
 - [Terminal UI](#terminal-ui)
   - [Keybindings Reference](#keybindings-reference)
   - [Background Refresh & Caching](#background-refresh--caching)
@@ -88,6 +89,7 @@ vsfleet bridges this divide:
 * **Zero Plaintext Passwords:** Passwords stay in the operating system's native secret store (Keyring/Keychain) or interactive prompt, never in `config.toml`.
 * **Pin Pinned TLS Thumbprints:** Enforce SHA-256 or SHA-1 fingerprints against untrusted or self-signed certificates.
 * **Granular Failure Diagnosis:** Step-by-step stage diagnosis (`vsfleet doctor`) pinpoints proxy, DNS, TCP, TLS, and auth issues.
+* **Historical Drift Ledger:** Capture immutable VM and snapshot observations in SQLite, then compare runs to explain appeared, vanished, moved, and aging snapshots.
 * **Interactive & Scriptable:** Rich Bubble Tea TUI for humans; clean JSON output (`-o json`) for automation and `jq`.
 
 ---
@@ -102,6 +104,7 @@ vsfleet bridges this divide:
 | **Heterogeneous proxy routing** | **Per-context (SOCKS5/HTTP/HTTPS)** | Global env vars only | Global env vars only | Browser proxy |
 | **Zero plaintext passwords on disk** | **OS Keyring / Prompt** | Env / Session file | Credential store / script | Browser cache |
 | **Interactive Terminal UI (TUI)** | **Yes (live background refresh)** | No (CLI only) | No | Web browser only |
+| **Historical VM drift + snapshot age** | **Yes (SQLite ledger + diff)** | Point-in-time exports | Custom scripting | Point-in-time view |
 | **Accidental mutation risk** | **Zero (Read-only guarantee)** | Moderate (Read/Write) | High (Read/Write) | High (Read/Write) |
 
 ---
@@ -204,6 +207,24 @@ vsfleet datastore list
 vsfleet search ubuntu --all-contexts
 ```
 
+### Assessment History
+
+Assessments are explicit, read-only captures of VM and snapshot state. They are
+stored locally in SQLite and never sent back to vCenter:
+
+```sh
+vsfleet assessment run --all-contexts
+vsfleet assessment list
+vsfleet assessment diff previous latest
+vsfleet assessment snapshots --older-than 30d
+vsfleet vm history billing
+```
+
+Diffs compare only vCenters collected successfully in both runs, so an outage
+cannot masquerade as mass VM deletion. Use `--history-db <path>` or
+`VSFLEET_HISTORY_DB` to choose the database location; `assessment delete <id> --force`
+removes an old run explicitly.
+
 ---
 
 ## Common Commands
@@ -221,6 +242,10 @@ vsfleet search ubuntu --all-contexts
 | `vsfleet status` | Health check and summary of selected contexts |
 | `vsfleet doctor [context...]` | Run an 8-stage connection diagnosis |
 | `vsfleet search <text>` | Search inventory across all resource kinds |
+| `vsfleet assessment run` | Capture VM and snapshot state from the selected contexts |
+| `vsfleet assessment diff [base] [target]` | Explain VM drift and snapshot changes between runs |
+| `vsfleet assessment snapshots` | Report snapshot age and first/last observation |
+| `vsfleet vm history <name-or-uuid>` | Show a VM's observations across stored runs |
 | `vsfleet <kind> list` | List resources (`vm`, `template`, `host`, `cluster`, `vapp`, `datastore`, `network`) |
 
 Supported resource kinds are `vm`, `template`, `host`, `cluster`, `vapp`,
@@ -249,6 +274,7 @@ vsfleet search nvme --kind datastore -o json
 | `--timeout <duration>` | Per-vCenter request timeout (default: `30s`) |
 | `-o, --output json` | Emit JSON output instead of formatted tables |
 | `--refresh <duration>` | Set background TUI polling interval (default: `20s`) |
+| `--history-db <path>` | Override the local SQLite assessment database |
 
 ---
 
@@ -287,6 +313,14 @@ diagnostics.
 | <kbd>n</kbd> / <kbd>e</kbd> / <kbd>x</kbd> | Add / Edit / Remove context |
 | <kbd>d</kbd> | Diagnose connectivity to highlighted context |
 | <kbd>Esc</kbd> | Return to the browse screen |
+
+#### Changes Screen (<kbd>H</kbd>)
+
+The full-screen Changes view compares the newest two assessments. Press
+<kbd>b</kbd> or <kbd>t</kbd> to choose a different baseline or target run,
+<kbd>n</kbd> to capture every configured vCenter, and <kbd>Enter</kbd> to open
+the selected change. Captures are explicit and run in the background; normal
+inventory remains available while the ledger is updated.
 
 ### Background Refresh & Caching
 
@@ -374,6 +408,13 @@ The default configuration file is located at:
 Override this location using `--config <path>` or the `VSFLEET_CONFIG`
 environment variable. The configuration file is created with `0600` permissions
 and contains **no passwords**.
+
+Assessment history is kept separately in SQLite. By default it lives at
+`<user-config-dir>/vsfleet/history.db` (for example, `~/.config/vsfleet/history.db`);
+set `VSFLEET_HISTORY_DB` or pass `--history-db` to override it. The database is
+created with a private directory and `0600` file permissions and contains VM
+inventory, UUIDs, paths, annotations, and snapshot metadata, but never
+credentials.
 
 ### Example `config.toml`
 

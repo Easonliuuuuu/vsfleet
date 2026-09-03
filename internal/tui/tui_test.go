@@ -1449,15 +1449,14 @@ func TestRefreshIntervalResolution(t *testing.T) {
 	}
 }
 
-// TestBackgroundRefreshRereadsEveryContext covers the point of the whole
-// thing: state moves on a vCenter, so a table left open must be re-read —
-// including the vCenters not currently on screen, since the header summary
-// and an estate-wide search both answer from them.
-func TestBackgroundRefreshRereadsEveryContext(t *testing.T) {
+// TestBackgroundRefreshTiersByWhatIsOnScreen covers the split that makes the
+// refresh affordable: the vCenter being looked at is held to the configured
+// interval, everything else to backgroundRefreshFactor times it.
+func TestBackgroundRefreshTiersByWhatIsOnScreen(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
-	// Enabled after construction: Init would otherwise arm a real one-minute
-	// timer that this synchronous harness would sit and wait on.
+	// Enabled after construction: Init would otherwise arm a real timer that
+	// this synchronous harness would sit and wait on.
 	m.refreshInterval = time.Minute
 	if b.calls["prod"] != 1 || b.calls["customer-a"] != 1 {
 		t.Fatalf("initial prefetch calls = prod:%d customer-a:%d, want 1 each", b.calls["prod"], b.calls["customer-a"])
@@ -1470,16 +1469,77 @@ func TestBackgroundRefreshRereadsEveryContext(t *testing.T) {
 		t.Errorf("a tick straight after loading re-read prod; calls = %d", b.calls["prod"])
 	}
 
-	// Age both contexts past the threshold and tick again.
+	// Two minutes: past the on-screen threshold, nowhere near the off-screen
+	// one. Only the vCenter in scope should be re-read.
 	for _, st := range m.states {
 		st.loadedAt = time.Now().Add(-2 * time.Minute)
 	}
 	tickRefresh(t, m)
 	if b.calls["prod"] != 2 {
-		t.Errorf("prod calls after a due tick = %d, want 2", b.calls["prod"])
+		t.Errorf("prod calls = %d, want 2 — it is on screen and past its interval", b.calls["prod"])
 	}
+	if b.calls["customer-a"] != 1 {
+		t.Errorf("customer-a calls = %d, want 1 — off screen it is held to a slower rate", b.calls["customer-a"])
+	}
+
+	// Past the off-screen threshold too, it is re-read as well: the header
+	// count and estate-wide search still have to be roughly right.
+	for _, st := range m.states {
+		st.loadedAt = time.Now().Add(-30 * time.Minute)
+	}
+	tickRefresh(t, m)
 	if b.calls["customer-a"] != 2 {
-		t.Errorf("customer-a calls after a due tick = %d, want 2 — a context off screen still goes stale", b.calls["customer-a"])
+		t.Errorf("customer-a calls = %d, want 2 — past %dx the interval it is due", b.calls["customer-a"], backgroundRefreshFactor)
+	}
+}
+
+// TestAllScopeHoldsEveryContextToTheOnScreenRate checks that asking to watch
+// the whole estate at once really does keep all of it current: in that view
+// every context is on screen, so every context gets the fast interval.
+func TestAllScopeHoldsEveryContextToTheOnScreenRate(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod", AllContexts: true})
+	m.refreshInterval = time.Minute
+
+	for _, st := range m.states {
+		st.loadedAt = time.Now().Add(-2 * time.Minute)
+	}
+	tickRefresh(t, m)
+	for _, name := range []string{"prod", "customer-a"} {
+		if b.calls[name] != 2 {
+			t.Errorf("%s calls = %d, want 2 — everything is on screen in the all-vCenters view", name, b.calls[name])
+		}
+	}
+}
+
+// TestSwitchingScopeRereadsANewlyVisibleContext checks that arriving at a
+// vCenter shows its current state rather than whatever the slower off-screen
+// rate last left behind.
+func TestSwitchingScopeRereadsANewlyVisibleContext(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	m.refreshInterval = time.Minute
+
+	// customer-a has been sitting off screen long enough to be stale for a
+	// reader, but not long enough for the background rate to have acted.
+	for _, st := range m.states {
+		st.loadedAt = time.Now().Add(-2 * time.Minute)
+	}
+	if b.calls["customer-a"] != 1 {
+		t.Fatalf("customer-a calls = %d, want 1 before switching", b.calls["customer-a"])
+	}
+
+	// Switch scope to it, the way "c" then enter does.
+	m.ctxCursor = 0
+	for i, st := range m.states {
+		if st.cc.Name == "customer-a" {
+			m.ctxCursor = i
+		}
+	}
+	drive(t, m, m.useContext())
+
+	if b.calls["customer-a"] != 2 {
+		t.Errorf("customer-a calls after switching to it = %d, want 2 — it should be re-read on arrival", b.calls["customer-a"])
 	}
 }
 
@@ -1576,7 +1636,7 @@ func TestBackgroundRefreshRetriesAContextThatNeverLoaded(t *testing.T) {
 	if st.err == nil || st.inv != nil {
 		t.Fatalf("customer-a should have failed outright, got err=%v inv=%v", st.err, st.inv)
 	}
-	if !m.refreshDue(st) {
+	if !m.refreshDue(st, false) {
 		t.Error("a context that never loaded is not due a retry; it always should be")
 	}
 

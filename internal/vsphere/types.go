@@ -200,8 +200,10 @@ type VApp struct {
 	DirectVMRefs           []string `json:"direct_vm_refs,omitempty"`
 	ChildVAppCount         int      `json:"child_vapp_count"`
 	ChildVApps             []string `json:"child_vapps"`
+	ChildVAppRefs          []string `json:"child_vapp_refs,omitempty"`
 	ChildResourcePoolCount int      `json:"child_resource_pool_count"`
 	ChildResourcePools     []string `json:"child_resource_pools"`
+	ChildResourcePoolRefs  []string `json:"child_resource_pool_refs,omitempty"`
 	Cluster                string   `json:"cluster"`
 	ComputeResource        string   `json:"compute_resource"`
 }

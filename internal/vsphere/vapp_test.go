@@ -47,7 +47,13 @@ func TestNewVAppKeepsDirectAndNestedMembershipDistinct(t *testing.T) {
 	if got.ChildVAppCount != 1 || len(got.ChildVApps) != 1 || got.ChildVApps[0] != "web-cache" {
 		t.Fatalf("nested vApp membership = %+v", got)
 	}
+	if len(got.ChildVAppRefs) != 1 || got.ChildVAppRefs[0] != "VirtualApp:vapp-nested" {
+		t.Fatalf("nested vApp references = %+v", got.ChildVAppRefs)
+	}
 	if got.ChildResourcePoolCount != 1 || len(got.ChildResourcePools) != 1 || got.ChildResourcePools[0] != "web-pool" {
 		t.Fatalf("resource-pool membership = %+v", got)
+	}
+	if len(got.ChildResourcePoolRefs) != 1 || got.ChildResourcePoolRefs[0] != "ResourcePool:resgroup-child" {
+		t.Fatalf("resource-pool references = %+v", got.ChildResourcePoolRefs)
 	}
 }

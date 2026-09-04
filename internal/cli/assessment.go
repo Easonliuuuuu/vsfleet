@@ -536,7 +536,7 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		run, err := service.Capture(cmd.Context(), assessment.CaptureOptions{Contexts: contexts, Source: "cli", Label: label, Note: note, Pinned: pin, ToolVersion: version.String(), InventorySchemaVersion: "1", Progress: func(p assessment.ContextProgress) {
+		run, err := service.Capture(cmd.Context(), assessment.CaptureOptions{Contexts: contexts, Source: "cli", Label: label, Note: note, Pinned: pin, ToolVersion: version.String(), InventorySchemaVersion: assessment.CurrentInventorySchemaVersion, Progress: func(p assessment.ContextProgress) {
 			if p.Error != nil {
 				fmt.Fprintf(a.errOut(), "%s %s: %v\n", glyphFail, p.Context, p.Error)
 			}

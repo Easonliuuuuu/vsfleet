@@ -242,8 +242,9 @@ location.
 
 `assessment export` is an offline writer: it reads the selected persisted run
 and does not contact vCenter or open a live session. The `rvtools` format is an
-XLSX workbook containing `vInfo`, `vHost`, `vCluster`, `vDatastore`,
-`vSnapshot`, and the `vsfleetCoverage` provenance sheet. The destination is
+XLSX workbook containing `vInfo`, per-VM `vDisk` and `vNetwork`, `vHost`,
+`vCluster`, `vDatastore`, `vSnapshot`, and the `vsfleetCoverage` provenance
+sheet. The destination is
 required and existing files need `--force`; exporting the same run twice
 produces byte-identical output.
 

@@ -12,6 +12,11 @@ import (
 
 type RunStatus string
 
+// CurrentInventorySchemaVersion identifies the fields captured in VM payloads.
+// Version 2 adds per-VM disks and network adapters while keeping the payload
+// backward-compatible with older ledger rows.
+const CurrentInventorySchemaVersion = "2"
+
 const (
 	RunRunning  RunStatus = "running"
 	RunComplete RunStatus = "complete"

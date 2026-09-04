@@ -85,6 +85,9 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 	if opts.Now != nil {
 		now = opts.Now
 	}
+	if strings.TrimSpace(opts.InventorySchemaVersion) == "" {
+		opts.InventorySchemaVersion = CurrentInventorySchemaVersion
+	}
 	lease, err := c.Store.AcquireCaptureLease(ctx, now())
 	if err != nil {
 		return Run{}, err

@@ -128,7 +128,8 @@ destructive ledger maintenance stays explicit on the CLI.
 The `assessment export` command reads a selected finished run through one
 SQLite read transaction and passes it to the `internal/report` writer. It never
 loads configuration or credentials and never creates a session. The RVTools
-writer emits fixed, coverage-aware sheets with canonical ordering and
+writer emits fixed, coverage-aware sheets (including per-VM disk and network
+inventory) with canonical ordering and
 normalizes XLSX ZIP entry order and timestamps, so two exports of unchanged
 stored evidence are byte-identical.
 

@@ -18,11 +18,12 @@ func TestLoadExportDataUsesPersistedEvidence(t *testing.T) {
 	}
 	defer s.Close()
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	run, err := s.StartRun(context.Background(), "test", []*config.Context{{Name: "prod", Endpoint: "https://vc.example", Datacenter: "dc-a"}}, when)
+	run, err := s.StartRunWithMetadata(context.Background(), "test", []*config.Context{{Name: "prod", Endpoint: "https://vc.example", Datacenter: "dc-a"}}, when, RunMetadata{InventorySchemaVersion: CurrentInventorySchemaVersion})
 	if err != nil {
 		t.Fatal(err)
 	}
-	vm := vsphere.VM{ID: "vm-1", Name: "app", Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when}}}
+	connected := true
+	vm := vsphere.VM{ID: "vm-1", Name: "app", Disks: []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 8 << 30}}, NICs: []vsphere.VMNIC{{Key: 201, Label: "Network adapter 1", Network: "VM Network", Connected: &connected, IPv4: []string{"192.0.2.20"}}}, Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when}}}
 	if err := s.SaveContext(context.Background(), run.ID, ContextResult{Name: "prod", VCenterID: "vc-uuid", Status: "success", VMs: []Observation{{Context: "prod", VCenterID: "vc-uuid", VM: vm}}, Collections: []CollectionResult{{Kind: "vm", Status: "success", ItemCount: 1}, {Kind: "host", Status: "empty"}, {Kind: "cluster", Status: "empty"}, {Kind: "datastore", Status: "empty"}}}, when.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +36,9 @@ func TestLoadExportDataUsesPersistedEvidence(t *testing.T) {
 	}
 	if len(data.Contexts) != 1 || len(data.VMs) != 1 || len(data.VMs[0].Snapshots) != 1 {
 		t.Fatalf("export data=%+v", data)
+	}
+	if len(data.VMs[0].Observation.VM.Disks) != 1 || len(data.VMs[0].Observation.VM.NICs) != 1 || data.VMs[0].Observation.VM.NICs[0].Network != "VM Network" {
+		t.Fatalf("device evidence was not persisted: %+v", data.VMs[0].Observation.VM)
 	}
 	if data.Contexts[0].Endpoint != "https://vc.example" || data.VMs[0].Observation.VCenterID != "vc-uuid" {
 		t.Fatalf("provenance=%+v", data)

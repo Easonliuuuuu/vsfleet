@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,14 +52,117 @@ func TestChangesRunPickerSelectsAnotherBaseline(t *testing.T) {
 	}
 }
 
+// TestComparisonBarNamesBothRunsAndCoverageGap pins the fix for the
+// Changes screen's loudest failure mode: a run that covered fewer vCenters
+// than its baseline must say so by name, not leave "vanished" looking like
+// mass deletion. It also pins that the name is the operator's context name,
+// not the raw VCenterID diff.go used to leak into these messages.
+func TestComparisonBarNamesBothRunsAndCoverageGap(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	prod := &config.Context{Name: "prod", Endpoint: "https://prod", Username: "user"}
+	edge := &config.Context{Name: "edge-vc", Endpoint: "https://edge", Username: "user"}
+	ctx := context.Background()
+
+	base, err := store.StartRun(ctx, "test", []*config.Context{prod, edge}, time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, base.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-prod", Status: "success"}, base.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, base.ID, assessment.ContextResult{Name: "edge-vc", VCenterID: "vc-edge", Status: "success"}, base.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FinishRun(ctx, base.ID, base.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateRun(ctx, strconv.FormatInt(base.ID, 10), assessment.RunMetadata{Label: "pre-maintenance", Pinned: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The target run only covers "prod" — the same narrower-capture scenario
+	// that made "-96 vanished" look like an outage in the connected testbed.
+	target, err := store.StartRun(ctx, "test", []*config.Context{prod}, time.Date(2026, 1, 1, 14, 1, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, target.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-prod", Status: "success"}, target.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FinishRun(ctx, target.ID, target.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	press(t, m, "H")
+	if m.mode != modeChanges || m.baseRun != base.ID || m.targetRun != target.ID {
+		t.Fatalf("changes state: mode=%v base=%d target=%d", m.mode, m.baseRun, m.targetRun)
+	}
+	bar := strings.Join(m.viewComparisonBar(m.changeDiff), "\n")
+	for _, want := range []string{
+		"pre-maintenance", "📌", historyRunLabel(base.ID), historyRunLabel(target.ID),
+		"2 vCenters", "1 vCenter", "+2h01m",
+		"not compared: edge-vc",
+	} {
+		if !strings.Contains(bar, want) {
+			t.Fatalf("comparison bar missing %q:\n%s", want, bar)
+		}
+	}
+	if strings.Contains(bar, "vc-edge") || strings.Contains(bar, "vc-prod") {
+		t.Fatalf("comparison bar leaked a raw VCenterID instead of its context name:\n%s", bar)
+	}
+}
+
+// TestSwapKeyExchangesBaselineAndTarget pins "s" on the Changes pane: it
+// swaps which run is baseline and which is target, and re-diffs immediately
+// rather than leaving the two counts stale until the next unrelated update.
+func TestSwapKeyExchangesBaselineAndTarget(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	cc := &config.Context{Name: "prod", Endpoint: "https://prod", Username: "user"}
+	for i := 0; i < 2; i++ {
+		when := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
+		run, err := store.StartRun(context.Background(), "test", []*config.Context{cc}, when)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success"}, when); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.FinishRun(context.Background(), run.ID, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	press(t, m, "H")
+	base, target := m.baseRun, m.targetRun
+	press(t, m, "s")
+	if m.baseRun != target || m.targetRun != base {
+		t.Fatalf("swap did not exchange runs: base=%d target=%d, want base=%d target=%d", m.baseRun, m.targetRun, target, base)
+	}
+	if m.changeDiff == nil || m.changeDiff.Base.ID != target || m.changeDiff.Target.ID != base {
+		t.Fatalf("swap did not re-diff: diff=%+v", m.changeDiff)
+	}
+}
+
 func TestHistoryHeaderNamesTheSelectedPane(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{})
 	m.runs = []assessment.Run{{ID: 42}}
 	m.targetRun = 42
 	m.mode = modeChanges
 
+	// The run identity itself now lives on the comparison bar beneath the
+	// header (see TestComparisonBarNamesBothRuns), so the header's job here
+	// is only to name which pane is focused.
 	m.historyPane = historyPaneChanges
-	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Changes  ·  target #42") {
+	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Changes") {
 		t.Fatalf("changes header does not name the pane: %q", got)
 	}
 	m.historyPane = historyPaneTrends

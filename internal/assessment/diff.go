@@ -35,6 +35,10 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 	d := Diff{SchemaVersion: 1, Base: base, Target: target}
 	baseByVC := make(map[string][]storedVM)
 	targetByVC := make(map[string][]storedVM)
+	// vcNames resolves a VCenterID back to the context name an operator
+	// configured. Both sides feed it so a vCenter present in only one run
+	// still resolves by name rather than falling back to its raw ID.
+	vcNames := make(map[string]string)
 	for id, c := range bc {
 		if c.VCenterID != "" && successful(c.VMStatus) {
 			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], bv[id]...)
@@ -42,6 +46,9 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
 			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: c.Name, Message: msg})
+		}
+		if c.VCenterID != "" && c.Name != "" {
+			vcNames[c.VCenterID] = c.Name
 		}
 	}
 	for id, c := range tc {
@@ -51,6 +58,9 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
 			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: c.Name, Message: msg})
+		}
+		if c.VCenterID != "" && c.Name != "" {
+			vcNames[c.VCenterID] = c.Name
 		}
 	}
 	var allBase, allTarget []storedVM
@@ -65,16 +75,18 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 	d.Snapshots = append(d.Snapshots, snapshots...)
 	for vc := range baseByVC {
 		if _, ok := targetByVC[vc]; !ok {
-			msg := "vCenter " + vc + " is not comparable: it was not successfully collected in target"
+			name := vcLabel(vcNames, vc)
+			msg := "vCenter " + name + " is not comparable: it was not successfully collected in target"
 			d.Warnings = append(d.Warnings, msg)
-			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: vc, Message: msg})
+			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: name, Message: msg})
 		}
 	}
 	for vc := range targetByVC {
 		if _, ok := baseByVC[vc]; !ok {
-			msg := "vCenter " + vc + " is not comparable: it was not successfully collected in baseline"
+			name := vcLabel(vcNames, vc)
+			msg := "vCenter " + name + " is not comparable: it was not successfully collected in baseline"
 			d.Warnings = append(d.Warnings, msg)
-			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: vc, Message: msg})
+			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: name, Message: msg})
 		}
 	}
 	d.Counts = countChanges(d.VMs, d.Snapshots)
@@ -90,6 +102,16 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 		return Diff{}, err
 	}
 	return d, nil
+}
+
+// vcLabel resolves a VCenterID to the context name an operator recognizes,
+// falling back to the raw ID only when neither run's context rows named it
+// (a v1/v2 ledger row predating the column, in practice).
+func vcLabel(names map[string]string, vc string) string {
+	if name, ok := names[vc]; ok {
+		return name
+	}
+	return vc
 }
 
 func successful(s string) bool { return s == "success" || s == "empty" }

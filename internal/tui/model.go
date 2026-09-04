@@ -69,6 +69,13 @@ const (
 	modeHistoryRuns
 	modeHistoryTimeline
 	modeHistoryTimelineDetail
+	modeHistoryRunEdit
+)
+
+const (
+	historyPaneChanges = iota
+	historyPaneTrends
+	historyPaneRuns
 )
 
 // searchState is one estate-wide search: every kind, every vCenter, matched
@@ -424,24 +431,31 @@ type Model struct {
 	returnTo mode
 	// search holds the last estate-wide result set, and searchDirty marks it
 	// stale after an inventory arrives or the context list changes.
-	search         *searchState
-	searchDirty    bool
-	assessment     *assessment.Service
-	runs           []assessment.Run
-	changeDiff     *assessment.Diff
-	historyErr     error
-	changeCursor   int
-	changeOffset   int
-	runCursor      int
-	capturing      bool
-	baseRun        int64
-	targetRun      int64
-	pickerRole     string
-	timeline       []assessment.VMHistoryEvent
-	timelineCursor int
-	timelineOffset int
-	timelineAll    bool
-	timelineQuery  string
+	search           *searchState
+	searchDirty      bool
+	assessment       *assessment.Service
+	runs             []assessment.Run
+	changeDiff       *assessment.Diff
+	historyErr       error
+	changeCursor     int
+	changeOffset     int
+	runCursor        int
+	capturing        bool
+	baseRun          int64
+	targetRun        int64
+	pickerRole       string
+	historyPane      int
+	historyChurn     *assessment.ChurnTrend
+	historySnapshots *assessment.SnapshotTrend
+	historyCapacity  *assessment.CapacityTrend
+	runEditInput     textinput.Model
+	runEditKind      string
+	runEditRunID     int64
+	timeline         []assessment.VMHistoryEvent
+	timelineCursor   int
+	timelineOffset   int
+	timelineAll      bool
+	timelineQuery    string
 	// detailFrom is the screen the detail pane was opened from, so esc goes
 	// back to the search results rather than always to the table.
 	detailFrom mode
@@ -488,19 +502,20 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		sm = sortByStatus
 	}
 	m := &Model{
-		ctx:      ctx,
-		backend:  backend,
-		limiter:  limiter.New(maxConcurrentLoads),
-		keys:     defaultKeys(),
-		theme:    newTheme(),
-		spin:     spinner.New(spinner.WithSpinner(spinner.Dot)),
-		filter:   newFilterInput(),
-		byName:   make(map[string]*contextState, len(contexts)),
-		kind:     kind,
-		sortMode: sm,
-		allScope: opts.AllContexts,
-		width:    100,
-		height:   30,
+		ctx:          ctx,
+		backend:      backend,
+		limiter:      limiter.New(maxConcurrentLoads),
+		keys:         defaultKeys(),
+		theme:        newTheme(),
+		spin:         spinner.New(spinner.WithSpinner(spinner.Dot)),
+		filter:       newFilterInput(),
+		runEditInput: newRunEditInput(),
+		byName:       make(map[string]*contextState, len(contexts)),
+		kind:         kind,
+		sortMode:     sm,
+		allScope:     opts.AllContexts,
+		width:        100,
+		height:       30,
 
 		refreshInterval: refreshInterval(opts.RefreshInterval),
 		credCoord:       opts.Credentials,
@@ -1051,6 +1066,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.changeDiff, m.historyErr = msg.diff, msg.err
 		m.changeCursor, m.changeOffset = 0, 0
 		return m, nil
+	case historyTrendsMsg:
+		m.historyErr = msg.err
+		if msg.err == nil {
+			m.historyChurn = &msg.churn
+			m.historySnapshots = &msg.snapshots
+			m.historyCapacity = &msg.capacity
+		}
+		return m, nil
+	case historyRunUpdatedMsg:
+		if msg.err != nil {
+			m.historyErr = msg.err
+			return m, nil
+		}
+		for i := range m.runs {
+			if m.runs[i].ID == msg.run.ID {
+				m.runs[i] = msg.run
+				break
+			}
+		}
+		m.runEditInput.Blur()
+		m.mode = modeChanges
+		m.runEditKind, m.runEditRunID = "", 0
+		m.setMessage(fmt.Sprintf("assessment %d metadata updated", msg.run.ID), false)
+		return m, nil
 	case historyCaptureMsg:
 		m.capturing = false
 		if msg.err != nil {
@@ -1058,7 +1097,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setMessage(fmt.Sprintf("assessment %d saved (%s)", msg.run.ID, msg.run.Status), msg.run.Status == assessment.RunPartial)
-		return m, loadHistoryRunsCmd(m.ctx, m.assessment)
+		return m, tea.Batch(loadHistoryRunsCmd(m.ctx, m.assessment), loadHistoryTrendsCmd(m.ctx, m.assessment))
 	case historyTimelineMsg:
 		m.timeline, m.historyErr = msg.events, msg.err
 		m.timelineCursor, m.timelineOffset = 0, 0
@@ -1446,6 +1485,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.mode == modeConfirmDelete {
 		return m.handleConfirmDeleteKey(msg)
 	}
+	if m.mode == modeHistoryRunEdit {
+		return m.handleHistoryRunEditKey(msg)
+	}
 	if key.Matches(msg, m.keys.Quit) {
 		m.quitting = true
 		return tea.Quit
@@ -1477,6 +1519,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case modeHistoryRuns:
 		return m.handleHistoryRunsKey(msg)
+	case modeHistoryRunEdit:
+		return m.handleHistoryRunEditKey(msg)
 	case modeHistoryTimeline:
 		return m.handleHistoryTimelineKey(msg)
 	case modeHistoryTimelineDetail:
@@ -1974,6 +2018,16 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 	switch {
 	case key.Matches(msg, m.keys.Back):
 		m.mode = m.detailFrom
+	case key.Matches(msg, m.keys.Timeline):
+		row, ok := m.currentRow()
+		if !ok || row.kind != vsphere.KindVM || m.assessment == nil {
+			return nil
+		}
+		m.timelineQuery = row.name
+		m.timelineAll, m.timelineCursor, m.timelineOffset = false, 0, 0
+		m.historyErr = nil
+		m.mode = modeHistoryTimeline
+		return loadHistoryTimelineCmd(m.ctx, m.assessment, row.name, false, false)
 	case key.Matches(msg, m.keys.Up):
 		if m.detailY > 0 {
 			m.detailY--

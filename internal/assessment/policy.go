@@ -2,6 +2,7 @@ package assessment
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -49,6 +50,11 @@ func EvaluatePolicy(d Diff, opts PolicyOptions) PolicyResult {
 			if n := snapshotCount(d, "changed"); n > 0 {
 				add(rule, fmt.Sprintf("%d snapshot(s) changed", n))
 			}
+		case "host-appeared", "host-vanished", "host-modified", "cluster-appeared", "cluster-vanished", "cluster-modified", "datastore-appeared", "datastore-vanished", "datastore-modified":
+			parts := strings.SplitN(rule, "-", 2)
+			if n := resourceCount(d, parts[0], parts[1]); n > 0 {
+				add(rule, fmt.Sprintf("%d %s resource(s) %s", n, parts[0], parts[1]))
+			}
 		}
 	}
 	if opts.MaxSnapshotAge > 0 {
@@ -70,6 +76,21 @@ func snapshotCount(d Diff, kind string) int {
 	for _, s := range d.Snapshots {
 		if s.Kind == kind {
 			n++
+		}
+	}
+	return n
+}
+
+func resourceCount(d Diff, resourceKind, changeKind string) int {
+	n := 0
+	for _, r := range d.Resources {
+		if r.Kind != resourceKind {
+			continue
+		}
+		for _, change := range r.Changes {
+			if change == changeKind {
+				n++
+			}
 		}
 	}
 	return n

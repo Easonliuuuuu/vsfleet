@@ -70,6 +70,9 @@ type keyMap struct {
 	// Confirm and ToggleKeep belong to the delete confirmation screen.
 	Confirm    key.Binding
 	ToggleKeep key.Binding
+	EditRun    key.Binding
+	NoteRun    key.Binding
+	PinRun     key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -118,6 +121,9 @@ func defaultKeys() keyMap {
 
 		Confirm:    key.NewBinding(key.WithHelp("y", "delete")),
 		ToggleKeep: key.NewBinding(key.WithHelp("c", "keep password")),
+		EditRun:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit label")),
+		NoteRun:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "edit note")),
+		PinRun:     key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "toggle pin")),
 	}
 }
 
@@ -148,7 +154,7 @@ type helpSection struct {
 func (k keyMap) footerHints(m *Model) []key.Binding {
 	switch m.mode {
 	case modeDetail:
-		return []key.Binding{k.Up, k.Down, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
 	case modeDoctor:
 		return []key.Binding{k.Reload, k.Back, k.Help, k.Quit}
 	case modeHelp:
@@ -162,11 +168,13 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
 	case modeChanges:
-		return []key.Binding{k.Up, k.Down, k.Base, k.Target, k.Capture, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Up, k.Down, k.PrevTab, k.NextTab, k.Base, k.Target, k.Capture, k.Back, k.Help, k.Quit}
 	case modeChangeDetail:
 		return []key.Binding{k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:
-		return []key.Binding{k.Up, k.Down, k.Open, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Up, k.Down, k.Open, k.EditRun, k.NoteRun, k.PinRun, k.Back, k.Help, k.Quit}
+	case modeHistoryRunEdit:
+		return []key.Binding{k.FormActivate, k.Back, k.Help, k.Quit}
 	case modeHistoryTimeline:
 		return []key.Binding{k.Up, k.Down, k.Open, k.TimelineAll, k.Back, k.Help, k.Quit}
 	case modeHistoryTimelineDetail:

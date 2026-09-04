@@ -1,9 +1,10 @@
-// Package assessment stores point-in-time VM observations and explains the
-// changes between two observations. It is deliberately independent of the
+// Package assessment stores point-in-time inventory observations and explains
+// the changes between two observations. It is deliberately independent of the
 // live TUI cache: a historical record is immutable evidence, not stale UI.
 package assessment
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -31,18 +32,54 @@ type Run struct {
 	Status                 RunStatus `json:"status"`
 	RequestedContexts      int       `json:"requested_contexts"`
 	SuccessfulContexts     int       `json:"successful_contexts"`
+	RequestedCollections   int       `json:"requested_collections,omitempty"`
+	SuccessfulCollections  int       `json:"successful_collections,omitempty"`
 }
 
 type ContextRun struct {
-	RunID      int64     `json:"run_id"`
-	Name       string    `json:"context"`
-	Endpoint   string    `json:"endpoint"`
-	Datacenter string    `json:"datacenter,omitempty"`
-	VCenterID  string    `json:"vcenter_id,omitempty"`
+	RunID       int64           `json:"run_id"`
+	Name        string          `json:"context"`
+	Endpoint    string          `json:"endpoint"`
+	Datacenter  string          `json:"datacenter,omitempty"`
+	VCenterID   string          `json:"vcenter_id,omitempty"`
+	StartedAt   time.Time       `json:"started_at"`
+	FinishedAt  time.Time       `json:"finished_at,omitempty"`
+	VMStatus    string          `json:"vm_status"`
+	Error       string          `json:"error,omitempty"`
+	Collections []CollectionRun `json:"collections,omitempty"`
+}
+
+// CollectionRun records the result of one resource-group collection inside a
+// context. Keeping this separate from ContextRun lets a run remain useful when
+// an account can read VMs but not hosts, clusters, or datastores.
+type CollectionRun struct {
+	Kind       string    `json:"kind"`
 	StartedAt  time.Time `json:"started_at"`
 	FinishedAt time.Time `json:"finished_at,omitempty"`
-	VMStatus   string    `json:"vm_status"`
+	Status     string    `json:"status"`
 	Error      string    `json:"error,omitempty"`
+	ItemCount  int       `json:"item_count"`
+}
+
+// ResourceObservation is the durable, versioned representation used for
+// hosts, clusters, and datastores. Payload contains the original typed object
+// so new fields can be added without another ledger migration; the indexed
+// identity columns keep diffs and trend queries inexpensive.
+type ResourceObservation struct {
+	VCenterID string          `json:"vcenter_id"`
+	Context   string          `json:"context"`
+	Kind      string          `json:"kind"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Payload   json.RawMessage `json:"payload"`
+	// Indexed metric projections are kept out of the JSON envelope; Payload
+	// remains the lossless source for fields that are not yet projected.
+	CPUCapacity     *float64 `json:"-"`
+	CPUUsed         *float64 `json:"-"`
+	MemoryCapacity  *float64 `json:"-"`
+	MemoryUsed      *float64 `json:"-"`
+	StorageCapacity *float64 `json:"-"`
+	StorageFree     *float64 `json:"-"`
 }
 
 type Observation struct {
@@ -89,15 +126,29 @@ type SnapshotAge struct {
 }
 
 type Diff struct {
-	Base         Run              `json:"base"`
-	Target       Run              `json:"target"`
-	VMs          []VMChange       `json:"vms,omitempty"`
-	Snapshots    []SnapshotChange `json:"snapshots,omitempty"`
-	SnapshotAges []SnapshotAge    `json:"snapshot_ages,omitempty"`
-	Warnings     []string         `json:"warnings,omitempty"`
-	Coverage     []CoverageIssue  `json:"coverage,omitempty"`
-	Policy       *PolicyResult    `json:"policy,omitempty"`
-	Counts       DiffCounts       `json:"counts"`
+	SchemaVersion int              `json:"schema_version"`
+	Base          Run              `json:"base"`
+	Target        Run              `json:"target"`
+	VMs           []VMChange       `json:"vms,omitempty"`
+	Resources     []ResourceChange `json:"resources,omitempty"`
+	Snapshots     []SnapshotChange `json:"snapshots,omitempty"`
+	SnapshotAges  []SnapshotAge    `json:"snapshot_ages,omitempty"`
+	Warnings      []string         `json:"warnings,omitempty"`
+	Coverage      []CoverageIssue  `json:"coverage,omitempty"`
+	Policy        *PolicyResult    `json:"policy,omitempty"`
+	Counts        DiffCounts       `json:"counts"`
+}
+
+type ResourceChange struct {
+	Kind       string               `json:"kind"`
+	Changes    []string             `json:"changes,omitempty"`
+	ID         string               `json:"id"`
+	Name       string               `json:"name"`
+	Context    string               `json:"context"`
+	MatchBasis string               `json:"match_basis,omitempty"`
+	Fields     []FieldChange        `json:"fields,omitempty"`
+	Before     *ResourceObservation `json:"before,omitempty"`
+	After      *ResourceObservation `json:"after,omitempty"`
 }
 
 type DiffCounts struct {
@@ -106,13 +157,30 @@ type DiffCounts struct {
 	Moved     int `json:"moved"`
 	Modified  int `json:"modified"`
 	Snapshots int `json:"snapshots"`
+	Resources int `json:"resources"`
 }
 
 type ContextProgress struct {
-	Context string
-	Status  string
-	VMs     int
-	Error   error
+	Context     string
+	Status      string
+	VMs         int
+	Collections []CollectionProgress
+	Error       error
+}
+
+type CollectionProgress struct {
+	Kind      string
+	Status    string
+	ItemCount int
+	Error     error
+}
+
+type CollectionResult struct {
+	Kind      string
+	Status    string
+	Error     string
+	ItemCount int
+	Resources []ResourceObservation
 }
 
 type VMHistoryEntry struct {
@@ -127,6 +195,7 @@ type VMHistoryEntry struct {
 type CaptureLease struct {
 	Token     string
 	RunID     int64
+	Operation string
 	ExpiresAt time.Time
 }
 

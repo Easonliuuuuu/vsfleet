@@ -84,7 +84,7 @@ func defaultKeys() keyMap {
 		Home:     key.NewBinding(key.WithKeys("home", "g"), key.WithHelp("g", "first")),
 		End:      key.NewBinding(key.WithKeys("end", "G"), key.WithHelp("G", "last")),
 
-		Kind:    key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7"), key.WithHelp("1-6/7", "kind")),
+		Kind:    key.NewBinding(key.WithKeys("1", "2", "3", "4", "5", "6", "7"), key.WithHelp("1-7", "kind")),
 		NextTab: key.NewBinding(key.WithKeys("right", "l", "]"), key.WithHelp("→/l", "next kind")),
 		PrevTab: key.NewBinding(key.WithKeys("left", "h", "["), key.WithHelp("←/h", "prev kind")),
 
@@ -99,7 +99,7 @@ func defaultKeys() keyMap {
 		Reload:      key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
 		ReloadAll:   key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "reload all")),
 		Doctor:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "diagnose")),
-		History:     key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "changes")),
+		History:     key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "history")),
 		Capture:     key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "capture")),
 		Base:        key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "baseline")),
 		Target:      key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "target")),
@@ -180,6 +180,9 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeHistoryTimelineDetail:
 		return []key.Binding{k.Back, k.Help, k.Quit}
 	default:
-		return []key.Binding{k.Kind, k.Contexts, k.AllScopeBrief, k.Filter, k.Open, k.Reload, k.Help, k.Quit}
+		// History comes before lower-priority browse hints so it remains
+		// discoverable even when a narrow terminal truncates the footer. Enter
+		// opening the selected row is conventional and remains in the help view.
+		return []key.Binding{k.Kind, k.History, k.Contexts, k.AllScopeBrief, k.Filter, k.Reload, k.Help, k.Quit}
 	}
 }

@@ -1658,10 +1658,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	case modeChanges:
 		return m.handleChangesKey(msg)
 	case modeChangeDetail:
-		if key.Matches(msg, m.keys.Back) {
-			m.mode = modeChanges
-		}
-		return nil
+		return m.handleChangeDetailKey(msg)
 	case modeHistoryRuns:
 		return m.handleHistoryRunsKey(msg)
 	case modeHistoryRunEdit:

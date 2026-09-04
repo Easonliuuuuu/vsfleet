@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.2](https://github.com/Easonliuuuuu/vsfleet/compare/v0.3.1...v0.3.2) (2026-09-04)
+
+
+### Bug Fixes
+
+* **tui:** keep vApps and history discoverable ([ee1bda7](https://github.com/Easonliuuuuu/vsfleet/commit/ee1bda7b09608fce895cf579be29c5b4aad01d87))
+* **tui:** show loading pane before startup credential prompt ([07560c3](https://github.com/Easonliuuuuu/vsfleet/commit/07560c38f81b931e101f0946d1e687562caf82d2))
+* **tui:** stop unsolicited cross-context password prompts ([5c784d4](https://github.com/Easonliuuuuu/vsfleet/commit/5c784d4c3b069ca67e064697d5d57bb243838f81))
+
 ## [0.3.1](https://github.com/Easonliuuuuu/vsfleet/compare/v0.3.0...v0.3.1) (2026-09-04)
 
 

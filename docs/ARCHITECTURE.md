@@ -127,11 +127,18 @@ destructive ledger maintenance stays explicit on the CLI.
 
 The `assessment export` command reads a selected finished run through one
 SQLite read transaction and passes it to the `internal/report` writer. It never
-loads configuration or credentials and never creates a session. The RVTools
-writer emits fixed, coverage-aware sheets (including per-VM disk and network
-inventory) with canonical ordering and
-normalizes XLSX ZIP entry order and timestamps, so two exports of unchanged
-stored evidence are byte-identical.
+loads configuration or credentials and never creates a session. Inventory
+schema version 3 (distinct from the ledger's own schema version above) adds
+the VMware Tools version and version status to VM payloads, backing the
+`vTools` tab; older rows still populate its running-status column, with the
+version columns left blank and the gap noted on `vsfleetCoverage`. A shared
+`rvtoolsSheets` builder canonicalizes and validates the run once and returns
+every RVTools tab (`vInfo`, `vCPU`, `vMemory`, per-VM `vDisk`/`vNetwork`,
+`vTools`, `vHost`, `vCluster`, `vDatastore`, `vSnapshot`, `vsfleetCoverage`) in
+tab order; the XLSX writer normalizes ZIP entry order and timestamps on top of
+it, and the CSV writer renders the same tabs as one file per sheet, so both
+formats are byte-identical across repeated exports of unchanged stored
+evidence and agree with each other on content.
 
 ---
 

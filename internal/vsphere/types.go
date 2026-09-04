@@ -63,27 +63,29 @@ type Location struct {
 // template views filter on IsTemplate rather than using a parallel type.
 type VM struct {
 	Location
-	ID           string       `json:"id"`
-	InstanceUUID string       `json:"instance_uuid,omitempty"`
-	BIOSUUID     string       `json:"bios_uuid,omitempty"`
-	Name         string       `json:"name"`
-	PowerState   string       `json:"power_state"`
-	IsTemplate   bool         `json:"is_template"`
-	CPU          int32        `json:"cpu"`
-	MemoryMB     int64        `json:"memory_mb"`
-	GuestOS      string       `json:"guest_os"`
-	GuestState   string       `json:"guest_state"`
-	ToolsState   string       `json:"tools_state"`
-	IPAddress    string       `json:"ip_address"`
-	Host         string       `json:"host"`
-	Cluster      string       `json:"cluster"`
-	Folder       string       `json:"folder"`
-	Datastores   []string     `json:"datastores"`
-	StorageGB    float64      `json:"storage_gb"`
-	Annotation   string       `json:"annotation"`
-	Disks        []VMDisk     `json:"disks,omitempty"`
-	NICs         []VMNIC      `json:"nics,omitempty"`
-	Snapshots    []VMSnapshot `json:"snapshots,omitempty"`
+	ID                 string       `json:"id"`
+	InstanceUUID       string       `json:"instance_uuid,omitempty"`
+	BIOSUUID           string       `json:"bios_uuid,omitempty"`
+	Name               string       `json:"name"`
+	PowerState         string       `json:"power_state"`
+	IsTemplate         bool         `json:"is_template"`
+	CPU                int32        `json:"cpu"`
+	MemoryMB           int64        `json:"memory_mb"`
+	GuestOS            string       `json:"guest_os"`
+	GuestState         string       `json:"guest_state"`
+	ToolsState         string       `json:"tools_state"`
+	ToolsVersion       string       `json:"tools_version,omitempty"`
+	ToolsVersionStatus string       `json:"tools_version_status,omitempty"`
+	IPAddress          string       `json:"ip_address"`
+	Host               string       `json:"host"`
+	Cluster            string       `json:"cluster"`
+	Folder             string       `json:"folder"`
+	Datastores         []string     `json:"datastores"`
+	StorageGB          float64      `json:"storage_gb"`
+	Annotation         string       `json:"annotation"`
+	Disks              []VMDisk     `json:"disks,omitempty"`
+	NICs               []VMNIC      `json:"nics,omitempty"`
+	Snapshots          []VMSnapshot `json:"snapshots,omitempty"`
 }
 
 // VMDisk is one virtual disk from a VM's hardware configuration. Optional

@@ -37,22 +37,36 @@ func newAssessmentCommand(a *App) *cobra.Command {
 	return cmd
 }
 
-type exportReceipt struct {
-	RunID  int64  `json:"run_id"`
-	Path   string `json:"path"`
+type exportFile struct {
+	Name   string `json:"name"`
 	Bytes  int64  `json:"bytes"`
 	SHA256 string `json:"sha256"`
+}
+
+type exportReceipt struct {
+	RunID  int64        `json:"run_id"`
+	Path   string       `json:"path"`
+	Bytes  int64        `json:"bytes,omitempty"`
+	SHA256 string       `json:"sha256,omitempty"`
+	Files  []exportFile `json:"files,omitempty"`
 }
 
 func newAssessmentExportCommand(a *App) *cobra.Command {
 	var format, file string
 	var force bool
-	cmd := &cobra.Command{Use: "export [RUN]", Short: "Export a stored assessment as RVTools XLSX", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if strings.ToLower(strings.TrimSpace(format)) != "rvtools" {
-			return fmt.Errorf("unsupported export format %q (supported: rvtools)", format)
-		}
-		if filepath.Ext(file) != ".xlsx" {
-			return fmt.Errorf("--file must have a .xlsx extension")
+	cmd := &cobra.Command{Use: "export [RUN]", Short: "Export a stored assessment as RVTools XLSX or CSV", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		format = strings.ToLower(strings.TrimSpace(format))
+		switch format {
+		case "rvtools":
+			if filepath.Ext(file) != ".xlsx" {
+				return fmt.Errorf("--file must have a .xlsx extension")
+			}
+		case "csv":
+			if filepath.Ext(file) == ".xlsx" {
+				return fmt.Errorf("--file must be a directory for --format csv, not a .xlsx path")
+			}
+		default:
+			return fmt.Errorf("unsupported export format %q (supported: rvtools, csv)", format)
 		}
 		selector := "latest"
 		if len(args) == 1 {
@@ -73,64 +87,148 @@ func newAssessmentExportCommand(a *App) *cobra.Command {
 		for _, warning := range exportWarnings(data) {
 			fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, warning)
 		}
-		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
-			return fmt.Errorf("create export directory: %w", err)
-		}
-		if _, err := os.Stat(file); err == nil && !force {
-			return fmt.Errorf("export file %q already exists; pass --force to replace it", file)
-		} else if err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("check export file: %w", err)
-		}
-		tmp, err := os.CreateTemp(filepath.Dir(file), ".vsfleet-export-*.xlsx")
-		if err != nil {
-			return fmt.Errorf("create temporary export: %w", err)
-		}
-		tmpName := tmp.Name()
-		defer os.Remove(tmpName)
-		if err := tmp.Chmod(0o600); err != nil {
-			_ = tmp.Close()
-			return err
-		}
-		if err := report.WriteRVTools(tmp, data); err != nil {
-			_ = tmp.Close()
-			return fmt.Errorf("write RVTools export: %w", err)
-		}
-		if err := tmp.Close(); err != nil {
-			return fmt.Errorf("close temporary export: %w", err)
-		}
-		info, err := os.Stat(tmpName)
-		if err != nil {
-			return err
-		}
-		hash, err := fileSHA256(tmpName)
-		if err != nil {
-			return err
-		}
-		if force {
-			if err := os.Rename(tmpName, file); err != nil {
-				return fmt.Errorf("publish export: %w", err)
-			}
+		var receipt exportReceipt
+		if format == "csv" {
+			receipt, err = publishRVToolsCSV(data, file, force)
 		} else {
-			if err := os.Link(tmpName, file); err != nil {
-				if os.IsExist(err) {
-					return fmt.Errorf("export file %q already exists; pass --force to replace it", file)
-				}
-				return fmt.Errorf("publish export: %w", err)
-			}
-			_ = os.Remove(tmpName)
+			receipt, err = publishRVToolsXLSX(data, file, force)
 		}
-		receipt := exportReceipt{RunID: data.Run.ID, Path: file, Bytes: info.Size(), SHA256: hash}
+		if err != nil {
+			return err
+		}
 		if a.json() {
 			return writeJSON(a.out(), receipt)
 		}
-		fmt.Fprintf(a.out(), "assessment %d exported to %s (%d bytes, sha256 %s)\n", receipt.RunID, receipt.Path, receipt.Bytes, receipt.SHA256)
+		if format == "csv" {
+			fmt.Fprintf(a.out(), "assessment %d exported to %s (%d files)\n", receipt.RunID, receipt.Path, len(receipt.Files))
+			for _, f := range receipt.Files {
+				fmt.Fprintf(a.out(), "  %s (%d bytes, sha256 %s)\n", f.Name, f.Bytes, f.SHA256)
+			}
+		} else {
+			fmt.Fprintf(a.out(), "assessment %d exported to %s (%d bytes, sha256 %s)\n", receipt.RunID, receipt.Path, receipt.Bytes, receipt.SHA256)
+		}
 		return nil
 	}}
-	cmd.Flags().StringVar(&format, "format", "rvtools", "export format: rvtools")
-	cmd.Flags().StringVar(&file, "file", "", "destination .xlsx file")
+	cmd.Flags().StringVar(&format, "format", "rvtools", "export format: rvtools (XLSX) or csv (one file per RVTools tab)")
+	cmd.Flags().StringVar(&file, "file", "", "destination: a .xlsx file for --format rvtools, a directory for --format csv")
 	cmd.Flags().BoolVar(&force, "force", false, "replace an existing export")
 	_ = cmd.MarkFlagRequired("file")
 	return cmd
+}
+
+// publishRVToolsXLSX renders data as one RVTools workbook at file: written to
+// a sibling temp file first, then published atomically (a rename with
+// --force, otherwise a no-clobber hard link) so a failed export never leaves
+// a half-written workbook.
+func publishRVToolsXLSX(data assessment.ExportData, file string, force bool) (exportReceipt, error) {
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		return exportReceipt{}, fmt.Errorf("create export directory: %w", err)
+	}
+	if _, err := os.Stat(file); err == nil && !force {
+		return exportReceipt{}, fmt.Errorf("export file %q already exists; pass --force to replace it", file)
+	} else if err != nil && !os.IsNotExist(err) {
+		return exportReceipt{}, fmt.Errorf("check export file: %w", err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(file), ".vsfleet-export-*.xlsx")
+	if err != nil {
+		return exportReceipt{}, fmt.Errorf("create temporary export: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return exportReceipt{}, err
+	}
+	if err := report.WriteRVTools(tmp, data); err != nil {
+		_ = tmp.Close()
+		return exportReceipt{}, fmt.Errorf("write RVTools export: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return exportReceipt{}, fmt.Errorf("close temporary export: %w", err)
+	}
+	info, err := os.Stat(tmpName)
+	if err != nil {
+		return exportReceipt{}, err
+	}
+	hash, err := fileSHA256(tmpName)
+	if err != nil {
+		return exportReceipt{}, err
+	}
+	if err := publishExportFile(tmpName, file, force); err != nil {
+		return exportReceipt{}, err
+	}
+	return exportReceipt{RunID: data.Run.ID, Path: file, Bytes: info.Size(), SHA256: hash}, nil
+}
+
+// publishRVToolsCSV renders data as one CSV file per RVTools tab under dir.
+// Rendering happens entirely in memory before any file is touched, so a data
+// error leaves the destination untouched; each tab is then published with
+// the same atomic-publish, no-clobber-without-force behavior as the XLSX
+// writer.
+func publishRVToolsCSV(data assessment.ExportData, dir string, force bool) (exportReceipt, error) {
+	files, err := report.RVToolsCSV(data)
+	if err != nil {
+		return exportReceipt{}, fmt.Errorf("render CSV export: %w", err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return exportReceipt{}, fmt.Errorf("create export directory: %w", err)
+	}
+	if !force {
+		for _, file := range files {
+			dest := filepath.Join(dir, file.Name)
+			if _, err := os.Stat(dest); err == nil {
+				return exportReceipt{}, fmt.Errorf("export file %q already exists; pass --force to replace it", dest)
+			} else if !os.IsNotExist(err) {
+				return exportReceipt{}, fmt.Errorf("check export file: %w", err)
+			}
+		}
+	}
+	receipt := exportReceipt{RunID: data.Run.ID, Path: dir}
+	for _, file := range files {
+		dest := filepath.Join(dir, file.Name)
+		tmp, err := os.CreateTemp(dir, ".vsfleet-export-*.csv")
+		if err != nil {
+			return exportReceipt{}, fmt.Errorf("create temporary export: %w", err)
+		}
+		tmpName := tmp.Name()
+		if err := tmp.Chmod(0o600); err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmpName)
+			return exportReceipt{}, err
+		}
+		if _, err := tmp.Write(file.Data); err != nil {
+			_ = tmp.Close()
+			_ = os.Remove(tmpName)
+			return exportReceipt{}, fmt.Errorf("write %s: %w", file.Name, err)
+		}
+		if err := tmp.Close(); err != nil {
+			_ = os.Remove(tmpName)
+			return exportReceipt{}, fmt.Errorf("close temporary export: %w", err)
+		}
+		if err := publishExportFile(tmpName, dest, force); err != nil {
+			return exportReceipt{}, err
+		}
+		receipt.Files = append(receipt.Files, exportFile{Name: file.Name, Bytes: int64(len(file.Data)), SHA256: fmt.Sprintf("%x", sha256.Sum256(file.Data))})
+	}
+	return receipt, nil
+}
+
+// publishExportFile atomically moves tmpName to dest: a rename when force
+// replaces an existing export, or a no-clobber hard link otherwise.
+func publishExportFile(tmpName, dest string, force bool) error {
+	if force {
+		if err := os.Rename(tmpName, dest); err != nil {
+			return fmt.Errorf("publish export: %w", err)
+		}
+		return nil
+	}
+	if err := os.Link(tmpName, dest); err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("export file %q already exists; pass --force to replace it", dest)
+		}
+		return fmt.Errorf("publish export: %w", err)
+	}
+	return os.Remove(tmpName)
 }
 
 func fileSHA256(path string) (string, error) {

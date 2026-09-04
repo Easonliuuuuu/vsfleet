@@ -224,6 +224,7 @@ vsfleet assessment trends churn
 vsfleet assessment trends snapshots --older-than 30d
 vsfleet assessment trends capacity --kind all
 vsfleet assessment report latest
+vsfleet assessment export latest --format rvtools --file ./estate.xlsx
 vsfleet assessment doctor
 vsfleet assessment prune --older-than 90d       # dry-run
 vsfleet assessment backup ./history-backup.db
@@ -238,6 +239,13 @@ exit code `2` for a requested drift-policy violation (`1` remains an execution
 or selector error), which makes it suitable for cron, CI, or systemd timers.
 Use `--history-db <path>` or `VSFLEET_HISTORY_DB` to choose the database
 location.
+
+`assessment export` is an offline writer: it reads the selected persisted run
+and does not contact vCenter or open a live session. The `rvtools` format is an
+XLSX workbook containing `vInfo`, `vHost`, `vCluster`, `vDatastore`,
+`vSnapshot`, and the `vsfleetCoverage` provenance sheet. The destination is
+required and existing files need `--force`; exporting the same run twice
+produces byte-identical output.
 
 The policy flags are intentionally command-line only so a scheduled job is
 auditable from its invocation:
@@ -278,6 +286,7 @@ an automatic pre-restore safety copy before replacing the active database.
 | `vsfleet assessment snapshots` | Report snapshot age and first/last observation |
 | `vsfleet assessment trends ...` | Trend VM churn, snapshot age, and capacity over complete runs |
 | `vsfleet assessment report [run]` | Summarize one run's coverage, counts, and capacity |
+| `vsfleet assessment export [run] --format rvtools --file FILE` | Export a persisted run as deterministic RVTools-compatible XLSX |
 | `vsfleet assessment prune` | Dry-run or execute retention cleanup |
 | `vsfleet assessment backup FILE` | Create a consistent SQLite backup |
 | `vsfleet assessment restore FILE` | Validate and restore a backup in place |

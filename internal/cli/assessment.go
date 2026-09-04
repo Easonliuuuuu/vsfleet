@@ -2,7 +2,11 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/report"
 	"github.com/easonliuuuuu/vsfleet/internal/version"
 )
 
@@ -28,8 +33,149 @@ func (e *doctorExitError) ExitCode() int { return 1 }
 
 func newAssessmentCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare historical assessments"}
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
+	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
 	return cmd
+}
+
+type exportReceipt struct {
+	RunID  int64  `json:"run_id"`
+	Path   string `json:"path"`
+	Bytes  int64  `json:"bytes"`
+	SHA256 string `json:"sha256"`
+}
+
+func newAssessmentExportCommand(a *App) *cobra.Command {
+	var format, file string
+	var force bool
+	cmd := &cobra.Command{Use: "export [RUN]", Short: "Export a stored assessment as RVTools XLSX", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if strings.ToLower(strings.TrimSpace(format)) != "rvtools" {
+			return fmt.Errorf("unsupported export format %q (supported: rvtools)", format)
+		}
+		if filepath.Ext(file) != ".xlsx" {
+			return fmt.Errorf("--file must have a .xlsx extension")
+		}
+		selector := "latest"
+		if len(args) == 1 {
+			selector = args[0]
+		}
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		runID, err := s.ResolveRun(cmd.Context(), selector)
+		if err != nil {
+			return err
+		}
+		data, err := s.LoadExportData(cmd.Context(), runID)
+		if err != nil {
+			return err
+		}
+		for _, warning := range exportWarnings(data) {
+			fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, warning)
+		}
+		if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+			return fmt.Errorf("create export directory: %w", err)
+		}
+		if _, err := os.Stat(file); err == nil && !force {
+			return fmt.Errorf("export file %q already exists; pass --force to replace it", file)
+		} else if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("check export file: %w", err)
+		}
+		tmp, err := os.CreateTemp(filepath.Dir(file), ".vsfleet-export-*.xlsx")
+		if err != nil {
+			return fmt.Errorf("create temporary export: %w", err)
+		}
+		tmpName := tmp.Name()
+		defer os.Remove(tmpName)
+		if err := tmp.Chmod(0o600); err != nil {
+			_ = tmp.Close()
+			return err
+		}
+		if err := report.WriteRVTools(tmp, data); err != nil {
+			_ = tmp.Close()
+			return fmt.Errorf("write RVTools export: %w", err)
+		}
+		if err := tmp.Close(); err != nil {
+			return fmt.Errorf("close temporary export: %w", err)
+		}
+		info, err := os.Stat(tmpName)
+		if err != nil {
+			return err
+		}
+		hash, err := fileSHA256(tmpName)
+		if err != nil {
+			return err
+		}
+		if force {
+			if err := os.Rename(tmpName, file); err != nil {
+				return fmt.Errorf("publish export: %w", err)
+			}
+		} else {
+			if err := os.Link(tmpName, file); err != nil {
+				if os.IsExist(err) {
+					return fmt.Errorf("export file %q already exists; pass --force to replace it", file)
+				}
+				return fmt.Errorf("publish export: %w", err)
+			}
+			_ = os.Remove(tmpName)
+		}
+		receipt := exportReceipt{RunID: data.Run.ID, Path: file, Bytes: info.Size(), SHA256: hash}
+		if a.json() {
+			return writeJSON(a.out(), receipt)
+		}
+		fmt.Fprintf(a.out(), "assessment %d exported to %s (%d bytes, sha256 %s)\n", receipt.RunID, receipt.Path, receipt.Bytes, receipt.SHA256)
+		return nil
+	}}
+	cmd.Flags().StringVar(&format, "format", "rvtools", "export format: rvtools")
+	cmd.Flags().StringVar(&file, "file", "", "destination .xlsx file")
+	cmd.Flags().BoolVar(&force, "force", false, "replace an existing export")
+	_ = cmd.MarkFlagRequired("file")
+	return cmd
+}
+
+func fileSHA256(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+func exportWarnings(data assessment.ExportData) []string {
+	var warnings []string
+	if data.Run.Status != assessment.RunComplete {
+		warnings = append(warnings, fmt.Sprintf("assessment %d is %s; export coverage may be incomplete", data.Run.ID, data.Run.Status))
+	}
+	for _, c := range data.Contexts {
+		if c.VMStatus != "success" && c.VMStatus != "empty" {
+			warnings = append(warnings, fmt.Sprintf("%s VM collection: %s", c.Name, nonemptyExport(c.Error, c.VMStatus)))
+		}
+		seen := make(map[string]bool)
+		for _, collection := range c.Collections {
+			seen[collection.Kind] = true
+			if collection.Status != "success" && collection.Status != "empty" {
+				warnings = append(warnings, fmt.Sprintf("%s %s collection: %s", c.Name, collection.Kind, nonemptyExport(collection.Error, collection.Status)))
+			}
+		}
+		for _, kind := range []string{"host", "cluster", "datastore"} {
+			if !seen[kind] {
+				warnings = append(warnings, fmt.Sprintf("%s %s collection was not recorded", c.Name, kind))
+			}
+		}
+	}
+	return warnings
+}
+
+func nonemptyExport(value, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return value
+	}
+	return fallback
 }
 
 func newAssessmentTrendsCommand(a *App) *cobra.Command {

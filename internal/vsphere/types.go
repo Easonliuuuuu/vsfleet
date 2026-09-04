@@ -81,7 +81,55 @@ type VM struct {
 	Datastores   []string     `json:"datastores"`
 	StorageGB    float64      `json:"storage_gb"`
 	Annotation   string       `json:"annotation"`
+	Disks        []VMDisk     `json:"disks,omitempty"`
+	NICs         []VMNIC      `json:"nics,omitempty"`
 	Snapshots    []VMSnapshot `json:"snapshots,omitempty"`
+}
+
+// VMDisk is one virtual disk from a VM's hardware configuration. Optional
+// values remain nil when vSphere does not expose them for a backing type.
+type VMDisk struct {
+	Key                  int32  `json:"key"`
+	Label                string `json:"label"`
+	CapacityBytes        int64  `json:"capacity_bytes"`
+	UUID                 string `json:"uuid,omitempty"`
+	BackingType          string `json:"backing_type,omitempty"`
+	BackingPath          string `json:"backing_path,omitempty"`
+	Raw                  bool   `json:"raw"`
+	DiskMode             string `json:"disk_mode,omitempty"`
+	Sharing              string `json:"sharing,omitempty"`
+	ThinProvisioned      *bool  `json:"thin_provisioned,omitempty"`
+	EagerlyScrub         *bool  `json:"eagerly_scrub,omitempty"`
+	Split                *bool  `json:"split,omitempty"`
+	WriteThrough         *bool  `json:"write_through,omitempty"`
+	SharesLevel          string `json:"shares_level,omitempty"`
+	Shares               *int32 `json:"shares,omitempty"`
+	Reservation          *int32 `json:"reservation,omitempty"`
+	Limit                *int64 `json:"limit,omitempty"`
+	Controller           string `json:"controller,omitempty"`
+	ControllerLabel      string `json:"controller_label,omitempty"`
+	UnitNumber           *int32 `json:"unit_number,omitempty"`
+	SharedBus            string `json:"shared_bus,omitempty"`
+	RawLUNID             string `json:"raw_lun_id,omitempty"`
+	RawCompatibilityMode string `json:"raw_compatibility_mode,omitempty"`
+}
+
+// VMNIC is one virtual ethernet adapter and its guest-reported network data.
+// NetworkID is retained for joins when a display name is unavailable.
+type VMNIC struct {
+	Key             int32    `json:"key"`
+	Label           string   `json:"label"`
+	Adapter         string   `json:"adapter,omitempty"`
+	Network         string   `json:"network,omitempty"`
+	NetworkID       string   `json:"network_id,omitempty"`
+	SwitchID        string   `json:"switch_id,omitempty"`
+	MACAddress      string   `json:"mac_address,omitempty"`
+	MACAddressType  string   `json:"mac_address_type,omitempty"`
+	Connected       *bool    `json:"connected,omitempty"`
+	StartsConnected *bool    `json:"starts_connected,omitempty"`
+	DirectPathIO    *bool    `json:"direct_path_io,omitempty"`
+	IPv4            []string `json:"ipv4,omitempty"`
+	IPv6            []string `json:"ipv6,omitempty"`
 }
 
 // VMSnapshot is one read-only entry in a VM snapshot tree.

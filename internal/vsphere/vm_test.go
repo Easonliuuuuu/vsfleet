@@ -4,7 +4,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
+
+	"github.com/easonliuuuuu/vsfleet/internal/config"
 )
 
 func TestWalkDevicesExtractsDisksAndGuestNetworks(t *testing.T) {
@@ -58,7 +61,7 @@ func TestWalkDevicesExtractsDisksAndGuestNetworks(t *testing.T) {
 }
 
 func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
-	for _, property := range []string{"config.hardware.device", "guest.net"} {
+	for _, property := range []string{"config.hardware.device", "guest.net", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
 		found := false
 		for _, candidate := range vmProps {
 			if candidate == property {
@@ -69,5 +72,25 @@ func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
 		if !found {
 			t.Errorf("vmProps does not include %q: %v", property, vmProps)
 		}
+	}
+}
+
+func TestNewVMCopiesToolsVersion(t *testing.T) {
+	m := &mo.VirtualMachine{
+		Guest: &types.GuestInfo{
+			ToolsRunningStatus:  "guestToolsRunning",
+			ToolsVersion:        "12352",
+			ToolsVersionStatus2: "guestToolsCurrent",
+		},
+	}
+	vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, m)
+	if vm.ToolsState != "guestToolsRunning" {
+		t.Errorf("tools state = %q", vm.ToolsState)
+	}
+	if vm.ToolsVersion != "12352" {
+		t.Errorf("tools version = %q", vm.ToolsVersion)
+	}
+	if vm.ToolsVersionStatus != "guestToolsCurrent" {
+		t.Errorf("tools version status = %q", vm.ToolsVersionStatus)
 	}
 }

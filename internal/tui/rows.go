@@ -426,6 +426,7 @@ func vmRow(vm vsphere.VM, withContext bool) row {
 			{"Guest OS", humanize.Dash(vm.GuestOS)},
 			{"Guest state", humanize.Dash(vm.GuestState)},
 			{"VMware Tools", humanize.Dash(vm.ToolsState)},
+			{"Tools version", humanize.Dash(vm.ToolsVersion)},
 			{"IP address", humanize.Dash(vm.IPAddress)},
 			{"CPU", strconv.FormatInt(int64(vm.CPU), 10) + " vCPU"},
 			{"Memory", humanize.MB(vm.MemoryMB)},

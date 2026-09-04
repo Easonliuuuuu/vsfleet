@@ -4,6 +4,7 @@ package report
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,9 +25,17 @@ const (
 )
 
 var (
+	// vmTailHeaders is the identity/location/provenance tail shared by every
+	// per-VM tab: vInfo has its own tail (it also carries the SMBIOS UUID and
+	// omits Folder), but vDisk, vNetwork, vSnapshot, vCPU, vMemory, and vTools
+	// all end in exactly these columns.
+	vmTailHeaders    = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	vmHeaders        = []string{"VM", "Powerstate", "Template", "Guest state", "CPUs", "Memory", "Primary IP Address", "Folder", "In Use MiB", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs"}, vmTailHeaders...)
+	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB"}, vmTailHeaders...)
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "SharedBus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	networkHeaders   = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	toolsHeaders     = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
 	hostHeaders      = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	clusterHeaders   = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -34,12 +43,47 @@ var (
 	coverageHeaders  = []string{"Run ID", "Run label", "Run started", "Run finished", "Run status", "Context", "Endpoint", "Datacenter", "vCenter ID", "Sheet", "Collection status", "Item count", "Error"}
 )
 
-// WriteRVTools writes the seven persisted RVTools-compatible sheets plus the
+// sheet is one rendered RVTools tab: a header row plus its data rows, in the
+// canonical order shared by every export format. dateCols names the column
+// indexes (0-based) that hold a time.Value and should render as dates rather
+// than raw numbers where the format distinguishes the two (XLSX only; CSV
+// renders every value as text).
+type sheet struct {
+	name     string
+	headers  []string
+	rows     [][]any
+	dateCols []int
+}
+
+// rvtoolsSheets canonicalizes and validates the export data, then returns
+// every RVTools tab in tab order. WriteRVTools and RVToolsCSV both build on
+// this so the two formats render identical content on identical terms.
+func rvtoolsSheets(data assessment.ExportData) ([]sheet, error) {
+	data = canonicalData(data)
+	if err := validateResources(data.Resources); err != nil {
+		return nil, err
+	}
+	return []sheet{
+		{name: "vInfo", headers: vmHeaders, rows: vmRows(data)},
+		{name: "vCPU", headers: cpuHeaders, rows: cpuRows(data)},
+		{name: "vMemory", headers: memoryHeaders, rows: memoryRows(data)},
+		{name: "vDisk", headers: diskHeaders, rows: diskRows(data)},
+		{name: "vNetwork", headers: networkHeaders, rows: networkRows(data)},
+		{name: "vTools", headers: toolsHeaders, rows: toolsRows(data)},
+		{name: "vHost", headers: hostHeaders, rows: hostRows(data)},
+		{name: "vCluster", headers: clusterHeaders, rows: clusterRows(data)},
+		{name: "vDatastore", headers: datastoreHeaders, rows: datastoreRows(data)},
+		{name: "vSnapshot", headers: snapshotHeaders, rows: snapshotRows(data), dateCols: []int{4}},
+		{name: "vsfleetCoverage", headers: coverageHeaders, rows: coverageRows(data), dateCols: []int{2, 3}},
+	}, nil
+}
+
+// WriteRVTools writes the ten persisted RVTools-compatible sheets plus the
 // vsfleetCoverage extension sheet. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
 func WriteRVTools(w io.Writer, data assessment.ExportData) error {
-	data = canonicalData(data)
-	if err := validateResources(data.Resources); err != nil {
+	sheets, err := rvtoolsSheets(data)
+	if err != nil {
 		return err
 	}
 	f := excelize.NewFile()
@@ -58,32 +102,16 @@ func WriteRVTools(w io.Writer, data assessment.ExportData) error {
 	if err != nil {
 		return err
 	}
-	if err := f.SetSheetName("Sheet1", "vInfo"); err != nil {
+	if err := f.SetSheetName("Sheet1", sheets[0].name); err != nil {
 		return err
 	}
-	for _, name := range []string{"vDisk", "vNetwork", "vHost", "vCluster", "vDatastore", "vSnapshot", "vsfleetCoverage"} {
-		if _, err := f.NewSheet(name); err != nil {
+	for _, s := range sheets[1:] {
+		if _, err := f.NewSheet(s.name); err != nil {
 			return err
 		}
 	}
-
-	sheets := []struct {
-		name    string
-		headers []string
-		rows    [][]any
-		dateCol []int
-	}{
-		{name: "vInfo", headers: vmHeaders, rows: vmRows(data), dateCol: nil},
-		{name: "vDisk", headers: diskHeaders, rows: diskRows(data), dateCol: nil},
-		{name: "vNetwork", headers: networkHeaders, rows: networkRows(data), dateCol: nil},
-		{name: "vHost", headers: hostHeaders, rows: hostRows(data), dateCol: nil},
-		{name: "vCluster", headers: clusterHeaders, rows: clusterRows(data), dateCol: nil},
-		{name: "vDatastore", headers: datastoreHeaders, rows: datastoreRows(data), dateCol: nil},
-		{name: "vSnapshot", headers: snapshotHeaders, rows: snapshotRows(data), dateCol: []int{4}},
-		{name: "vsfleetCoverage", headers: coverageHeaders, rows: coverageRows(data), dateCol: []int{2, 3}},
-	}
-	for _, sheet := range sheets {
-		if err := writeSheet(f, sheet.name, sheet.headers, sheet.rows, sheet.dateCol, styles); err != nil {
+	for _, s := range sheets {
+		if err := writeSheet(f, s.name, s.headers, s.rows, s.dateCols, styles); err != nil {
 			return err
 		}
 	}
@@ -100,6 +128,78 @@ func WriteRVTools(w io.Writer, data assessment.ExportData) error {
 		return io.ErrShortWrite
 	}
 	return err
+}
+
+// CSVFile is one rendered RVTools tab, ready to write to disk as
+// "<Name>.csv".
+type CSVFile struct {
+	Name string
+	Data []byte
+}
+
+// RVToolsCSV renders every RVTools tab as its own CSV document, in tab
+// order, sharing row generation and canonical ordering with WriteRVTools so
+// the two formats agree and each is deterministic on the same terms.
+//
+// Cells favor pipeline consumption over spreadsheet display: timestamps are
+// RFC3339 in UTC, booleans are "true"/"false", numbers are unformatted, and
+// an absent value is an empty field.
+func RVToolsCSV(data assessment.ExportData) ([]CSVFile, error) {
+	sheets, err := rvtoolsSheets(data)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]CSVFile, 0, len(sheets))
+	for _, s := range sheets {
+		var buf bytes.Buffer
+		w := csv.NewWriter(&buf)
+		if err := w.Write(s.headers); err != nil {
+			return nil, err
+		}
+		record := make([]string, len(s.headers))
+		for _, row := range s.rows {
+			for i, value := range row {
+				record[i] = csvCell(value)
+			}
+			if err := w.Write(record); err != nil {
+				return nil, err
+			}
+		}
+		w.Flush()
+		if err := w.Error(); err != nil {
+			return nil, err
+		}
+		files = append(files, CSVFile{Name: s.name + ".csv", Data: buf.Bytes()})
+	}
+	return files, nil
+}
+
+// csvCell renders one sheet cell as CSV text. The set of types here matches
+// exactly what the row builders below produce.
+func csvCell(value any) string {
+	switch v := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return v
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case time.Time:
+		return v.UTC().Format(time.RFC3339)
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case int:
+		return strconv.Itoa(v)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 type styles struct {
@@ -186,6 +286,50 @@ func vmRows(data assessment.ExportData) [][]any {
 		rows = append(rows, []any{vm.Name, vm.PowerState, vm.IsTemplate, vm.GuestState, vm.CPU, vm.MemoryMB, vm.IPAddress, vm.Folder, storageMiB(vm.StorageGB), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context})
 	}
 	return rows
+}
+
+// vmTail returns the identity/location/provenance columns shared by the
+// vCPU, vMemory, and vTools tabs (and, inline, by vDisk/vNetwork/vSnapshot).
+func vmTail(data assessment.ExportData, obs assessment.Observation) []any {
+	vm := obs.VM
+	return []any{vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.Folder, vm.GuestOS, vm.ID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context}
+}
+
+func cpuRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0, len(data.VMs))
+	for _, item := range data.VMs {
+		obs, vm := item.Observation, item.Observation.VM
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.CPU}, vmTail(data, obs)...)
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func memoryRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0, len(data.VMs))
+	for _, item := range data.VMs {
+		obs, vm := item.Observation, item.Observation.VM
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.MemoryMB}, vmTail(data, obs)...)
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func toolsRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0, len(data.VMs))
+	for _, item := range data.VMs {
+		obs, vm := item.Observation, item.Observation.VM
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.ToolsState, optionalString(vm.ToolsVersion), optionalString(vm.ToolsVersionStatus)}, vmTail(data, obs)...)
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+func optionalString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 func diskRows(data assessment.ExportData) [][]any {
@@ -331,8 +475,9 @@ func coverageRows(data assessment.ExportData) [][]any {
 		}
 		resources[r.Context][r.Kind]++
 	}
-	rows := make([][]any, 0, len(data.Contexts)*7)
-	devicesRecorded := deviceInventoryRecorded(data.Run.InventorySchemaVersion)
+	rows := make([][]any, 0, len(data.Contexts)*10)
+	devicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 2)
+	toolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 3)
 	if !devicesRecorded {
 		diskCounts = make(map[string]int)
 		networkCounts = make(map[string]int)
@@ -347,27 +492,39 @@ func coverageRows(data assessment.ExportData) [][]any {
 			count       int
 		}{
 			{kind: "vm", sheet: "vInfo", count: counts[c.Name]},
+			{kind: "vcpu", sheet: "vCPU", count: counts[c.Name]},
+			{kind: "vmemory", sheet: "vMemory", count: counts[c.Name]},
 			{kind: "vdisk", sheet: "vDisk", count: diskCounts[c.Name]},
 			{kind: "vnetwork", sheet: "vNetwork", count: networkCounts[c.Name]},
+			{kind: "vtools", sheet: "vTools", count: counts[c.Name]},
 			{kind: "host", sheet: "vHost", count: resources[c.Name]["host"]},
 			{kind: "cluster", sheet: "vCluster", count: resources[c.Name]["cluster"]},
 			{kind: "datastore", sheet: "vDatastore", count: resources[c.Name]["datastore"]},
 			{kind: "snapshot", sheet: "vSnapshot", count: snapshotCounts[c.Name]},
 		} {
 			status, message := "not recorded", ""
-			if (spec.kind == "vdisk" || spec.kind == "vnetwork") && !devicesRecorded {
+			switch {
+			case (spec.kind == "vdisk" || spec.kind == "vnetwork") && !devicesRecorded:
 				status = "not recorded"
 				message = "capture predates per-VM device inventory"
-			} else if spec.kind == "vm" || spec.kind == "snapshot" {
-				status, message = c.VMStatus, ""
+			case spec.kind == "vm" || spec.kind == "snapshot" || spec.kind == "vcpu" || spec.kind == "vmemory" || spec.kind == "vtools":
+				status = c.VMStatus
 				if status == "" {
 					status = "not recorded"
 				}
 				if status != "success" && status != "empty" {
 					message = c.Error
+				} else if spec.kind == "vtools" && !toolsRecorded {
+					// The vTools tab still has one row per VM here (the
+					// running-status column predates schema 3), just without
+					// a version — say so rather than claiming the tab is
+					// unrecorded.
+					message = "capture predates VMware Tools version inventory"
 				}
-			} else if collection, ok := collections[spec.kind]; ok {
-				status, message = collection.Status, collection.Error
+			default:
+				if collection, ok := collections[spec.kind]; ok {
+					status, message = collection.Status, collection.Error
+				}
 			}
 			rows = append(rows, coverageRow(data, c, spec.sheet, status, spec.count, message))
 		}
@@ -375,9 +532,9 @@ func coverageRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
-func deviceInventoryRecorded(version string) bool {
+func inventoryAtLeast(version string, minVersion int) bool {
 	value, err := strconv.Atoi(strings.TrimSpace(version))
-	return err == nil && value >= 2
+	return err == nil && value >= minVersion
 }
 
 func coverageRow(data assessment.ExportData, c assessment.ContextRun, sheet, status string, count int, message string) []any {

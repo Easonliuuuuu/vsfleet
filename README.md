@@ -225,6 +225,7 @@ vsfleet assessment trends snapshots --older-than 30d
 vsfleet assessment trends capacity --kind all
 vsfleet assessment report latest
 vsfleet assessment export latest --format rvtools --file ./estate.xlsx
+vsfleet assessment export latest --format csv --file ./estate-csv/
 vsfleet assessment doctor
 vsfleet assessment prune --older-than 90d       # dry-run
 vsfleet assessment backup ./history-backup.db
@@ -242,11 +243,18 @@ location.
 
 `assessment export` is an offline writer: it reads the selected persisted run
 and does not contact vCenter or open a live session. The `rvtools` format is an
-XLSX workbook containing `vInfo`, per-VM `vDisk` and `vNetwork`, `vHost`,
-`vCluster`, `vDatastore`, `vSnapshot`, and the `vsfleetCoverage` provenance
-sheet. The destination is
-required and existing files need `--force`; exporting the same run twice
-produces byte-identical output.
+XLSX workbook containing `vInfo`, `vCPU`, `vMemory`, per-VM `vDisk` and
+`vNetwork`, `vTools`, `vHost`, `vCluster`, `vDatastore`, `vSnapshot`, and the
+`vsfleetCoverage` provenance sheet. `--format csv` renders the same tabs as one
+`<tab>.csv` file per sheet under a destination directory, for `jq`/`awk`/
+`pandas` consumers and for diffing two exports in git; its cells favor
+pipelines over spreadsheet display (RFC3339 timestamps, `true`/`false`
+booleans). The destination is required — a `.xlsx` file for `rvtools`, a
+directory for `csv` — and an existing destination needs `--force`; exporting
+the same run twice produces byte-identical output in both formats. Runs
+captured before VMware Tools version collection existed still populate
+`vTools`' running-status column, with the version columns left blank and the
+gap noted on `vsfleetCoverage`.
 
 The policy flags are intentionally command-line only so a scheduled job is
 auditable from its invocation:
@@ -287,7 +295,7 @@ an automatic pre-restore safety copy before replacing the active database.
 | `vsfleet assessment snapshots` | Report snapshot age and first/last observation |
 | `vsfleet assessment trends ...` | Trend VM churn, snapshot age, and capacity over complete runs |
 | `vsfleet assessment report [run]` | Summarize one run's coverage, counts, and capacity |
-| `vsfleet assessment export [run] --format rvtools --file FILE` | Export a persisted run as deterministic RVTools-compatible XLSX |
+| `vsfleet assessment export [run] --format rvtools\|csv --file FILE` | Export a persisted run as deterministic RVTools-compatible XLSX or per-tab CSV |
 | `vsfleet assessment prune` | Dry-run or execute retention cleanup |
 | `vsfleet assessment backup FILE` | Create a consistent SQLite backup |
 | `vsfleet assessment restore FILE` | Validate and restore a backup in place |

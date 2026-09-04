@@ -27,6 +27,8 @@ var vmProps = []string{
 	"guest.net",
 	"guest.guestState",
 	"guest.toolsRunningStatus",
+	"guest.toolsVersion",
+	"guest.toolsVersionStatus2",
 	"summary.storage.committed",
 	"datastore",
 	"snapshot",
@@ -97,6 +99,8 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.IPAddress = g.IpAddress
 		vm.GuestState = g.GuestState
 		vm.ToolsState = g.ToolsRunningStatus
+		vm.ToolsVersion = g.ToolsVersion
+		vm.ToolsVersionStatus = g.ToolsVersionStatus2
 		if vm.GuestOS == "" {
 			vm.GuestOS = g.GuestFullName
 		}

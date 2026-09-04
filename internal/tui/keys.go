@@ -39,13 +39,15 @@ type keyMap struct {
 	// truncated key line is the problem this screen exists to fix.
 	AllScopeBrief key.Binding
 
-	Reload    key.Binding
-	ReloadAll key.Binding
-	Doctor    key.Binding
-	History   key.Binding
-	Capture   key.Binding
-	Base      key.Binding
-	Target    key.Binding
+	Reload      key.Binding
+	ReloadAll   key.Binding
+	Doctor      key.Binding
+	History     key.Binding
+	Capture     key.Binding
+	Base        key.Binding
+	Target      key.Binding
+	Timeline    key.Binding
+	TimelineAll key.Binding
 
 	Sort key.Binding
 	Help key.Binding
@@ -91,13 +93,15 @@ func defaultKeys() keyMap {
 		AllScope:      key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all vCenters")),
 		AllScopeBrief: key.NewBinding(key.WithHelp("a", "all")),
 
-		Reload:    key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
-		ReloadAll: key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "reload all")),
-		Doctor:    key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "diagnose")),
-		History:   key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "changes")),
-		Capture:   key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "capture")),
-		Base:      key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "baseline")),
-		Target:    key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "target")),
+		Reload:      key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reload")),
+		ReloadAll:   key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "reload all")),
+		Doctor:      key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "diagnose")),
+		History:     key.NewBinding(key.WithKeys("H"), key.WithHelp("H", "changes")),
+		Capture:     key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "capture")),
+		Base:        key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "baseline")),
+		Target:      key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "target")),
+		Timeline:    key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "timeline")),
+		TimelineAll: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all observations")),
 
 		Sort: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
 		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
@@ -160,9 +164,13 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeChanges:
 		return []key.Binding{k.Up, k.Down, k.Base, k.Target, k.Capture, k.Back, k.Help, k.Quit}
 	case modeChangeDetail:
-		return []key.Binding{k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:
 		return []key.Binding{k.Up, k.Down, k.Open, k.Back, k.Help, k.Quit}
+	case modeHistoryTimeline:
+		return []key.Binding{k.Up, k.Down, k.Open, k.TimelineAll, k.Back, k.Help, k.Quit}
+	case modeHistoryTimelineDetail:
+		return []key.Binding{k.Back, k.Help, k.Quit}
 	default:
 		return []key.Binding{k.Kind, k.Contexts, k.AllScopeBrief, k.Filter, k.Open, k.Reload, k.Help, k.Quit}
 	}

@@ -33,6 +33,9 @@ func (s *Service) DeleteRun(ctx context.Context, id int64) error { return s.Stor
 func (s *Service) History(ctx context.Context, query, contextName string) ([]VMHistoryEntry, error) {
 	return s.Store.History(ctx, query, contextName)
 }
+func (s *Service) Timeline(ctx context.Context, query, contextName string, includeUnchanged, includeRuntime bool) ([]VMHistoryEvent, error) {
+	return s.Store.Timeline(ctx, query, contextName, includeUnchanged, includeRuntime)
+}
 func (s *Service) Capture(ctx context.Context, opts CaptureOptions) (Run, error) {
 	if s == nil || s.Collector == nil {
 		return Run{}, fmt.Errorf("assessment collector is not configured")
@@ -41,10 +44,15 @@ func (s *Service) Capture(ctx context.Context, opts CaptureOptions) (Run, error)
 }
 
 type CaptureOptions struct {
-	Contexts []*config.Context
-	Source   string
-	Now      func() time.Time
-	Progress func(ContextProgress)
+	Contexts               []*config.Context
+	Source                 string
+	Label                  string
+	Note                   string
+	Pinned                 bool
+	ToolVersion            string
+	InventorySchemaVersion string
+	Now                    func() time.Time
+	Progress               func(ContextProgress)
 }
 
 // Capture creates one immutable run while preserving the session manager's
@@ -57,10 +65,35 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 	if opts.Now != nil {
 		now = opts.Now
 	}
-	run, err := c.Store.StartRun(ctx, opts.Source, opts.Contexts, now())
+	lease, err := c.Store.AcquireCaptureLease(ctx, now())
 	if err != nil {
 		return Run{}, err
 	}
+	defer c.Store.ReleaseCaptureLease(context.Background(), lease)
+	run, err := c.Store.StartRunWithMetadata(ctx, opts.Source, opts.Contexts, now(), RunMetadata{Label: opts.Label, Note: opts.Note, Pinned: opts.Pinned, ToolVersion: opts.ToolVersion, InventorySchemaVersion: opts.InventorySchemaVersion})
+	if err != nil {
+		return Run{}, err
+	}
+	if err := c.Store.SetCaptureLeaseRun(ctx, lease, run.ID); err != nil {
+		return Run{}, err
+	}
+	leaseCtx, stopLease := context.WithCancel(context.Background())
+	defer stopLease()
+	var leaseWG sync.WaitGroup
+	leaseWG.Add(1)
+	go func() {
+		defer leaseWG.Done()
+		t := time.NewTicker(leaseHeartbeat)
+		defer t.Stop()
+		for {
+			select {
+			case <-leaseCtx.Done():
+				return
+			case tick := <-t.C:
+				_, _ = c.Store.RenewCaptureLease(context.Background(), lease, tick.UTC())
+			}
+		}
+	}()
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, session.DefaultConcurrency)
 	for _, cc := range opts.Contexts {
@@ -74,10 +107,9 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 				opts.Progress(ContextProgress{Context: cc.Name, Status: "connecting"})
 			}
 			result := c.captureContext(ctx, cc)
-			if err := c.Store.SaveContext(ctx, run.ID, result, now()); err != nil {
+			if err := c.Store.SaveContextWithLease(ctx, run.ID, result, now(), lease); err != nil {
 				result.Status = "failed"
 				result.Error = fmt.Sprintf("save assessment: %v", err)
-				_ = c.Store.SaveContext(context.WithoutCancel(ctx), run.ID, result, now())
 			}
 			if opts.Progress != nil {
 				p := ContextProgress{Context: cc.Name, Status: result.Status, VMs: len(result.VMs), Error: errorFrom(result.Error)}
@@ -86,7 +118,10 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 		}()
 	}
 	wg.Wait()
-	return c.Store.FinishRun(ctx, run.ID, now())
+	run, err = c.Store.FinishRunWithLease(ctx, run.ID, now(), lease)
+	stopLease()
+	leaseWG.Wait()
+	return run, err
 }
 
 func errorFrom(s string) error {

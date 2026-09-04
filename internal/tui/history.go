@@ -94,6 +94,20 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Back):
 		m.mode = modeBrowse
 		m.filter.Placeholder = filterPlaceholder
+	case key.Matches(msg, m.keys.Timeline):
+		if len(rows) == 0 || m.changeCursor >= len(rows) || m.assessment == nil {
+			return nil
+		}
+		query := rows[m.changeCursor].label
+		if i := strings.Index(query, " / "); i >= 0 {
+			query = query[:i]
+		}
+		m.timelineQuery = query
+		m.timelineAll = false
+		m.timelineCursor, m.timelineOffset = 0, 0
+		m.historyErr = nil
+		m.mode = modeHistoryTimeline
+		return loadHistoryTimelineCmd(m.ctx, m.assessment, query, false, false)
 	case key.Matches(msg, m.keys.Up):
 		m.changeCursor = clamp(m.changeCursor-1, 0, max(0, len(rows)-1))
 	case key.Matches(msg, m.keys.Down):
@@ -190,7 +204,14 @@ func (m *Model) viewHistoryRuns() []string {
 		if r.ID == m.targetRun {
 			marker = "T "
 		}
-		line := fmt.Sprintf("%s%-5s %-8s %-10s %s", marker, historyRunLabel(r.ID), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"), r.Source)
+		label := r.Label
+		if label == "" {
+			label = "—"
+		}
+		if r.Pinned {
+			label = "📌 " + label
+		}
+		line := fmt.Sprintf("%s%-5s %-18s %-8s %-10s %s", marker, historyRunLabel(r.ID), truncate(label, 18), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"), r.Source)
 		if i == m.runCursor {
 			line = t.focused.Render(line)
 		} else {
@@ -264,6 +285,74 @@ func (m *Model) viewChangeDetail() []string {
 				}
 				break
 			}
+		}
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func (m *Model) handleHistoryTimelineKey(msg tea.KeyMsg) tea.Cmd {
+	if key.Matches(msg, m.keys.Back) {
+		m.mode = modeChangeDetail
+		return nil
+	}
+	if key.Matches(msg, m.keys.Up) {
+		m.timelineCursor = clamp(m.timelineCursor-1, 0, max(0, len(m.timeline)-1))
+	}
+	if key.Matches(msg, m.keys.Down) {
+		m.timelineCursor = clamp(m.timelineCursor+1, 0, max(0, len(m.timeline)-1))
+	}
+	if key.Matches(msg, m.keys.TimelineAll) {
+		m.timelineAll = !m.timelineAll
+		if m.assessment != nil {
+			return loadHistoryTimelineCmd(m.ctx, m.assessment, m.timelineQuery, m.timelineAll, false)
+		}
+	}
+	if key.Matches(msg, m.keys.Open) && len(m.timeline) > 0 && m.timelineCursor < len(m.timeline) {
+		m.mode = modeHistoryTimelineDetail
+	}
+	return nil
+}
+
+func (m *Model) viewHistoryTimeline() []string {
+	t := m.theme
+	lines := []string{t.title.Render("VM timeline · " + m.timelineQuery), "", t.dim.Render("  changes only · a toggles unchanged observations")}
+	if m.historyErr != nil {
+		return append(lines, t.warn.Render("  "+m.historyErr.Error()))
+	}
+	if len(m.timeline) == 0 {
+		return append(lines, t.dim.Render("  no timeline events"))
+	}
+	for i, e := range m.timeline {
+		detail := ""
+		if len(e.Changes) > 0 {
+			parts := make([]string, len(e.Changes))
+			for j, f := range e.Changes {
+				parts[j] = f.Field + ":" + nonempty(f.Before, "—") + "→" + nonempty(f.After, "—")
+			}
+			detail = strings.Join(parts, " ")
+		}
+		line := fmt.Sprintf("  %-16s %-16s %-12s %s", e.Run.StartedAt.Local().Format("2006-01-02 15:04"), e.Kind, e.Context, truncate(detail, max(1, m.width-52)))
+		if i == m.timelineCursor {
+			line = t.focused.Render(line)
+		} else {
+			line = t.text.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func (m *Model) viewHistoryTimelineDetail() []string {
+	t := m.theme
+	if m.timelineCursor < 0 || m.timelineCursor >= len(m.timeline) {
+		return []string{t.dim.Render("nothing selected")}
+	}
+	e := m.timeline[m.timelineCursor]
+	lines := []string{t.title.Render(e.Name), "", "  " + t.label.Render("Event") + "    " + e.Kind, "  " + t.label.Render("Run") + "      " + historyRunLabel(e.Run.ID), "  " + t.label.Render("Date") + "     " + e.Run.StartedAt.Local().Format("2006-01-02 15:04:05"), "  " + t.label.Render("Context") + "  " + e.Context}
+	if len(e.Changes) > 0 {
+		lines = append(lines, "", t.header.Render("Changes"))
+		for _, f := range e.Changes {
+			lines = append(lines, fmt.Sprintf("  %-18s %s → %s", f.Field, truncate(nonempty(f.Before, "—"), 24), truncate(nonempty(f.After, "—"), 24)))
 		}
 	}
 	return scrollLines(lines, 0, m.bodyHeight())

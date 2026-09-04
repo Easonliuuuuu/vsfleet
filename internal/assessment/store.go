@@ -2,12 +2,15 @@ package assessment
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +26,13 @@ const (
 )
 
 type Store struct{ db *sql.DB }
+
+const (
+	leaseDuration  = 2 * time.Minute
+	leaseHeartbeat = 20 * time.Second
+)
+
+var runLabelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 func DefaultPath() (string, error) {
 	if p := strings.TrimSpace(os.Getenv(EnvDBPath)); p != "" {
@@ -68,11 +78,9 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	// A process can disappear after creating a run but before finalizing it.
-	// Preserve that attempt as failed rather than allowing an eternal
-	// "running" row to become the default comparison target.
-	_, _ = db.Exec(`UPDATE context_runs SET vm_status='failed', error=CASE WHEN error='' THEN 'assessment interrupted' ELSE error END, finished_at=? WHERE vm_status='running'`, time.Now().UTC().UnixMilli())
-	_, _ = db.Exec(`UPDATE runs SET status='failed', finished_at=? WHERE status='running'`, time.Now().UTC().UnixMilli())
+	// A running row is recovered only when it has no live lease. Active
+	// captures (including captures in another process) are left untouched.
+	_ = s.recoverOrphanedRuns(context.Background())
 	_ = os.Chmod(path, 0o600)
 	return s, nil
 }
@@ -84,10 +92,37 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("read history schema version: %w", err)
 	}
-	if version > 1 {
+	if version > 2 {
 		return fmt.Errorf("history schema version %d is newer than this build understands", version)
 	}
+	if version == 2 {
+		return nil
+	}
 	if version == 1 {
+		stmts := []string{
+			`ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE runs ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE runs ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE runs ADD COLUMN tool_version TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE runs ADD COLUMN inventory_schema_version TEXT NOT NULL DEFAULT ''`,
+			`CREATE UNIQUE INDEX IF NOT EXISTS runs_label_unique ON runs(label COLLATE NOCASE) WHERE label <> ''`,
+			`CREATE INDEX IF NOT EXISTS vm_name ON vm_observations(name COLLATE NOCASE)`,
+			`CREATE TABLE IF NOT EXISTS capture_lease (id INTEGER PRIMARY KEY CHECK(id=1), token TEXT NOT NULL, run_id INTEGER NOT NULL DEFAULT 0, acquired_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)`,
+			`PRAGMA user_version = 2`,
+		}
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin history migration: %w", err)
+		}
+		for _, stmt := range stmts {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil {
+				_ = tx.Rollback()
+				return fmt.Errorf("migrate history database: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit history migration: %w", err)
+		}
 		return nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -142,8 +177,16 @@ func (s *Store) migrate(ctx context.Context) error {
 		)`,
 		`CREATE INDEX vm_identity_instance ON vm_observations(instance_uuid)`,
 		`CREATE INDEX vm_identity_bios ON vm_observations(bios_uuid)`,
+		`CREATE INDEX vm_name ON vm_observations(name COLLATE NOCASE)`,
 		`CREATE INDEX snapshots_time ON snapshot_observations(create_time)`,
-		`PRAGMA user_version = 1`,
+		`ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN note TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE runs ADD COLUMN tool_version TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE runs ADD COLUMN inventory_schema_version TEXT NOT NULL DEFAULT ''`,
+		`CREATE UNIQUE INDEX runs_label_unique ON runs(label COLLATE NOCASE) WHERE label <> ''`,
+		`CREATE TABLE capture_lease (id INTEGER PRIMARY KEY CHECK(id=1), token TEXT NOT NULL, run_id INTEGER NOT NULL DEFAULT 0, acquired_at INTEGER NOT NULL, expires_at INTEGER NOT NULL)`,
+		`PRAGMA user_version = 2`,
 	}
 	for _, stmt := range stmts {
 		if _, err := tx.ExecContext(ctx, stmt); err != nil {
@@ -171,15 +214,127 @@ func fromMillis(v sql.NullInt64) time.Time {
 	return time.UnixMilli(v.Int64).UTC()
 }
 
+func (s *Store) recoverOrphanedRuns(ctx context.Context) error {
+	// Older databases have no lease rows. Treat those rows as interrupted on
+	// open for compatibility, while never touching a run protected by a live
+	// lease in the v2 schema.
+	now := time.Now().UTC().UnixMilli()
+	_, err := s.db.ExecContext(ctx, `UPDATE context_runs SET vm_status='failed', error=CASE WHEN error='' THEN 'assessment interrupted' ELSE error END, finished_at=? WHERE vm_status='running' AND NOT EXISTS (SELECT 1 FROM capture_lease WHERE capture_lease.expires_at>?)`, now, now)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE runs SET status='failed', finished_at=? WHERE status='running' AND NOT EXISTS (SELECT 1 FROM capture_lease WHERE capture_lease.expires_at>?)`, now, now)
+	return err
+}
+
+func newLeaseToken() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", b), nil
+}
+
+// AcquireCaptureLease reserves the database for one writer. Expired leases
+// are reclaimed atomically, so two scheduled captures cannot both proceed.
+func (s *Store) AcquireCaptureLease(ctx context.Context, now time.Time) (CaptureLease, error) {
+	token, err := newLeaseToken()
+	if err != nil {
+		return CaptureLease{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return CaptureLease{}, err
+	}
+	defer tx.Rollback()
+	nowMS := now.UTC().UnixMilli()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM capture_lease WHERE id=1 AND expires_at<=?`, nowMS); err != nil {
+		return CaptureLease{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO capture_lease(id,token,run_id,acquired_at,expires_at) VALUES(1,?,0,?,?)`, token, nowMS, now.Add(leaseDuration).UTC().UnixMilli()); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "constraint") {
+			return CaptureLease{}, fmt.Errorf("another assessment capture is already running")
+		}
+		return CaptureLease{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return CaptureLease{}, err
+	}
+	return CaptureLease{Token: token, ExpiresAt: now.Add(leaseDuration).UTC()}, nil
+}
+
+func (s *Store) SetCaptureLeaseRun(ctx context.Context, lease CaptureLease, runID int64) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE capture_lease SET run_id=? WHERE id=1 AND token=? AND expires_at>?`, runID, lease.Token, time.Now().UTC().UnixMilli())
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n != 1 {
+		return fmt.Errorf("assessment capture lease is no longer valid")
+	}
+	return nil
+}
+
+func (s *Store) RenewCaptureLease(ctx context.Context, lease CaptureLease, now time.Time) (CaptureLease, error) {
+	expires := now.Add(leaseDuration).UTC()
+	res, err := s.db.ExecContext(ctx, `UPDATE capture_lease SET expires_at=? WHERE id=1 AND token=? AND expires_at>?`, expires.UnixMilli(), lease.Token, now.UTC().UnixMilli())
+	if err != nil {
+		return CaptureLease{}, err
+	}
+	n, _ := res.RowsAffected()
+	if n != 1 {
+		return CaptureLease{}, fmt.Errorf("assessment capture lease is no longer valid")
+	}
+	lease.ExpiresAt = expires
+	return lease, nil
+}
+
+func (s *Store) ReleaseCaptureLease(ctx context.Context, lease CaptureLease) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM capture_lease WHERE id=1 AND token=?`, lease.Token)
+	return err
+}
+
+func (s *Store) ValidateCaptureLease(ctx context.Context, lease CaptureLease) error {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM capture_lease WHERE id=1 AND token=? AND expires_at>?`, lease.Token, time.Now().UTC().UnixMilli()).Scan(&n)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("assessment capture lease is no longer valid")
+	}
+	return nil
+}
+
+func validateRunLabel(label string) error {
+	if label == "" {
+		return nil
+	}
+	if !runLabelPattern.MatchString(label) {
+		return fmt.Errorf("run label must match [A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+	}
+	if strings.EqualFold(label, "latest") || strings.EqualFold(label, "previous") {
+		return fmt.Errorf("run label %q is reserved", label)
+	}
+	return nil
+}
+
 func (s *Store) StartRun(ctx context.Context, source string, contexts []*config.Context, now time.Time) (Run, error) {
+	return s.StartRunWithMetadata(ctx, source, contexts, now, RunMetadata{})
+}
+
+func (s *Store) StartRunWithMetadata(ctx context.Context, source string, contexts []*config.Context, now time.Time, meta RunMetadata) (Run, error) {
 	if source == "" {
 		source = "cli"
+	}
+	if err := validateRunLabel(meta.Label); err != nil {
+		return Run{}, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Run{}, err
 	}
-	res, err := tx.ExecContext(ctx, `INSERT INTO runs(source,started_at,status,requested_contexts) VALUES(?,?,?,?)`, source, now.UnixMilli(), RunRunning, len(contexts))
+	res, err := tx.ExecContext(ctx, `INSERT INTO runs(source,started_at,status,requested_contexts,label,note,pinned,tool_version,inventory_schema_version) VALUES(?,?,?,?,?,?,?,?,?)`, source, now.UnixMilli(), RunRunning, len(contexts), meta.Label, meta.Note, boolInt(meta.Pinned), meta.ToolVersion, meta.InventorySchemaVersion)
 	if err != nil {
 		_ = tx.Rollback()
 		return Run{}, err
@@ -198,10 +353,23 @@ func (s *Store) StartRun(ctx context.Context, source string, contexts []*config.
 	if err := tx.Commit(); err != nil {
 		return Run{}, err
 	}
-	return Run{ID: id, Source: source, StartedAt: now.UTC(), Status: RunRunning, RequestedContexts: len(contexts)}, nil
+	return Run{ID: id, Source: source, Label: meta.Label, Note: meta.Note, Pinned: meta.Pinned, ToolVersion: meta.ToolVersion, InventorySchemaVersion: meta.InventorySchemaVersion, StartedAt: now.UTC(), Status: RunRunning, RequestedContexts: len(contexts)}, nil
 }
 
 func (s *Store) SaveContext(ctx context.Context, runID int64, result ContextResult, now time.Time) error {
+	return s.saveContext(ctx, runID, result, now, nil)
+}
+
+func (s *Store) SaveContextWithLease(ctx context.Context, runID int64, result ContextResult, now time.Time, lease CaptureLease) error {
+	return s.saveContext(ctx, runID, result, now, &lease)
+}
+
+func (s *Store) saveContext(ctx context.Context, runID int64, result ContextResult, now time.Time, lease *CaptureLease) error {
+	if lease != nil {
+		if err := s.ValidateCaptureLease(ctx, *lease); err != nil {
+			return err
+		}
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -244,6 +412,13 @@ func (s *Store) SaveContext(ctx context.Context, runID int64, result ContextResu
 			}
 		}
 	}
+	if lease != nil {
+		var token string
+		if err := tx.QueryRowContext(ctx, `SELECT token FROM capture_lease WHERE id=1 AND expires_at>?`, time.Now().UTC().UnixMilli()).Scan(&token); err != nil || token != lease.Token {
+			_ = tx.Rollback()
+			return fmt.Errorf("assessment capture lease is no longer valid")
+		}
+	}
 	return tx.Commit()
 }
 
@@ -263,6 +438,19 @@ func boolInt(v bool) int {
 }
 
 func (s *Store) FinishRun(ctx context.Context, runID int64, now time.Time) (Run, error) {
+	return s.finishRun(ctx, runID, now, nil)
+}
+
+func (s *Store) FinishRunWithLease(ctx context.Context, runID int64, now time.Time, lease CaptureLease) (Run, error) {
+	return s.finishRun(ctx, runID, now, &lease)
+}
+
+func (s *Store) finishRun(ctx context.Context, runID int64, now time.Time, lease *CaptureLease) (Run, error) {
+	if lease != nil {
+		if err := s.ValidateCaptureLease(ctx, *lease); err != nil {
+			return Run{}, err
+		}
+	}
 	var requested, success, failed int
 	if err := s.db.QueryRowContext(ctx, `SELECT requested_contexts, successful_contexts FROM runs WHERE id=?`, runID).Scan(&requested, &success); err != nil {
 		return Run{}, err
@@ -279,8 +467,21 @@ func (s *Store) FinishRun(ctx context.Context, runID int64, now time.Time) (Run,
 	} else if success == requested && failed == 0 {
 		status = RunComplete
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET finished_at=?,status=?,successful_contexts=? WHERE id=?`, now.UnixMilli(), status, success, runID); err != nil {
+	query := `UPDATE runs SET finished_at=?,status=?,successful_contexts=? WHERE id=?`
+	args := []any{now.UnixMilli(), status, success, runID}
+	if lease != nil {
+		query += ` AND EXISTS (SELECT 1 FROM capture_lease WHERE id=1 AND token=? AND expires_at>?)`
+		args = append(args, lease.Token, now.UTC().UnixMilli())
+	}
+	res, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
 		return Run{}, err
+	}
+	if lease != nil {
+		n, _ := res.RowsAffected()
+		if n != 1 {
+			return Run{}, fmt.Errorf("assessment capture lease is no longer valid")
+		}
 	}
 	return s.GetRun(ctx, runID)
 }
@@ -288,7 +489,8 @@ func (s *Store) FinishRun(ctx context.Context, runID int64, now time.Time) (Run,
 func (s *Store) GetRun(ctx context.Context, id int64) (Run, error) {
 	var r Run
 	var start, finish sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT id,source,started_at,finished_at,status,requested_contexts,successful_contexts FROM runs WHERE id=?`, id).Scan(&r.ID, &r.Source, &start, &finish, &r.Status, &r.RequestedContexts, &r.SuccessfulContexts)
+	var pinned int
+	err := s.db.QueryRowContext(ctx, `SELECT id,source,label,note,pinned,tool_version,inventory_schema_version,started_at,finished_at,status,requested_contexts,successful_contexts FROM runs WHERE id=?`, id).Scan(&r.ID, &r.Source, &r.Label, &r.Note, &pinned, &r.ToolVersion, &r.InventorySchemaVersion, &start, &finish, &r.Status, &r.RequestedContexts, &r.SuccessfulContexts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Run{}, fmt.Errorf("assessment %d not found", id)
 	}
@@ -296,11 +498,12 @@ func (s *Store) GetRun(ctx context.Context, id int64) (Run, error) {
 		return Run{}, err
 	}
 	r.StartedAt, r.FinishedAt = fromMillis(start), fromMillis(finish)
+	r.Pinned = pinned != 0
 	return r, nil
 }
 
 func (s *Store) Runs(ctx context.Context) ([]Run, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,source,started_at,finished_at,status,requested_contexts,successful_contexts FROM runs ORDER BY id DESC`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,source,label,note,pinned,tool_version,inventory_schema_version,started_at,finished_at,status,requested_contexts,successful_contexts FROM runs ORDER BY id DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -309,16 +512,141 @@ func (s *Store) Runs(ctx context.Context) ([]Run, error) {
 	for rows.Next() {
 		var r Run
 		var start, finish sql.NullInt64
-		if err := rows.Scan(&r.ID, &r.Source, &start, &finish, &r.Status, &r.RequestedContexts, &r.SuccessfulContexts); err != nil {
+		var pinned int
+		if err := rows.Scan(&r.ID, &r.Source, &r.Label, &r.Note, &pinned, &r.ToolVersion, &r.InventorySchemaVersion, &start, &finish, &r.Status, &r.RequestedContexts, &r.SuccessfulContexts); err != nil {
 			return nil, err
 		}
 		r.StartedAt, r.FinishedAt = fromMillis(start), fromMillis(finish)
+		r.Pinned = pinned != 0
 		out = append(out, r)
 	}
 	return out, rows.Err()
 }
 
+func (s *Store) UpdateRun(ctx context.Context, selector string, meta RunMetadata) (Run, error) {
+	id, err := s.ResolveRun(ctx, selector)
+	if err != nil {
+		return Run{}, err
+	}
+	if meta.Label != "" {
+		if err := validateRunLabel(meta.Label); err != nil {
+			return Run{}, err
+		}
+	}
+	// Empty label means “leave it unchanged” for this API; callers that need
+	// to clear a label can use ClearLabel.
+	sets := make([]string, 0, 2)
+	args := make([]any, 0, 3)
+	if meta.Label != "" {
+		sets = append(sets, "label=?")
+		args = append(args, meta.Label)
+	}
+	if meta.Note != "" {
+		sets = append(sets, "note=?")
+		args = append(args, meta.Note)
+	}
+	if len(sets) == 0 && !meta.Pinned {
+		return Run{}, fmt.Errorf("at least one run metadata change is required")
+	}
+	if meta.Pinned {
+		sets = append(sets, "pinned=1")
+	}
+	args = append(args, id)
+	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET `+strings.Join(sets, ",")+` WHERE id=?`, args...); err != nil {
+		return Run{}, err
+	}
+	return s.GetRun(ctx, id)
+}
+
+// UpdateRunFields is the lossless metadata update used by the CLI. Nil means
+// “leave unchanged”, allowing an explicit empty note or cleared label.
+func (s *Store) UpdateRunFields(ctx context.Context, selector string, label, note *string, pinned *bool) (Run, error) {
+	id, err := s.ResolveRun(ctx, selector)
+	if err != nil {
+		return Run{}, err
+	}
+	sets := make([]string, 0, 3)
+	args := make([]any, 0, 4)
+	if label != nil {
+		if err := validateRunLabel(*label); err != nil {
+			return Run{}, err
+		}
+		sets = append(sets, "label=?")
+		args = append(args, *label)
+	}
+	if note != nil {
+		sets = append(sets, "note=?")
+		args = append(args, *note)
+	}
+	if pinned != nil {
+		sets = append(sets, "pinned=?")
+		args = append(args, boolInt(*pinned))
+	}
+	if len(sets) == 0 {
+		return Run{}, fmt.Errorf("at least one run metadata change is required")
+	}
+	args = append(args, id)
+	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET `+strings.Join(sets, ",")+` WHERE id=?`, args...); err != nil {
+		return Run{}, err
+	}
+	return s.GetRun(ctx, id)
+}
+
+func (s *Store) SetRunPinned(ctx context.Context, selector string, pinned bool) (Run, error) {
+	id, err := s.ResolveRun(ctx, selector)
+	if err != nil {
+		return Run{}, err
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET pinned=? WHERE id=?`, boolInt(pinned), id); err != nil {
+		return Run{}, err
+	}
+	return s.GetRun(ctx, id)
+}
+
+func (s *Store) ResolveRun(ctx context.Context, selector string) (int64, error) {
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return 0, fmt.Errorf("assessment selector is empty")
+	}
+	if selector == "latest" || selector == "previous" {
+		runs, err := s.Runs(ctx)
+		if err != nil {
+			return 0, err
+		}
+		if selector == "latest" {
+			if len(runs) < 1 {
+				return 0, fmt.Errorf("no assessments stored")
+			}
+			return runs[0].ID, nil
+		}
+		if len(runs) < 2 {
+			return 0, fmt.Errorf("no previous assessment")
+		}
+		return runs[1].ID, nil
+	}
+	if id, err := strconv.ParseInt(selector, 10, 64); err == nil {
+		if _, err := s.GetRun(ctx, id); err != nil {
+			return 0, err
+		}
+		return id, nil
+	}
+	var id int64
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM runs WHERE label=? COLLATE NOCASE`, selector).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("assessment selector %q not found", selector)
+	}
+	return id, err
+}
+
 func (s *Store) DeleteRun(ctx context.Context, id int64) error {
+	var pinned int
+	if err := s.db.QueryRowContext(ctx, `SELECT pinned FROM runs WHERE id=?`, id).Scan(&pinned); errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("assessment %d not found", id)
+	} else if err != nil {
+		return err
+	} else if pinned != 0 {
+		return fmt.Errorf("assessment %d is pinned; unpin it before deletion", id)
+	}
 	res, err := s.db.ExecContext(ctx, `DELETE FROM runs WHERE id=?`, id)
 	if err != nil {
 		return err
@@ -331,6 +659,14 @@ func (s *Store) DeleteRun(ctx context.Context, id int64) error {
 		return fmt.Errorf("assessment %d not found", id)
 	}
 	return nil
+}
+
+func (s *Store) DeleteRunSelector(ctx context.Context, selector string) error {
+	id, err := s.ResolveRun(ctx, selector)
+	if err != nil {
+		return err
+	}
+	return s.DeleteRun(ctx, id)
 }
 
 func (s *Store) SnapshotAges(ctx context.Context, runID int64, olderThan time.Duration) ([]SnapshotAge, error) {

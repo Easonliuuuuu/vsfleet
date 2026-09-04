@@ -131,7 +131,8 @@ func newInventoryCommands(a *App) []*cobra.Command {
 }
 
 func newVMHistoryCommand(a *App) *cobra.Command {
-	return &cobra.Command{Use: "history NAME_OR_UUID", Short: "Show a VM's stored assessment history", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	var allObservations, includeRuntime bool
+	cmd := &cobra.Command{Use: "history NAME_OR_UUID", Short: "Show a VM's stored assessment timeline", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -140,23 +141,37 @@ func newVMHistoryCommand(a *App) *cobra.Command {
 		if len(a.ContextNames) == 1 {
 			contextName = a.ContextNames[0]
 		}
-		entries, err := s.History(cmd.Context(), args[0], contextName)
+		events, err := s.Timeline(cmd.Context(), args[0], contextName, allObservations, includeRuntime)
 		if err != nil {
 			return err
 		}
-		if len(entries) == 0 {
+		if len(events) == 0 {
 			return fmt.Errorf("no stored VM history matched %q", args[0])
 		}
 		if a.json() {
-			return writeJSON(a.out(), entries)
+			return writeJSON(a.out(), events)
 		}
-		t := newTable(a.out(), "RUN", "DATE", "CONTEXT", "VM", "HOST", "CLUSTER", "SNAPSHOTS")
-		for _, e := range entries {
-			t.row(strconv.FormatInt(e.Run.ID, 10), e.Run.StartedAt.Local().Format("2006-01-02 15:04"), e.Observation.Context, e.Observation.VM.Name, dash(e.Observation.VM.Host), dash(e.Observation.VM.Cluster), itoa(len(e.Snapshots)))
+		t := newTable(a.out(), "RUN", "DATE", "EVENT", "CONTEXT", "VM", "DETAIL")
+		for _, e := range events {
+			detail := ""
+			if len(e.Changes) > 0 {
+				parts := make([]string, len(e.Changes))
+				for i, f := range e.Changes {
+					parts[i] = f.Field + ":" + f.Before + "→" + f.After
+				}
+				detail = strings.Join(parts, " ")
+			}
+			if detail == "" && e.Observation != nil {
+				detail = dash(e.Observation.VM.Host)
+			}
+			t.row(strconv.FormatInt(e.Run.ID, 10), e.Run.StartedAt.Local().Format("2006-01-02 15:04"), e.Kind, e.Context, e.Name, detail)
 		}
 		t.flush()
 		return nil
 	}}
+	cmd.Flags().BoolVar(&allObservations, "all-observations", false, "include unchanged observations")
+	cmd.Flags().BoolVar(&includeRuntime, "include-runtime", false, "include volatile runtime fields in modified events")
+	return cmd
 }
 
 func group(name string, aliases []string, short string, sub *cobra.Command) *cobra.Command {

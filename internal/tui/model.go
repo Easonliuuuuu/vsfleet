@@ -67,6 +67,8 @@ const (
 	modeChanges
 	modeChangeDetail
 	modeHistoryRuns
+	modeHistoryTimeline
+	modeHistoryTimelineDetail
 )
 
 // searchState is one estate-wide search: every kind, every vCenter, matched
@@ -422,19 +424,24 @@ type Model struct {
 	returnTo mode
 	// search holds the last estate-wide result set, and searchDirty marks it
 	// stale after an inventory arrives or the context list changes.
-	search       *searchState
-	searchDirty  bool
-	assessment   *assessment.Service
-	runs         []assessment.Run
-	changeDiff   *assessment.Diff
-	historyErr   error
-	changeCursor int
-	changeOffset int
-	runCursor    int
-	capturing    bool
-	baseRun      int64
-	targetRun    int64
-	pickerRole   string
+	search         *searchState
+	searchDirty    bool
+	assessment     *assessment.Service
+	runs           []assessment.Run
+	changeDiff     *assessment.Diff
+	historyErr     error
+	changeCursor   int
+	changeOffset   int
+	runCursor      int
+	capturing      bool
+	baseRun        int64
+	targetRun      int64
+	pickerRole     string
+	timeline       []assessment.VMHistoryEvent
+	timelineCursor int
+	timelineOffset int
+	timelineAll    bool
+	timelineQuery  string
 	// detailFrom is the screen the detail pane was opened from, so esc goes
 	// back to the search results rather than always to the table.
 	detailFrom mode
@@ -1052,6 +1059,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.setMessage(fmt.Sprintf("assessment %d saved (%s)", msg.run.ID, msg.run.Status), msg.run.Status == assessment.RunPartial)
 		return m, loadHistoryRunsCmd(m.ctx, m.assessment)
+	case historyTimelineMsg:
+		m.timeline, m.historyErr = msg.events, msg.err
+		m.timelineCursor, m.timelineOffset = 0, 0
+		return m, nil
 
 	case formTestMsg:
 		if m.form != nil {
@@ -1466,6 +1477,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case modeHistoryRuns:
 		return m.handleHistoryRunsKey(msg)
+	case modeHistoryTimeline:
+		return m.handleHistoryTimelineKey(msg)
+	case modeHistoryTimelineDetail:
+		if key.Matches(msg, m.keys.Back) {
+			m.mode = modeHistoryTimeline
+		}
+		return nil
 	case modeHelp:
 		return m.handleHelpKey(msg)
 	default:

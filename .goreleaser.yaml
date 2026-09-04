@@ -21,7 +21,8 @@ builds:
       - -X github.com/easonliuuuuu/vsfleet/internal/version.Date={{ .Date }}
 
 archives:
-  - formats: [tar.gz]
+  - id: vsfleet
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
         formats: [zip]
@@ -35,6 +36,8 @@ homebrew_casks:
       - vsfleet
     binaries:
       - vsfleet
+    homepage: https://github.com/easonliuuuuu/vsfleet
+    description: Operate multiple VMware vCenter servers from one terminal
     repository:
       owner: Easonliuuuuu
       name: homebrew-tap

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://easonliuuuuu.github.io/vsfleet/sitemap.xml

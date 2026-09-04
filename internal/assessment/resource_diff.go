@@ -77,6 +77,9 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 	}
 	for _, kind := range []string{"host", "cluster", "datastore"} {
 		baseByVC, targetByVC := make(map[string][]storedResource), make(map[string][]storedResource)
+		// vcNames resolves a VCenterID back to its context name for the "not
+		// comparable" messages below, the same way Diff does for VMs.
+		vcNames := make(map[string]string)
 		for _, key := range sortedCoverageKeys(base.Coverage) {
 			c := base.Coverage[key]
 			if !strings.HasSuffix(key, "\x00"+kind) {
@@ -87,6 +90,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 				vc := contextVCenter(ctx, s, baseID, contextName)
 				if vc != "" {
 					baseByVC[vc] = append(baseByVC[vc], resourcesForVC(base.ByKind[kind], vc)...)
+					vcNames[vc] = contextName
 				}
 			} else {
 				msg := fmt.Sprintf("%s %s collection was not complete in baseline: %s", contextName, kind, nonempty(c.Error, c.Status))
@@ -104,6 +108,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 				vc := contextVCenter(ctx, s, targetID, contextName)
 				if vc != "" {
 					targetByVC[vc] = append(targetByVC[vc], resourcesForVC(target.ByKind[kind], vc)...)
+					vcNames[vc] = contextName
 				}
 			} else {
 				msg := fmt.Sprintf("%s %s collection was not complete in target: %s", contextName, kind, nonempty(c.Error, c.Status))
@@ -125,16 +130,18 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 		}
 		for vc := range baseByVC {
 			if _, ok := targetByVC[vc]; !ok {
-				msg := fmt.Sprintf("vCenter %s %s collection is not comparable: it was not successfully collected in target", vc, kind)
+				name := vcLabel(vcNames, vc)
+				msg := fmt.Sprintf("vCenter %s %s collection is not comparable: it was not successfully collected in target", name, kind)
 				d.Warnings = append(d.Warnings, msg)
-				d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: vc, Message: msg})
+				d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: name, Message: msg})
 			}
 		}
 		for vc := range targetByVC {
 			if _, ok := baseByVC[vc]; !ok {
-				msg := fmt.Sprintf("vCenter %s %s collection is not comparable: it was not successfully collected in baseline", vc, kind)
+				name := vcLabel(vcNames, vc)
+				msg := fmt.Sprintf("vCenter %s %s collection is not comparable: it was not successfully collected in baseline", name, kind)
 				d.Warnings = append(d.Warnings, msg)
-				d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: vc, Message: msg})
+				d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: name, Message: msg})
 			}
 		}
 		changes := compareResources(kind, flattenComparable(baseByVC, targetByVC), flattenComparable(targetByVC, baseByVC), includeRuntime)

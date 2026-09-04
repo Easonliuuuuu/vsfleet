@@ -73,7 +73,7 @@ Every change to vsfleet must uphold these four architectural invariants:
 ### 1. Strict Read-Only Safety
 vsfleet is an inspection and diagnostic tool. Under no circumstances should
 write, power-state mutation, snapshot creation/reversion, provisioning, or
-deletion RPCs be introduced to [internal/vsphere](file:///home/easonliu/projects/vsfleet-wt/internal/vsphere). Operators must be able to run
+deletion RPCs be introduced to [`internal/vsphere`](https://github.com/Easonliuuuuu/vsfleet/tree/main/internal/vsphere). Operators must be able to run
 vsfleet in production environments with absolute certainty that no state will
 be altered.
 
@@ -151,7 +151,7 @@ vsfleet/
 │   └── vsfleet-demo/      # Deterministic synthetic binary for VHS tapes & UI testing
 ├── docs/
 │   ├── assets/            # Demo recordings (.gif) and screenshots (.png)
-│   ├── ARCHITECTURE.md    # System design, invariants, and codemap (this document)
+│   ├── architecture.md    # System design, invariants, and codemap (this document)
 │   └── demo.tape          # VHS tape definition for generating demo recordings
 ├── internal/
 │   ├── assessment/        # SQLite run ledger, coverage-aware diffs, VM history

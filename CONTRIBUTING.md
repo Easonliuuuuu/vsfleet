@@ -15,7 +15,7 @@ constructive, and thoughtful in all discussions, issues, and pull requests.
 
 ## Architectural Principles
 
-Before contributing code, please review [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Before contributing code, please review [docs/architecture.md](docs/architecture.md).
 Any new feature or change must uphold our core invariants:
 
 1. **Strict Read-Only Safety:** vsfleet is an inspection tool. We do not accept

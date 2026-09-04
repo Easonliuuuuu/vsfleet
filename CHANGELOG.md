@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Easonliuuuuu/vsfleet/compare/v0.3.0...v0.3.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* **release:** match Homebrew cask to the archive id ([61e42a2](https://github.com/Easonliuuuuu/vsfleet/commit/61e42a2850c345bdcbd665b87b4b7adb8b75dce0))
+
 ## [0.3.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.2.0...v0.3.0) (2026-09-04)
 
 

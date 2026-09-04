@@ -152,6 +152,195 @@ func TestSwapKeyExchangesBaselineAndTarget(t *testing.T) {
 	}
 }
 
+// oneVMDiffStore builds a two-run store with a single VM present only in the
+// baseline (so the diff reports it "vanished" — the commonest row kind, and
+// the one the old change-detail screen showed with an empty "Field changes"
+// heading since Fields is only populated for a modified VM).
+func oneVMDiffStore(t *testing.T) *assessment.Store {
+	t.Helper()
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	cc := &config.Context{Name: "prod", Endpoint: "https://prod", Username: "user"}
+	ctx := context.Background()
+	base, err := store.StartRun(ctx, "test", []*config.Context{cc}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, base.ID, assessment.ContextResult{
+		Name: "prod", VCenterID: "vc-1", Status: "success",
+		VMs: []assessment.Observation{{VCenterID: "vc-1", Context: "prod", VM: vsphere.VM{
+			ID: "vm-1", Name: "billing", PowerState: "poweredOn", Host: "esx-01",
+			CPU: 4, MemoryMB: 8192, InstanceUUID: "uuid-1",
+		}}},
+	}, base.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FinishRun(ctx, base.ID, base.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	target, err := store.StartRun(ctx, "test", []*config.Context{cc}, base.StartedAt.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, target.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success"}, target.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FinishRun(ctx, target.ID, target.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+// TestChangeDetailShowsFieldsForVanishedVM pins the fix for the change-detail
+// screen's emptiest failure mode: for appeared and vanished rows — 97 of 110
+// changes in the scenario that motivated this redesign — it printed a "Field
+// changes" heading with nothing under it, because it read only the row's
+// flattened summary and never the diff's own Before/After observations. The
+// inspector now reads Before/After directly.
+func TestChangeDetailShowsFieldsForVanishedVM(t *testing.T) {
+	store := oneVMDiffStore(t)
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	press(t, m, "H")
+	rows := m.changeRows()
+	if len(rows) != 1 || rows[0].change != "vanished" || rows[0].kind != "vm" {
+		t.Fatalf("rows=%+v", rows)
+	}
+	detail := strings.Join(m.historyInspector(rows[0]), "\n")
+	for _, want := range []string{"esx-01", "poweredOn", "uuid-1", "4 vCPU", "8G"} {
+		if !strings.Contains(detail, want) {
+			t.Fatalf("inspector missing %q — the old screen would have shown nothing here:\n%s", want, detail)
+		}
+	}
+}
+
+// TestChangeDetailTimelineKeyOpensTimeline pins the fix for the other half
+// of the same screen's failures: its footer advertised "h timeline" while
+// the mode's key dispatch handled only Back, so the key was silently
+// dropped. This exercises the narrow-terminal fallback specifically, where
+// modeChangeDetail is still reached by Enter.
+func TestChangeDetailTimelineKeyOpensTimeline(t *testing.T) {
+	store := oneVMDiffStore(t)
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m.width = 80 // below the split threshold, so Enter opens the fallback mode
+	press(t, m, "H")
+	press(t, m, "enter")
+	if m.mode != modeChangeDetail {
+		t.Fatalf("enter did not open the narrow-terminal fallback: mode=%v", m.mode)
+	}
+	press(t, m, "h")
+	if m.mode != modeHistoryTimeline || m.timelineQuery != "billing" {
+		t.Fatalf("h did not open billing's timeline from change detail: mode=%v query=%q", m.mode, m.timelineQuery)
+	}
+	press(t, m, "esc")
+	if m.mode != modeChangeDetail {
+		t.Fatalf("esc from the timeline did not return to change detail: mode=%v", m.mode)
+	}
+}
+
+// TestChangesScrollsListToFollowCursor pins a gap the split layout made
+// visible: the Changes list had no scroll-into-view logic at all, unlike the
+// browse table's scrollIntoView, so Down could move the cursor past what the
+// list draws with nothing on screen showing where it went — the inspector
+// still tracked it, but the highlighted row itself was invisible.
+func TestChangesScrollsListToFollowCursor(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	cc := &config.Context{Name: "prod", Endpoint: "https://prod", Username: "user"}
+	ctx := context.Background()
+	// Zero-padded so the diff's alphabetical sort matches numeric order —
+	// "host-15" is genuinely the sixteenth row, not "host-5" landing there
+	// the way an unpadded name would under a lexicographic sort.
+	var vms []assessment.Observation
+	for i := 0; i < 20; i++ {
+		suffix := strconv.Itoa(i)
+		if i < 10 {
+			suffix = "0" + suffix
+		}
+		vms = append(vms, assessment.Observation{VCenterID: "vc-1", Context: "prod", VM: vsphere.VM{ID: "vm-" + suffix, Name: "host-" + suffix}})
+	}
+	base, err := store.StartRun(ctx, "test", []*config.Context{cc}, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, base.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: vms}, base.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FinishRun(ctx, base.ID, base.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	// Target collects nothing, so all 20 VMs vanish — one row per VM, more
+	// than a short terminal can show at once.
+	target, err := store.StartRun(ctx, "test", []*config.Context{cc}, base.StartedAt.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveContext(ctx, target.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success"}, target.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.FinishRun(ctx, target.ID, target.StartedAt); err != nil {
+		t.Fatal(err)
+	}
+
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m.height = 24 // tight enough that not all 20 rows fit at once
+	press(t, m, "H")
+	for i := 0; i < 15; i++ {
+		press(t, m, "down")
+	}
+	if m.changeCursor != 15 {
+		t.Fatalf("cursor=%d, want 15", m.changeCursor)
+	}
+	view := strings.Join(m.viewChanges(), "\n")
+	if !strings.Contains(view, "host-15") {
+		t.Fatalf("list did not scroll to keep the highlighted row visible:\n%s", view)
+	}
+}
+
+// TestChangesSplitShowsInlineInspector pins the split layout itself: above
+// the split threshold the inspector renders beside the list without Enter,
+// and Enter — which used to open a whole separate screen for exactly this
+// content — does nothing, because there is nothing left to open.
+func TestChangesSplitShowsInlineInspector(t *testing.T) {
+	store := oneVMDiffStore(t)
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	// newTestModel sets width 140, comfortably above the split threshold.
+	press(t, m, "H")
+	view := strings.Join(m.viewChanges(), "\n")
+	for _, want := range []string{"State", "esx-01", "poweredOn"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("wide Changes view did not show the inline inspector — missing %q:\n%s", want, view)
+		}
+	}
+	press(t, m, "enter")
+	if m.mode != modeChanges {
+		t.Fatalf("enter should be a no-op once the inspector is already inline: mode=%v", m.mode)
+	}
+}
+
+// TestChangesNarrowStillOpensFullScreenDetail pins the fallback itself:
+// below the split threshold, Enter still opens the full-screen inspector
+// the way it always has.
+func TestChangesNarrowStillOpensFullScreenDetail(t *testing.T) {
+	store := oneVMDiffStore(t)
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m.width = 80
+	press(t, m, "H")
+	press(t, m, "enter")
+	if m.mode != modeChangeDetail {
+		t.Fatalf("enter did not open the narrow-terminal fallback: mode=%v", m.mode)
+	}
+	view := strings.Join(m.viewChangeDetail(), "\n")
+	if !strings.Contains(view, "esx-01") {
+		t.Fatalf("narrow change-detail view is missing observation fields:\n%s", view)
+	}
+}
+
 func TestHistoryHeaderNamesTheSelectedPane(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{})
 	m.runs = []assessment.Run{{ID: 42}}

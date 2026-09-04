@@ -14,6 +14,7 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 )
 
 func (m *Model) enterChanges() tea.Cmd {
@@ -321,24 +322,16 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		m.mode = modeBrowse
 		m.filter.Placeholder = filterPlaceholder
 	case key.Matches(msg, m.keys.Timeline):
-		if len(rows) == 0 || m.changeCursor >= len(rows) || m.assessment == nil {
+		if len(rows) == 0 || m.changeCursor >= len(rows) {
 			return nil
 		}
-		query := rows[m.changeCursor].label
-		if i := strings.Index(query, " / "); i >= 0 {
-			query = query[:i]
-		}
-		m.timelineQuery = query
-		m.timelineAll = false
-		m.timelineCursor, m.timelineOffset = 0, 0
-		m.historyErr = nil
-		m.timelineFrom = modeChanges
-		m.mode = modeHistoryTimeline
-		return loadHistoryTimelineCmd(m.ctx, m.assessment, query, false, false)
+		return m.openTimelineForRow(rows[m.changeCursor], modeChanges)
 	case key.Matches(msg, m.keys.Up):
 		m.changeCursor = clamp(m.changeCursor-1, 0, max(0, len(rows)-1))
+		m.scrollChangesIntoView(len(rows))
 	case key.Matches(msg, m.keys.Down):
 		m.changeCursor = clamp(m.changeCursor+1, 0, max(0, len(rows)-1))
+		m.scrollChangesIntoView(len(rows))
 	case key.Matches(msg, m.keys.Filter):
 		m.filtering = true
 		return m.filter.Focus()
@@ -364,9 +357,58 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		m.mode = modeHistoryRuns
 		return nil
 	case key.Matches(msg, m.keys.Open):
-		if len(rows) > 0 && m.changeCursor < len(rows) {
+		// Above the split threshold the inspector is already showing beside
+		// the list and follows the cursor, so there is nothing left for
+		// Enter to open — that is the whole point of the split.
+		if len(rows) > 0 && m.changeCursor < len(rows) && m.historySplitWidth() == 0 {
 			m.mode = modeChangeDetail
 		}
+	}
+	return nil
+}
+
+// openTimelineForRow opens the VM timeline for one Changes row, remembering
+// from so Esc on the timeline returns to whichever screen — the Changes
+// pane, or its narrow-terminal change-detail fallback — actually opened it.
+func (m *Model) openTimelineForRow(row historyRow, from mode) tea.Cmd {
+	if m.assessment == nil {
+		return nil
+	}
+	query := row.label
+	if i := strings.Index(query, " / "); i >= 0 {
+		query = query[:i]
+	}
+	m.timelineQuery = query
+	m.timelineAll = false
+	m.timelineCursor, m.timelineOffset = 0, 0
+	m.historyErr = nil
+	m.timelineFrom = from
+	m.mode = modeHistoryTimeline
+	return loadHistoryTimelineCmd(m.ctx, m.assessment, query, false, false)
+}
+
+// handleChangeDetailKey drives the narrow-terminal change-detail fallback.
+// Up/Down move the underlying cursor and re-render this row's detail without
+// leaving the mode, so paging through changes below the split threshold does
+// not mean back, down, enter, repeat. Timeline opens that VM's full history —
+// previously advertised in the footer here but silently dropped by the
+// dispatch, so pressing it did nothing.
+func (m *Model) handleChangeDetailKey(msg tea.KeyMsg) tea.Cmd {
+	rows := m.changeRows()
+	switch {
+	case key.Matches(msg, m.keys.Back):
+		m.mode = modeChanges
+	case key.Matches(msg, m.keys.Up):
+		m.changeCursor = clamp(m.changeCursor-1, 0, max(0, len(rows)-1))
+		m.scrollChangesIntoView(len(rows))
+	case key.Matches(msg, m.keys.Down):
+		m.changeCursor = clamp(m.changeCursor+1, 0, max(0, len(rows)-1))
+		m.scrollChangesIntoView(len(rows))
+	case key.Matches(msg, m.keys.Timeline):
+		if len(rows) == 0 || m.changeCursor >= len(rows) {
+			return nil
+		}
+		return m.openTimelineForRow(rows[m.changeCursor], modeChangeDetail)
 	}
 	return nil
 }
@@ -548,19 +590,94 @@ func (m *Model) viewChanges() []string {
 		lines = append(lines, t.dim.Render("no changes in the selected assessments"))
 		return lines
 	}
-	changeW, nameW, kindW, ctxW, detailW := historyColumnWidths(m.width)
+	avail := m.changesListHeight()
+	// Above the split threshold, the inspector that used to be a whole
+	// separate screen — Enter, look, Esc, repeat — now sits beside the list
+	// and follows the cursor. Below it, the list keeps the full width it has
+	// always had and Enter still opens a full-screen inspector.
+	if splitW := m.historySplitWidth(); splitW > 0 {
+		rightW := m.width - splitW - 3
+		list := m.renderChangeList(rows, splitW, avail)
+		var inspector []string
+		if m.changeCursor >= 0 && m.changeCursor < len(rows) {
+			inspector = m.historyInspector(rows[m.changeCursor])
+		}
+		return append(lines, joinSideBySide(t, list, inspector, splitW, rightW, avail)...)
+	}
+	return append(lines, m.renderChangeList(rows, m.width, avail)...)
+}
+
+// changesListHeight is how many rows renderChangeList can draw — its own
+// heading included — below the title, comparison bar, and counts line. It is
+// factored out of viewChanges so cursor movement can scroll the list into
+// view using the exact budget the view renders with, the way scrollIntoView
+// does for the browse table; without it, Up/Down could move the cursor past
+// what renderChangeList draws with no way to see where it went, silencing
+// the highlight the split's inspector otherwise gives no other cue for.
+func (m *Model) changesListHeight() int {
+	lines := 2 // title, blank
+	if m.capturing {
+		lines += 2
+	}
+	if m.changeDiff != nil {
+		lines += len(m.viewComparisonBar(m.changeDiff)) + 3 // bar, blank, counts, blank
+	}
+	return max(1, m.bodyHeight()-lines)
+}
+
+// scrollChangesIntoView keeps changeCursor's row inside the window
+// renderChangeList draws, the same job scrollIntoView does for the browse
+// table's m.offset.
+func (m *Model) scrollChangesIntoView(n int) {
+	h := m.changesListHeight() - 1 // the list's own heading claims one row
+	if h <= 0 {
+		return
+	}
+	if m.changeCursor < m.changeOffset {
+		m.changeOffset = m.changeCursor
+	}
+	if m.changeCursor >= m.changeOffset+h {
+		m.changeOffset = m.changeCursor - h + 1
+	}
+	m.changeOffset = clamp(m.changeOffset, 0, max(0, n-h))
+}
+
+// historySplitWidth is the left column's width once the terminal is wide
+// enough to show the inspector beside the list instead of behind a
+// full-screen mode; 0 means the split does not apply at this width.
+func (m *Model) historySplitWidth() int {
+	const minSplitWidth = 92
+	if m.width < minSplitWidth {
+		return 0
+	}
+	w := m.width * 42 / 100
+	if w < 34 {
+		w = 34
+	}
+	if w > 52 {
+		w = 52
+	}
+	return w
+}
+
+// renderChangeList renders the heading plus as many rows as fit height,
+// starting from m.changeOffset, at the given width. It is used both for the
+// single-pane list and for the split layout's narrower left column.
+func (m *Model) renderChangeList(rows []historyRow, width, height int) []string {
+	t := m.theme
+	changeW, nameW, kindW, ctxW, detailW := historyColumnWidths(width)
 	heading := "  " + pad("CHANGE", changeW, false) + " " + pad("NAME", nameW, false) + " " + pad("KIND", kindW, false) + " " + pad("vCENTER", ctxW, false)
 	if detailW > 0 {
 		heading += " " + pad("DETAIL", detailW, false)
 	}
-	lines = append(lines, t.header.Render(truncate(heading, m.width)))
-	for i := m.changeOffset; i < len(rows) && i < m.changeOffset+m.bodyHeight()-len(lines); i++ {
+	lines := []string{t.header.Render(truncate(heading, width))}
+	for i := m.changeOffset; i < len(rows) && len(lines) < height; i++ {
 		r := rows[i]
 		line := "  " + pad(r.change, changeW, false) + " " + pad(r.label, nameW, false) + " " + pad(r.kind, kindW, false) + " " + pad(r.context, ctxW, false)
 		if detailW > 0 {
 			line += " " + pad(r.detail, detailW, false)
 		}
-		line = truncate(line, m.width)
+		line = truncate(line, width)
 		if i == m.changeCursor {
 			line = t.focused.Render(line)
 		} else {
@@ -571,6 +688,25 @@ func (m *Model) viewChanges() []string {
 	return lines
 }
 
+// joinSideBySide pads two blocks of lines to fixed widths and joins them
+// with a vertical rule, for the wide-terminal split between the Changes list
+// and its inspector.
+func joinSideBySide(t theme, left, right []string, leftW, rightW, height int) []string {
+	rule := t.rule.Render("│")
+	out := make([]string, height)
+	for i := 0; i < height; i++ {
+		l, r := "", ""
+		if i < len(left) {
+			l = left[i]
+		}
+		if i < len(right) {
+			r = right[i]
+		}
+		out[i] = pad(l, leftW, false) + " " + rule + " " + pad(r, rightW, false)
+	}
+	return out
+}
+
 // historyColumnWidths sizes the Changes list to the terminal: CHANGE, KIND
 // and vCENTER hold their content at any reasonable width, NAME takes what is
 // left up to a readable cap, and DETAIL — the per-row before/after preview —
@@ -578,14 +714,20 @@ func (m *Model) viewChanges() []string {
 // everything else to force it in.
 func historyColumnWidths(width int) (changeW, nameW, kindW, ctxW, detailW int) {
 	changeW, kindW, ctxW = 17, 10, 12
+	if width < 70 {
+		// Below single-pane comfort — also what the split layout's narrower
+		// list column always lands in — CHANGE/KIND/vCENTER give up their
+		// full-word room first, since NAME is what an operator scans for.
+		changeW, kindW, ctxW = 10, 8, 10
+	}
 	avail := width - 2 - changeW - 1 - kindW - 1 - ctxW - 1
 	nameW = avail
 	if nameW > 34 {
 		detailW = nameW - 34 - 1
 		nameW = 34
 	}
-	if nameW < 10 {
-		nameW = 10
+	if nameW < 8 {
+		nameW = 8
 	}
 	if detailW < 10 {
 		detailW = 0
@@ -742,43 +884,111 @@ func tuiSparkline(values []float64) string {
 	return out.String()
 }
 
+// viewChangeDetail is the narrow-terminal fallback for a row's detail, below
+// the width historySplitWidth needs to show the inspector beside the list.
+// It renders the same content historyInspector puts in the split's right
+// column, full width and full height, reached by Enter instead of always on.
 func (m *Model) viewChangeDetail() []string {
-	t := m.theme
 	rows := m.changeRows()
 	if m.changeCursor < 0 || m.changeCursor >= len(rows) {
-		return []string{t.dim.Render("nothing selected")}
+		return []string{m.theme.dim.Render("nothing selected")}
 	}
-	r := rows[m.changeCursor]
-	lines := []string{t.title.Render(r.label), "", "  " + t.label.Render("Context") + "  " + r.context, "  " + t.label.Render("Change") + "   " + r.change, ""}
-	if r.detail != "" {
-		for _, line := range wrap(r.detail, m.width-4) {
-			lines = append(lines, "  "+t.value.Render(line))
-		}
+	return scrollLines(m.historyInspector(rows[m.changeCursor]), 0, m.bodyHeight())
+}
+
+// historyInspector is the detail for one Changes row: the summary already on
+// the row, then whatever the diff's own Before/After observations add. This
+// is what the old change-detail screen was missing for appeared and vanished
+// rows — 97 of 110 changes in the scenario that motivated this screen's
+// redesign — because it read only the row's flattened summary and never the
+// full observation the diff had already loaded.
+func (m *Model) historyInspector(r historyRow) []string {
+	t := m.theme
+	lines := []string{
+		t.title.Render(r.label),
+		"  " + t.label.Render("context") + "  " + r.context,
+		"  " + t.label.Render("kind") + "     " + r.kind,
+		"  " + t.label.Render("change") + "   " + r.change,
+		"",
 	}
-	if m.changeDiff != nil {
-		for _, v := range m.changeDiff.VMs {
+	d := m.changeDiff
+	if d == nil {
+		return lines
+	}
+	switch r.kind {
+	case "vm":
+		for _, v := range d.VMs {
 			if v.Name == r.label && v.Context == r.context {
-				lines = append(lines, "", t.header.Render("Field changes"))
-				for _, f := range v.Fields {
-					lines = append(lines, fmt.Sprintf("  %-18s %s → %s", f.Field, truncate(nonempty(f.Before, "—"), 24), truncate(nonempty(f.After, "—"), 24)))
-				}
-				if v.MatchBasis != "" {
-					lines = append(lines, "", t.dim.Render("  matched by "+v.MatchBasis))
-				}
+				lines = append(lines, m.vmInspectorFields(v)...)
 				break
 			}
 		}
-		for _, resource := range m.changeDiff.Resources {
+	case "snapshot":
+		if r.detail != "" {
+			for _, line := range wrap(r.detail, m.width-4) {
+				lines = append(lines, "  "+t.value.Render(line))
+			}
+		}
+	default:
+		for _, resource := range d.Resources {
 			if resource.Kind == r.kind && resource.Name == r.label && resource.Context == r.context {
-				lines = append(lines, "", t.header.Render("Field changes"))
-				for _, field := range resource.Fields {
-					lines = append(lines, fmt.Sprintf("  %-22s %s → %s", field.Field, truncate(nonempty(field.Before, "—"), 24), truncate(nonempty(field.After, "—"), 24)))
-				}
+				lines = append(lines, resourceInspectorFields(t, resource)...)
 				break
 			}
 		}
 	}
-	return scrollLines(lines, 0, m.bodyHeight())
+	return lines
+}
+
+// vmInspectorFields renders a VM's current state — from After when the VM
+// still exists, from Before when it vanished — plus the field-level changes
+// a modified or moved VM carries. "Current state" is dated to whichever run
+// the observation came from, since a vanished VM's last-known state belongs
+// to the baseline, not the target.
+func (m *Model) vmInspectorFields(v assessment.VMChange) []string {
+	t := m.theme
+	d := m.changeDiff
+	obs, run := v.After, d.Target
+	if obs == nil {
+		obs, run = v.Before, d.Base
+	}
+	if obs == nil {
+		return nil
+	}
+	vm := obs.VM
+	lines := []string{
+		t.header.Render("  State"),
+		fmt.Sprintf("  %-12s %s · %s", "as of", historyRunLabel(run.ID), run.StartedAt.Local().Format("2006-01-02 15:04")),
+		fmt.Sprintf("  %-12s %s", "power", nonempty(vm.PowerState, "—")),
+		fmt.Sprintf("  %-12s %s", "host", nonempty(vm.Host, "—")),
+		fmt.Sprintf("  %-12s %s", "cluster", nonempty(vm.Cluster, "—")),
+		fmt.Sprintf("  %-12s %d vCPU · %s", "size", vm.CPU, humanize.MB(vm.MemoryMB)),
+		fmt.Sprintf("  %-12s %s", "datastore", nonempty(strings.Join(vm.Datastores, ", "), "—")),
+		fmt.Sprintf("  %-12s %s", "ip address", nonempty(vm.IPAddress, "—")),
+		fmt.Sprintf("  %-12s %s", "guest os", nonempty(vm.GuestOS, "—")),
+		fmt.Sprintf("  %-12s %s", "uuid", nonempty(vm.InstanceUUID, "—")),
+	}
+	if v.MatchBasis != "" {
+		lines = append(lines, fmt.Sprintf("  %-12s %s", "matched by", v.MatchBasis))
+	}
+	if len(v.Fields) > 0 {
+		lines = append(lines, "", t.header.Render("  Field changes"))
+		for _, f := range v.Fields {
+			lines = append(lines, fmt.Sprintf("  %-18s %s → %s", f.Field, truncate(nonempty(f.Before, "—"), 24), truncate(nonempty(f.After, "—"), 24)))
+		}
+	}
+	return lines
+}
+
+func resourceInspectorFields(t theme, r assessment.ResourceChange) []string {
+	if len(r.Fields) == 0 {
+		return nil
+	}
+	lines := []string{t.header.Render("  Field changes")}
+	for _, field := range r.Fields {
+		lines = append(lines, fmt.Sprintf("  %-22s %s → %s", field.Field, truncate(nonempty(field.Before, "—"), 24), truncate(nonempty(field.After, "—"), 24)))
+	}
+	return lines
 }
 
 func resourceDetail(r assessment.ResourceChange) string {

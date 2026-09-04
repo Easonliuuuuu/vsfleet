@@ -192,7 +192,7 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeChanges:
 		return []key.Binding{k.Up, k.Down, k.PrevPane, k.NextPane, k.Base, k.Target, k.Swap, k.Capture, k.Back, k.Help, k.Quit}
 	case modeChangeDetail:
-		return []key.Binding{k.Timeline, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:
 		return []key.Binding{k.Up, k.Down, k.Open, k.EditRun, k.NoteRun, k.PinRun, k.Back, k.Help, k.Quit}
 	case modeHistoryRunEdit:

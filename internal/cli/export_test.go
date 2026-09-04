@@ -45,6 +45,11 @@ func TestAssessmentExportIsOfflineAndNoClobbering(t *testing.T) {
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	if a.history != nil {
+		if err := a.history.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if strings.Contains(stderr.String(), "vCenter") {
 		t.Fatalf("unexpected live connection warning: %s", stderr.String())
 	}
@@ -59,6 +64,11 @@ func TestAssessmentExportIsOfflineAndNoClobbering(t *testing.T) {
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	if a.history != nil {
+		if err := a.history.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
 	second, err := os.ReadFile(secondPath)
 	if err != nil {
 		t.Fatal(err)
@@ -72,5 +82,10 @@ func TestAssessmentExportIsOfflineAndNoClobbering(t *testing.T) {
 	root.SetArgs([]string{"--history-db", dbPath, "assessment", "export", "latest", "--file", firstPath})
 	if err := root.ExecuteContext(context.Background()); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("no-clobber error=%v", err)
+	}
+	if a.history != nil {
+		if err := a.history.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

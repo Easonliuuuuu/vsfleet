@@ -52,6 +52,10 @@ func (m *Model) View() string {
 		body = strings.Join(m.viewCredPrompt(), "\n")
 	case m.mode == modeDetail:
 		body = strings.Join(m.viewDetail(), "\n")
+	case m.mode == modeVAppDetail:
+		body = strings.Join(m.viewVAppDetail(), "\n")
+	case m.mode == modeVAppVMDetail:
+		body = strings.Join(m.viewVAppVMDetail(), "\n")
 	case m.mode == modeDoctor:
 		body = strings.Join(m.viewDoctor(), "\n")
 	case m.mode == modeHelp:
@@ -564,11 +568,15 @@ func (m *Model) renderRow(r row, cols []column, widths []int, selected bool) str
 
 // viewDetail is one object, full width, every property the inventory carries.
 func (m *Model) viewDetail() []string {
-	t := m.theme
 	r, ok := m.currentRow()
 	if !ok {
-		return []string{t.dim.Render("nothing selected")}
+		return []string{m.theme.dim.Render("nothing selected")}
 	}
+	return m.viewDetailRow(r)
+}
+
+func (m *Model) viewDetailRow(r row) []string {
+	t := m.theme
 	lines := []string{
 		// The kind comes from the row, not from the current tab: a detail pane
 		// opened from a search result is showing whatever that result was.

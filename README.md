@@ -360,6 +360,13 @@ diagnostics.
 | | <kbd>?</kbd> | Show on-screen key reference overlay |
 | | <kbd>q</kbd> | Quit |
 
+#### vAPP Workspace
+
+Press <kbd>Enter</kbd> on a vAPP to open its summary and expanded member
+hierarchy. Use <kbd>↑</kbd>/<kbd>↓</kbd> to select nested vAPPs, VMs, and
+resource pools; <kbd>Enter</kbd> on a VM opens its normal detail inspector;
+<kbd>Esc</kbd> returns to the previous level.
+
 #### Contexts Screen (<kbd>c</kbd>)
 
 | Key | Action |

@@ -166,6 +166,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		m.timelineAll = false
 		m.timelineCursor, m.timelineOffset = 0, 0
 		m.historyErr = nil
+		m.timelineFrom = modeChanges
 		m.mode = modeHistoryTimeline
 		return loadHistoryTimelineCmd(m.ctx, m.assessment, query, false, false)
 	case key.Matches(msg, m.keys.Up):
@@ -584,7 +585,7 @@ func resourceDetail(r assessment.ResourceChange) string {
 
 func (m *Model) handleHistoryTimelineKey(msg tea.KeyMsg) tea.Cmd {
 	if key.Matches(msg, m.keys.Back) {
-		m.mode = modeChangeDetail
+		m.mode = m.timelineFrom
 		return nil
 	}
 	if key.Matches(msg, m.keys.Up) {

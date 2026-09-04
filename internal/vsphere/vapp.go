@@ -93,8 +93,10 @@ func newVApp(c *Client, idx *index, m *mo.VirtualApp) VApp {
 		DirectVMRefs:           managedRefNames(directVMRefs),
 		ChildVAppCount:         len(childVApps),
 		ChildVApps:             idx.names(childVApps),
+		ChildVAppRefs:          managedRefNames(childVApps),
 		ChildResourcePoolCount: len(childPools),
 		ChildResourcePools:     idx.names(childPools),
+		ChildResourcePoolRefs:  managedRefNames(childPools),
 		Cluster:                cluster,
 		ComputeResource:        placement,
 	}

@@ -64,6 +64,8 @@ type mode int
 const (
 	modeBrowse mode = iota
 	modeDetail
+	modeVAppDetail
+	modeVAppVMDetail
 	modeDoctor
 	modeHelp
 	modeForm
@@ -494,6 +496,18 @@ type Model struct {
 	// detailFrom is the screen the detail pane was opened from, so esc goes
 	// back to the search results rather than always to the table.
 	detailFrom mode
+	// helpFrom preserves the full-screen view that help temporarily covers.
+	helpFrom mode
+	// timelineFrom is the detail view that opened the VM timeline.
+	timelineFrom mode
+	// vapp holds the read-only vAPP workspace while it is open. It is kept
+	// separate from the browse cursor so nested vAPPs and member VMs can have
+	// their own selection without changing the resource tab underneath.
+	vapp *vappWorkspace
+	// vappVM is the VM row opened from the vAPP workspace. Keeping the row
+	// here lets the regular detail renderer and timeline operate on the member
+	// while Esc can return to the exact member selection.
+	vappVM *row
 	// doctor is the context the diagnosis panel is reporting on. It is not
 	// always the one in scope: in all-vCenters view "d" asks about the
 	// vCenter the selected row came from.
@@ -1620,8 +1634,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	if key.Matches(msg, m.keys.Help) {
 		if m.mode == modeHelp {
-			m.mode = modeBrowse
+			m.mode = m.helpFrom
 		} else {
+			m.helpFrom = m.mode
 			m.mode = modeHelp
 			m.detailY = 0
 		}
@@ -1630,6 +1645,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	switch m.mode {
 	case modeDetail:
 		return m.handleDetailKey(msg)
+	case modeVAppDetail:
+		return m.handleVAppDetailKey(msg)
+	case modeVAppVMDetail:
+		return m.handleVAppVMDetailKey(msg)
 	case modeDoctor:
 		return m.handleDoctorKey(msg)
 	case modeContexts:
@@ -2085,6 +2104,9 @@ func (m *Model) open() tea.Cmd {
 	} else {
 		m.detailFrom = m.mode
 	}
+	if r.kind == vsphere.KindVApp {
+		return m.openVApp(r)
+	}
 	m.mode = modeDetail
 	m.detailY = 0
 	return nil
@@ -2158,6 +2180,7 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 		m.timelineQuery = row.name
 		m.timelineAll, m.timelineCursor, m.timelineOffset = false, 0, 0
 		m.historyErr = nil
+		m.timelineFrom = modeDetail
 		m.mode = modeHistoryTimeline
 		return loadHistoryTimelineCmd(m.ctx, m.assessment, row.name, false, false)
 	case key.Matches(msg, m.keys.Up):

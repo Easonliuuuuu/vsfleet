@@ -1,0 +1,93 @@
+# Getting Started
+
+## Install
+
+### Homebrew (macOS and Linux)
+
+```sh
+brew install --cask easonliuuuuu/tap/vsfleet
+```
+
+### Pre-built release binary
+
+Download an archive for your operating system and CPU architecture from the
+[GitHub Releases](https://github.com/Easonliuuuuu/vsfleet/releases) page.
+
+```sh
+# Example for Linux x86_64
+curl -sSL https://github.com/Easonliuuuuu/vsfleet/releases/latest/download/vsfleet_linux_amd64.tar.gz \
+  | tar -xz vsfleet
+sudo install -m 0755 vsfleet /usr/local/bin/
+```
+
+Archives are available for Linux, macOS (Apple Silicon and Intel), and Windows
+(amd64 and arm64).
+
+### Go installation
+
+Requires Go 1.25 or newer:
+
+```sh
+go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest
+```
+
+### Build from source
+
+```sh
+git clone https://github.com/Easonliuuuuu/vsfleet.git
+cd vsfleet
+go build -o vsfleet ./cmd/vsfleet
+```
+
+## First context
+
+If no contexts exist, running `vsfleet` opens the setup wizard:
+
+```sh
+vsfleet
+```
+
+You can also start it explicitly:
+
+```sh
+vsfleet context add
+```
+
+The wizard asks for an endpoint, username, route, certificate policy, and
+password, then tests the connection before saving. Passwords are stored in the
+OS keyring when available; headless systems use the safe `prompt` reference.
+
+## Explore inventory
+
+```sh
+vsfleet context list
+vsfleet context test prod
+vsfleet status
+
+vsfleet vm list
+vsfleet vapp list
+vsfleet host list
+vsfleet datastore list
+
+vsfleet search ubuntu --all-contexts
+```
+
+Use `--all-contexts` for an estate-wide operation or `--context NAME` to scope
+one command. See the [CLI Guide](commands.md) for output and filtering.
+
+## Shell completion
+
+Generate completion for Bash, Zsh, Fish, or PowerShell:
+
+```sh
+# Bash
+vsfleet completion bash > ~/.local/share/bash-completion/completions/vsfleet
+
+# Zsh
+vsfleet completion zsh > "${fpath[1]}/_vsfleet"
+
+# Fish
+vsfleet completion fish > ~/.config/fish/completions/vsfleet.fish
+```
+
+For the complete command, use `vsfleet completion --help`.

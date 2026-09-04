@@ -245,7 +245,7 @@ func TestCredPromptMarksTheSelectedContextAsCredentialsRequired(t *testing.T) {
 	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
 	m := New(context.Background(), b, Options{Credentials: NewPromptCoordinator()})
 	st := m.byName["lab"]
-	if m.beginLoad(st, false, false) == nil {
+	if m.beginLoad(st, false, false, true) == nil {
 		t.Fatal("expected the selected context to begin loading")
 	}
 	request := credRequest{label: "lab", resp: make(chan credResult, 1)}
@@ -260,11 +260,69 @@ func TestCredPromptMarksTheSelectedContextAsCredentialsRequired(t *testing.T) {
 	m.resolveCredPrompt(credResult{err: errPromptCanceled})
 }
 
+// TestStartupCredentialRequestWaitsForExplicitLoad covers the startup policy:
+// automatic keyring/session work is allowed, but crossing an interactive
+// credential boundary leaves the normal pane usable. Reloading is the explicit
+// action that may then open the masked password overlay.
+func TestStartupCredentialRequestWaitsForExplicitLoad(t *testing.T) {
+	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
+	m := New(context.Background(), b, Options{Credentials: NewPromptCoordinator()})
+	m.width, m.height = 120, 30
+	st := m.byName["lab"]
+
+	if cmds := m.ensureSelectedLoadedAtStartup(); len(cmds) == 0 {
+		t.Fatal("expected startup to try the selected context")
+	}
+	if st.allowCredentialPrompt {
+		t.Fatal("startup load must not be allowed to open a password overlay")
+	}
+
+	request := credRequest{label: "lab", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: request})
+	if m.credPrompt != nil {
+		t.Fatal("startup credential request opened an interactive prompt")
+	}
+	res := <-request.resp
+	if !errors.Is(res.err, errDeferredCredentialPrompt) {
+		t.Fatalf("startup credential response = %v, want %v", res.err, errDeferredCredentialPrompt)
+	}
+
+	m.Update(beginInventoryMsg{
+		context: "lab", cc: st.cc, generation: st.generation, err: res.err,
+	})
+	if st.loading || !st.credentialsRequired() {
+		t.Fatalf("startup state = loading:%v credentials-required:%v", st.loading, st.credentialsRequired())
+	}
+	out := m.View()
+	if !strings.Contains(out, "credentials required · press r to connect") {
+		t.Fatalf("startup pane does not explain how to continue:\n%s", out)
+	}
+	if strings.Contains(out, "1 failed") {
+		t.Fatalf("a deferred startup credential was counted as a failed vCenter:\n%s", out)
+	}
+	if cmd := m.enterScope(); cmd != nil {
+		t.Fatal("a presentation-only scope change retried the deferred credential")
+	}
+
+	if cmds := m.ensureSelectedLoaded(false); len(cmds) == 0 {
+		t.Fatal("explicit reload did not retry the waiting context")
+	}
+	if !st.allowCredentialPrompt {
+		t.Fatal("explicit reload should permit the credential overlay")
+	}
+	request = credRequest{label: "lab", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: request})
+	if m.credPrompt == nil {
+		t.Fatal("explicit reload did not open the credential overlay")
+	}
+	m.resolveCredPrompt(credResult{err: errPromptCanceled})
+}
+
 func TestBackgroundCredentialRequestDoesNotOpenPrompt(t *testing.T) {
 	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
 	m := New(context.Background(), b, Options{Credentials: NewPromptCoordinator()})
 	st := m.byName["lab"]
-	if m.beginLoad(st, true, true) == nil {
+	if m.beginLoad(st, true, true, false) == nil {
 		t.Fatal("expected a quiet refresh to begin loading")
 	}
 	request := credRequest{label: "lab", resp: make(chan credResult, 1)}
@@ -278,8 +336,8 @@ func TestBackgroundCredentialRequestDoesNotOpenPrompt(t *testing.T) {
 	}
 	select {
 	case res := <-request.resp:
-		if !errors.Is(res.err, errBackgroundCredentialPrompt) {
-			t.Fatalf("background credential response = %v, want %v", res.err, errBackgroundCredentialPrompt)
+		if !errors.Is(res.err, errDeferredCredentialPrompt) {
+			t.Fatalf("background credential response = %v, want %v", res.err, errDeferredCredentialPrompt)
 		}
 	default:
 		t.Fatal("background credential request was not released")

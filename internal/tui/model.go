@@ -268,6 +268,14 @@ func (s *contextState) allKindsLoaded() bool {
 	return true
 }
 
+// credentialsRequired distinguishes an automatic load that stopped at an
+// interactive credential boundary from a real connection failure. It is a
+// waiting state: no inventory call was attempted, and an explicit selection
+// or reload is the action that may open the password overlay.
+func (s *contextState) credentialsRequired() bool {
+	return s.credentialPrompted && errors.Is(s.err, errDeferredCredentialPrompt)
+}
+
 // contextPhase is deliberately separate from inventory presence. A context
 // may still show a previous inventory while its next authentication or refresh
 // is waiting, and an untouched context must remain visibly disconnected rather
@@ -335,6 +343,8 @@ func (s *contextState) rowStatus() rowStatus {
 	switch {
 	case s.showsLoading() || s.diagging:
 		return statusWarn
+	case s.credentialsRequired():
+		return statusWarn
 	case s.err != nil && s.inv == nil:
 		return statusBad
 	case s.err != nil || s.hasKindErrors():
@@ -349,6 +359,8 @@ func (s *contextState) rowStatus() rowStatus {
 func (s *contextState) glyph() string {
 	switch {
 	case s.showsLoading() || s.diagging:
+		return glyphPending
+	case s.credentialsRequired():
 		return glyphPending
 	case s.err != nil && s.inv == nil:
 		return glyphFail
@@ -577,11 +589,12 @@ func refreshInterval(d time.Duration) time.Duration {
 
 // Init starts the spinner, loads only the selected context at start-up, and
 // arms the background refresh. The selected load is held briefly so the first
-// loading pane is flushed before a fast credential request can replace it with
-// the password overlay. The all-contexts view is a presentation scope, not
-// permission to contact every configured vCenter. With no contexts configured
-// yet there is nothing to load, so it opens the setup form instead of an empty
-// table with no way to fill it.
+// loading pane is flushed. Startup may use an existing session or a stored
+// keyring credential, but an interactive credential request is left visibly
+// pending until the operator selects or reloads the context. The all-contexts
+// view is a presentation scope, not permission to contact every configured
+// vCenter. With no contexts configured yet there is nothing to load, so it
+// opens the setup form instead of an empty table with no way to fill it.
 //
 // A context not selected here is never contacted merely because the program
 // started, the all-contexts view was opened, a search was opened, or a refresh
@@ -591,7 +604,7 @@ func (m *Model) Init() tea.Cmd {
 	if len(m.states) == 0 {
 		return tea.Batch(m.enterForm(nil), m.spin.Tick)
 	}
-	startup := m.ensureSelectedLoaded(false)
+	startup := m.ensureSelectedLoadedAtStartup()
 	if cmd := m.nextCredPromptCmd(); cmd != nil {
 		startup = append(startup, cmd)
 	}
@@ -683,7 +696,7 @@ func (m *Model) showContext() bool { return m.allScope && len(m.states) > 1 }
 // unless force is set, does not already have a result — success, failure or
 // stale-but-cached, all count. It returns nil when there is nothing to do.
 func (m *Model) startLoad(st *contextState, force bool) tea.Cmd {
-	return m.beginLoad(st, force, false)
+	return m.beginLoad(st, force, false, true)
 }
 
 // beginLoad is the shared body of every read. quiet marks it as one nobody
@@ -694,7 +707,7 @@ func (m *Model) startLoad(st *contextState, force bool) tea.Cmd {
 // priority fetch group is issued once that lands (the beginInventoryMsg case
 // in Update), and the rest once the priority group lands in turn (the
 // groupMsg case) — see the package doc on that progression.
-func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
+func (m *Model) beginLoad(st *contextState, force, quiet, allowCredentialPrompt bool) tea.Cmd {
 	if st.loading {
 		return nil
 	}
@@ -704,7 +717,7 @@ func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 	st.loading = true
 	st.generation++
 	st.attempted = true
-	st.allowCredentialPrompt = !quiet
+	st.allowCredentialPrompt = allowCredentialPrompt
 	if !quiet {
 		// A selection or explicit reload is a fresh opportunity to provide the
 		// credential after a previous cancellation or rejection.
@@ -827,7 +840,7 @@ func (m *Model) refreshStale() []tea.Cmd {
 		if !m.refreshDue(st, onScreen[st]) {
 			continue
 		}
-		if cmd := m.beginLoad(st, true, true); cmd != nil {
+		if cmd := m.beginLoad(st, true, true, false); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -849,9 +862,9 @@ func (m *Model) ensureLoaded(force bool) []tea.Cmd {
 	return cmds
 }
 
-// ensureSelectedLoaded is the lazy entry point used by start-up and context
-// switching. It intentionally ignores allScope: showing all rows does not
-// authorize contacting every configured vCenter.
+// ensureSelectedLoaded is the lazy entry point used by explicit context
+// selection and reload. It intentionally ignores allScope: showing all rows
+// does not authorize contacting every configured vCenter.
 func (m *Model) ensureSelectedLoaded(force bool) []tea.Cmd {
 	st := m.current()
 	if st == nil {
@@ -866,10 +879,29 @@ func (m *Model) ensureSelectedLoaded(force bool) []tea.Cmd {
 	return nil
 }
 
-// enterScope is what every change of what is on screen runs. It ensures the
-// selected context has been attempted, while reusing a live in-process session
-// and cached inventory when switching back to a context already loaded.
+// ensureSelectedLoadedAtStartup performs the same lazy selected-context load
+// as an explicit selection, except that it cannot take over the freshly opened
+// interface with a password field. Keyring-backed contexts still connect
+// automatically. A prompt-backed context settles into "credentials required"
+// and waits for an explicit selection or reload before opening the overlay.
+func (m *Model) ensureSelectedLoadedAtStartup() []tea.Cmd {
+	st := m.current()
+	if st == nil {
+		return nil
+	}
+	if cmd := m.beginLoad(st, false, false, false); cmd != nil {
+		return []tea.Cmd{cmd, m.spin.Tick}
+	}
+	return nil
+}
+
+// enterScope is what presentation-only scope changes run. It may ensure an
+// untouched selected context has been attempted, but it never turns widening
+// or narrowing the view into consent for an interactive password prompt.
 func (m *Model) enterScope() tea.Cmd {
+	if st := m.current(); st != nil && st.credentialsRequired() {
+		return nil
+	}
 	return tea.Batch(m.ensureSelectedLoaded(false)...)
 }
 
@@ -980,7 +1012,7 @@ func (m *Model) rows() []row {
 func (m *Model) failuresInScope() []*contextState {
 	var out []*contextState
 	for _, st := range m.inScope() {
-		if st.err != nil && st.inv == nil {
+		if st.err != nil && st.inv == nil && !st.credentialsRequired() {
 			out = append(out, st)
 		}
 	}
@@ -1070,10 +1102,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		st := m.credentialState(msg.req.label)
 		m.markCredentialRequest(msg.req.label)
 		if st != nil && !st.allowCredentialPrompt {
-			// Quiet refreshes never acquire keyboard ownership. Answering the
-			// buffered channel here lets the load finish and leaves the context
-			// visibly waiting for an explicit selection/reload.
-			msg.req.resp <- credResult{err: errBackgroundCredentialPrompt}
+			// Startup and quiet refreshes never acquire keyboard ownership.
+			// Answering the buffered channel here lets the load finish and leaves
+			// the context visibly waiting for an explicit selection/reload.
+			msg.req.resp <- credResult{err: errDeferredCredentialPrompt}
 			return m, m.nextCredPromptCmd()
 		}
 		m.credPrompt = newCredPromptState(msg.req)
@@ -1362,7 +1394,12 @@ func (m *Model) applyBeginInventory(msg beginInventoryMsg) tea.Cmd {
 	st.outstanding-- // the connect/index step itself just landed
 	if msg.err != nil {
 		st.err = msg.err
-		st.markAllKindsError(msg.err, st.generation)
+		// A deferred interactive credential is a waiting state, not an
+		// inventory failure: no inventory request was made yet. Keep each kind
+		// untouched so search and the tabs report it as not loaded.
+		if !errors.Is(msg.err, errDeferredCredentialPrompt) {
+			st.markAllKindsError(msg.err, st.generation)
+		}
 		if st.credentialPrompted {
 			st.phase = phaseCredentials
 		} else {
@@ -1470,6 +1507,10 @@ func (m *Model) finishLoad(st *contextState) tea.Cmd {
 	// One that failed always speaks, since silently serving data that has
 	// stopped being updated is the failure mode worth avoiding.
 	switch {
+	case st.credentialsRequired():
+		// Startup and timer work stop here without turning a missing interactive
+		// answer into a failure banner. The empty pane and context row carry the
+		// explicit retry action instead.
 	case quiet && st.credentialPrompted:
 		// A timer discovering that input is required is represented on the
 		// context row, not as an unsolicited prompt or transient error banner.
@@ -1887,7 +1928,9 @@ func (m *Model) useContext() tea.Cmd {
 	m.cursor, m.offset = 0, 0
 	m.setMessage("", false)
 	m.mode = modeBrowse
-	return m.enterScope()
+	// Enter on a context is an explicit request to use it, including permission
+	// to ask for a password when its automatic startup attempt stopped there.
+	return tea.Batch(m.ensureSelectedLoaded(false)...)
 }
 
 // enterSearch opens the estate-wide results. With nothing typed yet it opens

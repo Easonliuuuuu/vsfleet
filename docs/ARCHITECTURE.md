@@ -125,6 +125,13 @@ remain intact; the lease also serializes prune, backup, and restore operations.
 The TUI's History hub switches between Changes, Trends, and Runs, while all
 destructive ledger maintenance stays explicit on the CLI.
 
+The `assessment export` command reads a selected finished run through one
+SQLite read transaction and passes it to the `internal/report` writer. It never
+loads configuration or credentials and never creates a session. The RVTools
+writer emits fixed, coverage-aware sheets with canonical ordering and
+normalizes XLSX ZIP entry order and timestamps, so two exports of unchanged
+stored evidence are byte-identical.
+
 ---
 
 ## 3. Source Code Organization

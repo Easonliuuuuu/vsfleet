@@ -39,13 +39,17 @@ type keyMap struct {
 	// truncated key line is the problem this screen exists to fix.
 	AllScopeBrief key.Binding
 
-	Reload      key.Binding
-	ReloadAll   key.Binding
-	Doctor      key.Binding
-	History     key.Binding
-	Capture     key.Binding
-	Base        key.Binding
-	Target      key.Binding
+	Reload    key.Binding
+	ReloadAll key.Binding
+	Doctor    key.Binding
+	History   key.Binding
+	Capture   key.Binding
+	Base      key.Binding
+	Target    key.Binding
+	// Swap exchanges baseline and target on the Changes pane. It is "s"
+	// rather than sharing anything with Sort — Sort belongs to the browse
+	// table, which the history hub never shows, so the two never collide.
+	Swap        key.Binding
 	Timeline    key.Binding
 	TimelineAll key.Binding
 
@@ -111,6 +115,7 @@ func defaultKeys() keyMap {
 		Capture:     key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "capture")),
 		Base:        key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "baseline")),
 		Target:      key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "target")),
+		Swap:        key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "swap")),
 		Timeline:    key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "timeline")),
 		TimelineAll: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all observations")),
 		PrevPane:    key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "prev pane")),
@@ -168,6 +173,10 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	switch m.mode {
 	case modeDetail:
 		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
+	case modeVAppDetail:
+		return []key.Binding{k.Up, k.Down, k.Open, k.Back, k.Help, k.Quit}
+	case modeVAppVMDetail:
+		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
 	case modeDoctor:
 		return []key.Binding{k.Reload, k.Back, k.Help, k.Quit}
 	case modeHelp:
@@ -181,7 +190,7 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
 	case modeChanges:
-		return []key.Binding{k.Up, k.Down, k.PrevPane, k.NextPane, k.Base, k.Target, k.Capture, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Up, k.Down, k.PrevPane, k.NextPane, k.Base, k.Target, k.Swap, k.Capture, k.Back, k.Help, k.Quit}
 	case modeChangeDetail:
 		return []key.Binding{k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:

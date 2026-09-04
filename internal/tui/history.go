@@ -2,12 +2,15 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
@@ -57,13 +60,13 @@ func (m *Model) changeRows() []historyRow {
 	}
 	var rows []historyRow
 	for _, v := range m.changeDiff.VMs {
-		rows = append(rows, historyRow{label: v.Name, context: v.Context, change: strings.Join(v.Changes, ", "), detail: changeDetail(v)})
+		rows = append(rows, historyRow{kind: "vm", label: v.Name, context: v.Context, change: strings.Join(v.Changes, ", "), detail: changeDetail(v)})
 	}
 	for _, s := range m.changeDiff.Snapshots {
-		rows = append(rows, historyRow{label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: nonempty(s.After, s.Before)})
+		rows = append(rows, historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: nonempty(s.After, s.Before)})
 	}
 	for _, r := range m.changeDiff.Resources {
-		rows = append(rows, historyRow{label: r.Kind + " / " + r.Name, context: r.Context, change: strings.Join(r.Changes, ", "), detail: resourceDetail(r)})
+		rows = append(rows, historyRow{kind: r.Kind, label: r.Name, context: r.Context, change: strings.Join(r.Changes, ", "), detail: resourceDetail(r)})
 	}
 	needle := strings.ToLower(strings.TrimSpace(m.filter.Value()))
 	if needle == "" {
@@ -71,14 +74,18 @@ func (m *Model) changeRows() []historyRow {
 	}
 	out := rows[:0]
 	for _, r := range rows {
-		if strings.Contains(strings.ToLower(r.label), needle) || strings.Contains(strings.ToLower(r.context), needle) || strings.Contains(strings.ToLower(r.change), needle) {
+		if strings.Contains(strings.ToLower(r.label), needle) || strings.Contains(strings.ToLower(r.context), needle) || strings.Contains(strings.ToLower(r.change), needle) || strings.Contains(strings.ToLower(r.kind), needle) {
 			out = append(out, r)
 		}
 	}
 	return out
 }
 
-type historyRow struct{ label, context, change, detail string }
+// historyRow is one line of the Changes list. kind names what changed — vm,
+// snapshot, or an infrastructure kind (cluster, host, datastore) — as its own
+// field so the CHANGE and KIND columns stop conflating "what happened" with
+// "what it happened to".
+type historyRow struct{ label, context, change, detail, kind string }
 
 func (m *Model) viewChangesHeader() string {
 	t := m.theme
@@ -87,15 +94,174 @@ func (m *Model) viewChangesHeader() string {
 	if pane < 0 || pane >= len(labels) {
 		pane = historyPaneChanges
 	}
+	// The run identities themselves now live on the comparison bar beneath
+	// this header, so the header no longer restates "target #N" — a figure
+	// the bar already shows by label, date, and coverage instead of a bare ID.
 	label := "history  ·  " + labels[pane]
-	if pane == historyPaneChanges {
-		if m.targetRun != 0 {
-			label = fmt.Sprintf("history  ·  Changes  ·  target #%d", m.targetRun)
-		} else if len(m.runs) > 0 {
-			label = fmt.Sprintf("history  ·  Changes  ·  target #%d", m.runs[0].ID)
+	return t.title.Render("vsfleet") + "  " + t.accent.Render(label) + t.dim.Render("   ←/→ switch")
+}
+
+// viewComparisonBar renders the baseline and target runs as a permanent,
+// legible object: label, pin, id, when, status, and vCenter coverage for
+// each, the gap between them, and — when the two runs did not cover the same
+// vCenters — a plain-language line naming which ones were left out. This is
+// the fix for the diff's loudest failure mode: a narrower capture reading as
+// mass deletion because nothing on screen said the comparison was partial.
+func (m *Model) viewComparisonBar(d *assessment.Diff) []string {
+	t := m.theme
+	lines := []string{
+		"  " + t.accent.Render("b") + " " + t.dim.Render("baseline") + "  " + comparisonRunLine(t, d.Base, "", m.width),
+		"  " + t.accent.Render("t") + " " + t.dim.Render("target ") + "  " + comparisonRunLine(t, d.Target, formatInterval(d.Target.StartedAt.Sub(d.Base.StartedAt)), m.width),
+	}
+	missingTarget, missingBaseline := coverageGaps(d)
+	if len(missingTarget) > 0 {
+		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! not compared: %s — collected in the baseline but not the target", strings.Join(missingTarget, ", "))))
+	}
+	if len(missingBaseline) > 0 {
+		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! not compared: %s — collected in the target but not the baseline", strings.Join(missingBaseline, ", "))))
+	}
+	// Two runs can report the same VCenterID for genuinely different
+	// vCenters (a simulator fixture, a cloned appliance) — Diff cannot name
+	// the gap by vCenter in that case, but the counts still disagree and the
+	// operator still needs to know the comparison is not full-estate.
+	if len(missingTarget) == 0 && len(missingBaseline) == 0 && d.Base.SuccessfulContexts != d.Target.SuccessfulContexts {
+		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! baseline covered %s, target covered %s — the counts below are not a full-estate comparison", vCenterCount(d.Base.SuccessfulContexts), vCenterCount(d.Target.SuccessfulContexts))))
+	}
+	for _, note := range coverageNotes(d) {
+		lines = append(lines, "  "+t.dim.Render("· "+note))
+	}
+	for i, line := range lines {
+		lines[i] = truncate(line, m.width)
+	}
+	return lines
+}
+
+// comparisonRunLine formats one run's identity for the bar: its label (with
+// a pin), id, local date/time, status, and how much of the estate it
+// actually covered — the field this whole bar exists to make legible.
+// interval is appended when non-empty — only the target row carries the gap
+// since it reads relative to the baseline above it. Below 100 columns the
+// weekday and label give way first, since coverage is the figure that must
+// survive an 80 column terminal without an ellipsis.
+func comparisonRunLine(t theme, r assessment.Run, interval string, width int) string {
+	labelW := 20
+	dateFormat := "Mon 02 Jan 15:04"
+	if width < 100 {
+		labelW = 14
+		dateFormat = "01-02 15:04"
+	}
+	label := r.Label
+	if label == "" {
+		label = "(unlabelled)"
+	}
+	if r.Pinned {
+		label = "📌 " + label
+	}
+	status := t.dim.Render(pad(string(r.Status), 8, false))
+	switch r.Status {
+	case assessment.RunComplete:
+		status = t.ok.Render(pad(string(r.Status), 8, false))
+	case assessment.RunPartial, assessment.RunFailed:
+		status = t.warn.Render(pad(string(r.Status), 8, false))
+	}
+	coverage := vCenterCount(r.SuccessfulContexts)
+	coverStyle := t.dim
+	if r.RequestedContexts > 0 && r.SuccessfulContexts < r.RequestedContexts {
+		coverage = fmt.Sprintf("%d/%d vCenters", r.SuccessfulContexts, r.RequestedContexts)
+		coverStyle = t.warn
+	}
+	line := fmt.Sprintf("%s %-6s %s  %s  %s", pad(label, labelW, false), historyRunLabel(r.ID), r.StartedAt.Local().Format(dateFormat), status, coverStyle.Render(pad(coverage, 12, false)))
+	if interval != "" {
+		line += t.faint.Render(" +" + interval)
+	}
+	return line
+}
+
+// vCenterCount pluralizes a vCenter tally the way an operator would say it.
+func vCenterCount(n int) string {
+	if n == 1 {
+		return "1 vCenter"
+	}
+	return fmt.Sprintf("%d vCenters", n)
+}
+
+// coverageGaps names, by human context name, which vCenters the diff could
+// not compare on each side — everything Diff.Coverage recorded, whether the
+// vCenter was missing entirely or its collection simply failed that run.
+// Deduplicated because infrastructure coverage repeats one entry per kind
+// (host, cluster, datastore) for the same context.
+func coverageGaps(d *assessment.Diff) (missingFromTarget, missingFromBaseline []string) {
+	seenTarget, seenBaseline := map[string]bool{}, map[string]bool{}
+	for _, c := range d.Coverage {
+		if c.Context == "" {
+			continue
+		}
+		switch c.Scope {
+		case "target":
+			if !seenTarget[c.Context] {
+				seenTarget[c.Context] = true
+				missingFromTarget = append(missingFromTarget, c.Context)
+			}
+		case "baseline":
+			if !seenBaseline[c.Context] {
+				seenBaseline[c.Context] = true
+				missingFromBaseline = append(missingFromBaseline, c.Context)
+			}
 		}
 	}
-	return t.title.Render("vsfleet") + "  " + t.accent.Render(label) + t.dim.Render("   ←/→ switch")
+	sort.Strings(missingFromTarget)
+	sort.Strings(missingFromBaseline)
+	return missingFromTarget, missingFromBaseline
+}
+
+// coverageNotes returns coverage issues that name no specific vCenter — a
+// resource kind never recorded at all, typically because a run predates that
+// collection existing. These do not fit the per-vCenter gap lines above, but
+// dropping them silently would lose real information about what the diff
+// could not check.
+func coverageNotes(d *assessment.Diff) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, c := range d.Coverage {
+		if c.Context != "" || seen[c.Message] {
+			continue
+		}
+		seen[c.Message] = true
+		out = append(out, c.Message)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// formatInterval renders the gap between two runs the way an operator would
+// say it out loud: minutes below an hour, hours and minutes below a day,
+// whole days and hours beyond that.
+func formatInterval(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh%02dm", int(d.Hours()), int(d.Minutes())%60)
+	default:
+		days := int(d.Hours()) / 24
+		return fmt.Sprintf("%dd%dh", days, int(d.Hours())%24)
+	}
+}
+
+// countSegment colors one figure in the counts line by what it means: dim
+// when it is zero (nothing to draw the eye), the semantic style otherwise.
+// This is what stops "-96 vanished" and "0 moved" from reading as equally
+// important, which the old single dim-bold line did not distinguish.
+func countSegment(t theme, n int, label string, style lipgloss.Style) string {
+	if n == 0 {
+		return t.faint.Render(fmt.Sprintf("%d %s", n, label))
+	}
+	return style.Render(fmt.Sprintf("%d %s", n, label))
 }
 
 func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
@@ -166,6 +332,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		m.timelineAll = false
 		m.timelineCursor, m.timelineOffset = 0, 0
 		m.historyErr = nil
+		m.timelineFrom = modeChanges
 		m.mode = modeHistoryTimeline
 		return loadHistoryTimelineCmd(m.ctx, m.assessment, query, false, false)
 	case key.Matches(msg, m.keys.Up):
@@ -177,6 +344,12 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		return m.filter.Focus()
 	case key.Matches(msg, m.keys.Capture):
 		return m.captureCommand()
+	case key.Matches(msg, m.keys.Swap):
+		if m.baseRun == 0 || m.targetRun == 0 {
+			return nil
+		}
+		m.baseRun, m.targetRun = m.targetRun, m.baseRun
+		return m.historyDiffCommand()
 	case key.Matches(msg, m.keys.Base), key.Matches(msg, m.keys.Target):
 		if len(m.runs) == 0 {
 			return nil
@@ -347,10 +520,7 @@ func (m *Model) viewChanges() []string {
 		return m.viewHistoryHubRuns()
 	}
 	t := m.theme
-	lines := []string{t.title.Render("Changes")}
-	if m.baseRun != 0 && m.targetRun != 0 {
-		lines = append(lines, t.dim.Render(fmt.Sprintf("baseline #%d  →  target #%d", m.baseRun, m.targetRun)), "")
-	}
+	lines := []string{t.title.Render("Changes"), ""}
 	if m.capturing {
 		lines = append(lines, "  "+m.spin.View()+t.dim.Render("capturing VM inventory from "+captureScopeLabel(m.capturingStates())+"…"), "")
 	}
@@ -360,19 +530,37 @@ func (m *Model) viewChanges() []string {
 	if m.changeDiff == nil {
 		return append(lines, t.dim.Render("no comparable assessments"))
 	}
-	lines = append(lines, t.header.Render(fmt.Sprintf("  +%d appeared  -%d vanished  →%d moved  ~%d modified  infra:%d  snapshots:%d", m.changeDiff.Counts.Appeared, m.changeDiff.Counts.Vanished, m.changeDiff.Counts.Moved, m.changeDiff.Counts.Modified, m.changeDiff.Counts.Resources, m.changeDiff.Counts.Snapshots)), "")
-	for _, w := range m.changeDiff.Warnings {
-		lines = append(lines, "  "+t.warn.Render("! "+w))
-	}
+	d := m.changeDiff
+	lines = append(lines, m.viewComparisonBar(d)...)
+	lines = append(lines, "")
+	c := d.Counts
+	counts := strings.Join([]string{
+		countSegment(t, c.Vanished, "vanished", t.bad),
+		countSegment(t, c.Appeared, "appeared", t.ok),
+		countSegment(t, c.Moved, "moved", t.warn),
+		countSegment(t, c.Modified, "modified", t.warn),
+		countSegment(t, c.Resources, "infra", t.warn),
+		countSegment(t, c.Snapshots, "snapshots", t.warn),
+	}, t.faint.Render("   "))
+	lines = append(lines, truncate("  "+counts, m.width), "")
 	rows := m.changeRows()
 	if len(rows) == 0 {
 		lines = append(lines, t.dim.Render("no changes in the selected assessments"))
 		return lines
 	}
-	lines = append(lines, t.header.Render("  CHANGE              VM / SNAPSHOT                         CONTEXT"))
+	changeW, nameW, kindW, ctxW, detailW := historyColumnWidths(m.width)
+	heading := "  " + pad("CHANGE", changeW, false) + " " + pad("NAME", nameW, false) + " " + pad("KIND", kindW, false) + " " + pad("vCENTER", ctxW, false)
+	if detailW > 0 {
+		heading += " " + pad("DETAIL", detailW, false)
+	}
+	lines = append(lines, t.header.Render(truncate(heading, m.width)))
 	for i := m.changeOffset; i < len(rows) && i < m.changeOffset+m.bodyHeight()-len(lines); i++ {
 		r := rows[i]
-		line := fmt.Sprintf("  %-18s %-38s %s", truncate(r.change, 18), truncate(r.label, 38), r.context)
+		line := "  " + pad(r.change, changeW, false) + " " + pad(r.label, nameW, false) + " " + pad(r.kind, kindW, false) + " " + pad(r.context, ctxW, false)
+		if detailW > 0 {
+			line += " " + pad(r.detail, detailW, false)
+		}
+		line = truncate(line, m.width)
 		if i == m.changeCursor {
 			line = t.focused.Render(line)
 		} else {
@@ -381,6 +569,28 @@ func (m *Model) viewChanges() []string {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+// historyColumnWidths sizes the Changes list to the terminal: CHANGE, KIND
+// and vCENTER hold their content at any reasonable width, NAME takes what is
+// left up to a readable cap, and DETAIL — the per-row before/after preview —
+// only appears once there is genuine room for it rather than truncating
+// everything else to force it in.
+func historyColumnWidths(width int) (changeW, nameW, kindW, ctxW, detailW int) {
+	changeW, kindW, ctxW = 17, 10, 12
+	avail := width - 2 - changeW - 1 - kindW - 1 - ctxW - 1
+	nameW = avail
+	if nameW > 34 {
+		detailW = nameW - 34 - 1
+		nameW = 34
+	}
+	if nameW < 10 {
+		nameW = 10
+	}
+	if detailW < 10 {
+		detailW = 0
+	}
+	return
 }
 
 func (m *Model) viewHistoryHubRuns() []string {
@@ -559,7 +769,7 @@ func (m *Model) viewChangeDetail() []string {
 			}
 		}
 		for _, resource := range m.changeDiff.Resources {
-			if resource.Kind+" / "+resource.Name == r.label && resource.Context == r.context {
+			if resource.Kind == r.kind && resource.Name == r.label && resource.Context == r.context {
 				lines = append(lines, "", t.header.Render("Field changes"))
 				for _, field := range resource.Fields {
 					lines = append(lines, fmt.Sprintf("  %-22s %s → %s", field.Field, truncate(nonempty(field.Before, "—"), 24), truncate(nonempty(field.After, "—"), 24)))
@@ -584,7 +794,7 @@ func resourceDetail(r assessment.ResourceChange) string {
 
 func (m *Model) handleHistoryTimelineKey(msg tea.KeyMsg) tea.Cmd {
 	if key.Matches(msg, m.keys.Back) {
-		m.mode = modeChangeDetail
+		m.mode = m.timelineFrom
 		return nil
 	}
 	if key.Matches(msg, m.keys.Up) {

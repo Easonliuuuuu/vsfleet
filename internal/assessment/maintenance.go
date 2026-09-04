@@ -135,7 +135,7 @@ func (s *Store) backupFile(ctx context.Context, destination string, force bool) 
 	// The writer lease is process-local coordination state, not assessment
 	// evidence. Do not make a backup appear busy to the process that restores
 	// or inspects it later.
-	if db, err := sql.Open(Driver, tmp); err == nil {
+	if db, err := openDB(tmp); err == nil {
 		_, _ = db.Exec(`DELETE FROM capture_lease`)
 		_ = db.Close()
 	}
@@ -159,7 +159,7 @@ func (s *Store) backupFile(ctx context.Context, destination string, force bool) 
 }
 
 func verifySQLiteFile(path string) error {
-	db, err := sql.Open(Driver, path)
+	db, err := openDB(path)
 	if err != nil {
 		return err
 	}

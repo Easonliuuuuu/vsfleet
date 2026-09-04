@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	_ "modernc.org/sqlite"
+	"modernc.org/sqlite"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -63,21 +64,15 @@ func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create history directory: %w", err)
 	}
-	db, err := sql.Open(Driver, path)
+	db, err := openDB(path)
 	if err != nil {
-		return nil, fmt.Errorf("open history database: %w", err)
+		return nil, err
 	}
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
-	for _, stmt := range []string{
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA foreign_keys = ON",
-		"PRAGMA journal_mode = WAL",
-	} {
-		if _, err := db.Exec(stmt); err != nil {
-			db.Close()
-			return nil, fmt.Errorf("configure history database: %w", err)
-		}
+	// journal_mode is recorded in the database header, so unlike the
+	// connection-scoped pragmas it is set once rather than per connection.
+	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("configure history database: %w", err)
 	}
 	s := &Store{db: db, path: path}
 	if err := s.migrate(context.Background()); err != nil {
@@ -92,6 +87,57 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// connPragmas are scoped to a single connection, so database/sql cannot be
+// trusted to carry them: it opens up to MaxOpenConns physical connections
+// lazily, and a pragma executed through the pool reaches only whichever
+// connection happened to serve that call. Applying them in Connect is what
+// makes them true of every connection -- without it the later ones open with
+// busy_timeout=0, turning a concurrent writer into an immediate SQLITE_BUSY,
+// and with foreign_keys=OFF, which silently skips the ON DELETE CASCADE that
+// pruning a run relies on to remove its observations.
+var connPragmas = []string{
+	"PRAGMA busy_timeout = 5000",
+	"PRAGMA foreign_keys = ON",
+}
+
+// pragmaConnector applies connPragmas to each physical connection as it is
+// opened. Interposing on the connector keeps the path an opaque filename:
+// passing the pragmas as dsn query parameters instead would make every path
+// containing "?" open the wrong file.
+type pragmaConnector struct{ driver.Connector }
+
+func (c pragmaConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	conn, err := c.Connector.Connect(ctx)
+	if err != nil {
+		return nil, err
+	}
+	execer, ok := conn.(driver.ExecerContext)
+	if !ok {
+		conn.Close()
+		return nil, fmt.Errorf("sqlite driver connection does not support ExecContext")
+	}
+	for _, stmt := range connPragmas {
+		if _, err := execer.ExecContext(ctx, stmt, nil); err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("configure history connection: %w", err)
+		}
+	}
+	return conn, nil
+}
+
+// openDB opens path with a connection pool whose every connection carries
+// connPragmas.
+func openDB(path string) (*sql.DB, error) {
+	base, err := sqlite.NewConnector(path)
+	if err != nil {
+		return nil, fmt.Errorf("open history database: %w", err)
+	}
+	db := sql.OpenDB(pragmaConnector{base})
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
+	return db, nil
+}
 
 func (s *Store) migrate(ctx context.Context) error {
 	var version int

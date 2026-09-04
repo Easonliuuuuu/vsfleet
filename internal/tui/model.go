@@ -138,11 +138,20 @@ type contextState struct {
 	loadedAt    time.Time
 	diag        *vsphere.Diagnosis
 	diagging    bool
+	// credentialPrompted records that the last failed load needed interactive
+	// credential entry. A timer must not repeat that interaction; selecting or
+	// explicitly reloading the context clears the gate and may ask again.
+	credentialPrompted bool
+	// allowCredentialPrompt distinguishes an operator-requested load from a
+	// quiet timer refresh. A background refresh may use stored credentials or
+	// an existing session, but it never gets to interrupt the screen for input.
+	allowCredentialPrompt bool
 	// quiet marks the in-flight read as one nobody asked for — the periodic
 	// background refresh rather than a keystroke. It suppresses the pending
 	// indicator and the success message, so a table being kept current does
-	// not flicker through "connecting…" once a minute. A quiet read that
-	// fails is not quiet: that is the moment the reader needs telling.
+	// not flicker through "connecting…" once a minute. Most quiet failures are
+	// reported; one that merely needs input stays on the context row until the
+	// operator explicitly selects or reloads it.
 	quiet bool
 
 	// outstanding counts messages truly in flight for the load currently
@@ -295,6 +304,8 @@ func (s *contextState) reset() {
 	}
 	s.err = nil
 	s.attempted = false
+	s.credentialPrompted = false
+	s.allowCredentialPrompt = false
 	s.phase = phaseIdle
 	s.loadingKind = ""
 	s.generation++
@@ -629,6 +640,7 @@ func (m *Model) credentialState(label string) *contextState {
 
 func (m *Model) markCredentialRequest(label string) {
 	if st := m.credentialState(label); st != nil {
+		st.credentialPrompted = true
 		st.phase = phaseCredentials
 		st.loadingKind = ""
 	}
@@ -692,6 +704,12 @@ func (m *Model) beginLoad(st *contextState, force, quiet bool) tea.Cmd {
 	st.loading = true
 	st.generation++
 	st.attempted = true
+	st.allowCredentialPrompt = !quiet
+	if !quiet {
+		// A selection or explicit reload is a fresh opportunity to provide the
+		// credential after a previous cancellation or rejection.
+		st.credentialPrompted = false
+	}
 	st.phase = phaseAuthenticating
 	st.loadingKind = ""
 	st.quiet = quiet
@@ -799,6 +817,13 @@ func (m *Model) refreshStale() []tea.Cmd {
 		if !st.attempted {
 			continue
 		}
+		// Once a load has asked for interactive credentials, only another
+		// explicit action may ask again. Without this gate a cancellation or
+		// rejected password makes every refresh tick reopen the same prompt,
+		// including for a context that is no longer selected.
+		if st.credentialPrompted {
+			continue
+		}
 		if !m.refreshDue(st, onScreen[st]) {
 			continue
 		}
@@ -831,6 +856,9 @@ func (m *Model) ensureSelectedLoaded(force bool) []tea.Cmd {
 	st := m.current()
 	if st == nil {
 		return nil
+	}
+	if st.credentialPrompted && !st.loading {
+		force = true
 	}
 	if cmd := m.startLoad(st, force); cmd != nil {
 		return []tea.Cmd{cmd, m.spin.Tick}
@@ -1039,7 +1067,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A second concurrent ask cannot arrive here: the coordinator only
 		// hands out another request after this one is resolved and the
 		// model asks to listen again, see nextCredPromptCmd.
+		st := m.credentialState(msg.req.label)
 		m.markCredentialRequest(msg.req.label)
+		if st != nil && !st.allowCredentialPrompt {
+			// Quiet refreshes never acquire keyboard ownership. Answering the
+			// buffered channel here lets the load finish and leaves the context
+			// visibly waiting for an explicit selection/reload.
+			msg.req.resp <- credResult{err: errBackgroundCredentialPrompt}
+			return m, m.nextCredPromptCmd()
+		}
 		m.credPrompt = newCredPromptState(msg.req)
 		return m, nil
 
@@ -1327,7 +1363,11 @@ func (m *Model) applyBeginInventory(msg beginInventoryMsg) tea.Cmd {
 	if msg.err != nil {
 		st.err = msg.err
 		st.markAllKindsError(msg.err, st.generation)
-		st.phase = phaseForLoadError(msg.err)
+		if st.credentialPrompted {
+			st.phase = phaseCredentials
+		} else {
+			st.phase = phaseForLoadError(msg.err)
+		}
 		return m.finishLoad(st)
 	}
 	st.err = nil
@@ -1416,6 +1456,7 @@ func (m *Model) finishLoad(st *contextState) tea.Cmd {
 	st.handle = nil
 	st.stopStages()
 	if st.err == nil {
+		st.credentialPrompted = false
 		if st.allKindsLoaded() {
 			st.loadedAt = time.Now()
 		}
@@ -1429,6 +1470,9 @@ func (m *Model) finishLoad(st *contextState) tea.Cmd {
 	// One that failed always speaks, since silently serving data that has
 	// stopped being updated is the failure mode worth avoiding.
 	switch {
+	case quiet && st.credentialPrompted:
+		// A timer discovering that input is required is represented on the
+		// context row, not as an unsolicited prompt or transient error banner.
 	case st.err != nil && st.inv == nil:
 		m.setMessage(st.cc.Name+": "+st.err.Error(), true)
 	case st.err != nil:
@@ -1927,11 +1971,15 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// reload refetches what is in scope, or every configured context when the
+// reload refetches the selected context, or every configured context when the
 // caller requests an explicit all-contexts reload.
 func (m *Model) reload(everything bool) []tea.Cmd {
 	if !everything {
-		return m.ensureLoaded(true)
+		// Lowercase r always means the selected context. In all-context and
+		// estate-search views, widening the presentation must not silently
+		// widen credential access too; uppercase R is the explicit all-context
+		// operation.
+		return m.ensureSelectedLoaded(true)
 	}
 	return m.ensureAllLoaded(true)
 }

@@ -14,6 +14,13 @@ import (
 // dismisses the credential overlay instead of answering it.
 var errPromptCanceled = errors.New("credential entry canceled")
 
+// errBackgroundCredentialPrompt is returned when a quiet refresh discovers
+// that it would need to interrupt the operator for a password. Background
+// work may reuse an existing session or a stored credential, but it must not
+// open an interactive prompt. Selecting or explicitly reloading the context
+// starts a foreground load which is allowed to ask.
+var errBackgroundCredentialPrompt = errors.New("credential entry requires an explicit context load")
+
 // credRequest is one pending ask for a password, raised by a background
 // inventory or connection load that hit a "prompt" credential reference.
 // resp is buffered by one so the model can always answer it without

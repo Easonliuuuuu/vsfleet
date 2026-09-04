@@ -982,6 +982,10 @@ func TestReloadRefetches(t *testing.T) {
 	if b.calls["customer-a"] != 0 {
 		t.Errorf("'r' must not reach out of scope, customer-a calls: %d", b.calls["customer-a"])
 	}
+	press(t, m, "a", "r")
+	if b.calls["customer-a"] != 0 {
+		t.Errorf("'r' in all-context view must still reload only the selected context, customer-a calls: %d", b.calls["customer-a"])
+	}
 	press(t, m, "R")
 	if b.calls["customer-a"] != 1 {
 		t.Errorf("'R' should refetch every context, customer-a calls: %d", b.calls["customer-a"])

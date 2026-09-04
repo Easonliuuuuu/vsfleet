@@ -38,6 +38,31 @@ func firstOfType[T any](msgs []tea.Msg) (T, bool) {
 	return zero, false
 }
 
+func TestAfterInitialPaintDefersStartupCommands(t *testing.T) {
+	cmd := afterInitialPaint(context.Background(), []tea.Cmd{
+		func() tea.Msg { return beginInventoryMsg{} },
+		func() tea.Msg { return nil },
+	})
+	result := make(chan tea.Msg, 1)
+	go func() { result <- cmd() }()
+
+	select {
+	case msg := <-result:
+		t.Fatalf("startup command released before the initial paint: %T", msg)
+	case <-time.After(initialPaintDelay / 2):
+	}
+
+	select {
+	case msg := <-result:
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok || len(batch) != 2 {
+			t.Fatalf("afterInitialPaint returned %T with %d commands, want two-command BatchMsg", msg, len(batch))
+		}
+	case <-time.After(initialPaintDelay * 2):
+		t.Fatal("afterInitialPaint did not release startup commands")
+	}
+}
+
 // TestLoadPrioritizesTheVisibleKindsGroup checks that Init requests the
 // currently-selected kind's fetch group before anything else — the "the
 // visible resource kind is requested ... before unrelated kinds" half of

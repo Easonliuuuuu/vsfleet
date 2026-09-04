@@ -32,7 +32,7 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 	if err != nil {
 		return Diff{}, err
 	}
-	d := Diff{Base: base, Target: target}
+	d := Diff{SchemaVersion: 1, Base: base, Target: target}
 	baseByVC := make(map[string][]storedVM)
 	targetByVC := make(map[string][]storedVM)
 	for id, c := range bc {
@@ -78,6 +78,9 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 		}
 	}
 	d.Counts = countChanges(d.VMs, d.Snapshots)
+	if err := s.infrastructureDiff(ctx, baseID, targetID, includeRuntime, &d); err != nil {
+		return Diff{}, err
+	}
 	sort.Slice(d.VMs, func(i, j int) bool { return strings.ToLower(d.VMs[i].Name) < strings.ToLower(d.VMs[j].Name) })
 	sort.Slice(d.Snapshots, func(i, j int) bool {
 		return strings.ToLower(d.Snapshots[i].VMName) < strings.ToLower(d.Snapshots[j].VMName)

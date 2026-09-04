@@ -209,7 +209,8 @@ vsfleet search ubuntu --all-contexts
 
 ### Assessment History
 
-Assessments are explicit, read-only captures of VM and snapshot state. They are
+Assessments are explicit, read-only captures of VM, host, cluster, datastore,
+and snapshot state. They are
 stored locally in SQLite and never sent back to vCenter:
 
 ```sh
@@ -219,6 +220,13 @@ vsfleet assessment list
 vsfleet assessment diff previous latest
 vsfleet assessment diff nightly latest --fail-on moved,vanished --max-snapshot-age 30d --require-complete
 vsfleet assessment snapshots --older-than 30d
+vsfleet assessment trends churn
+vsfleet assessment trends snapshots --older-than 30d
+vsfleet assessment trends capacity --kind all
+vsfleet assessment report latest
+vsfleet assessment doctor
+vsfleet assessment prune --older-than 90d       # dry-run
+vsfleet assessment backup ./history-backup.db
 vsfleet vm history billing --all-observations
 ```
 
@@ -242,9 +250,11 @@ vsfleet assessment diff nightly latest --fail-on appeared,vanished,moved \
   --require-complete -o json > drift.json
 ```
 
-Only one capture may write a history database at a time. A second process gets
-a clear lease error; listing, diffing, and opening the TUI never take that
-lease.
+Only one mutating operation may write a history database at a time. Capture,
+prune, backup, and restore use a fenced lease; listing, diffing, and opening
+the TUI never take that lease. Prune is a dry run unless `--execute` is passed.
+Backups are consistent SQLite snapshots. `assessment restore --force` creates
+an automatic pre-restore safety copy before replacing the active database.
 
 ---
 
@@ -263,9 +273,15 @@ lease.
 | `vsfleet status` | Health check and summary of selected contexts |
 | `vsfleet doctor [context...]` | Run an 8-stage connection diagnosis |
 | `vsfleet search <text>` | Search inventory across all resource kinds |
-| `vsfleet assessment run` | Capture VM and snapshot state from the selected contexts |
+| `vsfleet assessment run` | Capture VM, host, cluster, datastore, and snapshot state from selected contexts |
 | `vsfleet assessment diff [base] [target]` | Explain VM drift and optionally enforce a policy |
 | `vsfleet assessment snapshots` | Report snapshot age and first/last observation |
+| `vsfleet assessment trends ...` | Trend VM churn, snapshot age, and capacity over complete runs |
+| `vsfleet assessment report [run]` | Summarize one run's coverage, counts, and capacity |
+| `vsfleet assessment prune` | Dry-run or execute retention cleanup |
+| `vsfleet assessment backup FILE` | Create a consistent SQLite backup |
+| `vsfleet assessment restore FILE` | Validate and restore a backup in place |
+| `vsfleet assessment doctor` | Check schema, integrity, coverage tables, and lease state |
 | `vsfleet assessment update <run>` | Edit a run label, note, or pin |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's change timeline across stored runs |
 | `vsfleet <kind> list` | List resources (`vm`, `template`, `host`, `cluster`, `vapp`, `datastore`, `network`) |
@@ -336,15 +352,19 @@ diagnostics.
 | <kbd>d</kbd> | Diagnose connectivity to highlighted context |
 | <kbd>Esc</kbd> | Return to the browse screen |
 
-#### Changes Screen (<kbd>H</kbd>)
+#### History Screen (<kbd>H</kbd>)
 
-The full-screen Changes view compares the newest two assessments. Press
+The full-screen History hub opens Changes, Trends, and Runs; press <kbd>←</kbd>
+or <kbd>→</kbd> to switch panes. Changes compares the newest two assessments.
+Press
 <kbd>b</kbd> or <kbd>t</kbd> to choose a different baseline or target run,
 <kbd>n</kbd> to capture every configured vCenter, and <kbd>Enter</kbd> to open
 the selected change. From a change detail, press <kbd>h</kbd> to open that VM's
-timeline; press <kbd>a</kbd> there to include unchanged observations. Run
-pickers show labels and pinned baselines. Captures are explicit and run in the
-background; normal inventory remains available while the ledger is updated.
+timeline; press <kbd>a</kbd> there to include unchanged observations. In Runs,
+<kbd>e</kbd> edits a label, <kbd>n</kbd> edits a note, and <kbd>p</kbd> toggles a
+pin. Run pickers show labels and pinned baselines. Captures are explicit and
+run in the background; normal inventory remains available while the ledger is
+updated.
 
 ### Background Refresh & Caching
 
@@ -433,12 +453,12 @@ Override this location using `--config <path>` or the `VSFLEET_CONFIG`
 environment variable. The configuration file is created with `0600` permissions
 and contains **no passwords**.
 
-Assessment history is kept separately in SQLite. By default it lives at
+Assessment history is kept separately in SQLite (schema version 3). By default it lives at
 `<user-config-dir>/vsfleet/history.db` (for example, `~/.config/vsfleet/history.db`);
 set `VSFLEET_HISTORY_DB` or pass `--history-db` to override it. The database is
 created with a private directory and `0600` file permissions and contains VM
-inventory, UUIDs, paths, annotations, and snapshot metadata, but never
-credentials.
+inventory, UUIDs, paths, annotations, snapshot metadata, and host/cluster/
+datastore observations, but never credentials.
 
 ### Example `config.toml`
 

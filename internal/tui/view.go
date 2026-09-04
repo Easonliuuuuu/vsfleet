@@ -69,6 +69,8 @@ func (m *Model) View() string {
 		body = strings.Join(m.viewChangeDetail(), "\n")
 	case m.mode == modeHistoryRuns:
 		body = strings.Join(m.viewHistoryRuns(), "\n")
+	case m.mode == modeHistoryRunEdit:
+		body = strings.Join(m.viewHistoryRunEdit(), "\n")
 	case m.mode == modeHistoryTimeline:
 		body = strings.Join(m.viewHistoryTimeline(), "\n")
 	case m.mode == modeHistoryTimelineDetail:
@@ -107,7 +109,7 @@ func (m *Model) viewHeader() string {
 	if m.mode == modeSearch {
 		return m.viewSearchHeader()
 	}
-	if m.mode == modeChanges || m.mode == modeChangeDetail || m.mode == modeHistoryRuns || m.mode == modeHistoryTimeline || m.mode == modeHistoryTimelineDetail {
+	if m.mode == modeChanges || m.mode == modeChangeDetail || m.mode == modeHistoryRuns || m.mode == modeHistoryRunEdit || m.mode == modeHistoryTimeline || m.mode == modeHistoryTimelineDetail {
 		return m.viewChangesHeader()
 	}
 	scope := t.accent.Render(m.scopeName())

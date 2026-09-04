@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
@@ -13,6 +14,7 @@ import (
 
 func (m *Model) enterChanges() tea.Cmd {
 	m.mode = modeChanges
+	m.historyPane = historyPaneChanges
 	m.filter.Placeholder = "filter changes"
 	m.filtering = false
 	m.filter.Blur()
@@ -22,7 +24,7 @@ func (m *Model) enterChanges() tea.Cmd {
 		return nil
 	}
 	m.historyErr = nil
-	return loadHistoryRunsCmd(m.ctx, m.assessment)
+	return tea.Batch(loadHistoryRunsCmd(m.ctx, m.assessment), loadHistoryTrendsCmd(m.ctx, m.assessment))
 }
 
 func (m *Model) loadDefaultHistoryDiff() {
@@ -59,6 +61,9 @@ func (m *Model) changeRows() []historyRow {
 	for _, s := range m.changeDiff.Snapshots {
 		rows = append(rows, historyRow{label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: nonempty(s.After, s.Before)})
 	}
+	for _, r := range m.changeDiff.Resources {
+		rows = append(rows, historyRow{label: r.Kind + " / " + r.Name, context: r.Context, change: strings.Join(r.Changes, ", "), detail: resourceDetail(r)})
+	}
 	needle := strings.ToLower(strings.TrimSpace(m.filter.Value()))
 	if needle == "" {
 		return rows
@@ -76,18 +81,66 @@ type historyRow struct{ label, context, change, detail string }
 
 func (m *Model) viewChangesHeader() string {
 	t := m.theme
-	label := "history"
+	labels := []string{"Changes", "Trends", "Runs"}
+	pane := m.historyPane
+	if pane < 0 || pane >= len(labels) {
+		pane = historyPaneChanges
+	}
+	label := "history  ·  " + labels[pane]
 	if m.targetRun != 0 {
 		label = fmt.Sprintf("changes  ·  target #%d", m.targetRun)
 	} else if len(m.runs) > 0 {
 		label = fmt.Sprintf("changes  ·  target #%d", m.runs[0].ID)
 	}
-	return t.title.Render("vsfleet") + "  " + t.accent.Render(label)
+	return t.title.Render("vsfleet") + "  " + t.accent.Render(label) + t.dim.Render("   ←/→ switch")
 }
 
 func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
+	if m.historyPane != historyPaneChanges {
+		switch {
+		case msg.Type == tea.KeyLeft:
+			m.historyPane = (m.historyPane + 2) % 3
+			return nil
+		case msg.Type == tea.KeyRight:
+			m.historyPane = (m.historyPane + 1) % 3
+			return nil
+		case key.Matches(msg, m.keys.Back):
+			m.mode = modeBrowse
+			m.historyPane = historyPaneChanges
+			return nil
+		case key.Matches(msg, m.keys.Up):
+			if m.historyPane == historyPaneRuns {
+				m.runCursor = clamp(m.runCursor-1, 0, max(0, len(m.runs)-1))
+			}
+			return nil
+		case key.Matches(msg, m.keys.Down):
+			if m.historyPane == historyPaneRuns {
+				m.runCursor = clamp(m.runCursor+1, 0, max(0, len(m.runs)-1))
+			}
+			return nil
+		case key.Matches(msg, m.keys.EditRun):
+			if m.historyPane == historyPaneRuns {
+				return m.beginRunEdit("label")
+			}
+		case key.Matches(msg, m.keys.NoteRun):
+			if m.historyPane == historyPaneRuns {
+				return m.beginRunEdit("note")
+			}
+		case key.Matches(msg, m.keys.PinRun):
+			if m.historyPane == historyPaneRuns && len(m.runs) > 0 && m.assessment != nil {
+				return toggleHistoryRunPinCmd(m.ctx, m.assessment, m.runs[clamp(m.runCursor, 0, len(m.runs)-1)])
+			}
+		}
+		return nil
+	}
 	rows := m.changeRows()
 	switch {
+	case msg.Type == tea.KeyLeft:
+		m.historyPane = historyPaneRuns
+		return nil
+	case msg.Type == tea.KeyRight:
+		m.historyPane = historyPaneTrends
+		return nil
 	case key.Matches(msg, m.keys.History):
 		m.mode = modeBrowse
 		m.filter.Placeholder = filterPlaceholder
@@ -223,6 +276,12 @@ func (m *Model) viewHistoryRuns() []string {
 }
 
 func (m *Model) viewChanges() []string {
+	if m.historyPane == historyPaneTrends {
+		return m.viewHistoryTrends()
+	}
+	if m.historyPane == historyPaneRuns {
+		return m.viewHistoryHubRuns()
+	}
 	t := m.theme
 	lines := []string{t.title.Render("Changes")}
 	if m.baseRun != 0 && m.targetRun != 0 {
@@ -237,7 +296,7 @@ func (m *Model) viewChanges() []string {
 	if m.changeDiff == nil {
 		return append(lines, t.dim.Render("no comparable assessments"))
 	}
-	lines = append(lines, t.header.Render(fmt.Sprintf("  +%d appeared  -%d vanished  →%d moved  ~%d modified  snapshots:%d", m.changeDiff.Counts.Appeared, m.changeDiff.Counts.Vanished, m.changeDiff.Counts.Moved, m.changeDiff.Counts.Modified, m.changeDiff.Counts.Snapshots)), "")
+	lines = append(lines, t.header.Render(fmt.Sprintf("  +%d appeared  -%d vanished  →%d moved  ~%d modified  infra:%d  snapshots:%d", m.changeDiff.Counts.Appeared, m.changeDiff.Counts.Vanished, m.changeDiff.Counts.Moved, m.changeDiff.Counts.Modified, m.changeDiff.Counts.Resources, m.changeDiff.Counts.Snapshots)), "")
 	for _, w := range m.changeDiff.Warnings {
 		lines = append(lines, "  "+t.warn.Render("! "+w))
 	}
@@ -258,6 +317,155 @@ func (m *Model) viewChanges() []string {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+func (m *Model) viewHistoryHubRuns() []string {
+	t := m.theme
+	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first · e label · n note · p pin")}
+	for i, r := range m.runs {
+		label := r.Label
+		if label == "" {
+			label = "—"
+		}
+		if r.Pinned {
+			label = "📌 " + label
+		}
+		line := fmt.Sprintf("  %-5s %-18s %-9s %s", historyRunLabel(r.ID), truncate(label, 18), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"))
+		if i == m.runCursor {
+			line = t.focused.Render(line)
+		} else {
+			line = t.text.Render(line)
+		}
+		lines = append(lines, line)
+	}
+	if len(m.runs) == 0 {
+		lines = append(lines, t.dim.Render("  no assessments stored"))
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func newRunEditInput() textinput.Model {
+	input := textinput.New()
+	input.CharLimit = 256
+	input.Prompt = ""
+	return input
+}
+
+func (m *Model) beginRunEdit(field string) tea.Cmd {
+	if m.assessment == nil || len(m.runs) == 0 {
+		return nil
+	}
+	run := m.runs[clamp(m.runCursor, 0, len(m.runs)-1)]
+	m.runEditRunID, m.runEditKind = run.ID, field
+	value := run.Label
+	if field == "note" {
+		value = run.Note
+	}
+	m.runEditInput.SetValue(value)
+	m.runEditInput.Placeholder = "empty clears " + field
+	m.runEditInput.Focus()
+	m.mode = modeHistoryRunEdit
+	m.historyErr = nil
+	return nil
+}
+
+func (m *Model) handleHistoryRunEditKey(msg tea.KeyMsg) tea.Cmd {
+	switch msg.Type {
+	case tea.KeyEsc:
+		m.runEditInput.Blur()
+		m.runEditKind, m.runEditRunID = "", 0
+		m.mode = modeChanges
+		return nil
+	case tea.KeyEnter:
+		if m.assessment == nil || m.runEditRunID == 0 {
+			return nil
+		}
+		return updateHistoryRunCmd(m.ctx, m.assessment, m.runEditRunID, m.runEditKind, m.runEditInput.Value())
+	}
+	var cmd tea.Cmd
+	m.runEditInput, cmd = m.runEditInput.Update(msg)
+	return cmd
+}
+
+func (m *Model) viewHistoryRunEdit() []string {
+	t := m.theme
+	field := m.runEditKind
+	if field == "" {
+		field = "metadata"
+	}
+	return []string{t.title.Render("Edit run " + field), "", "  " + t.dim.Render("enter saves · esc cancels"), "", "  " + m.runEditInput.View()}
+}
+
+func (m *Model) viewHistoryTrends() []string {
+	t := m.theme
+	lines := []string{t.title.Render("Trends"), "", t.dim.Render("  last 30 complete assessments · ↑/↓ details")}
+	if m.historyErr != nil {
+		return append(lines, t.warn.Render("  "+m.historyErr.Error()))
+	}
+	if m.historyChurn == nil || m.historySnapshots == nil {
+		return append(lines, t.dim.Render("  loading history trends…"))
+	}
+	var vmValues, snapshotValues []float64
+	for _, p := range m.historyChurn.Points {
+		vmValues = append(vmValues, float64(p.VMCount))
+	}
+	for _, p := range m.historySnapshots.Points {
+		snapshotValues = append(snapshotValues, float64(p.Total))
+	}
+	lines = append(lines,
+		fmt.Sprintf("  VMs       %s", tuiSparkline(vmValues)),
+		fmt.Sprintf("  snapshots %s", tuiSparkline(snapshotValues)),
+		"",
+		t.header.Render("  DATE        VMs   +  -  →  ~   snapshots  stale"),
+	)
+	if m.historyCapacity != nil {
+		for _, series := range m.historyCapacity.Series {
+			if series.Scope != "estate" || len(series.Points) == 0 {
+				continue
+			}
+			point := series.Points[len(series.Points)-1]
+			value := "—"
+			if point.StorageCapacity != nil {
+				value = fmt.Sprintf("storage %.0f", *point.StorageCapacity)
+			} else if point.CPUCapacity != nil {
+				value = fmt.Sprintf("cpu %.0f", *point.CPUCapacity)
+			}
+			lines = append(lines, fmt.Sprintf("  %-8s %s", series.Kind, value))
+		}
+	}
+	for i, p := range m.historyChurn.Points {
+		sp := assessment.SnapshotTrendPoint{}
+		if m.historySnapshots != nil && i < len(m.historySnapshots.Points) {
+			sp = m.historySnapshots.Points[i]
+		}
+		lines = append(lines, fmt.Sprintf("  %-10s  %-4d %2d %2d %2d %2d      %-4d      %-4d", p.Run.StartedAt.Local().Format("2006-01-02"), p.VMCount, p.Appeared, p.Vanished, p.Moved, p.Modified, sp.Total, sp.Stale))
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func tuiSparkline(values []float64) string {
+	if len(values) == 0 {
+		return "—"
+	}
+	glyphs := []rune("▁▂▃▄▅▆▇█")
+	min, max := values[0], values[0]
+	for _, value := range values[1:] {
+		if value < min {
+			min = value
+		}
+		if value > max {
+			max = value
+		}
+	}
+	if min == max {
+		return strings.Repeat(string(glyphs[0]), len(values))
+	}
+	var out strings.Builder
+	for _, value := range values {
+		i := int((value - min) / (max - min) * float64(len(glyphs)-1))
+		out.WriteRune(glyphs[i])
+	}
+	return out.String()
 }
 
 func (m *Model) viewChangeDetail() []string {
@@ -286,8 +494,28 @@ func (m *Model) viewChangeDetail() []string {
 				break
 			}
 		}
+		for _, resource := range m.changeDiff.Resources {
+			if resource.Kind+" / "+resource.Name == r.label && resource.Context == r.context {
+				lines = append(lines, "", t.header.Render("Field changes"))
+				for _, field := range resource.Fields {
+					lines = append(lines, fmt.Sprintf("  %-22s %s → %s", field.Field, truncate(nonempty(field.Before, "—"), 24), truncate(nonempty(field.After, "—"), 24)))
+				}
+				break
+			}
+		}
 	}
 	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func resourceDetail(r assessment.ResourceChange) string {
+	if len(r.Fields) == 0 {
+		return ""
+	}
+	parts := make([]string, len(r.Fields))
+	for i, field := range r.Fields {
+		parts[i] = field.Field + ":" + field.Before + "→" + field.After
+	}
+	return strings.Join(parts, " ")
 }
 
 func (m *Model) handleHistoryTimelineKey(msg tea.KeyMsg) tea.Cmd {

@@ -21,16 +21,367 @@ func (e *policyExitError) Error() string {
 }
 func (e *policyExitError) ExitCode() int { return 2 }
 
+type doctorExitError struct{ message string }
+
+func (e *doctorExitError) Error() string { return e.message }
+func (e *doctorExitError) ExitCode() int { return 1 }
+
 func newAssessmentCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare VM assessments"}
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a))
+	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare historical assessments"}
+	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
 	return cmd
+}
+
+func newAssessmentTrendsCommand(a *App) *cobra.Command {
+	cmd := &cobra.Command{Use: "trends", Short: "Show historical estate trends"}
+	cmd.AddCommand(newAssessmentChurnTrendCommand(a), newAssessmentSnapshotTrendCommand(a), newAssessmentCapacityTrendCommand(a))
+	return cmd
+}
+
+type trendFlags struct {
+	from, to       string
+	limit          int
+	includePartial bool
+	contexts       []string
+}
+
+func (f *trendFlags) add(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&f.from, "from", "", "first assessment ID or label (inclusive)")
+	cmd.Flags().StringVar(&f.to, "to", "", "last assessment ID or label (inclusive)")
+	cmd.Flags().IntVar(&f.limit, "limit", 30, "number of complete assessments (0 means unlimited)")
+	cmd.Flags().BoolVar(&f.includePartial, "include-partial", false, "include partial assessments")
+	cmd.Flags().StringSliceVar(&f.contexts, "context", nil, "limit trend data to context(s)")
+}
+
+func (f trendFlags) options(ctx context.Context, s *assessment.Store, fallbackContexts []string) (assessment.TrendOptions, error) {
+	contexts := f.contexts
+	if len(contexts) == 0 {
+		contexts = fallbackContexts
+	}
+	opts := assessment.TrendOptions{Limit: f.limit, IncludePartial: f.includePartial, Contexts: contexts}
+	var err error
+	if f.from != "" {
+		opts.FromID, err = s.ResolveRun(ctx, f.from)
+		if err != nil {
+			return opts, fmt.Errorf("--from: %w", err)
+		}
+	}
+	if f.to != "" {
+		opts.ToID, err = s.ResolveRun(ctx, f.to)
+		if err != nil {
+			return opts, fmt.Errorf("--to: %w", err)
+		}
+	}
+	return opts, nil
+}
+
+func newAssessmentChurnTrendCommand(a *App) *cobra.Command {
+	var flags trendFlags
+	cmd := &cobra.Command{Use: "churn", Short: "Show VM population and churn over time", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		opts, err := flags.options(cmd.Context(), s, a.ContextNames)
+		if err != nil {
+			return err
+		}
+		trend, err := s.ChurnTrend(cmd.Context(), opts)
+		if err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), trend)
+		}
+		t := newTable(a.out(), "RUN", "DATE", "VMS", "+APPEARED", "-VANISHED", "→MOVED", "~MODIFIED")
+		for _, p := range trend.Points {
+			t.row(strconv.FormatInt(p.Run.ID, 10), p.Run.StartedAt.Local().Format("2006-01-02"), itoa(p.VMCount), itoa(p.Appeared), itoa(p.Vanished), itoa(p.Moved), itoa(p.Modified))
+		}
+		t.flush()
+		return nil
+	}}
+	flags.add(cmd)
+	return cmd
+}
+
+func newAssessmentSnapshotTrendCommand(a *App) *cobra.Command {
+	var flags trendFlags
+	var older string
+	cmd := &cobra.Command{Use: "snapshots", Short: "Show snapshot-age trends", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		opts, err := flags.options(cmd.Context(), s, a.ContextNames)
+		if err != nil {
+			return err
+		}
+		age, err := parseHumanDuration(older)
+		if err != nil {
+			return fmt.Errorf("--older-than: %w", err)
+		}
+		trend, err := s.SnapshotTrend(cmd.Context(), opts, age)
+		if err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), trend)
+		}
+		t := newTable(a.out(), "RUN", "DATE", "TOTAL", "STALE", "OLDEST", "TREND")
+		values := make([]float64, len(trend.Points))
+		for i, p := range trend.Points {
+			values[i] = float64(p.Total)
+			t.row(strconv.FormatInt(p.Run.ID, 10), p.Run.StartedAt.Local().Format("2006-01-02"), itoa(p.Total), itoa(p.Stale), humanDuration(p.OldestAge), "")
+		}
+		t.flush()
+		if len(values) > 0 {
+			fmt.Fprintf(a.out(), "snapshot totals: %s\n", sparkline(values))
+		}
+		return nil
+	}}
+	flags.add(cmd)
+	cmd.Flags().StringVar(&older, "older-than", "30d", "stale snapshot threshold (e.g. 30d, 2w)")
+	return cmd
+}
+
+func newAssessmentCapacityTrendCommand(a *App) *cobra.Command {
+	var flags trendFlags
+	var kind string
+	cmd := &cobra.Command{Use: "capacity", Short: "Show compute and storage capacity trends", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		opts, err := flags.options(cmd.Context(), s, a.ContextNames)
+		if err != nil {
+			return err
+		}
+		kind = strings.ToLower(strings.TrimSpace(kind))
+		if kind != "all" && kind != "host" && kind != "cluster" && kind != "datastore" {
+			return fmt.Errorf("--kind must be host, cluster, datastore, or all")
+		}
+		kinds := []string{kind}
+		if kind == "all" {
+			kinds = []string{"host", "cluster", "datastore"}
+		}
+		trend, err := s.CapacityTrend(cmd.Context(), opts, kinds)
+		if err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), trend)
+		}
+		t := newTable(a.out(), "KIND", "SCOPE", "NAME", "RUN", "CPU CAP", "CPU USED", "CPU%", "MEM CAP", "MEM USED", "MEM%", "STORAGE", "USED", "FREE", "DS%")
+		for _, series := range trend.Series {
+			for _, p := range series.Points {
+				t.row(series.Kind, series.Scope, dash(series.Name), strconv.FormatInt(p.Run.ID, 10), capacityCell(p.CPUCapacity), capacityCell(p.CPUUsed), percentCell(p.CPUUtilization), capacityCell(p.MemoryCapacity), capacityCell(p.MemoryUsed), percentCell(p.MemoryUtilization), capacityCell(p.StorageCapacity), capacityCell(p.StorageUsed), capacityCell(p.StorageFree), percentCell(p.StorageUtilization))
+			}
+		}
+		t.flush()
+		return nil
+	}}
+	flags.add(cmd)
+	cmd.Flags().StringVar(&kind, "kind", "all", "resource kind: host, cluster, datastore, or all")
+	return cmd
+}
+
+func newAssessmentReportCommand(a *App) *cobra.Command {
+	var older string
+	cmd := &cobra.Command{Use: "report [RUN]", Short: "Render a point-in-time assessment report", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		selector := "latest"
+		if len(args) == 1 {
+			selector = args[0]
+		}
+		runID, err := s.ResolveRun(cmd.Context(), selector)
+		if err != nil {
+			return err
+		}
+		age, err := parseHumanDuration(older)
+		if err != nil {
+			return fmt.Errorf("--older-than: %w", err)
+		}
+		report, err := s.Report(cmd.Context(), runID, age)
+		if err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), report)
+		}
+		fmt.Fprintf(a.out(), "Assessment %d  %s  %s\n", report.Run.ID, report.Run.Status, report.Run.StartedAt.Local().Format("2006-01-02 15:04:05"))
+		fmt.Fprintf(a.out(), "VMs: %d  Hosts: %d  Clusters: %d  Datastores: %d  Snapshots: %d (%d stale)\n", report.VMCount, report.HostCount, report.ClusterCount, report.DatastoreCount, report.SnapshotTotal, report.SnapshotStale)
+		t := newTable(a.out(), "CONTEXT", "KIND", "STATUS", "ITEMS", "ERROR")
+		for _, c := range report.Coverage {
+			t.row(c.Context, c.Kind, c.Status, itoa(c.ItemCount), c.Error)
+		}
+		t.flush()
+		for _, w := range report.Warnings {
+			fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, w)
+		}
+		return nil
+	}}
+	cmd.Flags().StringVar(&older, "older-than", "30d", "stale snapshot threshold (e.g. 30d, 2w)")
+	return cmd
+}
+
+func newAssessmentPruneCommand(a *App) *cobra.Command {
+	var older string
+	var keepLast int
+	var execute bool
+	cmd := &cobra.Command{Use: "prune", Short: "Prune old assessment history", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		d, err := parseHumanDuration(older)
+		if err != nil || d <= 0 {
+			if err == nil {
+				err = fmt.Errorf("duration must be greater than zero")
+			}
+			return fmt.Errorf("--older-than: %w", err)
+		}
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		result, err := s.Prune(cmd.Context(), d, keepLast, execute)
+		if err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), result)
+		}
+		mode := "dry-run"
+		if execute {
+			mode = "deleted"
+		}
+		fmt.Fprintf(a.out(), "assessment prune %s: %d candidate(s)\n", mode, len(result.Candidates))
+		for _, c := range result.Candidates {
+			fmt.Fprintf(a.out(), "  #%d %s %s (%s)\n", c.Run.ID, c.Run.Status, c.Run.StartedAt.Local().Format("2006-01-02 15:04:05"), humanBytes(c.Bytes))
+		}
+		if execute {
+			fmt.Fprintf(a.out(), "deleted: %d\n", result.Deleted)
+		}
+		return nil
+	}}
+	cmd.Flags().StringVar(&older, "older-than", "", "required age of runs to consider (e.g. 90d)")
+	cmd.Flags().IntVar(&keepLast, "keep-last", 2, "preserve this many newest completed runs")
+	cmd.Flags().BoolVar(&execute, "execute", false, "perform deletion (default is a dry run)")
+	return cmd
+}
+
+func newAssessmentBackupCommand(a *App) *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{Use: "backup FILE", Short: "Create a consistent SQLite history backup", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		if err := s.Backup(cmd.Context(), args[0], force); err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), map[string]string{"backup": args[0]})
+		}
+		fmt.Fprintf(a.out(), "history backup written to %s\n", args[0])
+		return nil
+	}}
+	cmd.Flags().BoolVar(&force, "force", false, "replace an existing backup")
+	return cmd
+}
+
+func newAssessmentRestoreCommand(a *App) *cobra.Command {
+	var force bool
+	cmd := &cobra.Command{Use: "restore FILE", Short: "Restore SQLite history from a backup", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		safety, err := s.Restore(cmd.Context(), args[0], force)
+		if err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), map[string]string{"restored": args[0], "safety_backup": safety})
+		}
+		fmt.Fprintf(a.out(), "history restored from %s\npre-restore safety backup: %s\n", args[0], safety)
+		return nil
+	}}
+	cmd.Flags().BoolVar(&force, "force", false, "confirm in-place restore")
+	return cmd
+}
+
+func newAssessmentDoctorCommand(a *App) *cobra.Command {
+	cmd := &cobra.Command{Use: "doctor", Short: "Check assessment database integrity", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		report, err := s.Doctor(cmd.Context())
+		if err != nil {
+			return err
+		}
+		if a.json() {
+			if err := writeJSON(a.out(), report); err != nil {
+				return err
+			}
+		} else {
+			fmt.Fprintf(a.out(), "schema: %d  integrity: %s  foreign keys: %s\n", report.SchemaVersion, report.Integrity, report.ForeignKeys)
+			fmt.Fprintf(a.out(), "runs: %d  VMs: %d  resources: %d  database: %s\n", report.Runs, report.VMObservations, report.ResourceObservations, humanBytes(report.DatabaseBytes))
+			for _, warning := range report.Warnings {
+				fmt.Fprintf(a.out(), "%s %s\n", glyphFail, warning)
+			}
+		}
+		if len(report.Warnings) > 0 {
+			return &doctorExitError{message: "assessment database checks reported warnings"}
+		}
+		return nil
+	}}
+	return cmd
+}
+
+func capacityCell(value *float64) string {
+	if value == nil {
+		return "—"
+	}
+	return strconv.FormatFloat(*value, 'f', 1, 64)
+}
+
+func percentCell(value *float64) string {
+	if value == nil {
+		return "—"
+	}
+	return strconv.FormatFloat(*value, 'f', 1, 64)
+}
+
+func sparkline(values []float64) string {
+	if len(values) == 0 {
+		return ""
+	}
+	glyphs := []rune("▁▂▃▄▅▆▇█")
+	min, max := values[0], values[0]
+	for _, v := range values[1:] {
+		if v < min {
+			min = v
+		}
+		if v > max {
+			max = v
+		}
+	}
+	if max == min {
+		return strings.Repeat(string(glyphs[0]), len(values))
+	}
+	var b strings.Builder
+	for _, v := range values {
+		i := int((v - min) / (max - min) * float64(len(glyphs)-1))
+		b.WriteRune(glyphs[i])
+	}
+	return b.String()
 }
 
 func newAssessmentRunCommand(a *App) *cobra.Command {
 	var label, note string
 	var pin bool
-	cmd := &cobra.Command{Use: "run", Short: "Capture a point-in-time VM assessment", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "run", Short: "Capture a point-in-time inventory assessment", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		contexts, err := a.Contexts()
 		if err != nil {
 			return err
@@ -132,13 +483,16 @@ func newAssessmentDiffCommand(a *App) *cobra.Command {
 			return nil
 		}
 		fmt.Fprintf(a.out(), "Assessment %d → %d  (%s → %s)\n", d.Base.ID, d.Target.ID, d.Base.Status, d.Target.Status)
-		fmt.Fprintf(a.out(), "Appeared: %d  Vanished: %d  Moved: %d  Modified: %d  Snapshots: %d\n", d.Counts.Appeared, d.Counts.Vanished, d.Counts.Moved, d.Counts.Modified, d.Counts.Snapshots)
-		t := newTable(a.out(), "CHANGE", "VM", "CONTEXT", "DETAIL")
+		fmt.Fprintf(a.out(), "Appeared: %d  Vanished: %d  Moved: %d  Modified: %d  Resources: %d  Snapshots: %d\n", d.Counts.Appeared, d.Counts.Vanished, d.Counts.Moved, d.Counts.Modified, d.Counts.Resources, d.Counts.Snapshots)
+		t := newTable(a.out(), "CHANGE", "RESOURCE", "CONTEXT", "DETAIL")
 		for _, v := range d.VMs {
 			t.row(strings.Join(v.Changes, ","), v.Name, v.Context, changeDetail(v))
 		}
 		for _, v := range d.Snapshots {
 			t.row("snapshot "+v.Kind, v.VMName, v.Context, v.Name)
+		}
+		for _, r := range d.Resources {
+			t.row(strings.Join(r.Changes, ","), r.Kind+"/"+r.Name, r.Context, resourceChangeDetail(r))
 		}
 		t.flush()
 		for _, w := range d.Warnings {
@@ -369,6 +723,10 @@ func validPolicyRule(rule string) bool {
 	case "appeared", "vanished", "moved", "modified", "snapshot-created", "snapshot-removed", "snapshot-changed":
 		return true
 	}
+	if strings.HasPrefix(rule, "host-") || strings.HasPrefix(rule, "cluster-") || strings.HasPrefix(rule, "datastore-") {
+		kind, change := strings.SplitN(rule, "-", 2)[0], strings.SplitN(rule, "-", 2)[1]
+		return (kind == "host" || kind == "cluster" || kind == "datastore") && (change == "appeared" || change == "vanished" || change == "modified")
+	}
 	return false
 }
 
@@ -391,6 +749,17 @@ func printRun(out interface{ Write([]byte) (int, error) }, r assessment.Run) {
 	fmt.Fprintf(out, "assessment %d: %s%s (%d/%d contexts successful)\n", r.ID, r.Status, label, r.SuccessfulContexts, r.RequestedContexts)
 }
 func changeDetail(v assessment.VMChange) string {
+	if len(v.Fields) == 0 {
+		return ""
+	}
+	parts := make([]string, len(v.Fields))
+	for i, f := range v.Fields {
+		parts[i] = f.Field + ":" + f.Before + "→" + f.After
+	}
+	return strings.Join(parts, " ")
+}
+
+func resourceChangeDetail(v assessment.ResourceChange) string {
 	if len(v.Fields) == 0 {
 		return ""
 	}

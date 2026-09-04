@@ -2,7 +2,9 @@ package assessment
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,6 +25,12 @@ type Service struct {
 }
 
 func (s *Service) Runs(ctx context.Context) ([]Run, error) { return s.Store.Runs(ctx) }
+func (s *Service) ContextRuns(ctx context.Context, runID int64) ([]ContextRun, error) {
+	return s.Store.ContextRuns(ctx, runID)
+}
+func (s *Service) Resources(ctx context.Context, runID int64, kind string) ([]ResourceObservation, error) {
+	return s.Store.Resources(ctx, runID, kind)
+}
 func (s *Service) Diff(ctx context.Context, base, target int64, runtime bool) (Diff, error) {
 	return s.Store.Diff(ctx, base, target, runtime)
 }
@@ -35,6 +43,18 @@ func (s *Service) History(ctx context.Context, query, contextName string) ([]VMH
 }
 func (s *Service) Timeline(ctx context.Context, query, contextName string, includeUnchanged, includeRuntime bool) ([]VMHistoryEvent, error) {
 	return s.Store.Timeline(ctx, query, contextName, includeUnchanged, includeRuntime)
+}
+func (s *Service) ChurnTrend(ctx context.Context, opts TrendOptions) (ChurnTrend, error) {
+	return s.Store.ChurnTrend(ctx, opts)
+}
+func (s *Service) SnapshotTrend(ctx context.Context, opts TrendOptions, olderThan time.Duration) (SnapshotTrend, error) {
+	return s.Store.SnapshotTrend(ctx, opts, olderThan)
+}
+func (s *Service) CapacityTrend(ctx context.Context, opts TrendOptions, kinds []string) (CapacityTrend, error) {
+	return s.Store.CapacityTrend(ctx, opts, kinds)
+}
+func (s *Service) Report(ctx context.Context, runID int64, olderThan time.Duration) (AssessmentReport, error) {
+	return s.Store.Report(ctx, runID, olderThan)
 }
 func (s *Service) Capture(ctx context.Context, opts CaptureOptions) (Run, error) {
 	if s == nil || s.Collector == nil {
@@ -113,6 +133,9 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 			}
 			if opts.Progress != nil {
 				p := ContextProgress{Context: cc.Name, Status: result.Status, VMs: len(result.VMs), Error: errorFrom(result.Error)}
+				for _, collection := range result.Collections {
+					p.Collections = append(p.Collections, CollectionProgress{Kind: collection.Kind, Status: collection.Status, ItemCount: collection.ItemCount, Error: errorFrom(collection.Error)})
+				}
 				opts.Progress(p)
 			}
 		}()
@@ -155,19 +178,78 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context) C
 	idx, err := client.NewIndex(opCtx)
 	if err != nil {
 		r.Error = c.Manager.TimeoutError(err, tracker).Error()
+		for _, kind := range persistedKinds {
+			r.Collections = append(r.Collections, CollectionResult{Kind: kind, Status: "failed", Error: r.Error})
+		}
 		return r
 	}
-	part := client.FetchGroup(opCtx, idx, vsphere.GroupVMs)
-	if msg, failed := part.ErrorFor(vsphere.KindVM); failed {
-		r.Error = msg
-		return r
+	// A single index is reused for all groups. Groups are intentionally
+	// sequential within one vCenter to keep API load predictable; contexts are
+	// still collected concurrently by Capture.
+	for _, group := range []vsphere.FetchGroup{vsphere.GroupVMs, vsphere.GroupHosts, vsphere.GroupClusters, vsphere.GroupDatastores} {
+		part := client.FetchGroup(opCtx, idx, group)
+		switch group {
+		case vsphere.GroupVMs:
+			collection := CollectionResult{Kind: "vm", ItemCount: len(part.VMs)}
+			if msg, failed := part.ErrorFor(vsphere.KindVM); failed {
+				collection.Status, collection.Error = "failed", msg
+			} else {
+				collection.Status = "success"
+				if len(part.VMs) == 0 {
+					collection.Status = "empty"
+				}
+				for _, vm := range part.VMs {
+					r.VMs = append(r.VMs, Observation{VCenterID: r.VCenterID, Context: cc.Name, VM: vm})
+				}
+			}
+			r.Collections = append(r.Collections, collection)
+		case vsphere.GroupHosts:
+			r.Collections = append(r.Collections, resourceCollection("host", r.VCenterID, cc.Name, part.Hosts, part.ErrorFor))
+		case vsphere.GroupClusters:
+			r.Collections = append(r.Collections, resourceCollection("cluster", r.VCenterID, cc.Name, part.Clusters, part.ErrorFor))
+		case vsphere.GroupDatastores:
+			r.Collections = append(r.Collections, resourceCollection("datastore", r.VCenterID, cc.Name, part.Datastores, part.ErrorFor))
+		}
 	}
-	for _, vm := range part.VMs {
-		r.VMs = append(r.VMs, Observation{VCenterID: r.VCenterID, Context: cc.Name, VM: vm})
+	for _, collection := range r.Collections {
+		if collection.Status == "failed" {
+			r.Error = strings.TrimSpace(strings.Join([]string{r.Error, collection.Kind + ": " + collection.Error}, "; "))
+		}
 	}
-	r.Status = "success"
-	if len(r.VMs) == 0 {
-		r.Status = "empty"
+	for _, collection := range r.Collections {
+		if collection.Kind == "vm" {
+			r.Status = collection.Status
+			break
+		}
 	}
 	return r
+}
+
+func resourceCollection[T any](kind, vcenter, contextName string, values []T, errorFor func(vsphere.Kind) (string, bool)) CollectionResult {
+	collection := CollectionResult{Kind: kind, Status: "success", ItemCount: len(values)}
+	if msg, failed := errorFor(vsphere.Kind(kind)); failed {
+		collection.Status, collection.Error = "failed", msg
+		return collection
+	}
+	if len(values) == 0 {
+		collection.Status = "empty"
+	}
+	for _, value := range values {
+		payload, err := json.Marshal(value)
+		if err != nil {
+			collection.Status, collection.Error = "failed", err.Error()
+			continue
+		}
+		var id, name string
+		switch v := any(value).(type) {
+		case vsphere.Host:
+			id, name = v.ID, v.Name
+		case vsphere.Cluster:
+			id, name = v.ID, v.Name
+		case vsphere.Datastore:
+			id, name = v.ID, v.Name
+		}
+		collection.Resources = append(collection.Resources, ResourceObservation{VCenterID: vcenter, Context: contextName, Kind: kind, ID: id, Name: name, Payload: payload})
+	}
+	return collection
 }

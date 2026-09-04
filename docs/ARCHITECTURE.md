@@ -115,12 +115,15 @@ observations are unambiguous. Lifecycle claims are made only for vCenters that
 completed collection in both runs; failed or missing coverage produces a
 warning instead of false vanish/appear events.
 
-Schema version 2 adds operator-owned run labels, notes, and pinning plus a
-single renewable SQLite capture lease. The lease is fenced with a random token
-and heartbeat, so a stale scheduled process cannot append observations after
-another process has taken over. Timeline queries reuse the same identity
-precedence and coverage rules as diffs; the TUI drills from a change row into
-that timeline, while `assessment diff` can enforce explicit CI exit policies.
+Schema version 3 adds per-kind collection coverage and immutable host, cluster,
+and datastore observations. Resource diffs use vCenter plus managed-object
+reference identity and keep volatile utilization/state fields behind
+`--include-runtime`. Trends aggregate estate totals before context/resource
+drill-downs, and every JSON trend/report envelope carries a schema version.
+Run labels, notes, pinning, and the renewable fenced lease from schema version 2
+remain intact; the lease also serializes prune, backup, and restore operations.
+The TUI's History hub switches between Changes, Trends, and Runs, while all
+destructive ledger maintenance stays explicit on the CLI.
 
 ---
 

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -80,6 +81,18 @@ type historyTimelineMsg struct {
 	err    error
 }
 
+type historyRunUpdatedMsg struct {
+	run assessment.Run
+	err error
+}
+
+type historyTrendsMsg struct {
+	churn     assessment.ChurnTrend
+	snapshots assessment.SnapshotTrend
+	capacity  assessment.CapacityTrend
+	err       error
+}
+
 func loadHistoryRunsCmd(ctx context.Context, service *assessment.Service) tea.Cmd {
 	return func() tea.Msg { runs, err := service.Runs(ctx); return historyRunsMsg{runs: runs, err: err} }
 }
@@ -102,6 +115,43 @@ func loadHistoryTimelineCmd(ctx context.Context, service *assessment.Service, qu
 	return func() tea.Msg {
 		events, err := service.Timeline(ctx, query, "", all, runtime)
 		return historyTimelineMsg{events: events, err: err}
+	}
+}
+
+func loadHistoryTrendsCmd(ctx context.Context, service *assessment.Service) tea.Cmd {
+	return func() tea.Msg {
+		opts := assessment.TrendOptions{Limit: 30}
+		churn, err := service.ChurnTrend(ctx, opts)
+		if err != nil {
+			return historyTrendsMsg{err: err}
+		}
+		snapshots, err := service.SnapshotTrend(ctx, opts, 30*24*time.Hour)
+		if err != nil {
+			return historyTrendsMsg{err: err}
+		}
+		capacity, err := service.CapacityTrend(ctx, opts, []string{"host", "cluster", "datastore"})
+		return historyTrendsMsg{churn: churn, snapshots: snapshots, capacity: capacity, err: err}
+	}
+}
+
+func updateHistoryRunCmd(ctx context.Context, service *assessment.Service, runID int64, field, value string) tea.Cmd {
+	return func() tea.Msg {
+		var label, note *string
+		if field == "label" {
+			label = &value
+		} else {
+			note = &value
+		}
+		run, err := service.Store.UpdateRunFields(ctx, strconv.FormatInt(runID, 10), label, note, nil)
+		return historyRunUpdatedMsg{run: run, err: err}
+	}
+}
+
+func toggleHistoryRunPinCmd(ctx context.Context, service *assessment.Service, run assessment.Run) tea.Cmd {
+	return func() tea.Msg {
+		value := !run.Pinned
+		updated, err := service.Store.UpdateRunFields(ctx, strconv.FormatInt(run.ID, 10), nil, nil, &value)
+		return historyRunUpdatedMsg{run: updated, err: err}
 	}
 }
 

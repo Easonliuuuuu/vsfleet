@@ -507,7 +507,10 @@ func coverageRows(data assessment.ExportData) [][]any {
 			case (spec.kind == "vdisk" || spec.kind == "vnetwork") && !devicesRecorded:
 				status = "not recorded"
 				message = "capture predates per-VM device inventory"
-			case spec.kind == "vm" || spec.kind == "snapshot" || spec.kind == "vcpu" || spec.kind == "vmemory" || spec.kind == "vtools":
+			// Disks and NICs ride along with the VM capture rather than
+			// being their own collection pass, so their coverage mirrors the
+			// VM collection's status.
+			case spec.kind == "vm" || spec.kind == "snapshot" || spec.kind == "vcpu" || spec.kind == "vmemory" || spec.kind == "vtools" || spec.kind == "vdisk" || spec.kind == "vnetwork":
 				status = c.VMStatus
 				if status == "" {
 					status = "not recorded"

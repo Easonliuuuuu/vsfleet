@@ -248,3 +248,62 @@ func TestWriteRVToolsMarksToolsVersionGapForSchemaTwoRuns(t *testing.T) {
 		t.Fatalf("vTools coverage message=%q", got)
 	}
 }
+
+func TestWriteRVToolsDeviceCoverageMirrorsVMCollectionStatus(t *testing.T) {
+	// vdisk/vnetwork are never persisted as their own collection kind, so the
+	// coverage sheet has to read their status off the VM capture they ride on.
+	for _, tc := range []struct {
+		name           string
+		context        assessment.ContextRun
+		vms            []assessment.ExportVM
+		status, detail string
+		count          string
+	}{
+		{
+			name:    "success",
+			context: assessment.ContextRun{Name: "prod", VMStatus: "success"},
+			vms:     []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: vsphere.VM{ID: "vm-1", Name: "app", Disks: []vsphere.VMDisk{{Key: 1}}, NICs: []vsphere.VMNIC{{Key: 2}}}}}},
+			status:  "success",
+			count:   "1",
+		},
+		{
+			name:    "failure carries the collection error",
+			context: assessment.ContextRun{Name: "prod", VMStatus: "error", Error: "collect vms: permission denied"},
+			status:  "error",
+			detail:  "collect vms: permission denied",
+			count:   "0",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := assessment.ExportData{
+				Run:      assessment.Run{ID: 11, StartedAt: time.Unix(0, 0).UTC(), Status: assessment.RunComplete, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion},
+				Contexts: []assessment.ContextRun{tc.context},
+				VMs:      tc.vms,
+			}
+			var output bytes.Buffer
+			if err := WriteRVTools(&output, data); err != nil {
+				t.Fatal(err)
+			}
+			f, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			// Coverage rows follow tab order: vDisk is row 5, vNetwork row 6.
+			for row, sheet := range map[string]string{"5": "vDisk", "6": "vNetwork"} {
+				if got, _ := f.GetCellValue("vsfleetCoverage", "J"+row); got != sheet {
+					t.Fatalf("coverage sheet row %s=%q, want %q", row, got, sheet)
+				}
+				if got, _ := f.GetCellValue("vsfleetCoverage", "K"+row); got != tc.status {
+					t.Fatalf("%s coverage status=%q, want %q", sheet, got, tc.status)
+				}
+				if got, _ := f.GetCellValue("vsfleetCoverage", "L"+row); got != tc.count {
+					t.Fatalf("%s coverage count=%q, want %q", sheet, got, tc.count)
+				}
+				if got, _ := f.GetCellValue("vsfleetCoverage", "M"+row); got != tc.detail {
+					t.Fatalf("%s coverage message=%q, want %q", sheet, got, tc.detail)
+				}
+			}
+		})
+	}
+}

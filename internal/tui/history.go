@@ -100,12 +100,16 @@ func (m *Model) viewChangesHeader() string {
 func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	if m.historyPane != historyPaneChanges {
 		switch {
-		case msg.Type == tea.KeyLeft:
+		case key.Matches(msg, m.keys.PrevPane):
 			m.historyPane = (m.historyPane + 2) % 3
 			return nil
-		case msg.Type == tea.KeyRight:
+		case key.Matches(msg, m.keys.NextPane):
 			m.historyPane = (m.historyPane + 1) % 3
 			return nil
+		case key.Matches(msg, m.keys.Capture):
+			// Capture is the hub's primary action, so it answers from every
+			// pane rather than only from Changes.
+			return m.captureCommand()
 		case key.Matches(msg, m.keys.Back):
 			m.mode = modeBrowse
 			m.historyPane = historyPaneChanges
@@ -137,10 +141,10 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	rows := m.changeRows()
 	switch {
-	case msg.Type == tea.KeyLeft:
+	case key.Matches(msg, m.keys.PrevPane):
 		m.historyPane = historyPaneRuns
 		return nil
-	case msg.Type == tea.KeyRight:
+	case key.Matches(msg, m.keys.NextPane):
 		m.historyPane = historyPaneTrends
 		return nil
 	case key.Matches(msg, m.keys.History):
@@ -171,13 +175,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		m.filtering = true
 		return m.filter.Focus()
 	case key.Matches(msg, m.keys.Capture):
-		if m.assessment == nil || m.capturing {
-			return nil
-		}
-		m.capturing = true
-		m.historyErr = nil
-		m.setMessage("capturing all configured contexts…", false)
-		return captureHistoryCmd(m.ctx, m.assessment, m.backend.Contexts())
+		return m.captureCommand()
 	case key.Matches(msg, m.keys.Base), key.Matches(msg, m.keys.Target):
 		if len(m.runs) == 0 {
 			return nil
@@ -197,6 +195,18 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// captureCommand starts a capture across every configured context, ignoring
+// the keypress when history is unavailable or a capture is already running.
+func (m *Model) captureCommand() tea.Cmd {
+	if m.assessment == nil || m.capturing {
+		return nil
+	}
+	m.capturing = true
+	m.historyErr = nil
+	m.setMessage("capturing all configured contexts…", false)
+	return captureHistoryCmd(m.ctx, m.assessment, m.backend.Contexts())
 }
 
 func (m *Model) runIndex(id int64) int {
@@ -323,7 +333,7 @@ func (m *Model) viewChanges() []string {
 
 func (m *Model) viewHistoryHubRuns() []string {
 	t := m.theme
-	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first · e label · n note · p pin")}
+	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first · e label · N note · p pin · n capture")}
 	for i, r := range m.runs {
 		label := r.Label
 		if label == "" {

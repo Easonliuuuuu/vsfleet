@@ -69,3 +69,69 @@ func TestHistoryHeaderNamesTheSelectedPane(t *testing.T) {
 		t.Fatalf("runs header was mislabeled: %q", got)
 	}
 }
+
+// TestHistoryCaptureKeyIsPaneIndependent pins the resolution of the old "n"
+// collision: capture from every pane, and the note editor on "N".
+func TestHistoryCaptureKeyIsPaneIndependent(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m.mode = modeChanges
+	// A populated run list is what used to make "n" ambiguous: the Runs pane
+	// read it as "edit this run's note".
+	m.runs = []assessment.Run{{ID: 1}, {ID: 2}}
+
+	for _, pane := range []int{historyPaneChanges, historyPaneTrends, historyPaneRuns} {
+		m.historyPane = pane
+		m.runEditKind = ""
+		m.historyErr = nil
+		press(t, m, "n")
+		if m.runEditKind != "" || m.mode == modeHistoryRunEdit {
+			t.Fatalf("pane %d: \"n\" opened the %q editor instead of capturing", pane, m.runEditKind)
+		}
+		// The service carries no collector, so a capture that was actually
+		// dispatched comes back with exactly this error. The note editor, the
+		// branch "n" used to take here, reaches no service at all.
+		if m.historyErr == nil || !strings.Contains(m.historyErr.Error(), "collector is not configured") {
+			t.Fatalf("pane %d: \"n\" did not dispatch a capture (historyErr=%v)", pane, m.historyErr)
+		}
+	}
+}
+
+func TestHistoryNoteKeyOpensTheNoteEditor(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m.mode = modeChanges
+	m.historyPane = historyPaneRuns
+	m.runs = []assessment.Run{{ID: 7, Note: "quarter close"}}
+
+	press(t, m, "N")
+	if m.mode != modeHistoryRunEdit || m.runEditKind != "note" {
+		t.Fatalf("\"N\" did not open the note editor: mode=%v kind=%q", m.mode, m.runEditKind)
+	}
+	if got := m.runEditInput.Value(); got != "quarter close" {
+		t.Fatalf("note editor seeded with %q, want the run's existing note", got)
+	}
+}
+
+// TestChangesFooterDescribesPanesNotKinds guards the label, not the key: the
+// footer used to borrow NextTab/PrevTab and tell the operator "next kind" on a
+// screen that has no kinds.
+func TestChangesFooterDescribesPanesNotKinds(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.mode = modeChanges
+	for _, b := range defaultKeys().footerHints(m) {
+		if strings.Contains(b.Help().Desc, "kind") {
+			t.Fatalf("changes footer still advertises %q/%q", b.Help().Key, b.Help().Desc)
+		}
+	}
+}

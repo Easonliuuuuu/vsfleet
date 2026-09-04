@@ -366,15 +366,14 @@ diagnostics.
 
 The full-screen History hub opens Changes, Trends, and Runs; press <kbd>←</kbd>
 or <kbd>→</kbd> to switch panes. Changes compares the newest two assessments.
-Press
-<kbd>b</kbd> or <kbd>t</kbd> to choose a different baseline or target run,
-<kbd>n</kbd> to capture every configured vCenter, and <kbd>Enter</kbd> to open
-the selected change. From a change detail, press <kbd>h</kbd> to open that VM's
-timeline; press <kbd>a</kbd> there to include unchanged observations. In Runs,
-<kbd>e</kbd> edits a label, <kbd>n</kbd> edits a note, and <kbd>p</kbd> toggles a
-pin. Run pickers show labels and pinned baselines. Captures are explicit and
-run in the background; normal inventory remains available while the ledger is
-updated.
+Press <kbd>b</kbd> or <kbd>t</kbd> to choose a different baseline or target run,
+and <kbd>Enter</kbd> to open the selected change. From a change detail, press
+<kbd>h</kbd> to open that VM's timeline; press <kbd>a</kbd> there to include
+unchanged observations. <kbd>n</kbd> captures every configured vCenter from any
+of the three panes. In Runs, <kbd>e</kbd> edits a label, <kbd>N</kbd> edits a
+note, and <kbd>p</kbd> toggles a pin. Run pickers show labels and pinned
+baselines. Captures are explicit and run in the background; normal inventory
+remains available while the ledger is updated.
 
 ### Background Refresh & Caching
 

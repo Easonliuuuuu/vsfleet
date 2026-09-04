@@ -49,6 +49,14 @@ type keyMap struct {
 	Timeline    key.Binding
 	TimelineAll key.Binding
 
+	// PrevPane and NextPane move between the history hub's Changes, Trends and
+	// Runs panes. They exist so the history footer stops borrowing NextTab and
+	// PrevTab, whose "next kind"/"prev kind" labels describe the browse screen
+	// and are wrong here. They are also arrow-only: the hub handles the arrow
+	// keys alone, and "h" is already the timeline on that screen.
+	PrevPane key.Binding
+	NextPane key.Binding
+
 	Sort key.Binding
 	Help key.Binding
 	Quit key.Binding
@@ -105,6 +113,8 @@ func defaultKeys() keyMap {
 		Target:      key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "target")),
 		Timeline:    key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "timeline")),
 		TimelineAll: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all observations")),
+		PrevPane:    key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "prev pane")),
+		NextPane:    key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "next pane")),
 
 		Sort: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
 		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
@@ -122,8 +132,11 @@ func defaultKeys() keyMap {
 		Confirm:    key.NewBinding(key.WithHelp("y", "delete")),
 		ToggleKeep: key.NewBinding(key.WithHelp("c", "keep password")),
 		EditRun:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit label")),
-		NoteRun:    key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "edit note")),
-		PinRun:     key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "toggle pin")),
+		// "n" captures a new assessment everywhere in the history hub, so the
+		// note editor takes "N". The two used to share "n", which did whichever
+		// the focused pane happened to mean.
+		NoteRun: key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "edit note")),
+		PinRun:  key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "toggle pin")),
 	}
 }
 
@@ -168,7 +181,7 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
 	case modeChanges:
-		return []key.Binding{k.Up, k.Down, k.PrevTab, k.NextTab, k.Base, k.Target, k.Capture, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Up, k.Down, k.PrevPane, k.NextPane, k.Base, k.Target, k.Capture, k.Back, k.Help, k.Quit}
 	case modeChangeDetail:
 		return []key.Binding{k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:

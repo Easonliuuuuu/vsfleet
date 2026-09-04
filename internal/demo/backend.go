@@ -164,8 +164,8 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 				Location: vappLoc("api-stack"), ID: name + "-vapp-1", Name: "api-stack", Status: "started",
 				ParentContainer: "compute-a/Resources", DirectVMCount: 1, DirectVMs: []string{"api-01"},
 				DirectVMRefs: []string{"VirtualMachine:" + name + "-vm-1"}, ChildVAppCount: 1,
-				ChildVApps: []string{"api-cache"}, ChildResourcePoolCount: 1,
-				ChildResourcePools: []string{"api-pool"}, Cluster: "compute-a", ComputeResource: "compute-a",
+				ChildVApps: []string{"api-cache"}, ChildVAppRefs: []string{"VirtualApp:" + name + "-vapp-2"}, ChildResourcePoolCount: 1,
+				ChildResourcePools: []string{"api-pool"}, ChildResourcePoolRefs: []string{"ResourcePool:" + name + "-pool-1"}, Cluster: "compute-a", ComputeResource: "compute-a",
 			},
 			{
 				Location: vappLoc("api-cache"), ID: name + "-vapp-2", Name: "api-cache", Status: "stopped",

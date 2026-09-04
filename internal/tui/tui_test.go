@@ -551,8 +551,8 @@ func TestSearchOpenSwitchesToVAppContextAndTab(t *testing.T) {
 	press(t, m, "enter")
 	press(t, m, "enter")
 
-	if m.mode != modeDetail {
-		t.Fatalf("opening a search result should show details, mode=%v", m.mode)
+	if m.mode != modeVAppDetail {
+		t.Fatalf("opening a search result should show the vAPP workspace, mode=%v", m.mode)
 	}
 	if m.kind != vsphere.KindVApp || m.selected != 0 || m.allScope {
 		t.Fatalf("search result did not switch to its context/tab: kind=%q selected=%d all=%v", m.kind, m.selected, m.allScope)
@@ -656,6 +656,90 @@ func TestDetailViewShowsEveryProperty(t *testing.T) {
 	press(t, m, "esc")
 	if m.mode != modeBrowse {
 		t.Error("esc should return to the table")
+	}
+}
+
+func TestVAppWorkspaceShowsNestedVMsAndSupportsDrillDown(t *testing.T) {
+	b := twoHealthy()
+	inv := *b.inventories["prod"]
+	inv.VMs = append(inv.VMs, vsphere.VM{
+		Location: vsphere.Location{Context: "prod", Datacenter: "Taipei", Path: "/Taipei/vm/postgres-01"},
+		ID:       "prod-vm-nested", Name: "postgres-01", PowerState: "poweredOn", CPU: 8, MemoryMB: 32768, Host: "esxi-02",
+	})
+	inv.VApps[0].ChildVApps = []string{"web-cache"}
+	inv.VApps[0].ChildVAppRefs = []string{"VirtualApp:prod-vapp-2"}
+	inv.VApps[0].ChildVAppCount = 1
+	inv.VApps[0].ChildResourcePools = []string{"app-pool"}
+	inv.VApps[0].ChildResourcePoolRefs = []string{"ResourcePool:prod-pool-1"}
+	inv.VApps[0].ChildResourcePoolCount = 1
+	inv.VApps = append(inv.VApps, vsphere.VApp{
+		Location: vsphere.Location{Context: "prod", Datacenter: "Taipei", Path: "/Taipei/host/web-cache"},
+		ID:       "prod-vapp-2", Name: "web-cache", Status: "stopped", ParentVApp: "app-container",
+		DirectVMCount: 1, DirectVMs: []string{"postgres-01"}, DirectVMRefs: []string{"VirtualMachine:prod-vm-nested"},
+	})
+	b.inventories["prod"] = &inv
+	m := newTestModel(t, b, Options{Current: "prod"})
+	press(t, m, "7", "enter")
+
+	if m.mode != modeVAppDetail {
+		t.Fatalf("enter on a vAPP should open its workspace, mode=%v", m.mode)
+	}
+	out := m.View()
+	for _, want := range []string{"Summary", "Members", "web-cache", "postgres-01", "app-01", "app-pool"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("vAPP workspace is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Direct VMs") {
+		t.Error("vAPP workspace should expose members in the hierarchy, not only in a detail field")
+	}
+
+	press(t, m, "down") // nested postgres-01 member
+	if m.vapp == nil || m.vapp.cursor != 1 {
+		t.Fatalf("down should select the nested VM, workspace=%+v", m.vapp)
+	}
+	press(t, m, "enter")
+	if m.mode != modeVAppVMDetail || !strings.Contains(m.View(), "postgres-01") {
+		t.Fatalf("enter on a nested VM should open VM detail, mode=%v:\n%s", m.mode, m.View())
+	}
+	press(t, m, "esc")
+	if m.mode != modeVAppDetail || m.vapp == nil || m.vapp.cursor != 1 {
+		t.Fatalf("Esc should restore the vAPP member selection, mode=%v workspace=%+v", m.mode, m.vapp)
+	}
+	press(t, m, "esc")
+	if m.mode != modeBrowse || m.kind != vsphere.KindVApp {
+		t.Fatalf("Esc from the root workspace should return to the vAPP list, mode=%v kind=%q", m.mode, m.kind)
+	}
+}
+
+func TestVAppWorkspaceFitsMinimumWidth(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	m.width, m.height = minTermWidth, 24
+	press(t, m, "7", "enter")
+	for _, line := range strings.Split(m.View(), "\n") {
+		if width := ansi.StringWidth(line); width > minTermWidth {
+			t.Fatalf("vAPP detail line is %d columns wide at minimum width: %q", width, line)
+		}
+	}
+	if !strings.Contains(m.View(), "app-01") {
+		t.Errorf("minimum-width vAPP workspace should retain the VM member name:\n%s", m.View())
+	}
+}
+
+func TestVAppWorkspaceReportsMissingAndCyclicMembers(t *testing.T) {
+	b := twoHealthy()
+	inv := *b.inventories["prod"]
+	inv.VApps[0].ChildVApps = []string{"lost-vapp"}
+	inv.VApps[0].ChildVAppRefs = []string{"VirtualApp:prod-vapp-1", "VirtualApp:missing-vapp"}
+	inv.VApps[0].ChildVAppCount = 2
+	b.inventories["prod"] = &inv
+	m := newTestModel(t, b, Options{Current: "prod"})
+	press(t, m, "7", "enter")
+	out := m.View()
+	for _, want := range []string{"cycle", "vAPP missing-vapp", "lost-vapp"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("vAPP workspace is missing unresolved-member marker %q:\n%s", want, out)
+		}
 	}
 }
 

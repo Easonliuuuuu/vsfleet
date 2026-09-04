@@ -212,6 +212,13 @@ The TUI maintains a quiet background refresh model:
    Enables 100% offline development and styling of the Bubble Tea TUI. It generates
    realistic, deterministic inventory across three simulated vCenters with zero
    credentials or VMware dependencies.
-2. **In-Process VMware Simulator (`tests/`)**:
-   Integration tests run against `govmomi/simulator` and in-memory proxy listeners,
-   allowing complete end-to-end tests in CI without external infrastructure.
+2. **Connected Local Testbed (`cmd/vsfleet-testbed`, `internal/testbed`)**:
+   Starts multiple authenticated `govmomi/simulator` SOAP endpoints and
+   loopback-only SOCKS5/HTTP CONNECT routes, then wires the production session,
+   transport, credential prompt, and assessment service into the TUI. Its
+   config, history, and in-memory fixture credentials are isolated from the
+   operator environment.
+3. **In-Process VMware Simulator Tests (`tests/`)**:
+   Integration tests run against `govmomi/simulator` and in-memory proxy
+   listeners, allowing complete end-to-end tests in CI without external
+   infrastructure.

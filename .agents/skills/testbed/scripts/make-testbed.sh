@@ -5,6 +5,7 @@ readonly SCRIPT_VERSION="1"
 readonly MODULE="github.com/easonliuuuuu/vsfleet"
 
 mode="companion-local"
+profile="presentation"
 repo=""
 output_dir=""
 
@@ -12,9 +13,11 @@ usage() {
   cat <<'EOF'
 Usage: make-testbed.sh [options]
 
-Build the deterministic VSFleet TUI with synthetic vCenter inventory.
+Build a VSFleet testbed launcher.
 
 Options:
+  --profile presentation     Offline deterministic presentation backend (default)
+  --profile connected        Loopback govmomi simulators, proxies, and auth
   --mode companion-local  Build and print activation instructions (default)
   --mode shell-hook       Build and print only shell code suitable for eval
   --mode launch           Build and launch the TUI in the current terminal
@@ -35,6 +38,11 @@ while (($#)); do
     --mode)
       (($# >= 2)) || die "--mode requires a value"
       mode="$2"
+      shift 2
+      ;;
+    --profile)
+      (($# >= 2)) || die "--profile requires a value"
+      profile="$2"
       shift 2
       ;;
     --repo)
@@ -61,6 +69,10 @@ case "$mode" in
   companion-local|shell-hook|launch|verify) ;;
   *) die "unknown mode '$mode'" ;;
 esac
+case "$profile" in
+  presentation|connected) ;;
+  *) die "unknown profile '$profile'" ;;
+esac
 
 command -v go >/dev/null 2>&1 || die "Go is required"
 
@@ -73,6 +85,9 @@ repo="$(cd "$repo" && pwd -P)"
 [[ -f "$repo/go.mod" ]] || die "$repo does not contain go.mod"
 [[ -d "$repo/cmd/vsfleet-demo" ]] || die "$repo does not contain cmd/vsfleet-demo"
 [[ -f "$repo/internal/demo/backend.go" ]] || die "$repo does not contain internal/demo/backend.go"
+if [[ "$profile" == "connected" ]]; then
+  [[ -d "$repo/cmd/vsfleet-testbed" ]] || die "$repo does not contain cmd/vsfleet-testbed"
+fi
 grep -qx "module $MODULE" "$repo/go.mod" || die "$repo is not the expected VSFleet module"
 
 if [[ -z "$output_dir" ]]; then
@@ -104,10 +119,21 @@ trap cleanup EXIT
 if [[ "$mode" == "verify" ]]; then
   printf 'testbed: running go test ./...\n' >&2
   (cd "$repo" && go test ./...)
+  if [[ "$profile" == "connected" ]]; then
+    printf 'testbed: building connected simulator launcher\n' >&2
+    connected_tmp="$(mktemp "$bin_dir/.vsfleet-connected.XXXXXX")"
+    (cd "$repo" && go build -trimpath -o "$connected_tmp" ./cmd/vsfleet-testbed)
+    rm -f -- "$connected_tmp"
+  fi
 fi
 
-printf 'testbed: building synthetic launcher\n' >&2
-(cd "$repo" && go build -trimpath -o "$tmp_launcher" ./cmd/vsfleet-demo)
+if [[ "$profile" == "connected" ]]; then
+  printf 'testbed: building connected loopback launcher\n' >&2
+  (cd "$repo" && go build -trimpath -o "$tmp_launcher" ./cmd/vsfleet-testbed)
+else
+  printf 'testbed: building synthetic launcher\n' >&2
+  (cd "$repo" && go build -trimpath -o "$tmp_launcher" ./cmd/vsfleet-demo)
+fi
 chmod 0755 "$tmp_launcher"
 mv -f -- "$tmp_launcher" "$launcher"
 tmp_launcher=""
@@ -123,12 +149,20 @@ fi
 
 if [[ "$mode" == "launch" ]]; then
   [[ -t 0 && -t 1 ]] || die "launch mode requires an interactive terminal"
+  if [[ "$profile" == "connected" ]]; then
+    export VSFLEET_TESTBED_ROOT="$output_dir"
+  fi
   exec "$launcher"
 fi
 
-printf '\nVSFleet synthetic testbed is ready.\n'
+printf '\nVSFleet testbed is ready.\n'
 printf 'Launcher: %s\n' "$launcher"
-printf 'Estate: two healthy synthetic vCenters and one failed DR site\n'
+if [[ "$profile" == "connected" ]]; then
+  printf 'Profile: connected loopback lab (govmomi simulators + SOCKS5/HTTP proxies)\n'
+  printf 'Fixture credentials are printed by the launcher; state stays under %s\n' "$output_dir"
+else
+  printf 'Profile: two healthy synthetic vCenters and one failed DR site\n'
+fi
 printf '\nEnable it in this shell, then launch:\n'
-printf '  eval "$(%q --mode shell-hook --repo %q --output-dir %q)"\n' "$0" "$repo" "$output_dir"
+printf '  eval "$(%q --profile %q --mode shell-hook --repo %q --output-dir %q)"\n' "$0" "$profile" "$repo" "$output_dir"
 printf '  vsfleet\n'

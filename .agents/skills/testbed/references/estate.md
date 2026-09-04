@@ -6,6 +6,12 @@ Read this reference when changing fixtures, validating the UI interactively, or 
 
 The default testbed is an in-process implementation of the TUI backend. It does not listen on a port or implement VMware's SOAP/REST APIs. Its `.example` endpoints are display values and must not be described as connectable servers.
 
+The optional `connected` profile is separate. It starts govmomi simulator SOAP
+servers and small SOCKS5/HTTP CONNECT proxies on `127.0.0.1`, uses fixture-only
+credentials, and writes only beneath the selected testbed root. It is suitable
+for integration checks, but it is still synthetic infrastructure rather than a
+real VMware environment.
+
 It is intentionally:
 
 - offline and independent of DNS;
@@ -54,5 +60,21 @@ After `make-testbed.sh --mode verify`, launch in a terminal and check only what 
 4. Filtering for `postgres` selects the expected VM.
 5. Diagnosing `dr-site` shows the proxy failure and skipped downstream stages.
 6. Add, edit, and remove remain visibly unavailable/read-only.
+
+For the connected profile, also check:
+
+1. Launch with `make-testbed.sh --profile connected --mode launch` and read the
+   fixture credentials and endpoint catalog printed before the TUI.
+2. Select `prod-vc`, enter the fixture password in the masked overlay, and
+   confirm the real connection reaches TLS, authentication, and API stages.
+3. Select `edge-vc`, enter both the vCenter and SOCKS5 proxy passwords, and
+   confirm the route reports remote DNS.
+4. Diagnose `dr-site` and confirm the refused proxy stops later stages.
+5. Open `c`, add `qa-vc` from the catalog, test it, save it, and confirm its
+   inventory joins the all-context view. The config is isolated and contains
+   references only; the in-memory credential store is discarded on exit.
+6. Open `H`: seeded Changes, Trends, Runs, and VM timelines should be visible.
+   Press `n` to perform a live assessment capture; the failed DR context should
+   produce a partial run with coverage warnings.
 
 For non-interactive validation, verify that the shell hook resolves `command -v vsfleet` to the isolated testbed launcher. Do not automate the full-screen TUI through ordinary stdin; it requires a real pseudo-terminal.

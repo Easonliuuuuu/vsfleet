@@ -601,6 +601,24 @@ the deterministic presentation backend:
 go run ./cmd/vsfleet-demo
 ```
 
+### Connected Local Testbed
+
+For end-to-end UI work, use the isolated connected profile. It starts
+govmomi-backed vCenters and loopback-only SOCKS5/HTTP CONNECT routes, requires
+fixture passwords through the same masked TUI prompt as production, and stores
+configuration and assessment history under the chosen testbed root:
+
+```sh
+.agents/skills/testbed/scripts/make-testbed.sh \
+  --profile connected --mode launch --repo .
+```
+
+The launcher prints the fixture login and an endpoint catalog before opening the
+TUI. Press `c` to add a catalog context and `H` to inspect seeded assessment
+Changes, Trends, Runs, and timelines; press `n` to capture the live local
+estate. This profile is a connectable simulator, not a real vCenter, and never
+binds outside `127.0.0.1` or reads the operator's keyring.
+
 ### Regenerating the Demo GIF
 To regenerate `docs/assets/vsfleet.gif` and `docs/assets/vsfleet.png` using [VHS](https://github.com/charmbracelet/vhs):
 

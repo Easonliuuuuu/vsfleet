@@ -43,6 +43,9 @@ func TestCredPromptOwnsKeystrokes(t *testing.T) {
 	coord := NewPromptCoordinator()
 	m := New(context.Background(), b, Options{Credentials: coord})
 	m.width, m.height = 140, 30
+	// An explicit load is what may open the overlay at all; see
+	// credentialPromptAllowed.
+	m.beginLoad(m.byName["lab"], false, false, true)
 
 	listenCmd := m.nextCredPromptCmd()
 	if listenCmd == nil {
@@ -120,6 +123,7 @@ func TestCredPromptEscCancelsWithoutQuitting(t *testing.T) {
 	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
 	coord := NewPromptCoordinator()
 	m := New(context.Background(), b, Options{Credentials: coord})
+	m.beginLoad(m.byName["lab"], false, false, true)
 
 	results := askInBackground(context.Background(), coord, "lab")
 	reqMsg := m.nextCredPromptCmd()().(credRequestMsg)
@@ -155,6 +159,7 @@ func TestCredPromptCtrlCCancelsAndQuits(t *testing.T) {
 	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
 	coord := NewPromptCoordinator()
 	m := New(context.Background(), b, Options{Credentials: coord})
+	m.beginLoad(m.byName["lab"], false, false, true)
 
 	results := askInBackground(context.Background(), coord, "lab")
 	reqMsg := m.nextCredPromptCmd()().(credRequestMsg)
@@ -188,6 +193,8 @@ func TestCredPromptSerializesConcurrentAskers(t *testing.T) {
 	b := &fakeBackend{contexts: []*config.Context{{Name: "lab-a"}, {Name: "lab-b"}}}
 	coord := NewPromptCoordinator()
 	m := New(context.Background(), b, Options{Credentials: coord})
+	m.beginLoad(m.byName["lab-a"], false, false, true)
+	m.beginLoad(m.byName["lab-b"], false, false, true)
 
 	resultsA := askInBackground(context.Background(), coord, "lab-a")
 	reqMsg := m.nextCredPromptCmd()().(credRequestMsg)

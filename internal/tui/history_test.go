@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -133,5 +134,118 @@ func TestChangesFooterDescribesPanesNotKinds(t *testing.T) {
 		if strings.Contains(b.Help().Desc, "kind") {
 			t.Fatalf("changes footer still advertises %q/%q", b.Help().Key, b.Help().Desc)
 		}
+	}
+}
+
+// TestCaptureContextsIsScoped checks that a capture reads only the vCenter(s)
+// on screen — the selected context alone, and every context once the
+// all-vCenters view is on — rather than every configured vCenter regardless
+// of scope.
+func TestCaptureContextsIsScoped(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+
+	got := m.captureContexts()
+	if len(got) != 1 || got[0].Name != "prod" {
+		t.Fatalf("scoped capture contexts = %+v, want just prod", got)
+	}
+
+	m.allScope = true
+	got = m.captureContexts()
+	if len(got) != 2 {
+		t.Fatalf("all-vCenters capture contexts = %+v, want both configured vCenters", got)
+	}
+}
+
+// TestCaptureCredentialRequestIsScopedAndAttributed pins the fix for a
+// capture that both connected to vCenters outside scope and opened an
+// unattributed password overlay for them: credentialState now knows about a
+// context's contextState.capturing flag, so a request naming an out-of-scope
+// vCenter is deferred exactly like a quiet background refresh, while one
+// naming the in-scope vCenter opens an overlay labelled with it.
+func TestCaptureCredentialRequestIsScopedAndAttributed(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+	// captureCommand's own tea.Cmd is not run here — running it would resolve
+	// the capture immediately (the service carries no collector) and clear
+	// the very state this test inspects.
+	if cmd := m.captureCommand(); cmd == nil {
+		t.Fatal("captureCommand returned nil with an assessment service configured")
+	}
+	if !m.byName["prod"].capturing {
+		t.Fatal("captureCommand did not mark the in-scope context as capturing")
+	}
+	if m.byName["customer-a"].capturing {
+		t.Fatal("captureCommand marked an out-of-scope context as capturing")
+	}
+
+	outOfScope := credRequest{label: "customer-a", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: outOfScope})
+	if m.credPrompt != nil {
+		t.Fatal("a request for a vCenter outside the capture's scope opened an overlay")
+	}
+	select {
+	case res := <-outOfScope.resp:
+		if res.err == nil {
+			t.Fatal("expected the out-of-scope request to be deferred, got a nil error")
+		}
+	default:
+		t.Fatal("the out-of-scope request was never answered")
+	}
+
+	inScope := credRequest{label: "prod", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: inScope})
+	if m.credPrompt == nil || m.credPrompt.label != "prod" {
+		t.Fatalf("expected an overlay labelled %q for the captured vCenter, got %+v", "prod", m.credPrompt)
+	}
+	m.resolveCredPrompt(credResult{err: errPromptCanceled})
+}
+
+// TestCaptureCredentialGateClosesOnCompletion checks that a finished capture
+// stops answering for the vCenters it covered — contextState.capturing is
+// cleared once historyCaptureMsg lands, the same way a load's own gate closes
+// in finishLoad.
+func TestCaptureCredentialGateClosesOnCompletion(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+	if cmd := m.captureCommand(); cmd == nil {
+		t.Fatal("captureCommand returned nil with an assessment service configured")
+	}
+	if !m.byName["prod"].capturing {
+		t.Fatal("captureCommand did not mark the in-scope context as capturing")
+	}
+
+	m.Update(historyCaptureMsg{err: errors.New("capture failed")})
+	if m.byName["prod"].capturing {
+		t.Fatal("a finished capture left the context marked as capturing")
+	}
+
+	request := credRequest{label: "prod", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: request})
+	if m.credPrompt != nil {
+		t.Fatal("a request after the capture finished still opened an overlay")
+	}
+	select {
+	case res := <-request.resp:
+		if res.err == nil {
+			t.Fatal("expected the post-capture request to be deferred, got a nil error")
+		}
+	default:
+		t.Fatal("the post-capture request was never answered")
 	}
 }

@@ -126,11 +126,17 @@ type kindState struct {
 // keeps its row — that a customer environment is unreachable is information,
 // not a reason to hide it.
 type contextState struct {
-	cc          *config.Context
-	inv         *vsphere.Inventory
-	kinds       map[vsphere.Kind]*kindState
-	err         error
-	loading     bool
+	cc      *config.Context
+	inv     *vsphere.Inventory
+	kinds   map[vsphere.Kind]*kindState
+	err     error
+	loading bool
+	// capturing marks a vCenter included in a running historical capture. A
+	// capture never calls beginLoad — it goes through the assessment
+	// collector, not the inventory path — so this is the only signal that
+	// ties its background credential requests back to a context; see
+	// credentialState and credentialPromptAllowed.
+	capturing   bool
 	attempted   bool
 	phase       contextPhase
 	loadingKind vsphere.FetchGroup
@@ -625,12 +631,15 @@ func (m *Model) nextCredPromptCmd() tea.Cmd {
 	return listenForCredRequest(m.credCoord.reqCh)
 }
 
-// credentialState finds the loading context behind a prompt request. Bare
-// vCenter and proxy references are labeled with the context name by the
-// connection path; explicit prompt labels are matched as a useful fallback.
+// credentialState finds the context behind a prompt request: one with an
+// inventory load in flight, or one included in a running historical capture
+// (see contextState.capturing) — a capture reaches the same credential
+// resolver but never sets st.loading. Bare vCenter and proxy references are
+// labeled with the context name by the connection path; explicit prompt
+// labels are matched as a useful fallback.
 func (m *Model) credentialState(label string) *contextState {
 	for _, st := range m.states {
-		if !st.loading {
+		if !st.loading && !st.capturing {
 			continue
 		}
 		labels := []string{st.cc.Name, st.cc.Name + " proxy", st.cc.Credential.Value, st.cc.Transport.Credential.Value}
@@ -651,8 +660,14 @@ func (m *Model) credentialState(label string) *contextState {
 	return nil
 }
 
+// markCredentialRequest and markCredentialResumed drive the loading pane's
+// phase display, so they only touch a context that is actually loading. A
+// capture has no pane phase to move through: crediting it here would leave
+// credentialPrompted set with nothing to ever clear it (that happens in
+// finishLoad, which a capture never reaches) and would wrongly suppress that
+// vCenter's background refresh — see refreshStale.
 func (m *Model) markCredentialRequest(label string) {
-	if st := m.credentialState(label); st != nil {
+	if st := m.credentialState(label); st != nil && st.loading {
 		st.credentialPrompted = true
 		st.phase = phaseCredentials
 		st.loadingKind = ""
@@ -660,10 +675,23 @@ func (m *Model) markCredentialRequest(label string) {
 }
 
 func (m *Model) markCredentialResumed(label string) {
-	if st := m.credentialState(label); st != nil {
+	if st := m.credentialState(label); st != nil && st.loading {
 		st.phase = phaseAuthenticating
 		st.loadingKind = ""
 	}
+}
+
+// credentialPromptAllowed reports whether a pending request has an explicit
+// operator action behind it. A load the operator asked for may interrupt the
+// screen for a password; a capture the operator started may too, for any
+// vCenter it actually covers; a quiet background refresh may not; and a
+// request tied to no context at all — what an unscoped capture used to raise
+// for a vCenter nobody had touched — is deferred rather than shown.
+func (m *Model) credentialPromptAllowed(st *contextState) bool {
+	if st == nil {
+		return false
+	}
+	return st.capturing || st.allowCredentialPrompt
 }
 
 // resolveCredPrompt answers the pending request and clears the overlay. The
@@ -1101,10 +1129,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// model asks to listen again, see nextCredPromptCmd.
 		st := m.credentialState(msg.req.label)
 		m.markCredentialRequest(msg.req.label)
-		if st != nil && !st.allowCredentialPrompt {
-			// Startup and quiet refreshes never acquire keyboard ownership.
-			// Answering the buffered channel here lets the load finish and leaves
-			// the context visibly waiting for an explicit selection/reload.
+		if !m.credentialPromptAllowed(st) {
+			// Startup and quiet refreshes never acquire keyboard ownership, and
+			// neither does a request that cannot be tied to any operator action
+			// at all. Answering the buffered channel here lets the load finish
+			// and leaves the context visibly waiting for an explicit
+			// selection/reload.
 			msg.req.resp <- credResult{err: errDeferredCredentialPrompt}
 			return m, m.nextCredPromptCmd()
 		}
@@ -1168,6 +1198,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case historyCaptureMsg:
 		m.capturing = false
+		for _, st := range m.capturingStates() {
+			st.capturing = false
+		}
 		if msg.err != nil {
 			m.historyErr = msg.err
 			return m, nil

@@ -200,13 +200,6 @@ func (s *Store) migrate(ctx context.Context) error {
 	return nil
 }
 
-func millis(t time.Time) any {
-	if t.IsZero() {
-		return nil
-	}
-	return t.UnixMilli()
-}
-
 func fromMillis(v sql.NullInt64) time.Time {
 	if !v.Valid {
 		return time.Time{}

@@ -39,14 +39,18 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 		if c.VCenterID != "" && successful(c.VMStatus) {
 			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], bv[id]...)
 		} else if c.VMStatus != "" && !successful(c.VMStatus) {
-			d.Warnings = append(d.Warnings, fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus)))
+			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus))
+			d.Warnings = append(d.Warnings, msg)
+			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: c.Name, Message: msg})
 		}
 	}
 	for id, c := range tc {
 		if c.VCenterID != "" && successful(c.VMStatus) {
 			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], tv[id]...)
 		} else if c.VMStatus != "" && !successful(c.VMStatus) {
-			d.Warnings = append(d.Warnings, fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus)))
+			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus))
+			d.Warnings = append(d.Warnings, msg)
+			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: c.Name, Message: msg})
 		}
 	}
 	var allBase, allTarget []storedVM
@@ -61,12 +65,16 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 	d.Snapshots = append(d.Snapshots, snapshots...)
 	for vc := range baseByVC {
 		if _, ok := targetByVC[vc]; !ok {
-			d.Warnings = append(d.Warnings, "vCenter "+vc+" is not comparable: it was not successfully collected in target")
+			msg := "vCenter " + vc + " is not comparable: it was not successfully collected in target"
+			d.Warnings = append(d.Warnings, msg)
+			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: vc, Message: msg})
 		}
 	}
 	for vc := range targetByVC {
 		if _, ok := baseByVC[vc]; !ok {
-			d.Warnings = append(d.Warnings, "vCenter "+vc+" is not comparable: it was not successfully collected in baseline")
+			msg := "vCenter " + vc + " is not comparable: it was not successfully collected in baseline"
+			d.Warnings = append(d.Warnings, msg)
+			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: vc, Message: msg})
 		}
 	}
 	d.Counts = countChanges(d.VMs, d.Snapshots)

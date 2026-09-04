@@ -257,6 +257,9 @@ func Execute(ctx context.Context) int {
 	}()
 	if err := root.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(a.errOut(), "vsfleet: %v\n", err)
+		if coded, ok := err.(interface{ ExitCode() int }); ok {
+			return coded.ExitCode()
+		}
 		return 1
 	}
 	return 0

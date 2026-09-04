@@ -214,16 +214,37 @@ stored locally in SQLite and never sent back to vCenter:
 
 ```sh
 vsfleet assessment run --all-contexts
+vsfleet assessment run --all-contexts --label nightly --note "pre-change baseline" --pin
 vsfleet assessment list
 vsfleet assessment diff previous latest
+vsfleet assessment diff nightly latest --fail-on moved,vanished --max-snapshot-age 30d --require-complete
 vsfleet assessment snapshots --older-than 30d
-vsfleet vm history billing
+vsfleet vm history billing --all-observations
 ```
 
 Diffs compare only vCenters collected successfully in both runs, so an outage
-cannot masquerade as mass VM deletion. Use `--history-db <path>` or
-`VSFLEET_HISTORY_DB` to choose the database location; `assessment delete <id> --force`
-removes an old run explicitly.
+cannot masquerade as mass VM deletion. Runs can carry unique labels and notes;
+pin a baseline to protect it from deletion, then use
+`assessment update <run> --unpin` before removing it. `assessment diff` returns
+exit code `2` for a requested drift-policy violation (`1` remains an execution
+or selector error), which makes it suitable for cron, CI, or systemd timers.
+Use `--history-db <path>` or `VSFLEET_HISTORY_DB` to choose the database
+location.
+
+The policy flags are intentionally command-line only so a scheduled job is
+auditable from its invocation:
+
+```sh
+# cron: capture, then compare the named baseline to the newest run
+vsfleet assessment run --all-contexts --label nightly
+vsfleet assessment diff nightly latest --fail-on appeared,vanished,moved \
+  --fail-on snapshot-created,snapshot-removed --max-snapshot-age 30d \
+  --require-complete -o json > drift.json
+```
+
+Only one capture may write a history database at a time. A second process gets
+a clear lease error; listing, diffing, and opening the TUI never take that
+lease.
 
 ---
 
@@ -243,9 +264,10 @@ removes an old run explicitly.
 | `vsfleet doctor [context...]` | Run an 8-stage connection diagnosis |
 | `vsfleet search <text>` | Search inventory across all resource kinds |
 | `vsfleet assessment run` | Capture VM and snapshot state from the selected contexts |
-| `vsfleet assessment diff [base] [target]` | Explain VM drift and snapshot changes between runs |
+| `vsfleet assessment diff [base] [target]` | Explain VM drift and optionally enforce a policy |
 | `vsfleet assessment snapshots` | Report snapshot age and first/last observation |
-| `vsfleet vm history <name-or-uuid>` | Show a VM's observations across stored runs |
+| `vsfleet assessment update <run>` | Edit a run label, note, or pin |
+| `vsfleet vm history <name-or-uuid>` | Show a VM's change timeline across stored runs |
 | `vsfleet <kind> list` | List resources (`vm`, `template`, `host`, `cluster`, `vapp`, `datastore`, `network`) |
 
 Supported resource kinds are `vm`, `template`, `host`, `cluster`, `vapp`,
@@ -319,8 +341,10 @@ diagnostics.
 The full-screen Changes view compares the newest two assessments. Press
 <kbd>b</kbd> or <kbd>t</kbd> to choose a different baseline or target run,
 <kbd>n</kbd> to capture every configured vCenter, and <kbd>Enter</kbd> to open
-the selected change. Captures are explicit and run in the background; normal
-inventory remains available while the ledger is updated.
+the selected change. From a change detail, press <kbd>h</kbd> to open that VM's
+timeline; press <kbd>a</kbd> there to include unchanged observations. Run
+pickers show labels and pinned baselines. Captures are explicit and run in the
+background; normal inventory remains available while the ledger is updated.
 
 ### Background Refresh & Caching
 

@@ -75,6 +75,11 @@ type historyCaptureMsg struct {
 	err error
 }
 
+type historyTimelineMsg struct {
+	events []assessment.VMHistoryEvent
+	err    error
+}
+
 func loadHistoryRunsCmd(ctx context.Context, service *assessment.Service) tea.Cmd {
 	return func() tea.Msg { runs, err := service.Runs(ctx); return historyRunsMsg{runs: runs, err: err} }
 }
@@ -90,6 +95,13 @@ func captureHistoryCmd(ctx context.Context, service *assessment.Service, context
 	return func() tea.Msg {
 		run, err := service.Capture(ctx, assessment.CaptureOptions{Contexts: contexts, Source: "tui"})
 		return historyCaptureMsg{run: run, err: err}
+	}
+}
+
+func loadHistoryTimelineCmd(ctx context.Context, service *assessment.Service, query string, all, runtime bool) tea.Cmd {
+	return func() tea.Msg {
+		events, err := service.Timeline(ctx, query, "", all, runtime)
+		return historyTimelineMsg{events: events, err: err}
 	}
 }
 

@@ -115,6 +115,13 @@ observations are unambiguous. Lifecycle claims are made only for vCenters that
 completed collection in both runs; failed or missing coverage produces a
 warning instead of false vanish/appear events.
 
+Schema version 2 adds operator-owned run labels, notes, and pinning plus a
+single renewable SQLite capture lease. The lease is fenced with a random token
+and heartbeat, so a stale scheduled process cannot append observations after
+another process has taken over. Timeline queries reuse the same identity
+precedence and coverage rules as diffs; the TUI drills from a change row into
+that timeline, while `assessment diff` can enforce explicit CI exit policies.
+
 ---
 
 ## 3. Source Code Organization

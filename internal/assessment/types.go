@@ -19,13 +19,18 @@ const (
 )
 
 type Run struct {
-	ID                 int64     `json:"id"`
-	Source             string    `json:"source"`
-	StartedAt          time.Time `json:"started_at"`
-	FinishedAt         time.Time `json:"finished_at,omitempty"`
-	Status             RunStatus `json:"status"`
-	RequestedContexts  int       `json:"requested_contexts"`
-	SuccessfulContexts int       `json:"successful_contexts"`
+	ID                     int64     `json:"id"`
+	Source                 string    `json:"source"`
+	Label                  string    `json:"label,omitempty"`
+	Note                   string    `json:"note,omitempty"`
+	Pinned                 bool      `json:"pinned,omitempty"`
+	ToolVersion            string    `json:"tool_version,omitempty"`
+	InventorySchemaVersion string    `json:"inventory_schema_version,omitempty"`
+	StartedAt              time.Time `json:"started_at"`
+	FinishedAt             time.Time `json:"finished_at,omitempty"`
+	Status                 RunStatus `json:"status"`
+	RequestedContexts      int       `json:"requested_contexts"`
+	SuccessfulContexts     int       `json:"successful_contexts"`
 }
 
 type ContextRun struct {
@@ -90,6 +95,8 @@ type Diff struct {
 	Snapshots    []SnapshotChange `json:"snapshots,omitempty"`
 	SnapshotAges []SnapshotAge    `json:"snapshot_ages,omitempty"`
 	Warnings     []string         `json:"warnings,omitempty"`
+	Coverage     []CoverageIssue  `json:"coverage,omitempty"`
+	Policy       *PolicyResult    `json:"policy,omitempty"`
 	Counts       DiffCounts       `json:"counts"`
 }
 
@@ -111,5 +118,48 @@ type ContextProgress struct {
 type VMHistoryEntry struct {
 	Run         Run                  `json:"run"`
 	Observation Observation          `json:"observation"`
+	Snapshots   []vsphere.VMSnapshot `json:"snapshots,omitempty"`
+}
+
+// CaptureLease identifies the one process allowed to write a live capture.
+// Token is a fencing value: a stale process cannot save after its lease has
+// expired and another process has taken over.
+type CaptureLease struct {
+	Token     string
+	RunID     int64
+	ExpiresAt time.Time
+}
+
+type RunMetadata struct {
+	Label                  string
+	Note                   string
+	Pinned                 bool
+	ToolVersion            string
+	InventorySchemaVersion string
+}
+
+type CoverageIssue struct {
+	Scope   string `json:"scope"`
+	Context string `json:"context,omitempty"`
+	Message string `json:"message"`
+}
+
+type PolicyViolation struct {
+	Rule    string `json:"rule"`
+	Message string `json:"message"`
+}
+
+type PolicyResult struct {
+	Passed     bool              `json:"passed"`
+	Violations []PolicyViolation `json:"violations,omitempty"`
+}
+
+type VMHistoryEvent struct {
+	Kind        string               `json:"kind"`
+	Run         Run                  `json:"run"`
+	Context     string               `json:"context"`
+	Name        string               `json:"name"`
+	Changes     []FieldChange        `json:"changes,omitempty"`
+	Observation *Observation         `json:"observation,omitempty"`
 	Snapshots   []vsphere.VMSnapshot `json:"snapshots,omitempty"`
 }

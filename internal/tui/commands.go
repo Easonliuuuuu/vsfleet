@@ -165,6 +165,27 @@ func scheduleRefresh(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(time.Time) tea.Msg { return refreshTickMsg{} })
 }
 
+// afterInitialPaint holds startup work until the renderer has had time to
+// flush the model's first view. Bubble Tea buffers writes and renders them on
+// its ticker, so an immediately-resolving credential request could otherwise
+// replace the loading pane before it was ever visible to the operator.
+func afterInitialPaint(ctx context.Context, cmds []tea.Cmd) tea.Cmd {
+	return func() tea.Msg {
+		timer := time.NewTimer(initialPaintDelay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			batch := tea.Batch(cmds...)
+			if batch == nil {
+				return nil
+			}
+			return batch()
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
 // diagnosisMsg carries a completed connection diagnosis. cc serves the same
 // purpose as it does on beginInventoryMsg: a diagnosis of the endpoint a
 // context used to have says nothing about the one it has now.

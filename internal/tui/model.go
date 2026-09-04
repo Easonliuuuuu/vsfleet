@@ -25,7 +25,13 @@ import (
 // context and every resource kind. Without a bound, an estate with dozens of
 // contexts — each fetching up to six groups concurrently — would open that
 // many connections the instant the interface starts.
-const maxConcurrentLoads = 4
+const (
+	maxConcurrentLoads = 4
+	// Bubble Tea's default renderer flushes at 60 FPS. Waiting across several
+	// frames makes the initial loading pane observable before fast credential
+	// requests can replace it with their prompt overlay.
+	initialPaintDelay = 50 * time.Millisecond
+)
 
 // DefaultRefreshInterval is how often the inventory on screen is re-read.
 //
@@ -559,11 +565,12 @@ func refreshInterval(d time.Duration) time.Duration {
 }
 
 // Init starts the spinner, loads only the selected context at start-up, and
-// arms the background refresh. The all-contexts view is a presentation scope,
-// not permission to contact every configured vCenter. With no contexts
-// configured yet there is
-// nothing to load, so it opens the setup form instead of an empty table with
-// no way to fill it.
+// arms the background refresh. The selected load is held briefly so the first
+// loading pane is flushed before a fast credential request can replace it with
+// the password overlay. The all-contexts view is a presentation scope, not
+// permission to contact every configured vCenter. With no contexts configured
+// yet there is nothing to load, so it opens the setup form instead of an empty
+// table with no way to fill it.
 //
 // A context not selected here is never contacted merely because the program
 // started, the all-contexts view was opened, a search was opened, or a refresh
@@ -573,11 +580,12 @@ func (m *Model) Init() tea.Cmd {
 	if len(m.states) == 0 {
 		return tea.Batch(m.enterForm(nil), m.spin.Tick)
 	}
-	cmds := m.ensureSelectedLoaded(false)
-	if cmd := scheduleRefresh(m.refreshInterval); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
+	startup := m.ensureSelectedLoaded(false)
 	if cmd := m.nextCredPromptCmd(); cmd != nil {
+		startup = append(startup, cmd)
+	}
+	cmds := []tea.Cmd{afterInitialPaint(m.ctx, startup)}
+	if cmd := scheduleRefresh(m.refreshInterval); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
 	return tea.Batch(cmds...)

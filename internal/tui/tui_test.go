@@ -415,6 +415,9 @@ func TestInitialViewDoesNotNeedCredentialWork(t *testing.T) {
 	if got := b.calls["prod"]; got != 0 {
 		t.Fatalf("Init performed connection work before its command ran: %d calls", got)
 	}
+	if st := m.byName["prod"]; !st.loading {
+		t.Fatal("Init should render the selected context as loading before releasing its startup command")
+	}
 	drive(t, m, cmd)
 	if got := b.calls["prod"]; got != 1 {
 		t.Fatalf("running Init's command made %d calls, want 1", got)

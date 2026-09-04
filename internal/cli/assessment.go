@@ -382,8 +382,12 @@ func targetTime(runs []assessment.Run, id int64) time.Time {
 }
 func printRun(out interface{ Write([]byte) (int, error) }, r assessment.Run) {
 	label := ""
-	if r.Label != "" { label = " label=" + r.Label }
-	if r.Pinned { label += " pinned" }
+	if r.Label != "" {
+		label = " label=" + r.Label
+	}
+	if r.Pinned {
+		label += " pinned"
+	}
 	fmt.Fprintf(out, "assessment %d: %s%s (%d/%d contexts successful)\n", r.ID, r.Status, label, r.SuccessfulContexts, r.RequestedContexts)
 }
 func changeDetail(v assessment.VMChange) string {

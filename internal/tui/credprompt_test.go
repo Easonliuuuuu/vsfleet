@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -257,4 +258,63 @@ func TestCredPromptMarksTheSelectedContextAsCredentialsRequired(t *testing.T) {
 		t.Fatal("the credential request did not open a context-labelled overlay")
 	}
 	m.resolveCredPrompt(credResult{err: errPromptCanceled})
+}
+
+func TestBackgroundCredentialRequestDoesNotOpenPrompt(t *testing.T) {
+	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
+	m := New(context.Background(), b, Options{Credentials: NewPromptCoordinator()})
+	st := m.byName["lab"]
+	if m.beginLoad(st, true, true) == nil {
+		t.Fatal("expected a quiet refresh to begin loading")
+	}
+	request := credRequest{label: "lab", resp: make(chan credResult, 1)}
+	_, cmd := m.Update(credRequestMsg{req: request})
+
+	if m.credPrompt != nil {
+		t.Fatal("a background refresh opened an interactive credential prompt")
+	}
+	if !st.credentialPrompted || st.phase != phaseCredentials {
+		t.Fatalf("background credential state = prompted:%v phase:%q, want true/%q", st.credentialPrompted, st.phase, phaseCredentials)
+	}
+	select {
+	case res := <-request.resp:
+		if !errors.Is(res.err, errBackgroundCredentialPrompt) {
+			t.Fatalf("background credential response = %v, want %v", res.err, errBackgroundCredentialPrompt)
+		}
+	default:
+		t.Fatal("background credential request was not released")
+	}
+	if cmd == nil {
+		t.Fatal("credential listener was not re-armed after deferring the background request")
+	}
+}
+
+func TestBackgroundRefreshDoesNotRepeatCredentialPrompt(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	m.refreshInterval = time.Minute
+	st := m.byName["customer-a"]
+	st.attempted = true
+	st.credentialPrompted = true
+	st.phase = phaseCredentials
+	st.err = errPromptCanceled
+
+	tickRefresh(t, m)
+	if got := b.calls["customer-a"]; got != 0 {
+		t.Fatalf("background refresh retried a context waiting for credentials %d times", got)
+	}
+
+	for i, candidate := range m.states {
+		if candidate == st {
+			m.ctxCursor = i
+			break
+		}
+	}
+	drive(t, m, m.useContext())
+	if got := b.calls["customer-a"]; got != 1 {
+		t.Fatalf("selecting the context did not retry it exactly once; calls = %d", got)
+	}
+	if st.credentialPrompted {
+		t.Fatal("a successful explicit retry left the credential gate armed")
+	}
 }

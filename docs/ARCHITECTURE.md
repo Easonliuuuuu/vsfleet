@@ -194,7 +194,9 @@ diagnose exact point-of-failure:
 ### Background Polling & Cache (`internal/session`)
 The TUI maintains a quiet background refresh model:
 * Active context inventory is polled every 20 seconds.
-* Inactive visited contexts are polled every 200 seconds.
+* Inactive, successfully loaded contexts are polled every 200 seconds.
+  Contexts waiting for interactive credentials require an explicit selection
+  or reload; a background timer never takes over the terminal with a prompt.
 * Unvisited contexts are never polled until explicitly brought into scope.
 * Failures do not blank the screen: the cache retains stale inventory, visually
   noting the last-known timestamp and the connection issue.

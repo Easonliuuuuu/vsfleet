@@ -382,7 +382,10 @@ Inventory updates quietly in the background without flickering or resetting
 cursor position:
 
 * **Selected Context:** Re-read every 20 seconds.
-* **Visited Contexts:** Re-read every 200 seconds.
+* **Visited Contexts:** Successfully loaded contexts are re-read every 200
+  seconds. A context waiting for interactive credentials is retried only when
+  selected or explicitly reloaded, so background polling never opens a
+  password prompt.
 * **Unvisited Contexts:** Never contacted until explicitly accessed.
 * **Failure Tolerance:** If a refresh fails, cached inventory remains on screen
   with a visual warning rather than clearing the display.

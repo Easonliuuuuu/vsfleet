@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.3.2...v0.4.0) (2026-09-04)
+
+
+### Features
+
+* **report:** add RVTools CSV export and vCPU/vMemory/vTools tabs ([0ae6c2a](https://github.com/Easonliuuuuu/vsfleet/commit/0ae6c2a2ddf7c9328876524c022a93a6ab5df084))
+* **testbed:** add authenticated connected local simulator ([3153678](https://github.com/Easonliuuuuu/vsfleet/commit/3153678f36e3eb9e9167cd01314d84c3c673aeb9))
+
+
+### Bug Fixes
+
+* **assessment:** apply sqlite pragmas to every pooled connection ([01ca04e](https://github.com/Easonliuuuuu/vsfleet/commit/01ca04e51183de006dfdf990ebb2b36b6ecb2710))
+* **tui:** defer interactive credentials until explicit load ([ed23bc0](https://github.com/Easonliuuuuu/vsfleet/commit/ed23bc09f711b46c3836324ae8265ef839f01895))
+* **tui:** give the history hub one meaning for n and honest pane hints ([f567694](https://github.com/Easonliuuuuu/vsfleet/commit/f5676945c9ed0565086b6f1ef0fbe6c0951e85da))
+* **tui:** scope history capture to the vCenter in scope and gate its prompts ([40aed9b](https://github.com/Easonliuuuuu/vsfleet/commit/40aed9bc3d76e0116bc1b05c2cfcef5630dfe6be))
+
 ## [0.3.2](https://github.com/Easonliuuuuu/vsfleet/compare/v0.3.1...v0.3.2) (2026-09-04)
 
 

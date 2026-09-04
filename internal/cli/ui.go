@@ -31,8 +31,10 @@ contexts screen, which lists every configured vCenter whether or not it is
 reachable and is where you switch, add, edit and remove them.
 
 The pane renders before credentials are requested. Keyring authentication runs
-in the background; prompt credentials are collected by a masked overlay inside
-the interface, and untouched contexts remain disconnected until selected.
+in the background. If interactive input is needed at startup, the pane remains
+usable and marks the context as credentials required; selecting or reloading it
+opens a masked password overlay inside the interface. Untouched contexts remain
+disconnected until selected.
 
 	"/" filters the table in front of you and "tab" widens the same query into
 	every vCenter and every kind at once, which is "vsfleet search" without
@@ -99,8 +101,9 @@ func runUI(a *App, cmd *cobra.Command) error {
 	// a keystroke meant for the password field reach a global shortcut
 	// instead (issue #26). The coordinator answers "prompt" references
 	// through the interface itself, so it replaces the resolver's usual
-	// prompt provider for the lifetime of this run. Credential resolution starts
-	// only after the first pane has rendered.
+	// prompt provider for the lifetime of this run. Automatic credential
+	// resolution starts only after the first pane has rendered, and startup
+	// never opens the overlay without a subsequent explicit selection/reload.
 	coordinator := tui.NewPromptCoordinator()
 	a.Resolver().SetProvider(coordinator)
 

@@ -123,7 +123,7 @@ func (m *Model) viewHeader() string {
 	connected, failed := 0, 0
 	for _, st := range m.states {
 		switch {
-		case st.err != nil:
+		case st.err != nil && !st.credentialsRequired():
 			failed++
 		case st.inv != nil:
 			connected++
@@ -455,6 +455,8 @@ func (m *Model) contextDetail(st *contextState) string {
 		return contextPhaseDetail(st)
 	case st.diagging:
 		return "diagnosing…"
+	case st.credentialsRequired():
+		return "credentials required · press r to connect"
 	case st.err != nil:
 		return firstLine(st.err.Error())
 	case st.inv != nil:
@@ -529,6 +531,8 @@ func (m *Model) emptyMessage() string {
 			return contextPhaseDetail(st)
 		}
 		return m.spin.View() + "loading inventory…"
+	case m.current() != nil && m.current().credentialsRequired():
+		return "credentials required · press r to connect"
 	case m.filter.Value() != "":
 		return fmt.Sprintf("no %s matching %q", tabTitle(m.kind), m.filter.Value())
 	case len(m.failuresInScope()) > 0:

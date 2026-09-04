@@ -381,6 +381,10 @@ updated.
 Inventory updates quietly in the background without flickering or resetting
 cursor position:
 
+* **Startup Credentials:** Stored keyring credentials load automatically. If
+  interactive input is required, the pane stays usable and shows `credentials
+  required`; press <kbd>r</kbd> (or select the context) to open the masked
+  password field.
 * **Selected Context:** Re-read every 20 seconds.
 * **Visited Contexts:** Successfully loaded contexts are re-read every 200
   seconds. A context waiting for interactive credentials is retried only when

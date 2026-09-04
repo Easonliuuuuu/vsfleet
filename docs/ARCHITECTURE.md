@@ -193,6 +193,9 @@ diagnose exact point-of-failure:
 
 ### Background Polling & Cache (`internal/session`)
 The TUI maintains a quiet background refresh model:
+* Startup may reuse a session or stored keyring credential automatically, but
+  an interactive credential boundary settles into `credentials required`
+  until an explicit context selection or reload opens the masked prompt.
 * Active context inventory is polled every 20 seconds.
 * Inactive, successfully loaded contexts are polled every 200 seconds.
   Contexts waiting for interactive credentials require an explicit selection

@@ -271,6 +271,30 @@ func shortTabTitle(kind vsphere.Kind) string {
 	}
 }
 
+// compactTabTitle is the last-resort label used at the documented 40-column
+// minimum. vApp keeps its name because hiding the final kind behind an opaque
+// number makes the tab look as though it does not exist at all.
+func compactTabTitle(kind vsphere.Kind) string {
+	switch kind {
+	case vsphere.KindVM:
+		return "VM"
+	case vsphere.KindTemplate:
+		return "T"
+	case vsphere.KindHost:
+		return "H"
+	case vsphere.KindCluster:
+		return "C"
+	case vsphere.KindVApp:
+		return "vApp"
+	case vsphere.KindDatastore:
+		return "D"
+	case vsphere.KindNetwork:
+		return "N"
+	default:
+		return string(kind)
+	}
+}
+
 // kindLabel names one object of a kind, for a detail pane where the plural tab
 // title would be describing a single thing.
 func kindLabel(kind vsphere.Kind) string {

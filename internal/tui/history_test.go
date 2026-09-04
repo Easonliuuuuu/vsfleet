@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,5 +47,25 @@ func TestChangesRunPickerSelectsAnotherBaseline(t *testing.T) {
 	}
 	if m.baseRun != 1 {
 		t.Fatalf("base run=%d, want oldest run 1", m.baseRun)
+	}
+}
+
+func TestHistoryHeaderNamesTheSelectedPane(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.runs = []assessment.Run{{ID: 42}}
+	m.targetRun = 42
+	m.mode = modeChanges
+
+	m.historyPane = historyPaneChanges
+	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Changes  ·  target #42") {
+		t.Fatalf("changes header does not name the pane: %q", got)
+	}
+	m.historyPane = historyPaneTrends
+	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Trends") || strings.Contains(got, "target #42") {
+		t.Fatalf("trends header was mislabeled: %q", got)
+	}
+	m.historyPane = historyPaneRuns
+	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Runs") || strings.Contains(got, "target #42") {
+		t.Fatalf("runs header was mislabeled: %q", got)
 	}
 }

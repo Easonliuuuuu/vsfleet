@@ -87,10 +87,12 @@ func (m *Model) viewChangesHeader() string {
 		pane = historyPaneChanges
 	}
 	label := "history  ·  " + labels[pane]
-	if m.targetRun != 0 {
-		label = fmt.Sprintf("changes  ·  target #%d", m.targetRun)
-	} else if len(m.runs) > 0 {
-		label = fmt.Sprintf("changes  ·  target #%d", m.runs[0].ID)
+	if pane == historyPaneChanges {
+		if m.targetRun != 0 {
+			label = fmt.Sprintf("history  ·  Changes  ·  target #%d", m.targetRun)
+		} else if len(m.runs) > 0 {
+			label = fmt.Sprintf("history  ·  Changes  ·  target #%d", m.runs[0].ID)
+		}
 	}
 	return t.title.Render("vsfleet") + "  " + t.accent.Render(label) + t.dim.Render("   ←/→ switch")
 }

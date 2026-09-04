@@ -889,9 +889,26 @@ func TestNumberKeysJumpToAKind(t *testing.T) {
 	}
 	// The bar has to say which number is which, or the numbers are a secret.
 	out := m.View()
-	for i, want := range []string{"1 VMs", "2 Templates", "3 Hosts", "4 Clusters", "5 Datastores", "6 Networks"} {
+	for i, want := range []string{"1 VMs", "2 Templates", "3 Hosts", "4 Clusters", "5 Datastores", "6 Networks", "7 vApps"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("kind bar is missing %q (position %d):\n%s", want, i+1, out)
+		}
+	}
+}
+
+func TestMinimumWidthKeepsVAppAndHistoryVisible(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	m.width, m.height = minTermWidth, minTermHeight
+
+	out := m.View()
+	for _, want := range []string{"7 vApp", "H history"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%d-column browse screen is missing %q:\n%s", minTermWidth, want, out)
+		}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if w := ansi.StringWidth(line); w > minTermWidth {
+			t.Fatalf("line is %d columns wide, want at most %d: %q", w, minTermWidth, line)
 		}
 	}
 }
@@ -957,7 +974,7 @@ func TestHelpListsEveryBinding(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 	press(t, m, "?")
 	out := m.View()
-	for _, want := range []string{"Keys", "contexts", "all vCenters", "diagnose", "1-6", "7"} {
+	for _, want := range []string{"Keys", "contexts", "all vCenters", "diagnose", "1-7", "history"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help is missing %q:\n%s", want, out)
 		}

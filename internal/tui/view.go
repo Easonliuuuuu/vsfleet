@@ -25,6 +25,7 @@ const (
 	labelColumnPad  = 20
 	tabGap          = 3
 	tabGapTight     = 2
+	tabGapCompact   = 1
 	helpColumnWidth = 34
 	ctxNameWidth    = 18
 )
@@ -244,15 +245,16 @@ func (m *Model) viewBrowse() []string {
 
 // viewTabs is the numbered kind bar. Numbering it is the point: reaching
 // Networks used to be five presses of "l" against a strip that truncated
-// before you could see where you were going.
+// before you could see where you were going. Keep the same guarantee for the
+// vApp tab at the documented 40-column minimum.
 func (m *Model) viewTabs(w int) string {
 	t := m.theme
 	// Try the widest thing that fits: full names first, and a tighter gap
 	// before giving up a name, because "Datastores" earns two columns of
 	// whitespace more than "DS" does.
-	density, gap := tabBare, tabGapTight
-	for _, d := range []tabDensity{tabFull, tabShort, tabBare} {
-		for _, g := range []int{tabGap, tabGapTight} {
+	density, gap := tabCompact, tabGapCompact
+	for _, d := range []tabDensity{tabFull, tabShort, tabBare, tabCompact} {
+		for _, g := range []int{tabGap, tabGapTight, tabGapCompact} {
 			if tabsWidth(m.tabLabels(d), g) <= w {
 				density, gap = d, g
 				goto found
@@ -283,20 +285,23 @@ found:
 type tabDensity int
 
 const (
-	tabFull  tabDensity = iota // "1 Datastores 24"
-	tabShort                   // "1 DS 24"
-	tabBare                    // "1 DS"
+	tabFull    tabDensity = iota // "1 Datastores 24"
+	tabShort                     // "1 DS 24"
+	tabBare                      // "1 DS"
+	tabCompact                   // "1 D"
 )
 
 func (m *Model) tabLabels(d tabDensity) []string {
 	labels := make([]string, 0, len(vsphere.AllKinds))
 	for i, k := range vsphere.AllKinds {
 		title := tabTitle(k)
-		if d != tabFull {
+		if d == tabCompact {
+			title = compactTabTitle(k)
+		} else if d != tabFull {
 			title = shortTabTitle(k)
 		}
 		label := fmt.Sprintf("%d %s", i+1, title)
-		if d != tabBare {
+		if d == tabFull || d == tabShort {
 			label += fmt.Sprintf(" %d", m.count(k))
 		}
 		if m.kindErrorInScope(k) {

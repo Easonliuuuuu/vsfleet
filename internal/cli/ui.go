@@ -42,8 +42,9 @@ disconnected until selected.
 	searched rather than quietly narrowing the result.
 
 	"H" opens the historical Changes screen. It compares the newest two explicit
-	assessments, lets you choose another baseline or target, and captures all
-	configured vCenters with "n".
+	assessments, lets you choose another baseline or target, and captures the
+	vCenter in scope with "n" — every vCenter shown when --all-contexts (or "a")
+	is on.
 
 With no contexts configured yet, this opens straight into the setup form
 instead of asking you to run "vsfleet context add" first.

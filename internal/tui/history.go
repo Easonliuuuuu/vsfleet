@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
 )
 
 func (m *Model) enterChanges() tea.Cmd {
@@ -197,16 +198,67 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// captureCommand starts a capture across every configured context, ignoring
-// the keypress when history is unavailable or a capture is already running.
+// captureContexts is what a capture reads: the vCenters in scope, not every
+// vCenter configured. The all-vCenters view is how an estate-wide capture is
+// asked for; with one vCenter on screen, "n" must not connect to the others or
+// ask for their passwords.
+func (m *Model) captureContexts() []*config.Context {
+	states := m.inScope()
+	contexts := make([]*config.Context, 0, len(states))
+	for _, st := range states {
+		contexts = append(contexts, st.cc)
+	}
+	return contexts
+}
+
+// captureCommand starts a capture across the vCenter(s) in scope, ignoring
+// the keypress when history is unavailable, a capture is already running, or
+// scope is empty.
 func (m *Model) captureCommand() tea.Cmd {
 	if m.assessment == nil || m.capturing {
 		return nil
 	}
+	states := m.inScope()
+	if len(states) == 0 {
+		m.historyErr = fmt.Errorf("no vCenter in scope to capture")
+		return nil
+	}
 	m.capturing = true
 	m.historyErr = nil
-	m.setMessage("capturing all configured contexts…", false)
-	return captureHistoryCmd(m.ctx, m.assessment, m.backend.Contexts())
+	for _, st := range states {
+		st.capturing = true
+	}
+	m.setMessage(captureScopeMessage(states), false)
+	return captureHistoryCmd(m.ctx, m.assessment, m.captureContexts())
+}
+
+// captureScopeLabel names a set of contexts: the single vCenter's name, or a
+// count when there are several — the all-vCenters view is the only way to
+// reach more than one.
+func captureScopeLabel(states []*contextState) string {
+	if len(states) == 1 {
+		return states[0].cc.Name
+	}
+	return fmt.Sprintf("%d vCenters", len(states))
+}
+
+// captureScopeMessage is the status line shown the moment "n" is pressed.
+func captureScopeMessage(states []*contextState) string {
+	return "capturing " + captureScopeLabel(states) + "…"
+}
+
+// capturingStates is the vCenter(s) a running capture actually covers, fixed
+// at the moment "n" was pressed. The operator's current scope may have moved
+// on since (e.g. narrowing back from the all-vCenters view), so the in-flight
+// message reports what was captured, not what is on screen now.
+func (m *Model) capturingStates() []*contextState {
+	var states []*contextState
+	for _, st := range m.states {
+		if st.capturing {
+			states = append(states, st)
+		}
+	}
+	return states
 }
 
 func (m *Model) runIndex(id int64) int {
@@ -300,10 +352,10 @@ func (m *Model) viewChanges() []string {
 		lines = append(lines, t.dim.Render(fmt.Sprintf("baseline #%d  →  target #%d", m.baseRun, m.targetRun)), "")
 	}
 	if m.capturing {
-		lines = append(lines, "  "+m.spin.View()+t.dim.Render("capturing VM inventory from every configured vCenter…"), "")
+		lines = append(lines, "  "+m.spin.View()+t.dim.Render("capturing VM inventory from "+captureScopeLabel(m.capturingStates())+"…"), "")
 	}
 	if m.historyErr != nil {
-		return append(lines, "  "+t.warn.Render(m.historyErr.Error()), t.dim.Render("  press n to capture an assessment"))
+		return append(lines, "  "+t.warn.Render(m.historyErr.Error()), t.dim.Render("  press n to capture "+captureScopeLabel(m.inScope())))
 	}
 	if m.changeDiff == nil {
 		return append(lines, t.dim.Render("no comparable assessments"))

@@ -212,7 +212,7 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 		data.VMs[i].Observation.VM.Partitions = append([]vsphere.VMPartition(nil), data.VMs[i].Observation.VM.Partitions...)
 		sort.SliceStable(data.VMs[i].Observation.VM.Partitions, func(a, b int) bool {
 			x, y := data.VMs[i].Observation.VM.Partitions[a], data.VMs[i].Observation.VM.Partitions[b]
-			if strings.ToLower(x.Path) != strings.ToLower(y.Path) {
+			if !strings.EqualFold(x.Path, y.Path) {
 				return strings.ToLower(x.Path) < strings.ToLower(y.Path)
 			}
 			return x.Path < y.Path

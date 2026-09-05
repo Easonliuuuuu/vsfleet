@@ -66,8 +66,8 @@ runs are intentionally part of the analysis.
 
 Exports read one persisted run and do not contact vCenter or open a live
 session. The `rvtools` format is an XLSX workbook containing `vInfo`, `vCPU`,
-`vMemory`, per-VM `vDisk` and `vNetwork`, `vTools`, `vHost`, `vCluster`,
-`vDatastore`, `vSnapshot`, and `vsfleetCoverage` sheets.
+`vMemory`, per-VM `vDisk`, `vPartition` and `vNetwork`, `vTools`, `vHost`,
+`vCluster`, `vDatastore`, `vSnapshot`, and `vsfleetCoverage` sheets.
 
 ```sh
 vsfleet assessment export latest --format rvtools --file ./estate.xlsx
@@ -85,17 +85,30 @@ on `vsfleetCoverage`.
 
 ### What "RVTools-compatible" means here
 
-vsfleet renders ten RVTools tabs and uses RVTools' own column names, so a tool
-that reads those tabs by name can read a vsfleet export:
+vsfleet renders eleven RVTools tabs and uses RVTools' own column names, so a
+tool that reads those tabs by name can read a vsfleet export:
 
-`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vNetwork` · `vTools` · `vHost` ·
-`vCluster` · `vDatastore` · `vSnapshot`
+`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
+`vHost` · `vCluster` · `vDatastore` · `vSnapshot`
 
-RVTools itself ships roughly thirty tabs. `vPartition`, `vHealth`, `vRP`,
-`vHBA`, `vNIC`, `vSwitch` and `vLicense` are among those vsfleet does not
-render today. If a downstream sizing or migration tool requires one of them,
+RVTools itself ships roughly thirty tabs. `vHealth`, `vRP`, `vHBA`, `vNIC`,
+`vSwitch` and `vLicense` are among those vsfleet does not render today. If a downstream sizing or migration tool requires one of them,
 vsfleet is not yet a drop-in for that pipeline. This is a **compatible**
 export, not a replacement for RVTools.
+
+### Guest partitions need VMware Tools
+
+`vPartition` reports what the guest sees: filesystem paths, capacity, consumed
+and free space. Only VMware Tools inside the guest can measure that — vSphere
+knows how large a virtual disk is, never how much of it the guest has used. A
+powered-off VM, or one whose Tools are not running, therefore contributes no
+`vPartition` rows at all.
+
+Because a short tab would otherwise be indistinguishable from a small estate,
+`vsfleetCoverage` marks the tab `partial` and names the shortfall — for
+example `18 of 40 VMs reported guest filesystems; the rest had no running
+VMware Tools`. Captures taken before this tab existed are marked
+`not recorded` rather than empty.
 
 The `vsfleetCoverage` sheet is the part RVTools has no equivalent for: it names
 every tab and vCenter in the run with its collection status, item count, and

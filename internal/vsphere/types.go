@@ -64,29 +64,54 @@ type Location struct {
 // template views filter on IsTemplate rather than using a parallel type.
 type VM struct {
 	Location
-	ID                 string       `json:"id"`
-	InstanceUUID       string       `json:"instance_uuid,omitempty"`
-	BIOSUUID           string       `json:"bios_uuid,omitempty"`
-	Name               string       `json:"name"`
-	PowerState         string       `json:"power_state"`
-	IsTemplate         bool         `json:"is_template"`
-	CPU                int32        `json:"cpu"`
-	MemoryMB           int64        `json:"memory_mb"`
-	GuestOS            string       `json:"guest_os"`
-	GuestState         string       `json:"guest_state"`
-	ToolsState         string       `json:"tools_state"`
-	ToolsVersion       string       `json:"tools_version,omitempty"`
-	ToolsVersionStatus string       `json:"tools_version_status,omitempty"`
-	IPAddress          string       `json:"ip_address"`
-	Host               string       `json:"host"`
-	Cluster            string       `json:"cluster"`
-	Folder             string       `json:"folder"`
-	Datastores         []string     `json:"datastores"`
-	StorageGB          float64      `json:"storage_gb"`
-	Annotation         string       `json:"annotation"`
-	Disks              []VMDisk     `json:"disks,omitempty"`
-	NICs               []VMNIC      `json:"nics,omitempty"`
-	Snapshots          []VMSnapshot `json:"snapshots,omitempty"`
+	ID                 string        `json:"id"`
+	InstanceUUID       string        `json:"instance_uuid,omitempty"`
+	BIOSUUID           string        `json:"bios_uuid,omitempty"`
+	Name               string        `json:"name"`
+	PowerState         string        `json:"power_state"`
+	IsTemplate         bool          `json:"is_template"`
+	CPU                int32         `json:"cpu"`
+	MemoryMB           int64         `json:"memory_mb"`
+	GuestOS            string        `json:"guest_os"`
+	GuestState         string        `json:"guest_state"`
+	ToolsState         string        `json:"tools_state"`
+	ToolsVersion       string        `json:"tools_version,omitempty"`
+	ToolsVersionStatus string        `json:"tools_version_status,omitempty"`
+	IPAddress          string        `json:"ip_address"`
+	Host               string        `json:"host"`
+	Cluster            string        `json:"cluster"`
+	Folder             string        `json:"folder"`
+	Datastores         []string      `json:"datastores"`
+	StorageGB          float64       `json:"storage_gb"`
+	Annotation         string        `json:"annotation"`
+	Disks              []VMDisk      `json:"disks,omitempty"`
+	NICs               []VMNIC       `json:"nics,omitempty"`
+	Snapshots          []VMSnapshot  `json:"snapshots,omitempty"`
+	Partitions         []VMPartition `json:"partitions,omitempty"`
+}
+
+// VMPartition is one guest filesystem as VMware Tools reports it, which is
+// the only source for it: vSphere knows how large a virtual disk is, but only
+// the guest knows how much of it is used. A VM with no running Tools reports
+// no partitions at all, so an empty slice is missing evidence rather than a
+// machine with no filesystems — CapacityBytes of zero would be a lie, where
+// absence is not. Callers distinguish the two through the run's collection
+// status, not by counting rows.
+type VMPartition struct {
+	Path           string `json:"path"`
+	CapacityBytes  int64  `json:"capacity_bytes"`
+	FreeBytes      int64  `json:"free_bytes"`
+	FilesystemType string `json:"filesystem_type,omitempty"`
+}
+
+// UsedBytes is what the guest has consumed on this filesystem. vSphere
+// reports capacity and free space, never used, and a guest that reports free
+// space larger than capacity would otherwise produce a negative number.
+func (p VMPartition) UsedBytes() int64 {
+	if used := p.CapacityBytes - p.FreeBytes; used > 0 {
+		return used
+	}
+	return 0
 }
 
 // VMDisk is one virtual disk from a VM's hardware configuration. Optional

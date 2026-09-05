@@ -59,15 +59,20 @@ byte-identical, and every export prints a SHA256 receipt.
 
 ### Supported tabs
 
-vsfleet renders **ten** RVTools tabs, using RVTools' own column names:
+vsfleet renders **eleven** RVTools tabs, using RVTools' own column names:
 
-`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vNetwork` · `vTools` · `vHost` ·
-`vCluster` · `vDatastore` · `vSnapshot`
+`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
+`vHost` · `vCluster` · `vDatastore` · `vSnapshot`
 
 RVTools itself ships roughly thirty. If your pipeline needs a tab that is not
-in that list — `vPartition` and `vHealth` are the common ones — vsfleet is not
-yet a drop-in for it. This is a **compatible** export, not a replacement for
+in that list — `vHealth` and `vRP` are the common ones — vsfleet is not yet a
+drop-in for it. This is a **compatible** export, not a replacement for
 RVTools.
+
+`vPartition` reports guest filesystem usage, which only VMware Tools inside
+the guest can measure. VMs with no running Tools contribute no rows, and
+`vsfleetCoverage` says how many of them answered rather than leaving a short
+tab to look like a small estate.
 
 Every export also carries a `vsfleetCoverage` sheet naming what collected, what
 failed, and why, per vCenter and per tab. A partial estate is reported as

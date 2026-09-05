@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -36,6 +37,7 @@ var (
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "SharedBus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	networkHeaders   = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	toolsHeaders     = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
+	partitionHeaders = append([]string{"VM", "Powerstate", "Template", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
 	hostHeaders      = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	clusterHeaders   = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -68,6 +70,7 @@ func rvtoolsSheets(data assessment.ExportData) ([]sheet, error) {
 		{name: "vCPU", headers: cpuHeaders, rows: cpuRows(data)},
 		{name: "vMemory", headers: memoryHeaders, rows: memoryRows(data)},
 		{name: "vDisk", headers: diskHeaders, rows: diskRows(data)},
+		{name: "vPartition", headers: partitionHeaders, rows: partitionRows(data)},
 		{name: "vNetwork", headers: networkHeaders, rows: networkRows(data)},
 		{name: "vTools", headers: toolsHeaders, rows: toolsRows(data)},
 		{name: "vHost", headers: hostHeaders, rows: hostRows(data)},
@@ -351,6 +354,40 @@ func diskRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
+// partitionRows renders the guest filesystems VMware Tools reported. A VM
+// whose Tools were not running contributes no rows at all, which is why
+// vsfleetCoverage reports how much of the estate answered rather than leaving
+// a reader to infer it from a row count.
+func partitionRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range data.VMs {
+		obs, vm := item.Observation, item.Observation.VM
+		for _, part := range vm.Partitions {
+			row := []any{
+				vm.Name, vm.PowerState, vm.IsTemplate, part.Path,
+				float64(part.CapacityBytes) / miB,
+				float64(part.UsedBytes()) / miB,
+				float64(part.FreeBytes) / miB,
+				freePercent(part),
+				part.FilesystemType,
+			}
+			rows = append(rows, append(row, vmTail(data, obs)...))
+		}
+	}
+	return rows
+}
+
+// freePercent matches RVTools' own column. A partition of zero capacity is
+// reported as zero rather than dividing by it: Tools occasionally reports a
+// mounted filesystem it cannot size, and an empty cell there would be read as
+// "full" by anything summing the column.
+func freePercent(p vsphere.VMPartition) float64 {
+	if p.CapacityBytes <= 0 {
+		return 0
+	}
+	return math.Round(float64(p.FreeBytes)/float64(p.CapacityBytes)*10000) / 100
+}
+
 func networkRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, item := range data.VMs {
@@ -468,6 +505,18 @@ func coverageRows(data assessment.ExportData) [][]any {
 	for _, item := range data.VMs {
 		snapshotCounts[item.Observation.Context] += len(item.Snapshots)
 	}
+	// Partitions come from VMware Tools inside the guest, so a successful
+	// capture still covers only the VMs whose Tools answered. Track both the
+	// rows and how many VMs produced them, so coverage can say which.
+	partitionCounts := make(map[string]int)
+	partitionVMs := make(map[string]int)
+	for _, item := range data.VMs {
+		ctx := item.Observation.Context
+		partitionCounts[ctx] += len(item.Observation.VM.Partitions)
+		if len(item.Observation.VM.Partitions) > 0 {
+			partitionVMs[ctx]++
+		}
+	}
 	resources := make(map[string]map[string]int)
 	for _, r := range data.Resources {
 		if resources[r.Context] == nil {
@@ -478,9 +527,14 @@ func coverageRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0, len(data.Contexts)*10)
 	devicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 2)
 	toolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 3)
+	partitionsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 4)
 	if !devicesRecorded {
 		diskCounts = make(map[string]int)
 		networkCounts = make(map[string]int)
+	}
+	if !partitionsRecorded {
+		partitionCounts = make(map[string]int)
+		partitionVMs = make(map[string]int)
 	}
 	for _, c := range data.Contexts {
 		collections := make(map[string]assessment.CollectionRun)
@@ -495,6 +549,7 @@ func coverageRows(data assessment.ExportData) [][]any {
 			{kind: "vcpu", sheet: "vCPU", count: counts[c.Name]},
 			{kind: "vmemory", sheet: "vMemory", count: counts[c.Name]},
 			{kind: "vdisk", sheet: "vDisk", count: diskCounts[c.Name]},
+			{kind: "vpartition", sheet: "vPartition", count: partitionCounts[c.Name]},
 			{kind: "vnetwork", sheet: "vNetwork", count: networkCounts[c.Name]},
 			{kind: "vtools", sheet: "vTools", count: counts[c.Name]},
 			{kind: "host", sheet: "vHost", count: resources[c.Name]["host"]},
@@ -507,6 +562,31 @@ func coverageRows(data assessment.ExportData) [][]any {
 			case (spec.kind == "vdisk" || spec.kind == "vnetwork") && !devicesRecorded:
 				status = "not recorded"
 				message = "capture predates per-VM device inventory"
+			case spec.kind == "vpartition" && !partitionsRecorded:
+				status = "not recorded"
+				message = "capture predates guest partition inventory"
+			// Partitions are reported by VMware Tools rather than by vCenter,
+			// so a successful VM capture can still leave this tab partial —
+			// a powered-off VM, or one without Tools running, contributes
+			// nothing. Report how much of the estate answered instead of
+			// letting a short tab read as a small estate.
+			case spec.kind == "vpartition":
+				status = c.VMStatus
+				if status == "" {
+					status = "not recorded"
+				}
+				switch {
+				case status != "success" && status != "empty":
+					message = c.Error
+				case counts[c.Name] == 0:
+				case partitionVMs[c.Name] == 0:
+					status = "partial"
+					message = "no VM reported guest filesystems; VMware Tools must be running"
+				case partitionVMs[c.Name] < counts[c.Name]:
+					status = "partial"
+					message = fmt.Sprintf("%d of %d VMs reported guest filesystems; the rest had no running VMware Tools",
+						partitionVMs[c.Name], counts[c.Name])
+				}
 			// Disks and NICs ride along with the VM capture rather than
 			// being their own collection pass, so their coverage mirrors the
 			// VM collection's status.

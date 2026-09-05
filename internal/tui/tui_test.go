@@ -2004,3 +2004,23 @@ func TestBackgroundRefreshDisabledDoesNothing(t *testing.T) {
 		t.Errorf("prod calls = %d, want 1 — refresh is disabled", b.calls["prod"])
 	}
 }
+
+// TestDemoBadgeMarksSampleData covers the one thing standing between a demo
+// screenshot and a reader who thinks they are looking at a real estate.
+func TestDemoBadgeMarksSampleData(t *testing.T) {
+	withBadge := newTestModel(t, twoHealthy(), Options{Current: "prod", Demo: true})
+	if header := ansi.Strip(withBadge.viewHeader()); !strings.Contains(header, demoBadge) {
+		t.Errorf("demo header should carry %q, got %q", demoBadge, header)
+	}
+
+	// The scope and connection summary must survive beside it.
+	header := ansi.Strip(withBadge.viewHeader())
+	if !strings.Contains(header, "prod") || !strings.Contains(header, "connected") {
+		t.Errorf("demo header dropped the scope or summary: %q", header)
+	}
+
+	plain := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	if header := ansi.Strip(plain.viewHeader()); strings.Contains(header, demoBadge) {
+		t.Errorf("a real run must not claim to be a demo, got %q", header)
+	}
+}

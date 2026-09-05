@@ -83,6 +83,25 @@ Runs captured before VMware Tools version collection still populate the running
 status column in `vTools`; version columns remain blank and the gap is recorded
 on `vsfleetCoverage`.
 
+### What "RVTools-compatible" means here
+
+vsfleet renders ten RVTools tabs and uses RVTools' own column names, so a tool
+that reads those tabs by name can read a vsfleet export:
+
+`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vNetwork` · `vTools` · `vHost` ·
+`vCluster` · `vDatastore` · `vSnapshot`
+
+RVTools itself ships roughly thirty tabs. `vPartition`, `vHealth`, `vRP`,
+`vHBA`, `vNIC`, `vSwitch` and `vLicense` are among those vsfleet does not
+render today. If a downstream sizing or migration tool requires one of them,
+vsfleet is not yet a drop-in for that pipeline. This is a **compatible**
+export, not a replacement for RVTools.
+
+The `vsfleetCoverage` sheet is the part RVTools has no equivalent for: it names
+every tab and vCenter in the run with its collection status, item count, and
+the error where one occurred. A partial estate is reported as partial rather
+than handed over as if it were whole.
+
 ## Retention and recovery
 
 ```sh

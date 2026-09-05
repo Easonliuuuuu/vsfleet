@@ -66,16 +66,29 @@ You do **not** need access to real vCenter instances or ESXi hardware to develop
 features or work on the terminal interface.
 
 vsfleet includes a deterministic, synthetic presentation backend:
-* **Binary:** `cmd/vsfleet-demo`
+* **Shipped command:** `vsfleet demo` (`internal/cli/demo.go`)
+* **Recording binary:** `cmd/vsfleet-demo`
 * **Fixtures:** `internal/demo/backend.go`
 
 ### Launch the Demo TUI
 
-Run the synthetic demo directly:
+The released binary exposes the same fixtures, so this is what a user sees:
+
+```bash
+go run ./cmd/vsfleet demo
+```
+
+`cmd/vsfleet-demo` drives the identical backend without the surrounding command
+tree, which is what `docs/demo.tape` builds for VHS recordings:
 
 ```bash
 go run ./cmd/vsfleet-demo
 ```
+
+Both mark the header `DEMO · SAMPLE DATA` via `tui.Options.Demo`. Anything
+reachable from `vsfleet demo` must stay free of configuration, keyring,
+network and disk access — `internal/cli/demo_test.go` enforces this by
+asserting the lazy accessors on `App` are never built.
 
 This launches the full Bubble Tea interface against three simulated vCenters
 (`prod-vc`, `edge-vc`, and `dr-site`), populated with sample VMs, templates,

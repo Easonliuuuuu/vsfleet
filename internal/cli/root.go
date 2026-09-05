@@ -233,6 +233,7 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 
 	root.AddCommand(
 		newContextCommand(a),
+		newDemoCommand(a),
 		newDoctorCommand(a),
 		newSearchCommand(a),
 		newStatusCommand(a),

@@ -9,6 +9,7 @@ configuration, history database, and output options shown below.
 | Command | Purpose |
 |---|---|
 | `vsfleet` / `vsfleet ui` | Open the terminal UI |
+| `vsfleet demo` | Open the terminal UI on sample data, with no vCenter and nothing written |
 | `vsfleet context add` | Add a vCenter context via the wizard or flags |
 | `vsfleet context list` | List configured contexts |
 | `vsfleet context show [name]` | Show endpoint, route, and TLS settings |

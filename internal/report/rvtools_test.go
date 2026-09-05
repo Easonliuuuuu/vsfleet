@@ -15,10 +15,10 @@ import (
 
 // rvtoolsTabOrder is the tab order both WriteRVTools and RVToolsCSV must
 // produce.
-var rvtoolsTabOrder = []string{"vInfo", "vCPU", "vMemory", "vDisk", "vNetwork", "vTools", "vHost", "vCluster", "vDatastore", "vSnapshot", "vsfleetCoverage"}
+var rvtoolsTabOrder = []string{"vInfo", "vCPU", "vMemory", "vDisk", "vPartition", "vNetwork", "vTools", "vHost", "vCluster", "vDatastore", "vSnapshot", "vsfleetCoverage"}
 
-// sampleExportData builds one persisted run with a VM, its disk, NIC, and
-// snapshot, plus a host and datastore resource observation. Shared by the
+// sampleExportData builds one persisted run with a VM, its disk, NIC,
+// guest partition, and snapshot, plus a host and datastore resource observation. Shared by the
 // XLSX and CSV tests so both exercise identical evidence.
 func sampleExportData(when time.Time) assessment.ExportData {
 	hostPayload, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-1", Name: "esx-1", CPUCores: 8, CPUMHz: 2400, CPUUsageMHz: 1200, MemoryMB: 32768, MemoryUsageMB: 8192, VMCount: 4})
@@ -28,7 +28,7 @@ func sampleExportData(when time.Time) assessment.ExportData {
 	return assessment.ExportData{
 		Run:       assessment.Run{ID: 7, Label: "nightly", StartedAt: when, FinishedAt: when.Add(time.Minute), Status: assessment.RunComplete, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion},
 		Contexts:  []assessment.ContextRun{{Name: "prod", Endpoint: "https://vc.example", Datacenter: "dc-a", VCenterID: "vc-uuid", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "host", Status: "success", ItemCount: 1}, {Kind: "cluster", Status: "empty"}, {Kind: "datastore", Status: "success", ItemCount: 1}}}},
-		VMs:       []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "vm-1", Name: "app", PowerState: "poweredOn", CPU: 2, MemoryMB: 4096, StorageGB: 10, GuestOS: "Ubuntu", InstanceUUID: "instance", BIOSUUID: "bios", Host: "esx-1", ToolsState: "guestToolsRunning", ToolsVersion: "12352", ToolsVersionStatus: "guestToolsCurrent", Disks: []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 8 << 30, UUID: "disk-uuid", ThinProvisioned: &thin, BackingPath: "[ds] app/app.vmdk"}}, NICs: []vsphere.VMNIC{{Key: 201, Label: "Network adapter 1", Network: "VM Network", Connected: &connected, IPv4: []string{"192.0.2.20"}}}}}, Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when, PowerState: "poweredOn", Quiesced: true}}}},
+		VMs:       []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "vm-1", Name: "app", PowerState: "poweredOn", CPU: 2, MemoryMB: 4096, StorageGB: 10, GuestOS: "Ubuntu", InstanceUUID: "instance", BIOSUUID: "bios", Host: "esx-1", ToolsState: "guestToolsRunning", ToolsVersion: "12352", ToolsVersionStatus: "guestToolsCurrent", Disks: []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 8 << 30, UUID: "disk-uuid", ThinProvisioned: &thin, BackingPath: "[ds] app/app.vmdk"}}, NICs: []vsphere.VMNIC{{Key: 201, Label: "Network adapter 1", Network: "VM Network", Connected: &connected, IPv4: []string{"192.0.2.20"}}}, Partitions: []vsphere.VMPartition{{Path: "/", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}}}}, Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when, PowerState: "poweredOn", Quiesced: true}}}},
 		Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-uuid", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "datastore", ID: "ds-1", Name: "datastore-1", Payload: datastorePayload}},
 	}
 }
@@ -183,9 +183,10 @@ func TestWriteRVToolsMarksDeviceTabsNotRecordedForOldRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	// Tab order is vInfo(2), vCPU(3), vMemory(4), vDisk(5), vNetwork(6),
-	// vTools(7), vHost(8), vCluster(9), vDatastore(10), vSnapshot(11).
-	for row, sheet := range map[string]string{"5": "vDisk", "6": "vNetwork"} {
+	// Tab order is vInfo(2), vCPU(3), vMemory(4), vDisk(5), vPartition(6),
+	// vNetwork(7), vTools(8), vHost(9), vCluster(10), vDatastore(11),
+	// vSnapshot(12).
+	for row, sheet := range map[string]string{"5": "vDisk", "7": "vNetwork"} {
 		if got, _ := f.GetCellValue("vsfleetCoverage", "J"+row); got != sheet {
 			t.Fatalf("coverage sheet row %s=%q, want %q", row, got, sheet)
 		}
@@ -200,16 +201,16 @@ func TestWriteRVToolsMarksDeviceTabsNotRecordedForOldRuns(t *testing.T) {
 	// status predates the version columns), so its coverage row carries the
 	// VM collection's own status with an explanatory message instead of
 	// "not recorded".
-	if got, _ := f.GetCellValue("vsfleetCoverage", "J7"); got != "vTools" {
-		t.Fatalf("coverage sheet row 7=%q, want vTools", got)
+	if got, _ := f.GetCellValue("vsfleetCoverage", "J8"); got != "vTools" {
+		t.Fatalf("coverage sheet row 8=%q, want vTools", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "K7"); got != "success" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "K8"); got != "success" {
 		t.Fatalf("vTools coverage status=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "L7"); got != "1" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "L8"); got != "1" {
 		t.Fatalf("vTools coverage count=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "M7"); got != "capture predates VMware Tools version inventory" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "M8"); got != "capture predates VMware Tools version inventory" {
 		t.Fatalf("vTools coverage message=%q", got)
 	}
 }
@@ -241,10 +242,10 @@ func TestWriteRVToolsMarksToolsVersionGapForSchemaTwoRuns(t *testing.T) {
 	if got, _ := f.GetCellValue("vTools", "E2"); got != "" {
 		t.Fatalf("vTools version=%q, want empty at schema 2", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "K7"); got != "success" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "K8"); got != "success" {
 		t.Fatalf("vTools coverage status=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "M7"); got != "capture predates VMware Tools version inventory" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "M8"); got != "capture predates VMware Tools version inventory" {
 		t.Fatalf("vTools coverage message=%q", got)
 	}
 }
@@ -289,8 +290,9 @@ func TestWriteRVToolsDeviceCoverageMirrorsVMCollectionStatus(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer f.Close()
-			// Coverage rows follow tab order: vDisk is row 5, vNetwork row 6.
-			for row, sheet := range map[string]string{"5": "vDisk", "6": "vNetwork"} {
+			// Coverage rows follow tab order: vDisk is row 5, vNetwork row 7
+			// (vPartition sits between them).
+			for row, sheet := range map[string]string{"5": "vDisk", "7": "vNetwork"} {
 				if got, _ := f.GetCellValue("vsfleetCoverage", "J"+row); got != sheet {
 					t.Fatalf("coverage sheet row %s=%q, want %q", row, got, sheet)
 				}
@@ -303,6 +305,126 @@ func TestWriteRVToolsDeviceCoverageMirrorsVMCollectionStatus(t *testing.T) {
 				if got, _ := f.GetCellValue("vsfleetCoverage", "M"+row); got != tc.detail {
 					t.Fatalf("%s coverage message=%q, want %q", sheet, got, tc.detail)
 				}
+			}
+		})
+	}
+}
+
+// partitionRun builds a one-context run whose VMs are given verbatim, so a
+// test can say exactly which of them reported guest filesystems.
+func partitionRun(schema string, vms []assessment.ExportVM) assessment.ExportData {
+	return assessment.ExportData{
+		Run:      assessment.Run{ID: 9, Status: assessment.RunComplete, InventorySchemaVersion: schema},
+		Contexts: []assessment.ContextRun{{Name: "prod", Endpoint: "https://vc.example", VMStatus: "success"}},
+		VMs:      vms,
+	}
+}
+
+func partitionVM(name string, parts ...vsphere.VMPartition) assessment.ExportVM {
+	return assessment.ExportVM{Observation: assessment.Observation{Context: "prod", VM: vsphere.VM{ID: name, Name: name, Partitions: parts}}}
+}
+
+func TestWriteRVToolsRendersGuestPartitions(t *testing.T) {
+	data := partitionRun(assessment.CurrentInventorySchemaVersion, []assessment.ExportVM{
+		partitionVM("app", vsphere.VMPartition{Path: "/", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}),
+	})
+	var out bytes.Buffer
+	if err := WriteRVTools(&out, data); err != nil {
+		t.Fatal(err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	// 8 GiB capacity with 2 GiB free is 6 GiB consumed and 25% free.
+	for cell, want := range map[string]string{
+		"A2": "app", "D2": "/", "E2": "8192", "F2": "6144", "G2": "2048", "H2": "25", "I2": "ext4",
+	} {
+		if got, _ := f.GetCellValue("vPartition", cell); got != want {
+			t.Errorf("vPartition!%s=%q, want %q", cell, got, want)
+		}
+	}
+}
+
+// A capacity vSphere could not size must not be reported as a full disk: the
+// column is summed downstream, and 0% free reads as an alarm.
+func TestWriteRVToolsHandlesUnsizedPartitions(t *testing.T) {
+	data := partitionRun(assessment.CurrentInventorySchemaVersion, []assessment.ExportVM{
+		partitionVM("app", vsphere.VMPartition{Path: "/mnt/unsized"}),
+		// Tools occasionally reports free space exceeding capacity; consumed
+		// must not go negative.
+		partitionVM("web", vsphere.VMPartition{Path: "C:\\", CapacityBytes: 1 << 30, FreeBytes: 2 << 30}),
+	})
+	var out bytes.Buffer
+	if err := WriteRVTools(&out, data); err != nil {
+		t.Fatal(err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	for cell, want := range map[string]string{"F2": "0", "H2": "0", "F3": "0"} {
+		if got, _ := f.GetCellValue("vPartition", cell); got != want {
+			t.Errorf("vPartition!%s=%q, want %q", cell, got, want)
+		}
+	}
+}
+
+// The point of the coverage sheet: a short vPartition tab must be
+// distinguishable from a small estate. Partitions come from VMware Tools, so
+// a fully successful capture can still cover only part of the estate.
+func TestWriteRVToolsReportsPartialGuestPartitionCoverage(t *testing.T) {
+	withParts := partitionVM("app", vsphere.VMPartition{Path: "/", CapacityBytes: 1 << 30, FreeBytes: 1 << 29})
+	noParts := partitionVM("no-tools")
+
+	for _, tc := range []struct {
+		name           string
+		schema         string
+		vms            []assessment.ExportVM
+		status, detail string
+	}{
+		{
+			name: "every VM answered", schema: assessment.CurrentInventorySchemaVersion,
+			vms: []assessment.ExportVM{withParts}, status: "success", detail: "",
+		},
+		{
+			name: "some VMs had no running Tools", schema: assessment.CurrentInventorySchemaVersion,
+			vms: []assessment.ExportVM{withParts, noParts}, status: "partial",
+			detail: "1 of 2 VMs reported guest filesystems; the rest had no running VMware Tools",
+		},
+		{
+			name: "no VM answered", schema: assessment.CurrentInventorySchemaVersion,
+			vms: []assessment.ExportVM{noParts}, status: "partial",
+			detail: "no VM reported guest filesystems; VMware Tools must be running",
+		},
+		{
+			name: "capture predates the tab", schema: "3",
+			vms: []assessment.ExportVM{withParts}, status: "not recorded",
+			detail: "capture predates guest partition inventory",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := WriteRVTools(&out, partitionRun(tc.schema, tc.vms)); err != nil {
+				t.Fatal(err)
+			}
+			f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			// vPartition is the sixth tab, so row 6 of the coverage sheet.
+			if got, _ := f.GetCellValue("vsfleetCoverage", "J6"); got != "vPartition" {
+				t.Fatalf("coverage row 6=%q, want vPartition", got)
+			}
+			if got, _ := f.GetCellValue("vsfleetCoverage", "K6"); got != tc.status {
+				t.Errorf("status=%q, want %q", got, tc.status)
+			}
+			if got, _ := f.GetCellValue("vsfleetCoverage", "M6"); got != tc.detail {
+				t.Errorf("detail=%q, want %q", got, tc.detail)
 			}
 		})
 	}

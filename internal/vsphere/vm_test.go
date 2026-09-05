@@ -61,7 +61,7 @@ func TestWalkDevicesExtractsDisksAndGuestNetworks(t *testing.T) {
 }
 
 func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
-	for _, property := range []string{"config.hardware.device", "guest.net", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
+	for _, property := range []string{"config.hardware.device", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
 		found := false
 		for _, candidate := range vmProps {
 			if candidate == property {
@@ -92,5 +92,70 @@ func TestNewVMCopiesToolsVersion(t *testing.T) {
 	}
 	if vm.ToolsVersionStatus != "guestToolsCurrent" {
 		t.Errorf("tools version status = %q", vm.ToolsVersionStatus)
+	}
+}
+
+func TestNewVMCopiesGuestPartitions(t *testing.T) {
+	m := &mo.VirtualMachine{
+		Guest: &types.GuestInfo{
+			ToolsRunningStatus: "guestToolsRunning",
+			Disk: []types.GuestDiskInfo{
+				// Out of order, and one with no path: vPartition rows are
+				// keyed on the path downstream, so a blank one is dropped and
+				// the rest sort so repeated exports stay byte-identical.
+				{DiskPath: "/var", Capacity: 4 << 30, FreeSpace: 1 << 30, FilesystemType: "xfs"},
+				{Capacity: 1 << 30},
+				{DiskPath: "/", Capacity: 8 << 30, FreeSpace: 2 << 30, FilesystemType: "ext4"},
+			},
+		},
+	}
+	vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, m)
+	want := []VMPartition{
+		{Path: "/", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"},
+		{Path: "/var", CapacityBytes: 4 << 30, FreeBytes: 1 << 30, FilesystemType: "xfs"},
+	}
+	if !reflect.DeepEqual(vm.Partitions, want) {
+		t.Errorf("partitions = %+v, want %+v", vm.Partitions, want)
+	}
+}
+
+// A guest without running Tools reports nothing. That must stay nil rather
+// than becoming a zero-capacity partition, which would read downstream as a
+// full disk rather than as an unanswered one.
+func TestNewVMLeavesPartitionsNilWithoutGuestData(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		guest *types.GuestInfo
+	}{
+		{name: "no guest at all", guest: nil},
+		{name: "tools not running", guest: &types.GuestInfo{ToolsRunningStatus: "guestToolsNotRunning"}},
+		{name: "only unnamed disks", guest: &types.GuestInfo{Disk: []types.GuestDiskInfo{{Capacity: 1 << 30}}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, &mo.VirtualMachine{Guest: tc.guest})
+			if vm.Partitions != nil {
+				t.Errorf("partitions = %+v, want nil", vm.Partitions)
+			}
+		})
+	}
+}
+
+func TestVMPartitionUsedBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		part VMPartition
+		want int64
+	}{
+		{name: "capacity minus free", part: VMPartition{CapacityBytes: 8 << 30, FreeBytes: 2 << 30}, want: 6 << 30},
+		{name: "unsized partition", part: VMPartition{}, want: 0},
+		// Tools has been seen reporting free space above capacity; consumed
+		// must not go negative and skew a sizing total.
+		{name: "free exceeds capacity", part: VMPartition{CapacityBytes: 1 << 30, FreeBytes: 2 << 30}, want: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.part.UsedBytes(); got != tc.want {
+				t.Errorf("UsedBytes() = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }

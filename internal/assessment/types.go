@@ -14,9 +14,10 @@ type RunStatus string
 
 // CurrentInventorySchemaVersion identifies the fields captured in VM payloads.
 // Version 2 adds per-VM disks and network adapters; version 3 adds the
-// VMware Tools version and version status. Both keep the payload
-// backward-compatible with older ledger rows.
-const CurrentInventorySchemaVersion = "3"
+// VMware Tools version and version status; version 4 adds guest filesystem
+// partitions. All keep the payload backward-compatible with older ledger
+// rows: a reader of an older run sees the field absent, which is what it is.
+const CurrentInventorySchemaVersion = "4"
 
 const (
 	RunRunning  RunStatus = "running"

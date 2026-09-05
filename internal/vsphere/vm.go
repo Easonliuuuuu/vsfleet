@@ -44,6 +44,7 @@ var vmSummaryProps = []string{
 var vmDetailProps = []string{
 	"config.hardware.device",
 	"guest.net",
+	"guest.disk",
 	"snapshot",
 }
 
@@ -175,6 +176,7 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.ToolsState = g.ToolsRunningStatus
 		vm.ToolsVersion = g.ToolsVersion
 		vm.ToolsVersionStatus = g.ToolsVersionStatus2
+		vm.Partitions = guestPartitions(g.Disk)
 		if vm.GuestOS == "" {
 			vm.GuestOS = g.GuestFullName
 		}
@@ -183,6 +185,33 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.StorageGB = float64(s.Committed) / (1 << 30)
 	}
 	return vm
+}
+
+// guestPartitions converts what VMware Tools reports about the guest's
+// filesystems. A disk with no path is dropped: RVTools keys vPartition rows on
+// it, and a blank one cannot be joined to anything downstream.
+func guestPartitions(disks []types.GuestDiskInfo) []VMPartition {
+	if len(disks) == 0 {
+		return nil
+	}
+	out := make([]VMPartition, 0, len(disks))
+	for _, d := range disks {
+		path := strings.TrimSpace(d.DiskPath)
+		if path == "" {
+			continue
+		}
+		out = append(out, VMPartition{
+			Path:           path,
+			CapacityBytes:  d.Capacity,
+			FreeBytes:      d.FreeSpace,
+			FilesystemType: strings.TrimSpace(d.FilesystemType),
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
 }
 
 func walkDevices(devices []types.BaseVirtualDevice, guest *types.GuestInfo, idx *index) ([]VMDisk, []VMNIC) {

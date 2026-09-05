@@ -38,6 +38,20 @@ func firstOfType[T any](msgs []tea.Msg) (T, bool) {
 	return zero, false
 }
 
+// allOfType picks out every message of one type. Fetching a group produces
+// its own groupMsg plus the page stream's first groupPageMsg, so a test
+// counting how many groups were dispatched has to count groupMsg rather than
+// every message that came back.
+func allOfType[T any](msgs []tea.Msg) []T {
+	var out []T
+	for _, msg := range msgs {
+		if t, ok := msg.(T); ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func TestAfterInitialPaintDefersStartupCommands(t *testing.T) {
 	cmd := afterInitialPaint(context.Background(), []tea.Cmd{
 		func() tea.Msg { return beginInventoryMsg{} },
@@ -103,7 +117,7 @@ func TestLoadPrioritizesTheVisibleKindsGroup(t *testing.T) {
 		}
 		// Nothing else should have been requested yet — the connect step
 		// dispatches the priority group alone.
-		if n := len(groupMsgs); n != 1 {
+		if n := len(allOfType[groupMsg](groupMsgs)); n != 1 {
 			t.Errorf("kind %q: connect step dispatched %d groups, want exactly 1", tc.kind, n)
 		}
 	}
@@ -172,16 +186,12 @@ func TestRemainingGroupsDispatchTogetherOncePriorityLands(t *testing.T) {
 	priority, _ := firstOfType[groupMsg](collect(cmd))
 	_, fanOutCmd := m.Update(priority)
 
-	remaining := collect(fanOutCmd)
+	remaining := allOfType[groupMsg](collect(fanOutCmd))
 	if len(remaining) != len(vsphere.AllGroups)-1 {
 		t.Fatalf("fan-out dispatched %d groups, want %d", len(remaining), len(vsphere.AllGroups)-1)
 	}
 	seen := map[vsphere.FetchGroup]bool{priority.group: true}
-	for _, msg := range remaining {
-		gm, ok := msg.(groupMsg)
-		if !ok {
-			t.Fatalf("fan-out produced a non-groupMsg: %T", msg)
-		}
+	for _, gm := range remaining {
 		if seen[gm.group] {
 			t.Errorf("group %s was dispatched more than once", gm.group)
 		}
@@ -339,7 +349,7 @@ func TestEditDuringFanOutWaitsForEveryStraggler(t *testing.T) {
 	_, cmd := m.Update(begin)
 	priority, _ := firstOfType[groupMsg](collect(cmd))
 	_, fanOutCmd := m.Update(priority)
-	stragglers := collect(fanOutCmd)
+	stragglers := allOfType[groupMsg](collect(fanOutCmd))
 	if len(stragglers) != len(vsphere.AllGroups)-1 {
 		t.Fatalf("test setup: %d groups in flight, want %d", len(stragglers), len(vsphere.AllGroups)-1)
 	}

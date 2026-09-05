@@ -444,7 +444,10 @@ func (m *Model) captureCommand() tea.Cmd {
 		st.capturing = true
 	}
 	m.setMessage(captureScopeMessage(states), false)
-	return captureHistoryCmd(m.ctx, m.assessment, m.captureContexts())
+	// A capture can be the only thing running, in which case no spinner tick
+	// is in flight to inherit — start one, the way every other background
+	// action does, so the spinner beside "capturing…" actually turns.
+	return tea.Batch(captureHistoryCmd(m.ctx, m.assessment, m.captureContexts()), m.spin.Tick)
 }
 
 // captureScopeLabel names a set of contexts: the single vCenter's name, or a

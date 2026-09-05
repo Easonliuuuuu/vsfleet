@@ -27,6 +27,10 @@ import (
 // many connections the instant the interface starts.
 const (
 	maxConcurrentLoads = 4
+	// refreshLoadFactor spaces a context's refreshes by a multiple of how
+	// long its last load took, so a large estate is re-read at a rate it can
+	// keep up with rather than continuously — see refreshDue.
+	refreshLoadFactor = 3
 	// Bubble Tea's default renderer flushes at 60 FPS. Waiting across several
 	// frames makes the initial loading pane observable before fast credential
 	// requests can replace it with their prompt overlay.
@@ -138,7 +142,17 @@ type contextState struct {
 	// collector, not the inventory path — so this is the only signal that
 	// ties its background credential requests back to a context; see
 	// credentialState and credentialPromptAllowed.
-	capturing   bool
+	capturing bool
+	// rowCache holds the flattened table rows built from inv, keyed by kind
+	// — see rowsFor. rowCacheContext is the withContext it was built with,
+	// since that changes the columns.
+	rowCache        map[vsphere.Kind][]row
+	rowCacheContext bool
+	// lastLoad is how long the previous complete load of this context took.
+	// The refresh cadence is derived from it so that a vCenter slower than
+	// the interval is polled at a rate it can actually answer — see
+	// refreshDue.
+	lastLoad    time.Duration
 	attempted   bool
 	phase       contextPhase
 	loadingKind vsphere.FetchGroup
@@ -214,6 +228,40 @@ func (s *contextState) kind(kind vsphere.Kind) *kindState {
 	ks := &kindState{}
 	s.kinds[kind] = ks
 	return ks
+}
+
+// rowsFor returns this context's table rows for a kind, building them once
+// and reusing them until the inventory changes. Flattening an estate of
+// thousands of virtual machines into rows on every frame — which is what the
+// render loop asked for before this cache — cost more than retrieving them
+// did, and it did it several times a second.
+func (s *contextState) rowsFor(kind vsphere.Kind, withContext bool) []row {
+	if s.rowCache == nil || s.rowCacheContext != withContext {
+		s.rowCache, s.rowCacheContext = make(map[vsphere.Kind][]row, len(vsphere.AllKinds)), withContext
+	}
+	if rows, ok := s.rowCache[kind]; ok {
+		return rows
+	}
+	rows := rowsFor(s.inv, kind, withContext)
+	s.rowCache[kind] = rows
+	return rows
+}
+
+// invalidateRows drops the cached rows. Every path that changes s.inv has to
+// call it, which is why they all go through applyInventory below.
+func (s *contextState) invalidateRows() { s.rowCache = nil }
+
+// showsPartial reports whether a group's pages are worth showing as they
+// arrive: only while the kind has nothing on screen yet. A refresh already
+// has a complete list up, and briefly replacing it with a partial one would
+// make the table shrink and grow again for no gain.
+func (s *contextState) showsPartial(group vsphere.FetchGroup) bool {
+	for _, kind := range kindsIn(group) {
+		if s.kind(kind).loaded {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *contextState) markGroupLoading(group vsphere.FetchGroup, generation uint64) {
@@ -314,6 +362,7 @@ const (
 func (s *contextState) reset() {
 	s.stopStages()
 	s.inv = nil
+	s.invalidateRows()
 	s.kinds = make(map[vsphere.Kind]*kindState, len(vsphere.AllKinds))
 	for _, kind := range vsphere.AllKinds {
 		s.kinds[kind] = &kindState{}
@@ -822,6 +871,13 @@ func (m *Model) refreshDue(st *contextState, onScreen bool) bool {
 	if onScreen {
 		threshold = m.refreshInterval / 2
 	}
+	// A vCenter that takes two minutes to read cannot usefully be asked
+	// every ten seconds; doing so keeps it permanently busy answering a
+	// question whose previous answer is still fresh. Give a slow context
+	// room proportional to what it actually costs.
+	if slow := st.lastLoad * refreshLoadFactor; slow > threshold {
+		threshold = slow
+	}
 	// The aggregate timestamp remains useful for a completed bundle and for
 	// callers that only know the context-level state. A partial inventory must
 	// also be due when any individual kind has never succeeded or has gone
@@ -1026,9 +1082,11 @@ func (m *Model) ensureSearch(query string) *searchState {
 
 // rows builds the table for the active tab, across everything in scope.
 func (m *Model) rows() []row {
+	// append copies out of the per-context caches, so the filtering and
+	// sorting below rearrange this call's own slice and never the cached one.
 	var out []row
 	for _, st := range m.inScope() {
-		out = append(out, rowsFor(st.inv, m.kind, m.showContext())...)
+		out = append(out, st.rowsFor(m.kind, m.showContext())...)
 	}
 	needle := strings.ToLower(strings.TrimSpace(m.filter.Value()))
 	if needle != "" {
@@ -1133,6 +1191,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case groupMsg:
 		return m, m.applyGroup(msg)
+
+	case groupPageMsg:
+		return m, m.applyGroupPage(msg)
 
 	case stageMsg:
 		return m, m.applyStage(msg)
@@ -1377,6 +1438,13 @@ func (m *Model) selectByName(name string) {
 }
 
 func (m *Model) busy() bool {
+	// A capture keeps the spinner running as surely as a load does. It sets
+	// contextState.capturing rather than loading, so without naming it here
+	// the tick chain ended on the first frame of a capture and the interface
+	// showed a spinner that never moved.
+	if m.capturing {
+		return true
+	}
 	for _, st := range m.states {
 		if st.showsLoading() || st.diagging {
 			return true
@@ -1484,7 +1552,13 @@ func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 	if st.inv == nil {
 		st.inv = &vsphere.Inventory{Context: msg.context}
 	}
-	st.inv.ApplyGroup(msg.group, msg.inv)
+	m.preserveCursor(func() {
+		// The group's own result is authoritative and replaces whatever its
+		// pages had put on screen, so a dropped or out-of-order page cannot
+		// leave the table disagreeing with the vCenter.
+		st.inv.ApplyGroup(msg.group, msg.inv)
+		st.invalidateRows()
+	})
 	st.applyGroupState(msg.group, msg.inv, msg.generation, time.Now())
 	st.phase = phaseLoading
 	st.loadingKind = msg.group
@@ -1506,6 +1580,68 @@ func (m *Model) applyGroup(msg groupMsg) tea.Cmd {
 		return nil
 	}
 	return m.finishLoad(st)
+}
+
+// applyGroupPage shows one page of a still-running fetch group and asks for
+// the next. Pages are shown only while the kind has nothing up yet (see
+// contextState.showsPartial): on a first load they are the difference
+// between a table that fills in front of the reader and one that stays empty
+// for minutes, while on a refresh the complete list is already on screen and
+// nothing is gained by taking it away.
+//
+// A page never touches st.outstanding. The load ends when every group's own
+// result has landed, exactly as it did before pages existed.
+func (m *Model) applyGroupPage(msg groupPageMsg) tea.Cmd {
+	st, ok := m.byName[msg.context]
+	if !ok {
+		return nil
+	}
+	if (msg.generation != 0 && st.generation != msg.generation) || (msg.cc != nil && st.cc != msg.cc) {
+		// A superseded load's pages describe a vCenter this context is no
+		// longer pointed at. Stop reading the stream; the fetch behind it
+		// drops pages rather than blocking on them.
+		return nil
+	}
+	if msg.pages == nil {
+		return nil
+	}
+	next := listenForPage(msg.cc, msg.generation, msg.group, msg.pages)
+	if !st.showsPartial(msg.group) {
+		return next
+	}
+	if st.inv == nil {
+		st.inv = &vsphere.Inventory{Context: msg.context}
+	}
+	m.preserveCursor(func() {
+		st.inv.MergeGroup(msg.group, msg.inv)
+		st.invalidateRows()
+	})
+	m.searchDirty = true
+	return next
+}
+
+// preserveCursor keeps the cursor on the same object across a change to what
+// is on screen. Rows are found again by key rather than by position, so a
+// list that grows underneath the reader — a page of a large estate landing,
+// or a refresh that added a machine sorting above the selection — does not
+// quietly move the selection onto a different object.
+func (m *Model) preserveCursor(change func()) {
+	key := ""
+	if r, ok := m.currentRow(); ok {
+		key = r.key
+	}
+	change()
+	if key == "" {
+		m.clampCursor()
+		return
+	}
+	for i, r := range m.visibleRows() {
+		if r.key == key {
+			m.moveTo(i)
+			return
+		}
+	}
+	m.clampCursor()
 }
 
 // dropStraggler discards one message from a load an edit has since
@@ -1537,6 +1673,7 @@ func (m *Model) finishLoad(st *contextState) tea.Cmd {
 	quiet := st.quiet
 	st.quiet = false
 	st.elapsed = time.Since(st.startedAt)
+	st.lastLoad = st.elapsed
 	st.handle = nil
 	st.stopStages()
 	if st.err == nil {

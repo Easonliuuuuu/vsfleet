@@ -46,6 +46,24 @@ type groupMsg struct {
 	inv        *vsphere.Inventory
 }
 
+// groupPageMsg carries one page of a fetch group's objects, ahead of the
+// group's own completion. It exists so that an estate large enough to take
+// minutes to read shows its first rows in seconds instead of showing nothing
+// until the last one lands. pages is the stream it came from, handed back so
+// the model can ask for the next one.
+//
+// A page is a preview and nothing more: the group's own groupMsg still
+// carries the complete, authoritative result, and pages may be dropped when
+// the interface cannot keep up with them.
+type groupPageMsg struct {
+	context    string
+	cc         *config.Context
+	generation uint64
+	group      vsphere.FetchGroup
+	inv        *vsphere.Inventory
+	pages      chan *vsphere.Inventory
+}
+
 // stageMsg carries live progress from the production connection path. It is
 // advisory: a backend that does not implement the optional progress extension
 // still gets the same correct load behavior, just with coarser labels.
@@ -257,9 +275,21 @@ func fetchGroupCmd(ctx context.Context, lim *limiter.Limiter, handle InventoryHa
 	if len(generations) > 0 {
 		generation = generations[0]
 	}
-	return func() tea.Msg {
+	// Buffered so the retrieval never waits on the render loop, and dropping
+	// rather than blocking when it is full: a page the interface is too busy
+	// to show is not worth slowing the fetch down for, since the group's own
+	// result carries everything regardless.
+	pages := make(chan *vsphere.Inventory, 4)
+	fetch := func() tea.Msg {
+		defer close(pages)
+		partial := func(page *vsphere.Inventory) {
+			select {
+			case pages <- page:
+			default:
+			}
+		}
 		var inv *vsphere.Inventory
-		if err := lim.Run(ctx, func() { inv = handle.FetchGroup(group) }); err != nil {
+		if err := lim.Run(ctx, func() { inv = handle.FetchGroup(group, partial) }); err != nil {
 			// Never got to run vsphere.Client.FetchGroup at all — cancelled or
 			// timed out waiting for a concurrency slot — so there is no
 			// per-kind error of its own to report. Recording it against every
@@ -272,6 +302,20 @@ func fetchGroupCmd(ctx context.Context, lim *limiter.Limiter, handle InventoryHa
 			}
 		}
 		return groupMsg{context: cc.Name, cc: cc, generation: generation, group: group, inv: inv}
+	}
+	return tea.Batch(fetch, listenForPage(cc, generation, group, pages))
+}
+
+// listenForPage waits for the next page of a fetch group. It returns no
+// message once the stream closes: the group's own result is what ends the
+// load, so a stream that has run dry simply stops asking.
+func listenForPage(cc *config.Context, generation uint64, group vsphere.FetchGroup, pages chan *vsphere.Inventory) tea.Cmd {
+	return func() tea.Msg {
+		page, ok := <-pages
+		if !ok {
+			return nil
+		}
+		return groupPageMsg{context: cc.Name, cc: cc, generation: generation, group: group, inv: page, pages: pages}
 	}
 }
 

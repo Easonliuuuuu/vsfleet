@@ -135,6 +135,9 @@ func (s *Session) adopt(cc *config.Context) *vsphere.Client {
 type Manager struct {
 	// ConnectTimeout bounds a single connection attempt.
 	ConnectTimeout time.Duration
+	// IdleTimeout bounds how long a streaming operation may go without
+	// progress. Zero means DefaultIdleTimeout. See StreamOperation.
+	IdleTimeout time.Duration
 	// Concurrency bounds parallel connections. Zero means DefaultConcurrency.
 	Concurrency int
 	// ConnectOptions are passed to every connection.
@@ -199,6 +202,80 @@ func (m *Manager) Operation(ctx context.Context) (context.Context, context.Cance
 	ctx = vsphere.WithStageReporter(ctx, tracker.Report)
 	ctx, cancel := context.WithTimeout(ctx, m.timeout())
 	return ctx, cancel, tracker
+}
+
+// DefaultIdleTimeout bounds how long a streaming operation may go without
+// making any progress. It is deliberately not a bound on the whole
+// operation: reading an estate with thousands of virtual machines legitimately
+// takes minutes, and a fixed overall deadline cannot tell that apart from a
+// connection that has stopped answering. What actually distinguishes the two
+// is whether anything has arrived lately, which is what this measures.
+const DefaultIdleTimeout = 90 * time.Second
+
+func (m *Manager) idleTimeout() time.Duration {
+	if m.IdleTimeout > 0 {
+		return m.IdleTimeout
+	}
+	return DefaultIdleTimeout
+}
+
+// StreamOperation is Operation for a retrieval that reports progress as it
+// goes. The returned context is cancelled when nothing has reported progress
+// for IdleTimeout, rather than after a fixed duration however much work is
+// still arriving, so a slow-but-moving estate finishes and a stalled one
+// still fails promptly.
+//
+// progress restarts the idle clock and is safe to call from any goroutine.
+// The caller must call the returned cancel when the operation is over, as it
+// would for context.WithTimeout; calling it also stops the watchdog.
+func (m *Manager) StreamOperation(parent context.Context) (context.Context, func(), context.CancelFunc, *vsphere.StageTracker) {
+	tracker := &vsphere.StageTracker{}
+	ctx := vsphere.WithStageReporter(parent, tracker.Report)
+	ctx, cancel := context.WithCancelCause(ctx)
+
+	idle := m.idleTimeout()
+	var mu sync.Mutex
+	done := false
+	timer := time.AfterFunc(idle, func() { cancel(context.DeadlineExceeded) })
+
+	progress := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if done {
+			return
+		}
+		timer.Reset(idle)
+	}
+	stop := func() {
+		mu.Lock()
+		done = true
+		mu.Unlock()
+		timer.Stop()
+		cancel(context.Canceled)
+	}
+	return ctx, progress, stop, tracker
+}
+
+// StreamError names what a StreamOperation's failure means. A context
+// cancelled by the idle watchdog reports itself as a plain cancellation, so
+// the cause is consulted and re-reported as the timeout it actually was —
+// wrapping context.DeadlineExceeded so that every caller already testing for
+// a timeout keeps recognising one.
+func (m *Manager) StreamError(ctx context.Context, err error, tracker *vsphere.StageTracker) error {
+	if err == nil {
+		return nil
+	}
+	idle := errors.Is(context.Cause(ctx), context.DeadlineExceeded)
+	if !idle && !errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	if !idle {
+		return m.TimeoutError(err, tracker)
+	}
+	if stage := tracker.Current(); stage != "" {
+		return fmt.Errorf("gave up after %s with no response while %s: %w", m.idleTimeout(), stage, context.DeadlineExceeded)
+	}
+	return fmt.Errorf("gave up after %s with no response: %w", m.idleTimeout(), context.DeadlineExceeded)
 }
 
 // TimeoutError names what a deadline-exceeded error actually means: the

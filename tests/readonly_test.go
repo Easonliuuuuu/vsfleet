@@ -35,7 +35,11 @@ import (
 
 // readOnlyMethods are the vSphere operations vsfleet is allowed to invoke.
 //
-// Four of these are not literal reads, and each is here for a stated reason:
+// Several of these are not literal reads, and each is here for a stated
+// reason. What they have in common is that every object they create or
+// destroy is one this tool made for its own query, is scoped to this
+// session, and holds nothing but references — none of them can reach an
+// object in inventory.
 //
 //   - Login/Logout create and release a session. Nothing else can be read
 //     without one, and Logout is what keeps abandoned sessions from
@@ -45,14 +49,15 @@ import (
 //     inventory. A view holds references to objects; creating one changes
 //     nothing about the objects themselves, and destroying it is the cleanup
 //     of the thing this tool just created, never of anything in inventory.
+//   - CreatePropertyCollector/CreateFilter/DestroyPropertyCollector are the
+//     same bargain for the paged read the interface uses on a large estate.
+//     The filter describes which properties to report; the collector is a
+//     private cursor over them, needed because the shared default collector
+//     serves one caller at a time and the interface reads several resource
+//     kinds at once. Destroying the collector releases the filter with it.
+//     DestroyPropertyFilter is therefore absent: it is never called.
 //
 // Everything else is a pure read.
-//
-// The first seven are what a full run actually sends today. The last three
-// are the same paged read against a vCenter large enough to split the
-// results, which vcsim's dataset is not; they are approved in advance
-// because a real estate will reach them and nothing about them differs from
-// the single-page read.
 //
 // Nothing else belongs here without a specific reason. In particular
 // RetrieveManagedMethodExecuter is deliberately absent: it is a mechanism
@@ -69,6 +74,10 @@ var readOnlyMethods = map[string]string{
 	"ContinueRetrievePropertiesEx": "read: the next page of that same enumeration",
 	"CancelRetrievePropertiesEx":   "read path: abandons a paged enumeration",
 	"RetrieveProperties":           "read: the pre-6.0 property collector call",
+	"CreatePropertyCollector":      "this tool's own private cursor for a paged read; session-scoped, holds no inventory",
+	"CreateFilter":                 "read: declares which properties that cursor should report",
+	"WaitForUpdatesEx":             "read: reports those property values, a page at a time",
+	"DestroyPropertyCollector":     "cleanup of that same cursor and its filter; never touches inventory",
 }
 
 // soapRecorder collects the operation name of every SOAP request that

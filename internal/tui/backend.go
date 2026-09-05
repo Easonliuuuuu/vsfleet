@@ -64,7 +64,14 @@ type Backend interface {
 // same handle — which is exactly how the model drives it: the priority
 // group alone first, then the rest together once it lands.
 type InventoryHandle interface {
-	FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory
+	// FetchGroup retrieves one group. partial, when non-nil, is called with
+	// each page of objects as it arrives, carrying only that page — an
+	// estate with thousands of virtual machines takes long enough to read
+	// that showing the first hundreds while the rest are still coming is the
+	// difference between a usable interface and a blank one. The complete
+	// group is still returned, and is what the caller should trust: partial
+	// pages are a preview, not an accumulation to be relied on.
+	FetchGroup(group vsphere.FetchGroup, partial func(*vsphere.Inventory)) *vsphere.Inventory
 }
 
 // sessionBackend is the production Backend, over the same session manager,
@@ -98,26 +105,33 @@ func (b *sessionBackend) BeginInventoryWithProgress(ctx context.Context, cc *con
 }
 
 func (b *sessionBackend) beginInventory(ctx context.Context, cc *config.Context, report func(vsphere.Stage)) (InventoryHandle, error) {
-	// One deadline covers connecting, building the index and every group
-	// fetched through the handle: without it, a vCenter that connects
+	// One watchdog covers connecting, building the index and every group
+	// fetched through the handle: without a bound, a vCenter that connects
 	// quickly but hangs enumerating would run for as long as the interface
-	// itself does, since ctx here is the program's whole-run context rather
-	// than anything bounded by --timeout. sessionInventoryHandle releases it
-	// once every fetch group has landed — see its FetchGroup.
-	opCtx, cancel, tracker := b.mgr.Operation(ctx)
-	if report != nil {
-		// Operation already installed tracker.Report. Replace that reporter with
-		// a small fan-out so timeout errors retain their stage while the TUI gets
-		// the same live information.
-		opCtx = vsphere.WithStageReporter(opCtx, func(stage vsphere.Stage) {
-			tracker.Report(stage)
+	// itself does, since ctx here is the program's whole-run context.
+	//
+	// It bounds silence rather than duration. A fixed deadline cannot tell a
+	// large estate from a stalled one, and on an estate of thousands of
+	// virtual machines it reliably chose wrong: every load was cut off
+	// mid-retrieval and the tab it was filling never populated. Connecting is
+	// still bounded by --timeout, which session.Manager.Connect applies to
+	// its own step. sessionInventoryHandle stops the watchdog once every
+	// fetch group has landed — see its FetchGroup.
+	opCtx, progress, cancel, tracker := b.mgr.StreamOperation(ctx)
+	// StreamOperation already installed tracker.Report. Replace that reporter
+	// with a fan-out so timeout errors retain their stage, reaching a new
+	// stage counts as progress, and the TUI gets the same live information.
+	opCtx = vsphere.WithStageReporter(opCtx, func(stage vsphere.Stage) {
+		tracker.Report(stage)
+		progress()
+		if report != nil {
 			report(stage)
-		})
-	}
+		}
+	})
 	s, err := b.mgr.Connect(opCtx, cc)
 	if err != nil {
 		cancel()
-		return nil, b.mgr.TimeoutError(err, tracker)
+		return nil, b.mgr.StreamError(opCtx, err, tracker)
 	}
 	client := s.Client()
 	if client == nil {
@@ -127,9 +141,9 @@ func (b *sessionBackend) beginInventory(ctx context.Context, cc *config.Context,
 	idx, err := client.NewIndex(opCtx)
 	if err != nil {
 		cancel()
-		return nil, b.mgr.TimeoutError(err, tracker)
+		return nil, b.mgr.StreamError(opCtx, err, tracker)
 	}
-	h := &sessionInventoryHandle{client: client, idx: idx, ctx: opCtx, cancel: cancel}
+	h := &sessionInventoryHandle{client: client, idx: idx, ctx: opCtx, progress: progress, cancel: cancel}
 	h.remaining.Store(int32(len(vsphere.AllGroups)))
 	return h, nil
 }
@@ -140,16 +154,31 @@ func (b *sessionBackend) beginInventory(ctx context.Context, cc *config.Context,
 // FetchGroup calls, always, since the model issues one for every group on
 // every load — so the caller never has to track that lifecycle separately.
 type sessionInventoryHandle struct {
-	client *vsphere.Client
-	idx    *vsphere.Index
-	ctx    context.Context
-	cancel context.CancelFunc
+	client   *vsphere.Client
+	idx      *vsphere.Index
+	ctx      context.Context
+	progress func()
+	cancel   context.CancelFunc
 
 	remaining atomic.Int32
 }
 
-func (h *sessionInventoryHandle) FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory {
-	inv := h.client.FetchGroup(h.ctx, h.idx, group)
+func (h *sessionInventoryHandle) FetchGroup(group vsphere.FetchGroup, partial func(*vsphere.Inventory)) *vsphere.Inventory {
+	inv := h.client.FetchGroupWith(h.ctx, h.idx, group, vsphere.FetchOptions{
+		// The interface renders none of what DetailFull adds — no disks, no
+		// NICs, no snapshot trees — and those three properties dominate what
+		// a virtual machine costs to retrieve. A capture still records them;
+		// see vsphere.Detail.
+		Detail: vsphere.DetailSummary,
+		OnPartial: func(page *vsphere.Inventory) {
+			// A page arriving is the proof of life the watchdog is waiting
+			// for, whether or not anybody is showing it.
+			h.progress()
+			if partial != nil {
+				partial(page)
+			}
+		},
+	})
 	if h.remaining.Add(-1) == 0 {
 		h.cancel()
 	}

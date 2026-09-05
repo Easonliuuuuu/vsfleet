@@ -58,6 +58,28 @@ normal inventory remains available.
   or explicitly reloaded; timers never take over the terminal with a prompt.
 - Failed refreshes retain cached inventory and show a visible warning.
 - Use `--refresh 5s` to accelerate polling or `--refresh -1` to disable timers.
+- A context that takes longer to read than the interval is polled less often,
+  at roughly three times its last load, so a large estate is never asked
+  again while its previous answer is still fresh.
+
+## Large estates
+
+Reading thousands of virtual machines takes longer than any fixed deadline can
+usefully allow for, so the interface does not impose one. A load fails when it
+stops making progress, not when it takes a while:
+
+- Rows appear a page at a time as they arrive, rather than the tab staying
+  empty until the whole estate has been read. The cursor keeps its place on
+  the same machine as the list fills in around it.
+- The interface retrieves only what it shows. Virtual disks, guest NIC
+  bindings and snapshot trees — by far the most expensive part of reading a
+  virtual machine — are fetched by `vsfleet assessment capture`, which needs
+  them, and not by browsing, which does not.
+- The inventory path index is reused for two minutes rather than rebuilt on
+  every refresh. A machine created in that window is placed through its parent
+  folder, so it appears with its datacenter and path intact.
+- `--timeout` still bounds connecting and authenticating; it no longer bounds
+  how long enumeration may take.
 
 If a password is needed, the pane remains usable and displays `credentials
 required`; select or reload that context to open the masked prompt.

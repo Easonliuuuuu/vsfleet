@@ -10,7 +10,10 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-var vmProps = []string{
+// vmSummaryProps are the properties every listing needs: what a table row,
+// a detail pane and a search result are built from. All of them are scalars
+// or short lists, so their cost per VM is roughly constant.
+var vmSummaryProps = []string{
 	"name",
 	"parent",
 	"config.template",
@@ -20,18 +23,39 @@ var vmProps = []string{
 	"config.annotation",
 	"config.hardware.numCPU",
 	"config.hardware.memoryMB",
-	"config.hardware.device",
 	"runtime.powerState",
 	"runtime.host",
 	"guest.ipAddress",
-	"guest.net",
 	"guest.guestState",
 	"guest.toolsRunningStatus",
 	"guest.toolsVersion",
 	"guest.toolsVersionStatus2",
 	"summary.storage.committed",
 	"datastore",
+}
+
+// vmDetailProps are the three properties that carry per-VM collections
+// rather than scalars, and they dominate the cost of retrieving a VM:
+// config.hardware.device alone returns every disk, NIC, controller and
+// virtual peripheral the machine has. Nothing in a listing reads them —
+// VM.Disks, VM.NICs and VM.Snapshots exist for the assessment ledger and the
+// RVTools export — so a listing that asked for them anyway was paying for an
+// estate's worth of device inventory to show a name and a power state.
+var vmDetailProps = []string{
+	"config.hardware.device",
+	"guest.net",
 	"snapshot",
+}
+
+// vmProps is the full property set: everything a capture records.
+var vmProps = append(append([]string{}, vmSummaryProps...), vmDetailProps...)
+
+// propsFor returns the VM properties one detail level needs.
+func propsFor(detail Detail) []string {
+	if detail == DetailSummary {
+		return vmSummaryProps
+	}
+	return vmProps
 }
 
 // ListVMs returns the virtual machines in a vCenter, excluding templates.
@@ -58,20 +82,70 @@ func (c *Client) listAllVMs(ctx context.Context) ([]VM, error) {
 }
 
 func (c *Client) listVMs(ctx context.Context, idx *index) ([]VM, error) {
-	var raw []mo.VirtualMachine
-	if err := retrieve(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, vmProps, &raw); err != nil {
+	return c.listVMsWith(ctx, idx, FetchOptions{Detail: DetailFull}, nil)
+}
+
+// listVMsWith retrieves the virtual machines under idx.root at one detail
+// level, calling onPage with each page's machines as it arrives. The pages
+// are sorted individually so a caller showing them as they land is showing
+// something ordered; the complete slice is sorted again before it is
+// returned, since sorted pages do not make a sorted whole.
+func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions, onPage func([]VM)) ([]VM, error) {
+	props := propsFor(opts.Detail)
+	pageSize := opts.pageSize()
+	if pageSize == 0 {
+		// Nobody asked for pages, so nobody is waiting to see one. Take the
+		// plain single-call retrieval the command line has always used.
+		var raw []mo.VirtualMachine
+		if err := retrieve(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, &raw); err != nil {
+			return nil, err
+		}
+		return newVMs(c, idx, raw), nil
+	}
+	var out []VM
+	err := retrievePages(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, pageSize, func(page []types.ObjectContent) error {
+		var raw []mo.VirtualMachine
+		if err := mo.LoadObjectContent(page, &raw); err != nil {
+			return err
+		}
+		vms := newVMs(c, idx, raw)
+		out = append(out, vms...)
+		if onPage != nil {
+			onPage(vms)
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
+	sortVMs(out)
+	return out, nil
+}
+
+func newVMs(c *Client, idx *index, raw []mo.VirtualMachine) []VM {
 	out := make([]VM, 0, len(raw))
 	for i := range raw {
 		out = append(out, newVM(c, idx, &raw[i]))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out, nil
+	sortVMs(out)
+	return out
+}
+
+func sortVMs(vms []VM) {
+	sort.Slice(vms, func(i, j int) bool { return vms[i].Name < vms[j].Name })
 }
 
 func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 	loc := idx.locate(c, m.Self, m.Name)
+	if loc.Datacenter == "" && m.Parent != nil {
+		// The index is reused for a while (see IndexTTL), so a VM created
+		// since it was built is not in it and resolves to nothing. Its parent
+		// folder almost certainly is, and folders are far more stable than
+		// their contents, so place the VM through its parent rather than
+		// showing a machine with no datacenter and no path at all.
+		loc.Datacenter = idx.datacenter(*m.Parent)
+		loc.Path = idx.path(*m.Parent, "") + "/" + m.Name
+	}
 	vm := VM{
 		Location:   loc,
 		ID:         m.Self.Value,

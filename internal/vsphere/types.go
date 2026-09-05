@@ -2,6 +2,7 @@ package vsphere
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -348,6 +349,40 @@ func (i *Inventory) ApplyGroup(group FetchGroup, part *Inventory) {
 	case GroupNetworks:
 		i.Networks = part.Networks
 	}
+}
+
+// MergeGroup folds one page of a fetch group into i, appending to what that
+// group already holds rather than replacing it — which is what ApplyGroup
+// does, and what a group's completed result should still do.
+//
+// Pages arrive in the server's traversal order, so each merge re-sorts the
+// slices it touched. A list that grows while somebody is reading it has to
+// stay in order, or the row under the cursor moves for no reason visible on
+// screen.
+func (i *Inventory) MergeGroup(group FetchGroup, part *Inventory) {
+	if part == nil {
+		return
+	}
+	switch group {
+	case GroupVMs:
+		i.VMs = sortByName(append(i.VMs, part.VMs...), func(v VM) string { return v.Name })
+		i.Templates = sortByName(append(i.Templates, part.Templates...), func(v VM) string { return v.Name })
+	case GroupHosts:
+		i.Hosts = sortByName(append(i.Hosts, part.Hosts...), func(h Host) string { return h.Name })
+	case GroupClusters:
+		i.Clusters = sortByName(append(i.Clusters, part.Clusters...), func(c Cluster) string { return c.Name })
+	case GroupVApps:
+		i.VApps = sortByName(append(i.VApps, part.VApps...), func(v VApp) string { return v.Name })
+	case GroupDatastores:
+		i.Datastores = sortByName(append(i.Datastores, part.Datastores...), func(d Datastore) string { return d.Name })
+	case GroupNetworks:
+		i.Networks = sortByName(append(i.Networks, part.Networks...), func(n Network) string { return n.Name })
+	}
+}
+
+func sortByName[T any](items []T, name func(T) string) []T {
+	sort.SliceStable(items, func(a, b int) bool { return name(items[a]) < name(items[b]) })
+	return items
 }
 
 // Counts renders a one-line summary, used by status output and by the

@@ -26,7 +26,7 @@ func fetchWholeInventory(ctx context.Context, backend tui.Backend, cc *config.Co
 	}
 	inv := &vsphere.Inventory{Context: cc.Name}
 	for _, g := range vsphere.AllGroups {
-		inv.ApplyGroup(g, handle.FetchGroup(g))
+		inv.ApplyGroup(g, handle.FetchGroup(g, nil))
 	}
 	return inv, nil
 }

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/vmware/govmomi/property"
 	"github.com/vmware/govmomi/view"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
@@ -249,13 +250,110 @@ func (i *index) locate(c *Client, ref types.ManagedObjectReference, name string)
 	}
 }
 
+// DefaultPageSize is how many objects one retrieval page carries. vCenter
+// will happily answer for an entire estate in a single response, which on a
+// large one means tens of thousands of objects arriving as one very large
+// document that nothing can show until its last byte lands. Paging bounds
+// both what is in flight at once and — through FetchOptions.OnPartial — how
+// long the first rows take to appear.
+const DefaultPageSize = 500
+
 // retrieve enumerates every object of the given view kinds under root and
 // loads the named properties into dst. propKinds are the types the property
 // specification is written against, which is usually the common base type of
 // the view kinds. root scopes the container view — see resolveRoot — so that
 // an object outside it is never retrieved to begin with, rather than fetched
 // and then filtered out locally.
+//
+// It is one call returning one complete answer, which is what the command
+// line and the assessment collector want. A caller that would rather see
+// each page as it arrives uses retrievePages.
 func retrieve(ctx context.Context, c *Client, root types.ManagedObjectReference, viewKinds, propKinds, props []string, dst any) error {
+	return withContainerView(ctx, c, root, viewKinds, func(v *view.ContainerView) error {
+		if err := v.Retrieve(ctx, propKinds, props, dst); err != nil {
+			return fmt.Errorf("retrieve %s properties: %w", strings.Join(propKinds, ","), err)
+		}
+		return nil
+	})
+}
+
+// retrievePages is retrieve, delivered a page at a time: it calls onPage with
+// each page of raw property content as the server produces it, so a caller
+// can decode and show a page's worth of objects while the rest is still
+// coming. pageSize bounds how many objects a page carries.
+//
+// It reads through the property collector's update mechanism rather than
+// RetrieveProperties, for two reasons. It is the only paging interface
+// govmomi exposes without reaching into vim25/methods, which this program
+// deliberately cannot import — see TestNoMutationCapablePackageIsImported.
+// And it needs a collector of its own regardless: the shared default
+// collector permits one caller at a time, and the interface fetches several
+// resource kinds for one vCenter concurrently.
+//
+// Only the initial synchronization is read. The filter reports every object
+// in the view as it stands, in pages, and the walk stops as soon as the
+// server says the set is no longer truncated — this is a paged read, not a
+// subscription to what happens next.
+func retrievePages(ctx context.Context, c *Client, root types.ManagedObjectReference, viewKinds, propKinds, props []string, pageSize int32, onPage func([]types.ObjectContent) error) error {
+	return withContainerView(ctx, c, root, viewKinds, func(v *view.ContainerView) error {
+		collector, err := property.DefaultCollector(c.VIM()).Create(ctx)
+		if err != nil {
+			return fmt.Errorf("create property collector: %w", err)
+		}
+		defer func() {
+			// Destroying the collector releases its filter with it, on a
+			// background context so a cancelled read still cleans up after
+			// itself rather than leaving state on the server.
+			_ = collector.Destroy(context.WithoutCancel(ctx))
+		}()
+
+		ref := v.Reference()
+		spec := types.PropertyFilterSpec{
+			ObjectSet: []types.ObjectSpec{{
+				Obj:       ref,
+				Skip:      types.NewBool(true),
+				SelectSet: []types.BaseSelectionSpec{&types.TraversalSpec{Type: ref.Type, Path: "view"}},
+			}},
+		}
+		for _, kind := range propKinds {
+			ps := types.PropertySpec{Type: kind}
+			if len(props) == 0 {
+				ps.All = types.NewBool(true)
+			} else {
+				ps.PathSet = props
+			}
+			spec.PropSet = append(spec.PropSet, ps)
+		}
+		if _, err := collector.CreateFilter(ctx, types.CreateFilter{Spec: spec}); err != nil {
+			return fmt.Errorf("retrieve %s properties: %w", strings.Join(propKinds, ","), err)
+		}
+
+		opts := &property.WaitOptions{Options: &types.WaitOptions{MaxObjectUpdates: pageSize}}
+		var pageErr error
+		err = collector.WaitForUpdatesEx(ctx, opts, func(updates []types.ObjectUpdate) bool {
+			if len(updates) > 0 {
+				if pageErr = onPage(objectContents(updates)); pageErr != nil {
+					return true
+				}
+			}
+			// Stop as soon as the server has nothing further to hand over.
+			// Asking again at that point would be waiting for the estate to
+			// change, which is a different question than the one asked here.
+			return !opts.Truncated
+		})
+		if pageErr != nil {
+			return pageErr
+		}
+		if err != nil {
+			return fmt.Errorf("retrieve %s properties: %w", strings.Join(propKinds, ","), err)
+		}
+		return nil
+	})
+}
+
+// withContainerView creates the container view both retrieval paths walk and
+// destroys it afterwards, whatever fn did.
+func withContainerView(ctx context.Context, c *Client, root types.ManagedObjectReference, viewKinds []string, fn func(*view.ContainerView) error) error {
 	m := view.NewManager(c.VIM())
 	v, err := m.CreateContainerView(ctx, root, viewKinds, true)
 	if err != nil {
@@ -266,10 +364,25 @@ func retrieve(ctx context.Context, c *Client, root types.ManagedObjectReference,
 		// request still releases the server-side object.
 		_ = v.Destroy(context.WithoutCancel(ctx))
 	}()
-	if err := v.Retrieve(ctx, propKinds, props, dst); err != nil {
-		return fmt.Errorf("retrieve %s properties: %w", strings.Join(propKinds, ","), err)
+	return fn(v)
+}
+
+// objectContents reshapes one page of property-collector updates into the
+// ObjectContent that mo.LoadObjectContent decodes, so both retrieval paths
+// feed the same decoder and produce identical objects.
+func objectContents(updates []types.ObjectUpdate) []types.ObjectContent {
+	out := make([]types.ObjectContent, 0, len(updates))
+	for _, u := range updates {
+		content := types.ObjectContent{Obj: u.Obj, MissingSet: u.MissingSet}
+		for _, change := range u.ChangeSet {
+			if change.Val == nil {
+				continue
+			}
+			content.PropSet = append(content.PropSet, types.DynamicProperty{Name: change.Name, Val: change.Val})
+		}
+		out = append(out, content)
 	}
-	return nil
+	return out
 }
 
 // ListInventory enumerates everything in one vCenter, one fetch group after

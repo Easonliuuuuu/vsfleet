@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/vmware/govmomi"
@@ -30,7 +31,25 @@ type Client struct {
 
 	vim    *govmomi.Client
 	dialer transport.Dialer
+
+	// idxMu guards the cached path index, which several fetch groups running
+	// concurrently on one client may all ask for.
+	idxMu sync.Mutex
+	idx   *Index
+	idxAt time.Time
 }
+
+// IndexTTL is how long a built path index is reused before it is walked
+// again. The index is name and parent for every managed entity in the
+// vCenter, and it has to complete before any group can be retrieved, so
+// rebuilding it on every refresh made the whole estate's folder tree a toll
+// paid every few seconds to re-read one resource kind.
+//
+// The tree it describes changes far more slowly than the objects inside it,
+// and the one thing a stale index cannot place — an object created since it
+// was built — is resolved through its parent instead (see newVM), so what
+// this trades away is a newly created folder's name for at most this long.
+const IndexTTL = 2 * time.Minute
 
 // About is the subset of vCenter's identity that operators care about.
 type About struct {

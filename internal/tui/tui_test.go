@@ -75,8 +75,14 @@ func (b *fakeBackend) BeginInventory(_ context.Context, cc *config.Context) (Inv
 // fixture's whole Inventory, the same way the demo backend does.
 type fakeInventoryHandle struct{ inv *vsphere.Inventory }
 
-func (h fakeInventoryHandle) FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory {
-	return h.inv.Slice(group)
+// FetchGroup implements tui.InventoryHandle: one page, delivered to partial
+// before the group's own result, so the paged path is what the tests drive.
+func (h fakeInventoryHandle) FetchGroup(group vsphere.FetchGroup, partial func(*vsphere.Inventory)) *vsphere.Inventory {
+	part := h.inv.Slice(group)
+	if partial != nil {
+		partial(h.inv.Slice(group))
+	}
+	return part
 }
 
 func (b *fakeBackend) Status(name string) (session.Status, bool) {

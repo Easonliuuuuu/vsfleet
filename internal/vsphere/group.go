@@ -1,6 +1,9 @@
 package vsphere
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // FetchGroup identifies one concurrent unit of inventory retrieval. VMs and
 // templates share a single vSphere call and so are always fetched together
@@ -19,6 +22,64 @@ const (
 
 // AllGroups lists every fetch group ListInventory enumerates.
 var AllGroups = []FetchGroup{GroupVMs, GroupHosts, GroupClusters, GroupVApps, GroupDatastores, GroupNetworks}
+
+// Detail selects how much of each object a fetch retrieves. It exists
+// because the two callers want genuinely different things: a listing shows a
+// dozen scalar fields per VM, while a capture records everything it will
+// later be asked to diff or export. Retrieving the second to satisfy the
+// first is what made a large estate impossible to browse — see vmDetailProps.
+type Detail int
+
+const (
+	// DetailSummary retrieves what a listing, a detail pane and a search
+	// result read. VM.Disks, VM.NICs and VM.Snapshots come back empty.
+	DetailSummary Detail = iota
+	// DetailFull additionally retrieves per-VM virtual devices, guest NIC
+	// bindings and snapshot trees. This is what a capture records and what
+	// the RVTools export reads back.
+	DetailFull
+)
+
+// FetchOptions tune one call to FetchGroupWith.
+type FetchOptions struct {
+	// Detail selects the property set — see Detail. The zero value is
+	// DetailSummary, so a caller that has not thought about it gets the
+	// cheap retrieval rather than the expensive one.
+	Detail Detail
+	// PageSize bounds how many objects one retrieval page carries. Zero
+	// means DefaultPageSize; a negative value asks for no paging at all,
+	// which leaves the page size to the server.
+	PageSize int
+	// OnPartial, when set, is called with each page of results as it
+	// arrives, carrying only that page's objects. It is called from the
+	// goroutine driving the fetch, before FetchGroupWith returns, and the
+	// complete group is still returned at the end — a caller showing pages
+	// early replaces them with that authoritative result rather than
+	// trusting its own accumulation.
+	//
+	// Only GroupVMs pages, and only when PageSize asks for it; every other
+	// group is small enough that one page is the whole answer, and they call
+	// OnPartial exactly once. An unpaged fetch calls it not at all for VMs,
+	// since there are no pages to preview.
+	OnPartial func(*Inventory)
+}
+
+func (o FetchOptions) pageSize() int32 {
+	switch {
+	case o.PageSize < 0:
+		return 0
+	case o.PageSize == 0:
+		return DefaultPageSize
+	default:
+		return int32(o.PageSize)
+	}
+}
+
+func (o FetchOptions) partial(inv *Inventory) {
+	if o.OnPartial != nil {
+		o.OnPartial(inv)
+	}
+}
 
 // GroupFor returns the fetch group that populates kind. VMs and templates
 // map onto the same group, since starting on either tab prioritizes the one
@@ -48,18 +109,28 @@ func GroupFor(k Kind) FetchGroup {
 // once rather than once per group.
 type Index struct{ idx *index }
 
-// NewIndex builds the shared path index for c's context, scoped to its
+// NewIndex returns the shared path index for c's context, scoped to its
 // configured datacenter (see resolveRoot). ListInventory builds one and
 // walks every group sequentially; a caller wanting groups individually —
 // prioritized, or fetched concurrently — builds one and calls FetchGroup
 // against it directly instead, reusing the same Index for each.
+//
+// An index built less than IndexTTL ago is returned as it stands rather than
+// walked again. The index is immutable once built, so sharing one between
+// concurrent fetches is safe.
 func (c *Client) NewIndex(ctx context.Context) (*Index, error) {
+	c.idxMu.Lock()
+	defer c.idxMu.Unlock()
+	if c.idx != nil && time.Since(c.idxAt) < IndexTTL {
+		return c.idx, nil
+	}
 	reportStage(ctx, StageLoadingIndex)
 	idx, err := newIndex(ctx, c)
 	if err != nil {
 		return nil, err
 	}
-	return &Index{idx: idx}, nil
+	c.idx, c.idxAt = &Index{idx: idx}, time.Now()
+	return c.idx, nil
 }
 
 // FetchGroup retrieves one group's objects using idx, filling in only the
@@ -70,25 +141,41 @@ func (c *Client) NewIndex(ctx context.Context) (*Index, error) {
 // never has to special-case a group that failed outright versus one that
 // simply had nothing to report.
 func (c *Client) FetchGroup(ctx context.Context, idx *Index, group FetchGroup) *Inventory {
+	return c.FetchGroupWith(ctx, idx, group, FetchOptions{Detail: DetailFull, PageSize: -1})
+}
+
+// FetchGroupWith is FetchGroup with the detail level and paging under the
+// caller's control. The terminal interface uses it to retrieve a browsable
+// summary in pages it can show as they land; the assessment collector uses
+// FetchGroup, which is this with everything turned up.
+func (c *Client) FetchGroupWith(ctx context.Context, idx *Index, group FetchGroup, opts FetchOptions) *Inventory {
 	inv := &Inventory{Context: c.Context.Name}
 	fail := func(err error, kinds ...Kind) {
 		for _, k := range kinds {
 			inv.Errors = append(inv.Errors, InventoryError{Kind: k, Message: err.Error()})
 		}
 	}
+	split := func(dst *Inventory, vms []VM) {
+		for _, vm := range vms {
+			if vm.IsTemplate {
+				dst.Templates = append(dst.Templates, vm)
+			} else {
+				dst.VMs = append(dst.VMs, vm)
+			}
+		}
+	}
 	switch group {
 	case GroupVMs:
 		reportStage(ctx, StageLoadingVMs)
-		if vms, err := c.listVMs(ctx, idx.idx); err != nil {
+		page := func(vms []VM) {
+			part := &Inventory{Context: c.Context.Name}
+			split(part, vms)
+			opts.partial(part)
+		}
+		if vms, err := c.listVMsWith(ctx, idx.idx, opts, page); err != nil {
 			fail(err, KindVM, KindTemplate)
 		} else {
-			for _, vm := range vms {
-				if vm.IsTemplate {
-					inv.Templates = append(inv.Templates, vm)
-				} else {
-					inv.VMs = append(inv.VMs, vm)
-				}
-			}
+			split(inv, vms)
 		}
 	case GroupHosts:
 		reportStage(ctx, StageLoadingHosts)
@@ -96,6 +183,7 @@ func (c *Client) FetchGroup(ctx context.Context, idx *Index, group FetchGroup) *
 			fail(err, KindHost)
 		} else {
 			inv.Hosts = hosts
+			opts.partial(inv.Slice(group))
 		}
 	case GroupClusters:
 		reportStage(ctx, StageLoadingClusters)
@@ -103,6 +191,7 @@ func (c *Client) FetchGroup(ctx context.Context, idx *Index, group FetchGroup) *
 			fail(err, KindCluster)
 		} else {
 			inv.Clusters = clusters
+			opts.partial(inv.Slice(group))
 		}
 	case GroupVApps:
 		reportStage(ctx, StageLoadingVApps)
@@ -110,6 +199,7 @@ func (c *Client) FetchGroup(ctx context.Context, idx *Index, group FetchGroup) *
 			fail(err, KindVApp)
 		} else {
 			inv.VApps = vapps
+			opts.partial(inv.Slice(group))
 		}
 	case GroupDatastores:
 		reportStage(ctx, StageLoadingDatastores)
@@ -117,6 +207,7 @@ func (c *Client) FetchGroup(ctx context.Context, idx *Index, group FetchGroup) *
 			fail(err, KindDatastore)
 		} else {
 			inv.Datastores = datastores
+			opts.partial(inv.Slice(group))
 		}
 	case GroupNetworks:
 		reportStage(ctx, StageLoadingNetworks)
@@ -124,6 +215,7 @@ func (c *Client) FetchGroup(ctx context.Context, idx *Index, group FetchGroup) *
 			fail(err, KindNetwork)
 		} else {
 			inv.Networks = networks
+			opts.partial(inv.Slice(group))
 		}
 	}
 	return inv

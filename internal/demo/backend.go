@@ -90,8 +90,15 @@ func (b *Backend) BeginInventory(_ context.Context, cc *config.Context) (tui.Inv
 // a real connection.
 type demoInventoryHandle struct{ inv *vsphere.Inventory }
 
-func (h demoInventoryHandle) FetchGroup(group vsphere.FetchGroup) *vsphere.Inventory {
-	return h.inv.Slice(group)
+// FetchGroup implements tui.InventoryHandle. The whole estate is already in
+// memory, so the group is one page and partial sees it once — enough to keep
+// the streaming path exercised by the demo rather than only in production.
+func (h demoInventoryHandle) FetchGroup(group vsphere.FetchGroup, partial func(*vsphere.Inventory)) *vsphere.Inventory {
+	part := h.inv.Slice(group)
+	if partial != nil {
+		partial(h.inv.Slice(group))
+	}
+	return part
 }
 
 // Status implements tui.Backend.

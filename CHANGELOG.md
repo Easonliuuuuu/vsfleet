@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.5.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.4.0...v0.5.0) (2026-09-05)
+
+
+### Features
+
+* **demo:** ship a credential-free demo and lead with the RVTools export ([bc77734](https://github.com/Easonliuuuuu/vsfleet/commit/bc777341669914b1fdfac064119788ec6c2825d1)), closes [#75](https://github.com/Easonliuuuuu/vsfleet/issues/75)
+* **rvtools:** add the vPartition Disk Key column that joins to vDisk ([b4f9672](https://github.com/Easonliuuuuu/vsfleet/commit/b4f967233ca700088f50fe0b517601ba59c8d175))
+* **rvtools:** add the vPartition tab from guest filesystem inventory ([97178f6](https://github.com/Easonliuuuuu/vsfleet/commit/97178f631d79cca68e5dbf4f5a3ef51eb3e7f36d))
+* **tui:** add a comparison bar to the History Changes screen ([64e3210](https://github.com/Easonliuuuuu/vsfleet/commit/64e32100941fd484976b6390c47899d07455f253))
+* **tui:** open vApp member workspace ([d0d03b9](https://github.com/Easonliuuuuu/vsfleet/commit/d0d03b9c83abac5ad41ed73d907f477100b2f746))
+* **tui:** split the Changes list and its inspector side by side ([1128931](https://github.com/Easonliuuuuu/vsfleet/commit/11289319a0a3f4d393b2ad2fb76cb804a047aadd))
+
+
+### Bug Fixes
+
+* **rvtools.go:** report vDisk/vNetwork coverage from the VM collection status ([b95ceb0](https://github.com/Easonliuuuuu/vsfleet/commit/b95ceb0fa99981f73a55fc6e32a4fd2a439b70c3))
+* **tui:** load large estates in pages instead of timing out at 30s ([40d9a08](https://github.com/Easonliuuuuu/vsfleet/commit/40d9a0887122e8b091620333d30512c78a8b3b44))
+
 ## [0.4.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.3.2...v0.4.0) (2026-09-04)
 
 

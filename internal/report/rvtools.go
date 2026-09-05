@@ -17,6 +17,7 @@ import (
 	"github.com/xuri/excelize/v2"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -42,6 +43,7 @@ var (
 	clusterHeaders   = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	snapshotHeaders  = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	healthHeaders    = []string{"Name", "Message", "Message type", "vsfleet Rule", "Object type", "Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	coverageHeaders  = []string{"Run ID", "Run label", "Run started", "Run finished", "Run status", "Context", "Endpoint", "Datacenter", "vCenter ID", "Sheet", "Collection status", "Item count", "Error"}
 )
 
@@ -60,7 +62,7 @@ type sheet struct {
 // rvtoolsSheets canonicalizes and validates the export data, then returns
 // every RVTools tab in tab order. WriteRVTools and RVToolsCSV both build on
 // this so the two formats render identical content on identical terms.
-func rvtoolsSheets(data assessment.ExportData) ([]sheet, error) {
+func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sheet, error) {
 	data = canonicalData(data)
 	if err := validateResources(data.Resources); err != nil {
 		return nil, err
@@ -77,15 +79,17 @@ func rvtoolsSheets(data assessment.ExportData) ([]sheet, error) {
 		{name: "vCluster", headers: clusterHeaders, rows: clusterRows(data)},
 		{name: "vDatastore", headers: datastoreHeaders, rows: datastoreRows(data)},
 		{name: "vSnapshot", headers: snapshotHeaders, rows: snapshotRows(data), dateCols: []int{4}},
-		{name: "vsfleetCoverage", headers: coverageHeaders, rows: coverageRows(data), dateCols: []int{2, 3}},
+		{name: "vHealth", headers: healthHeaders, rows: healthRows(data, healthReport)},
+		{name: "vsfleetCoverage", headers: coverageHeaders, rows: coverageRows(data, healthReport), dateCols: []int{2, 3}},
 	}, nil
 }
 
-// WriteRVTools writes the eleven persisted RVTools-compatible sheets plus the
-// vsfleetCoverage extension sheet. The output is normalized as a ZIP archive
+// WriteRVTools writes the twelve RVTools-compatible sheets plus the
+// vsfleetCoverage extension sheet. vHealth is derived from the supplied
+// report; callers evaluate it before entering the renderer. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
-func WriteRVTools(w io.Writer, data assessment.ExportData) error {
-	sheets, err := rvtoolsSheets(data)
+func WriteRVTools(w io.Writer, data assessment.ExportData, healthReport health.Report) error {
+	sheets, err := rvtoolsSheets(data, healthReport)
 	if err != nil {
 		return err
 	}
@@ -147,8 +151,8 @@ type CSVFile struct {
 // Cells favor pipeline consumption over spreadsheet display: timestamps are
 // RFC3339 in UTC, booleans are "true"/"false", numbers are unformatted, and
 // an absent value is an empty field.
-func RVToolsCSV(data assessment.ExportData) ([]CSVFile, error) {
-	sheets, err := rvtoolsSheets(data)
+func RVToolsCSV(data assessment.ExportData, healthReport health.Report) ([]CSVFile, error) {
+	sheets, err := rvtoolsSheets(data, healthReport)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +517,19 @@ func snapshotRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
-func coverageRows(data assessment.ExportData) [][]any {
+func healthRows(data assessment.ExportData, healthReport health.Report) [][]any {
+	rows := make([][]any, 0, len(healthReport.Findings))
+	for _, finding := range healthReport.Findings {
+		object := finding.Object
+		rows = append(rows, []any{
+			object.Name, finding.Message, string(finding.Severity), finding.Rule, object.Kind,
+			object.Datacenter, object.ID, contextEndpoint(data, object.Context), object.VCenterID, object.Context,
+		})
+	}
+	return rows
+}
+
+func coverageRows(data assessment.ExportData, healthReport health.Report) [][]any {
 	counts := make(map[string]int)
 	diskCounts := make(map[string]int)
 	networkCounts := make(map[string]int)
@@ -545,7 +561,7 @@ func coverageRows(data assessment.ExportData) [][]any {
 		}
 		resources[r.Context][r.Kind]++
 	}
-	rows := make([][]any, 0, len(data.Contexts)*10)
+	rows := make([][]any, 0, len(data.Contexts)*12)
 	devicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 2)
 	toolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 3)
 	partitionsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 4)
@@ -577,8 +593,14 @@ func coverageRows(data assessment.ExportData) [][]any {
 			{kind: "cluster", sheet: "vCluster", count: resources[c.Name]["cluster"]},
 			{kind: "datastore", sheet: "vDatastore", count: resources[c.Name]["datastore"]},
 			{kind: "snapshot", sheet: "vSnapshot", count: snapshotCounts[c.Name]},
+			{kind: "vhealth", sheet: "vHealth", count: healthFindingsForContext(healthReport, c.Name)},
 		} {
 			status, message := "not recorded", ""
+			if spec.kind == "vhealth" {
+				status, _, message = healthCoverage(data, c, healthReport)
+				rows = append(rows, coverageRow(data, c, spec.sheet, status, spec.count, message))
+				continue
+			}
 			switch {
 			case (spec.kind == "vdisk" || spec.kind == "vnetwork") && !devicesRecorded:
 				status = "not recorded"
@@ -634,6 +656,86 @@ func coverageRows(data assessment.ExportData) [][]any {
 		}
 	}
 	return rows
+}
+
+func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthReport health.Report) (string, int, string) {
+	status := c.VMStatus
+	if status == "" {
+		status = "not recorded"
+	}
+	if status != "success" && status != "empty" {
+		return status, healthFindingsForContext(healthReport, c.Name), c.Error
+	}
+
+	allRules := health.Rules()
+	evaluated, notEvaluated := 0, make([]health.RuleStatus, 0)
+	disabled := make([]string, 0)
+	for _, rule := range healthReport.Rules {
+		switch rule.Status {
+		case "evaluated":
+			evaluated++
+		case "not-evaluated":
+			notEvaluated = append(notEvaluated, rule)
+		case "disabled":
+			disabled = append(disabled, rule.Rule)
+		}
+	}
+	if len(healthReport.Rules) == 0 {
+		// A zero report must not turn the derived tab into a false success
+		// statement when a caller forgot to evaluate it.
+		return "not recorded", 0, "health report was not evaluated"
+	}
+	if len(notEvaluated) > 0 {
+		ids := make([]string, 0, len(notEvaluated))
+		needs := make([]string, 0, len(notEvaluated))
+		seenNeeds := make(map[string]bool)
+		for _, rule := range notEvaluated {
+			ids = append(ids, rule.Rule)
+			if rule.Reason != "" && !seenNeeds[rule.Reason] {
+				needs = append(needs, rule.Reason)
+				seenNeeds[rule.Reason] = true
+			}
+		}
+		message := fmt.Sprintf("evaluated %d of %d rules; %s need a capture with %s", evaluated, len(allRules), strings.Join(ids, ", "), strings.Join(needs, " and "))
+		if len(disabled) > 0 {
+			message += "; disabled rules: " + strings.Join(disabled, ", ")
+		}
+		return "partial", healthFindingsForContext(healthReport, c.Name), message
+	}
+	message := fmt.Sprintf("%d of %d rules evaluated (%s)", evaluated+len(disabled), len(allRules), healthThresholdMessage(healthReport.Thresholds))
+	if len(disabled) > 0 {
+		message += "; disabled rules: " + strings.Join(disabled, ", ")
+	}
+	return "success", healthFindingsForContext(healthReport, c.Name), message
+}
+
+func healthFindingsForContext(report health.Report, context string) int {
+	n := 0
+	for _, finding := range report.Findings {
+		if finding.Object.Context == context {
+			n++
+		}
+	}
+	return n
+}
+
+func healthThresholdMessage(thresholds health.Thresholds) string {
+	return fmt.Sprintf("max-snapshot-age=%s, min-datastore-free=%s%%, min-guest-disk-free=%s%%",
+		healthDurationFlag(thresholds.SnapshotAge), formatPercent(thresholds.DatastoreFreePct), formatPercent(thresholds.GuestDiskFreePct))
+}
+
+func healthDurationFlag(d time.Duration) string {
+	if d > 0 && d%(24*time.Hour) == 0 {
+		return strconv.FormatInt(int64(d/(24*time.Hour)), 10) + "d"
+	}
+	if d > 0 && d%time.Hour == 0 {
+		return strconv.FormatInt(int64(d/time.Hour), 10) + "h"
+	}
+	return d.String()
+}
+
+func formatPercent(value float64) string {
+	return strings.TrimSuffix(strings.TrimSuffix(strconv.FormatFloat(value, 'f', 1, 64), "0"), ".")
 }
 
 func inventoryAtLeast(version string, minVersion int) bool {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -88,6 +89,8 @@ const (
 	historyPaneChanges = iota
 	historyPaneTrends
 	historyPaneRuns
+	historyPaneHealth
+	historyPaneCount
 )
 
 // searchState is one estate-wide search: every kind, every vCenter, matched
@@ -538,6 +541,8 @@ type Model struct {
 	historyChurn     *assessment.ChurnTrend
 	historySnapshots *assessment.SnapshotTrend
 	historyCapacity  *assessment.CapacityTrend
+	historyHealth    *health.Report
+	historyHealthErr error
 	runEditInput     textinput.Model
 	runEditKind      string
 	runEditRunID     int64
@@ -1263,6 +1268,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.historyCapacity = &msg.capacity
 		}
 		return m, nil
+	case historyHealthMsg:
+		m.historyHealthErr = msg.err
+		if msg.err == nil {
+			m.historyHealth = &msg.report
+		} else {
+			m.historyHealth = nil
+		}
+		return m, nil
 	case historyRunUpdatedMsg:
 		if msg.err != nil {
 			m.historyErr = msg.err
@@ -1289,7 +1302,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setMessage(fmt.Sprintf("assessment %d saved (%s)", msg.run.ID, msg.run.Status), msg.run.Status == assessment.RunPartial)
-		return m, tea.Batch(loadHistoryRunsCmd(m.ctx, m.assessment), loadHistoryTrendsCmd(m.ctx, m.assessment))
+		return m, tea.Batch(loadHistoryRunsCmd(m.ctx, m.assessment), loadHistoryTrendsCmd(m.ctx, m.assessment), loadHistoryHealthCmd(m.ctx, m.assessment, 0, health.Options{Thresholds: health.DefaultThresholds()}))
 	case historyTimelineMsg:
 		m.timeline, m.historyErr = msg.events, msg.err
 		m.timelineCursor, m.timelineOffset = 0, 0

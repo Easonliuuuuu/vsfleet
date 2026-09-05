@@ -122,7 +122,7 @@ reference identity and keep volatile utilization/state fields behind
 drill-downs, and every JSON trend/report envelope carries a schema version.
 Run labels, notes, pinning, and the renewable fenced lease from schema version 2
 remain intact; the lease also serializes prune, backup, and restore operations.
-The TUI's History hub switches between Changes, Trends, and Runs, while all
+The TUI's History hub switches between Changes, Trends, Runs, and Health, while all
 destructive ledger maintenance stays explicit on the CLI.
 
 The `assessment export` command reads a selected finished run through one
@@ -134,11 +134,13 @@ the VMware Tools version and version status to VM payloads, backing the
 version columns left blank and the gap noted on `vsfleetCoverage`. A shared
 `rvtoolsSheets` builder canonicalizes and validates the run once and returns
 every RVTools tab (`vInfo`, `vCPU`, `vMemory`, per-VM `vDisk`/`vNetwork`,
-`vTools`, `vHost`, `vCluster`, `vDatastore`, `vSnapshot`, `vsfleetCoverage`) in
+`vTools`, `vHost`, `vCluster`, `vDatastore`, `vSnapshot`, `vHealth`,
+`vsfleetCoverage`) in
 tab order; the XLSX writer normalizes ZIP entry order and timestamps on top of
 it, and the CSV writer renders the same tabs as one file per sheet, so both
 formats are byte-identical across repeated exports of unchanged stored
-evidence and agree with each other on content.
+evidence and agree with each other on content. `vHealth` is derived at export
+time from persisted evidence; it is not a separately collected sheet.
 
 ---
 

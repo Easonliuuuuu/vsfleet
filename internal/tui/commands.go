@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -111,6 +113,11 @@ type historyTrendsMsg struct {
 	err       error
 }
 
+type historyHealthMsg struct {
+	report health.Report
+	err    error
+}
+
 func loadHistoryRunsCmd(ctx context.Context, service *assessment.Service) tea.Cmd {
 	return func() tea.Msg { runs, err := service.Runs(ctx); return historyRunsMsg{runs: runs, err: err} }
 }
@@ -149,6 +156,27 @@ func loadHistoryTrendsCmd(ctx context.Context, service *assessment.Service) tea.
 		}
 		capacity, err := service.CapacityTrend(ctx, opts, []string{"host", "cluster", "datastore"})
 		return historyTrendsMsg{churn: churn, snapshots: snapshots, capacity: capacity, err: err}
+	}
+}
+
+func loadHistoryHealthCmd(ctx context.Context, service *assessment.Service, runID int64, opts health.Options) tea.Cmd {
+	return func() tea.Msg {
+		if service == nil || service.Store == nil {
+			return historyHealthMsg{err: fmt.Errorf("historical assessments are unavailable")}
+		}
+		if runID == 0 {
+			var err error
+			runID, err = service.Store.ResolveRun(ctx, "latest")
+			if err != nil {
+				return historyHealthMsg{err: err}
+			}
+		}
+		data, err := service.Store.LoadExportData(ctx, runID)
+		if err != nil {
+			return historyHealthMsg{err: err}
+		}
+		report := health.Evaluate(data, opts)
+		return historyHealthMsg{report: report}
 	}
 }
 

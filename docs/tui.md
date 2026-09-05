@@ -32,8 +32,10 @@ VM detail inspector and `Esc` returns to the previous level.
 
 ## History workspace
 
-Press `H` to open the History hub, which contains Changes, Trends, and Runs.
-Use `←`/`→` to switch panes. Changes compares the newest two assessments; `b`
+Press `H` to open the History hub, which contains Changes, Trends, Runs, and
+Health. Use `←`/`→` to switch panes. Health shows the default read-only health
+findings for the latest stored assessment; use `vsfleet health` when thresholds
+need tuning. Changes compares the newest two assessments; `b`
 and `t` choose a different baseline or target, and `Enter` opens a change. From
 change detail, `h` opens a VM timeline and `a` includes unchanged observations.
 

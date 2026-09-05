@@ -18,6 +18,7 @@ configuration, history database, and output options shown below.
 | `vsfleet context remove <name>` | Remove a context and invalidate its session |
 | `vsfleet status` | Check selected contexts |
 | `vsfleet doctor [context...]` | Diagnose the connection stage by stage |
+| `vsfleet health [run]` | Assess the estate described by a stored assessment |
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
@@ -39,6 +40,10 @@ vsfleet search nvme --kind datastore --limit 20
 
 Results from healthy contexts remain available when another context fails. The
 failure is reported separately with its context and diagnostic information.
+
+`vsfleet doctor` diagnoses whether vsfleet can reach a vCenter, while
+`vsfleet assessment doctor` checks the local history database. `vsfleet health`
+assesses the estate described by the stored evidence.
 
 ## JSON output
 

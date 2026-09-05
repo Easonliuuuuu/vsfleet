@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -239,6 +240,7 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 		newStatusCommand(a),
 		newUICommand(a),
 		newAssessmentCommand(a),
+		newHealthCommand(a),
 	)
 	root.AddCommand(newInventoryCommands(a)...)
 	return root
@@ -258,7 +260,8 @@ func Execute(ctx context.Context) int {
 	}()
 	if err := root.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(a.errOut(), "vsfleet: %v\n", err)
-		if coded, ok := err.(interface{ ExitCode() int }); ok {
+		var coded interface{ ExitCode() int }
+		if errors.As(err, &coded) {
 			return coded.ExitCode()
 		}
 		return 1

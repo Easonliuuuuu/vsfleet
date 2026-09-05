@@ -362,6 +362,23 @@ func TestHistoryHeaderNamesTheSelectedPane(t *testing.T) {
 	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Runs") || strings.Contains(got, "target #42") {
 		t.Fatalf("runs header was mislabeled: %q", got)
 	}
+	m.historyPane = historyPaneHealth
+	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Health") {
+		t.Fatalf("health header was mislabeled: %q", got)
+	}
+}
+
+func TestHistoryHealthPaneLoadsLatestAssessment(t *testing.T) {
+	store := oneVMDiffStore(t)
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	press(t, m, "H", "right", "right", "right")
+	if m.historyPane != historyPaneHealth || m.historyHealth == nil {
+		t.Fatalf("health pane did not load: pane=%d report=%+v err=%v", m.historyPane, m.historyHealth, m.historyHealthErr)
+	}
+	view := strings.Join(m.viewChanges(), "\n")
+	if !strings.Contains(view, "Health") || !strings.Contains(view, "assessment") {
+		t.Fatalf("health pane view=%s", view)
+	}
 }
 
 // TestHistoryCaptureKeyIsPaneIndependent pins the resolution of the old "n"

@@ -67,7 +67,7 @@ runs are intentionally part of the analysis.
 Exports read one persisted run and do not contact vCenter or open a live
 session. The `rvtools` format is an XLSX workbook containing `vInfo`, `vCPU`,
 `vMemory`, per-VM `vDisk`, `vPartition` and `vNetwork`, `vTools`, `vHost`,
-`vCluster`, `vDatastore`, `vSnapshot`, and `vsfleetCoverage` sheets.
+`vCluster`, `vDatastore`, `vSnapshot`, `vHealth`, and `vsfleetCoverage` sheets.
 
 ```sh
 vsfleet assessment export latest --format rvtools --file ./estate.xlsx
@@ -83,15 +83,42 @@ Runs captured before VMware Tools version collection still populate the running
 status column in `vTools`; version columns remain blank and the gap is recorded
 on `vsfleetCoverage`.
 
+### Health findings
+
+`vsfleet health [RUN]` evaluates the evidence in a stored assessment without
+contacting vCenter. The first rule set reports inaccessible or low-space
+datastores, disconnected or maintenance-mode hosts, old snapshots, low-space
+guest filesystems, and VMware Tools that are missing, stopped, or outdated.
+
+The defaults are a 30-day maximum snapshot age and 10% minimum free space for
+datastores and guest filesystems. Use `--max-snapshot-age`,
+`--min-datastore-free`, `--min-guest-disk-free`, `--disable-rule`, and
+`--severity` to tune a run. `--fail-on-findings` returns exit code 2 when a
+finding at or above the selected severity exists; invalid selectors and other
+command errors return 1. `--list-rules` prints the rule registry.
+
+Snapshot age is measured from the assessment's own context finish time (falling
+back to the run finish time), never from the current wall clock. Findings are
+recomputed when read, but the thresholds are stamped into the `vHealth`
+coverage message, so exporting unchanged evidence with the same options stays
+reproducible. Rules that need inventory fields introduced after an older run
+are marked `not-evaluated`, rather than making an empty tab look healthy.
+
+This increment deliberately does not assess connected CD/ISO, floppy, or USB
+devices, orphaned or inaccessible VMs, or zombie VMDKs. Those checks need
+additional persisted inventory (and, for zombie files, a datastore-browser
+operation), so they remain named follow-ups rather than being inferred from
+evidence that was never collected.
+
 ### What "RVTools-compatible" means here
 
-vsfleet renders eleven RVTools tabs and uses RVTools' own column names, so a
+vsfleet renders twelve RVTools tabs and uses RVTools' own column names, so a
 tool that reads those tabs by name can read a vsfleet export:
 
 `vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
-`vHost` · `vCluster` · `vDatastore` · `vSnapshot`
+`vHost` · `vCluster` · `vDatastore` · `vSnapshot` · `vHealth`
 
-RVTools itself ships roughly thirty tabs. `vHealth`, `vRP`, `vHBA`, `vNIC`,
+RVTools itself ships roughly thirty tabs. `vRP`, `vHBA`, `vNIC`,
 `vSwitch` and `vLicense` are among those vsfleet does not render today. If a downstream sizing or migration tool requires one of them,
 vsfleet is not yet a drop-in for that pipeline. This is a **compatible**
 export, not a replacement for RVTools.

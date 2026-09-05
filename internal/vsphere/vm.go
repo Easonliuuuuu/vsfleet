@@ -202,6 +202,7 @@ func guestPartitions(disks []types.GuestDiskInfo) []VMPartition {
 		}
 		out = append(out, VMPartition{
 			Path:           path,
+			DiskKeys:       guestDiskKeys(d.Mappings),
 			CapacityBytes:  d.Capacity,
 			FreeBytes:      d.FreeSpace,
 			FilesystemType: strings.TrimSpace(d.FilesystemType),
@@ -211,6 +212,23 @@ func guestPartitions(disks []types.GuestDiskInfo) []VMPartition {
 		return nil
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out
+}
+
+// guestDiskKeys maps a guest filesystem back to the virtual disks behind it.
+// It is the join RVTools' vPartition "Disk Key" column exists for, letting a
+// reader tie a filesystem's consumed space to the disk that has to be sized
+// for it. Tools only reports the mapping on vSphere 7.0 and later, so an
+// empty result is an older estate rather than an unbacked filesystem.
+func guestDiskKeys(mappings []types.GuestInfoVirtualDiskMapping) []int32 {
+	if len(mappings) == 0 {
+		return nil
+	}
+	out := make([]int32, 0, len(mappings))
+	for _, m := range mappings {
+		out = append(out, m.Key)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out
 }
 

@@ -37,7 +37,7 @@ var (
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "SharedBus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	networkHeaders   = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	toolsHeaders     = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
-	partitionHeaders = append([]string{"VM", "Powerstate", "Template", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
+	partitionHeaders = append([]string{"VM", "Powerstate", "Template", "Disk Key", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
 	hostHeaders      = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	clusterHeaders   = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -81,7 +81,7 @@ func rvtoolsSheets(data assessment.ExportData) ([]sheet, error) {
 	}, nil
 }
 
-// WriteRVTools writes the ten persisted RVTools-compatible sheets plus the
+// WriteRVTools writes the eleven persisted RVTools-compatible sheets plus the
 // vsfleetCoverage extension sheet. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
 func WriteRVTools(w io.Writer, data assessment.ExportData) error {
@@ -364,7 +364,7 @@ func partitionRows(data assessment.ExportData) [][]any {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, part := range vm.Partitions {
 			row := []any{
-				vm.Name, vm.PowerState, vm.IsTemplate, part.Path,
+				vm.Name, vm.PowerState, vm.IsTemplate, diskKeyCell(part.DiskKeys), part.Path,
 				float64(part.CapacityBytes) / miB,
 				float64(part.UsedBytes()) / miB,
 				float64(part.FreeBytes) / miB,
@@ -375,6 +375,27 @@ func partitionRows(data assessment.ExportData) [][]any {
 		}
 	}
 	return rows
+}
+
+// diskKeyCell renders the virtual disks behind a guest filesystem, which is
+// what makes vPartition joinable to vDisk. A single key stays a number so it
+// matches vDisk's own numeric Disk Key cell; a spanned volume names several
+// and they are joined the way vNetwork already joins a NIC's addresses,
+// which no longer joins but at least does not silently drop a disk. Tools
+// reports no mapping at all before vSphere 7.0, and that empty cell must not
+// become key zero.
+func diskKeyCell(keys []int32) any {
+	switch len(keys) {
+	case 0:
+		return nil
+	case 1:
+		return keys[0]
+	}
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, strconv.FormatInt(int64(key), 10))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // freePercent matches RVTools' own column. A partition of zero capacity is

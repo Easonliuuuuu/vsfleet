@@ -104,6 +104,12 @@ knows how large a virtual disk is, never how much of it the guest has used. A
 powered-off VM, or one whose Tools are not running, therefore contributes no
 `vPartition` rows at all.
 
+Each row also carries the `Disk Key` of the virtual disk behind the
+filesystem, which joins to the column of the same name in `vDisk` — that is
+how a sizing tool ties consumed space to the disk it has to provision. VMware
+Tools only reports the mapping on vSphere 7.0 and later, so the cell is empty
+on older estates, and a volume spanning several disks lists each of them.
+
 Because a short tab would otherwise be indistinguishable from a small estate,
 `vsfleetCoverage` marks the tab `partial` and names the shortfall — for
 example `18 of 40 VMs reported guest filesystems; the rest had no running

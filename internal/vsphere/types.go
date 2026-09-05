@@ -98,10 +98,16 @@ type VM struct {
 // absence is not. Callers distinguish the two through the run's collection
 // status, not by counting rows.
 type VMPartition struct {
-	Path           string `json:"path"`
-	CapacityBytes  int64  `json:"capacity_bytes"`
-	FreeBytes      int64  `json:"free_bytes"`
-	FilesystemType string `json:"filesystem_type,omitempty"`
+	Path string `json:"path"`
+	// DiskKeys names the virtual disks backing this filesystem, joining to
+	// VMDisk.Key. VMware Tools reports the mapping only on vSphere 7.0 and
+	// later, and a volume spanning several disks names each of them, so both
+	// none and many are ordinary. Absence is not disk key zero, which is a
+	// device a VM could really have.
+	DiskKeys       []int32 `json:"disk_keys,omitempty"`
+	CapacityBytes  int64   `json:"capacity_bytes"`
+	FreeBytes      int64   `json:"free_bytes"`
+	FilesystemType string  `json:"filesystem_type,omitempty"`
 }
 
 // UsedBytes is what the guest has consumed on this filesystem. vSphere

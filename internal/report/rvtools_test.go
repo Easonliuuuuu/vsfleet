@@ -326,7 +326,7 @@ func partitionVM(name string, parts ...vsphere.VMPartition) assessment.ExportVM 
 
 func TestWriteRVToolsRendersGuestPartitions(t *testing.T) {
 	data := partitionRun(assessment.CurrentInventorySchemaVersion, []assessment.ExportVM{
-		partitionVM("app", vsphere.VMPartition{Path: "/", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}),
+		partitionVM("app", vsphere.VMPartition{Path: "/", DiskKeys: []int32{2000}, CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}),
 	})
 	var out bytes.Buffer
 	if err := WriteRVTools(&out, data); err != nil {
@@ -340,8 +340,38 @@ func TestWriteRVToolsRendersGuestPartitions(t *testing.T) {
 
 	// 8 GiB capacity with 2 GiB free is 6 GiB consumed and 25% free.
 	for cell, want := range map[string]string{
-		"A2": "app", "D2": "/", "E2": "8192", "F2": "6144", "G2": "2048", "H2": "25", "I2": "ext4",
+		"A2": "app", "D2": "2000", "E2": "/", "F2": "8192", "G2": "6144", "H2": "2048", "I2": "25", "J2": "ext4",
 	} {
+		if got, _ := f.GetCellValue("vPartition", cell); got != want {
+			t.Errorf("vPartition!%s=%q, want %q", cell, got, want)
+		}
+	}
+}
+
+// Disk Key is the column that makes vPartition joinable to vDisk, so what it
+// renders for each of the three cases Tools can produce is the whole point of
+// having it: nothing before vSphere 7.0, one key normally, and several for a
+// volume spanning disks.
+func TestWriteRVToolsRendersPartitionDiskKeys(t *testing.T) {
+	data := partitionRun(assessment.CurrentInventorySchemaVersion, []assessment.ExportVM{
+		partitionVM("mapped", vsphere.VMPartition{Path: "/", DiskKeys: []int32{2000}, CapacityBytes: 1 << 30}),
+		partitionVM("spanned", vsphere.VMPartition{Path: "/data", DiskKeys: []int32{2000, 2001}, CapacityBytes: 1 << 30}),
+		partitionVM("unmapped", vsphere.VMPartition{Path: "/", CapacityBytes: 1 << 30}),
+	})
+	var out bytes.Buffer
+	if err := WriteRVTools(&out, data); err != nil {
+		t.Fatal(err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+
+	// A lone key stays a number so a spreadsheet matches it against vDisk's
+	// own numeric Disk Key; an estate too old to report the mapping leaves the
+	// cell empty rather than claiming disk key zero.
+	for cell, want := range map[string]string{"D2": "2000", "D3": "2000, 2001", "D4": ""} {
 		if got, _ := f.GetCellValue("vPartition", cell); got != want {
 			t.Errorf("vPartition!%s=%q, want %q", cell, got, want)
 		}
@@ -366,7 +396,7 @@ func TestWriteRVToolsHandlesUnsizedPartitions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	for cell, want := range map[string]string{"F2": "0", "H2": "0", "F3": "0"} {
+	for cell, want := range map[string]string{"G2": "0", "I2": "0", "G3": "0"} {
 		if got, _ := f.GetCellValue("vPartition", cell); got != want {
 			t.Errorf("vPartition!%s=%q, want %q", cell, got, want)
 		}

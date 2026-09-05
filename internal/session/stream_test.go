@@ -15,14 +15,22 @@ import (
 // than the timeout to read must finish, as long as it keeps arriving.
 func TestStreamOperationSurvivesWorkLongerThanTheIdleTimeout(t *testing.T) {
 	m := session.New(nil)
-	m.IdleTimeout = 60 * time.Millisecond
+	// Two numbers matter here and they pull apart. The total work must outlast
+	// the timeout, or the test would pass against the fixed deadline this
+	// watchdog replaced; each individual gap must stay far below it, or the
+	// scheduler decides the outcome. Windows ticks at ~15.6ms and the race
+	// detector widens every wakeup, so the original 20ms gap under a 60ms
+	// timeout left barely 3x of headroom and cancelled on CI at the first
+	// iteration. 10ms gaps under a 200ms timeout keep 20x of headroom while
+	// 60 of them still run three times the timeout end to end.
+	m.IdleTimeout = 200 * time.Millisecond
 
 	ctx, progress, cancel, _ := m.StreamOperation(context.Background())
 	defer cancel()
 
-	// Four times the idle timeout of steady progress.
-	for i := 0; i < 12; i++ {
-		time.Sleep(20 * time.Millisecond)
+	// Three times the idle timeout of steady progress.
+	for i := 0; i < 60; i++ {
+		time.Sleep(10 * time.Millisecond)
 		progress()
 		if err := ctx.Err(); err != nil {
 			t.Fatalf("cancelled after %d progress reports, none more than the idle timeout apart: %v", i+1, err)

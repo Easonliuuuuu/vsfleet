@@ -119,6 +119,31 @@ func TestNewVMCopiesGuestPartitions(t *testing.T) {
 	}
 }
 
+// The mapping back to virtual disks is what lets a sizing tool tie consumed
+// space to the disk it has to provision. Tools reports it only on vSphere 7.0
+// and later, so a partition without one is an older estate, not a filesystem
+// with no disk behind it — and a spanned volume names every disk it crosses.
+func TestNewVMCopiesGuestPartitionDiskKeys(t *testing.T) {
+	m := &mo.VirtualMachine{
+		Guest: &types.GuestInfo{
+			ToolsRunningStatus: "guestToolsRunning",
+			Disk: []types.GuestDiskInfo{
+				{DiskPath: "/", Capacity: 8 << 30, Mappings: []types.GuestInfoVirtualDiskMapping{{Key: 2000}}},
+				// Out of order, so repeated exports stay byte-identical.
+				{DiskPath: "/data", Capacity: 4 << 30, Mappings: []types.GuestInfoVirtualDiskMapping{{Key: 2003}, {Key: 2001}}},
+				{DiskPath: "/legacy", Capacity: 1 << 30},
+			},
+		},
+	}
+	vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, m)
+	want := [][]int32{{2000}, {2001, 2003}, nil}
+	for i, part := range vm.Partitions {
+		if !reflect.DeepEqual(part.DiskKeys, want[i]) {
+			t.Errorf("%s disk keys = %v, want %v", part.Path, part.DiskKeys, want[i])
+		}
+	}
+}
+
 // A guest without running Tools reports nothing. That must stay nil rather
 // than becoming a zero-capacity partition, which would read downstream as a
 // full disk rather than as an unanswered one.

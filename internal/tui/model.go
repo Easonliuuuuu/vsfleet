@@ -459,6 +459,10 @@ type Options struct {
 	Out io.Writer
 	// Assessment is the optional persistent historical service.
 	Assessment *assessment.Service
+	// Demo marks the interface as showing synthetic sample data rather than
+	// a real estate. It only labels the header: the fixtures come from the
+	// backend, so this claims nothing the caller has not already arranged.
+	Demo bool
 }
 
 // Snapshot is what is worth remembering about the interface between runs:
@@ -582,6 +586,9 @@ type Model struct {
 	credCoord  *PromptCoordinator
 	credPrompt *credPromptState
 
+	// demo labels the header as sample data; see Options.Demo.
+	demo bool
+
 	width, height int
 	message       string
 	messageBad    bool
@@ -618,6 +625,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		refreshInterval: refreshInterval(opts.RefreshInterval),
 		credCoord:       opts.Credentials,
 		assessment:      opts.Assessment,
+		demo:            opts.Demo,
 	}
 	for i, cc := range contexts {
 		st := newContextState(cc)

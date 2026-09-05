@@ -14,14 +14,17 @@ import (
 // Layout constants. The interface is built for an 80x24 terminal on a jump
 // host and grows from there; nothing below assumes more.
 const (
-	cellGap         = 2
-	glyphGutter     = 2 // status glyph plus its separating space
-	minNameWidth    = 16
-	chromeHeight    = 4 // header, tab bar or rule, message, key line
-	tableChrome     = 2 // the browse rule and its column headings
-	searchChrome    = 1 // headings only: the search screen's rule is the one under the header
-	minTermWidth    = 40
-	minTermHeight   = 10
+	cellGap       = 2
+	glyphGutter   = 2 // status glyph plus its separating space
+	minNameWidth  = 16
+	chromeHeight  = 4 // header, tab bar or rule, message, key line
+	tableChrome   = 2 // the browse rule and its column headings
+	searchChrome  = 1 // headings only: the search screen's rule is the one under the header
+	minTermWidth  = 40
+	minTermHeight = 10
+	// demoBadge marks synthetic data in the header. It stays short so the
+	// scope and connection summary beside it survive a narrow terminal.
+	demoBadge       = "DEMO · SAMPLE DATA"
 	labelColumnPad  = 20
 	tabGap          = 3
 	tabGapTight     = 2
@@ -140,7 +143,14 @@ func (m *Model) viewHeader() string {
 	if m.pendingScope() {
 		summary += " · " + m.spin.View() + "loading"
 	}
-	left := t.title.Render("vsfleet") + "  " + scope + t.dim.Render("  ·  "+summary)
+	left := t.title.Render("vsfleet")
+	// The badge rides on the header rather than a line of its own so that
+	// every browse screen — and every screenshot taken of one — says plainly
+	// that this estate is invented.
+	if m.demo {
+		left += "  " + t.warn.Render(demoBadge)
+	}
+	left += "  " + scope + t.dim.Render("  ·  "+summary)
 	// The sort order describes the table, so it is only claimed on the screen
 	// that has one.
 	right := ""

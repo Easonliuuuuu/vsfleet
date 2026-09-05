@@ -39,6 +39,24 @@ cd vsfleet
 go build -o vsfleet ./cmd/vsfleet
 ```
 
+## Look around first
+
+Before configuring anything, open the interface on sample data:
+
+```sh
+vsfleet demo
+```
+
+The demo is a synthetic three-vCenter estate: two healthy sites reached by
+different routes, and one disaster-recovery site whose proxy refuses the
+connection. It reads no configuration file, opens no keyring, resolves no
+credentials, dials nothing, and writes nothing back — so it does not remember
+the last screen the way a real run does. Every screen is marked
+`DEMO · SAMPLE DATA`.
+
+Historical assessments are unavailable in the demo: there is no captured run
+behind the sample data to compare against.
+
 ## First context
 
 If no contexts exist, running `vsfleet` opens the setup wizard:

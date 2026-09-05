@@ -28,9 +28,9 @@ vsfleet assessment run --all-contexts --label q3-audit
 vsfleet assessment export --format rvtools --file estate.xlsx
 ```
 
-Eleven RVTools tabs are rendered using RVTools' own column names: `vInfo`,
+Twelve RVTools tabs are rendered using RVTools' own column names: `vInfo`,
 `vCPU`, `vMemory`, `vDisk`, `vPartition`, `vNetwork`, `vTools`, `vHost`,
-`vCluster`, `vDatastore` and `vSnapshot`. RVTools itself ships roughly thirty,
+`vCluster`, `vDatastore`, `vSnapshot` and `vHealth`. RVTools itself ships roughly thirty,
 so this is a **compatible** export rather than a replacement — see
 [Assessments](assessments.md) for the full tab reference and the
 `vsfleetCoverage` sheet.

@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/report"
 	"github.com/easonliuuuuu/vsfleet/internal/version"
 )
@@ -84,14 +85,15 @@ func newAssessmentExportCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		healthReport := health.Evaluate(data, health.Options{Thresholds: health.DefaultThresholds()})
 		for _, warning := range exportWarnings(data) {
 			fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, warning)
 		}
 		var receipt exportReceipt
 		if format == "csv" {
-			receipt, err = publishRVToolsCSV(data, file, force)
+			receipt, err = publishRVToolsCSV(data, healthReport, file, force)
 		} else {
-			receipt, err = publishRVToolsXLSX(data, file, force)
+			receipt, err = publishRVToolsXLSX(data, healthReport, file, force)
 		}
 		if err != nil {
 			return err
@@ -120,7 +122,7 @@ func newAssessmentExportCommand(a *App) *cobra.Command {
 // a sibling temp file first, then published atomically (a rename with
 // --force, otherwise a no-clobber hard link) so a failed export never leaves
 // a half-written workbook.
-func publishRVToolsXLSX(data assessment.ExportData, file string, force bool) (exportReceipt, error) {
+func publishRVToolsXLSX(data assessment.ExportData, healthReport health.Report, file string, force bool) (exportReceipt, error) {
 	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
 		return exportReceipt{}, fmt.Errorf("create export directory: %w", err)
 	}
@@ -139,7 +141,7 @@ func publishRVToolsXLSX(data assessment.ExportData, file string, force bool) (ex
 		_ = tmp.Close()
 		return exportReceipt{}, err
 	}
-	if err := report.WriteRVTools(tmp, data); err != nil {
+	if err := report.WriteRVTools(tmp, data, healthReport); err != nil {
 		_ = tmp.Close()
 		return exportReceipt{}, fmt.Errorf("write RVTools export: %w", err)
 	}
@@ -165,8 +167,8 @@ func publishRVToolsXLSX(data assessment.ExportData, file string, force bool) (ex
 // error leaves the destination untouched; each tab is then published with
 // the same atomic-publish, no-clobber-without-force behavior as the XLSX
 // writer.
-func publishRVToolsCSV(data assessment.ExportData, dir string, force bool) (exportReceipt, error) {
-	files, err := report.RVToolsCSV(data)
+func publishRVToolsCSV(data assessment.ExportData, healthReport health.Report, dir string, force bool) (exportReceipt, error) {
+	files, err := report.RVToolsCSV(data, healthReport)
 	if err != nil {
 		return exportReceipt{}, fmt.Errorf("render CSV export: %w", err)
 	}

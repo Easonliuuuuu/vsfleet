@@ -4,18 +4,24 @@ import (
 	"bytes"
 	"encoding/csv"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/xuri/excelize/v2"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // rvtoolsTabOrder is the tab order both WriteRVTools and RVToolsCSV must
 // produce.
-var rvtoolsTabOrder = []string{"vInfo", "vCPU", "vMemory", "vDisk", "vPartition", "vNetwork", "vTools", "vHost", "vCluster", "vDatastore", "vSnapshot", "vsfleetCoverage"}
+var rvtoolsTabOrder = []string{"vInfo", "vCPU", "vMemory", "vDisk", "vPartition", "vNetwork", "vTools", "vHost", "vCluster", "vDatastore", "vSnapshot", "vHealth", "vsfleetCoverage"}
+
+func healthReport(data assessment.ExportData) health.Report {
+	return health.Evaluate(data, health.Options{Thresholds: health.DefaultThresholds()})
+}
 
 // sampleExportData builds one persisted run with a VM, its disk, NIC,
 // guest partition, and snapshot, plus a host and datastore resource observation. Shared by the
@@ -37,10 +43,10 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	data := sampleExportData(when)
 	var first, second bytes.Buffer
-	if err := WriteRVTools(&first, data); err != nil {
+	if err := WriteRVTools(&first, data, healthReport(data)); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteRVTools(&second, data); err != nil {
+	if err := WriteRVTools(&second, data, healthReport(data)); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(first.Bytes(), second.Bytes()) {
@@ -96,17 +102,20 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	if got, _ := f.GetCellValue("vsfleetCoverage", "J2"); got != "vInfo" {
 		t.Fatalf("coverage sheet=%q", got)
 	}
+	if got, _ := f.GetCellValue("vHealth", "A1"); got != "Name" {
+		t.Fatalf("vHealth header=%q", got)
+	}
 }
 
 func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	data := sampleExportData(when)
 
-	first, err := RVToolsCSV(data)
+	first, err := RVToolsCSV(data, healthReport(data))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := RVToolsCSV(data)
+	second, err := RVToolsCSV(data, healthReport(data))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +184,7 @@ func TestWriteRVToolsMarksDeviceTabsNotRecordedForOldRuns(t *testing.T) {
 		VMs:      []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: vsphere.VM{ID: "vm-1", Name: "app", Disks: []vsphere.VMDisk{{Key: 1}}, NICs: []vsphere.VMNIC{{Key: 2}}}}}},
 	}
 	var output bytes.Buffer
-	if err := WriteRVTools(&output, data); err != nil {
+	if err := WriteRVTools(&output, data, healthReport(data)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
@@ -222,7 +231,7 @@ func TestWriteRVToolsMarksToolsVersionGapForSchemaTwoRuns(t *testing.T) {
 		VMs:      []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: vsphere.VM{ID: "vm-1", Name: "app", ToolsState: "guestToolsRunning", Disks: []vsphere.VMDisk{{Key: 1}}, NICs: []vsphere.VMNIC{{Key: 2}}}}}},
 	}
 	var output bytes.Buffer
-	if err := WriteRVTools(&output, data); err != nil {
+	if err := WriteRVTools(&output, data, healthReport(data)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
@@ -282,7 +291,7 @@ func TestWriteRVToolsDeviceCoverageMirrorsVMCollectionStatus(t *testing.T) {
 				VMs:      tc.vms,
 			}
 			var output bytes.Buffer
-			if err := WriteRVTools(&output, data); err != nil {
+			if err := WriteRVTools(&output, data, healthReport(data)); err != nil {
 				t.Fatal(err)
 			}
 			f, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
@@ -329,7 +338,7 @@ func TestWriteRVToolsRendersGuestPartitions(t *testing.T) {
 		partitionVM("app", vsphere.VMPartition{Path: "/", DiskKeys: []int32{2000}, CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}),
 	})
 	var out bytes.Buffer
-	if err := WriteRVTools(&out, data); err != nil {
+	if err := WriteRVTools(&out, data, healthReport(data)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
@@ -359,7 +368,7 @@ func TestWriteRVToolsRendersPartitionDiskKeys(t *testing.T) {
 		partitionVM("unmapped", vsphere.VMPartition{Path: "/", CapacityBytes: 1 << 30}),
 	})
 	var out bytes.Buffer
-	if err := WriteRVTools(&out, data); err != nil {
+	if err := WriteRVTools(&out, data, healthReport(data)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
@@ -388,7 +397,7 @@ func TestWriteRVToolsHandlesUnsizedPartitions(t *testing.T) {
 		partitionVM("web", vsphere.VMPartition{Path: "C:\\", CapacityBytes: 1 << 30, FreeBytes: 2 << 30}),
 	})
 	var out bytes.Buffer
-	if err := WriteRVTools(&out, data); err != nil {
+	if err := WriteRVTools(&out, data, healthReport(data)); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
@@ -438,7 +447,8 @@ func TestWriteRVToolsReportsPartialGuestPartitionCoverage(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			if err := WriteRVTools(&out, partitionRun(tc.schema, tc.vms)); err != nil {
+			data := partitionRun(tc.schema, tc.vms)
+			if err := WriteRVTools(&out, data, healthReport(data)); err != nil {
 				t.Fatal(err)
 			}
 			f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
@@ -455,6 +465,45 @@ func TestWriteRVToolsReportsPartialGuestPartitionCoverage(t *testing.T) {
 			}
 			if got, _ := f.GetCellValue("vsfleetCoverage", "M6"); got != tc.detail {
 				t.Errorf("detail=%q, want %q", got, tc.detail)
+			}
+		})
+	}
+}
+
+func TestWriteRVToolsHealthCoverageStates(t *testing.T) {
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	base := sampleExportData(when)
+	for _, tc := range []struct {
+		name, schema, vmStatus, wantStatus, wantMessage string
+	}{
+		{name: "success with thresholds", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "success", wantStatus: "success", wantMessage: "max-snapshot-age=30d"},
+		{name: "schema gated", schema: "3", vmStatus: "success", wantStatus: "partial", wantMessage: "guest-disk-space-low"},
+		{name: "VM collection failure", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "failed", wantStatus: "failed", wantMessage: "permission denied"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := base
+			data.Run.InventorySchemaVersion = tc.schema
+			data.Contexts = append([]assessment.ContextRun(nil), base.Contexts...)
+			data.Contexts[0].VMStatus = tc.vmStatus
+			data.Contexts[0].Error = "permission denied"
+			var output bytes.Buffer
+			report := healthReport(data)
+			if err := WriteRVTools(&output, data, report); err != nil {
+				t.Fatal(err)
+			}
+			f, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			if got, _ := f.GetCellValue("vsfleetCoverage", "J13"); got != "vHealth" {
+				t.Fatalf("health coverage sheet=%q", got)
+			}
+			if got, _ := f.GetCellValue("vsfleetCoverage", "K13"); got != tc.wantStatus {
+				t.Fatalf("health coverage status=%q, want %q", got, tc.wantStatus)
+			}
+			if got, _ := f.GetCellValue("vsfleetCoverage", "M13"); !strings.Contains(got, tc.wantMessage) {
+				t.Fatalf("health coverage message=%q, want substring %q", got, tc.wantMessage)
 			}
 		})
 	}

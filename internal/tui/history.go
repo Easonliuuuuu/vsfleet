@@ -14,6 +14,7 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 )
 
@@ -24,12 +25,19 @@ func (m *Model) enterChanges() tea.Cmd {
 	m.filtering = false
 	m.filter.Blur()
 	m.changeCursor, m.changeOffset = 0, 0
+	m.historyHealth = nil
+	m.historyHealthErr = nil
 	if m.assessment == nil {
 		m.historyErr = fmt.Errorf("historical assessments are unavailable")
+		m.historyHealthErr = fmt.Errorf("historical assessments are unavailable")
 		return nil
 	}
 	m.historyErr = nil
-	return tea.Batch(loadHistoryRunsCmd(m.ctx, m.assessment), loadHistoryTrendsCmd(m.ctx, m.assessment))
+	return tea.Batch(
+		loadHistoryRunsCmd(m.ctx, m.assessment),
+		loadHistoryTrendsCmd(m.ctx, m.assessment),
+		loadHistoryHealthCmd(m.ctx, m.assessment, 0, health.Options{Thresholds: health.DefaultThresholds()}),
+	)
 }
 
 func (m *Model) loadDefaultHistoryDiff() {
@@ -90,7 +98,7 @@ type historyRow struct{ label, context, change, detail, kind string }
 
 func (m *Model) viewChangesHeader() string {
 	t := m.theme
-	labels := []string{"Changes", "Trends", "Runs"}
+	labels := []string{"Changes", "Trends", "Runs", "Health"}
 	pane := m.historyPane
 	if pane < 0 || pane >= len(labels) {
 		pane = historyPaneChanges
@@ -269,10 +277,10 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	if m.historyPane != historyPaneChanges {
 		switch {
 		case key.Matches(msg, m.keys.PrevPane):
-			m.historyPane = (m.historyPane + 2) % 3
+			m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
 			return nil
 		case key.Matches(msg, m.keys.NextPane):
-			m.historyPane = (m.historyPane + 1) % 3
+			m.historyPane = (m.historyPane + 1) % historyPaneCount
 			return nil
 		case key.Matches(msg, m.keys.Capture):
 			// Capture is the hub's primary action, so it answers from every
@@ -310,7 +318,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	rows := m.changeRows()
 	switch {
 	case key.Matches(msg, m.keys.PrevPane):
-		m.historyPane = historyPaneRuns
+		m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
 		return nil
 	case key.Matches(msg, m.keys.NextPane):
 		m.historyPane = historyPaneTrends
@@ -558,6 +566,9 @@ func (m *Model) viewHistoryRuns() []string {
 }
 
 func (m *Model) viewChanges() []string {
+	if m.historyPane == historyPaneHealth {
+		return m.viewHistoryHealth()
+	}
 	if m.historyPane == historyPaneTrends {
 		return m.viewHistoryTrends()
 	}
@@ -608,6 +619,41 @@ func (m *Model) viewChanges() []string {
 		return append(lines, joinSideBySide(t, list, inspector, splitW, rightW, avail)...)
 	}
 	return append(lines, m.renderChangeList(rows, m.width, avail)...)
+}
+
+func (m *Model) viewHistoryHealth() []string {
+	t := m.theme
+	lines := []string{t.title.Render("Health"), "", t.dim.Render("  read-only findings from the latest stored assessment")}
+	if m.historyHealthErr != nil {
+		return append(lines, "  "+t.warn.Render(m.historyHealthErr.Error()))
+	}
+	if m.historyHealth == nil {
+		return append(lines, t.dim.Render("  loading health findings…"))
+	}
+	r := m.historyHealth
+	lines = append(lines, fmt.Sprintf("  assessment %-5s  %d finding(s) · %d info · %d warning · %d critical", historyRunLabel(r.RunID), r.Counts.Total, r.Counts.Info, r.Counts.Warning, r.Counts.Critical), "")
+	if len(r.Findings) == 0 {
+		lines = append(lines, t.ok.Render("  no findings"))
+	} else {
+		lines = append(lines, t.header.Render("  SEVERITY   RULE                         OBJECT                         MESSAGE"))
+		for _, finding := range r.Findings {
+			object := finding.Object.Kind + "/" + finding.Object.Name
+			line := fmt.Sprintf("  %-10s %-28s %-30s %s", finding.Severity, finding.Rule, object, finding.Message)
+			style := t.warn
+			if finding.Severity == health.SeverityCritical {
+				style = t.bad
+			} else if finding.Severity == health.SeverityInfo {
+				style = t.dim
+			}
+			lines = append(lines, style.Render(truncate(line, m.width)))
+		}
+	}
+	for _, rule := range r.Rules {
+		if rule.Status == "not-evaluated" {
+			lines = append(lines, t.dim.Render("  not evaluated: "+rule.Rule+" — "+rule.Reason))
+		}
+	}
+	return scrollLines(lines, 0, m.bodyHeight())
 }
 
 // changesListHeight is how many rows renderChangeList can draw — its own

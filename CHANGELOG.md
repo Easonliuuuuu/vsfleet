@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.5.0...v0.6.0) (2026-09-05)
+
+
+### Features
+
+* **health:** add persisted assessment health findings ([48df5c3](https://github.com/Easonliuuuuu/vsfleet/commit/48df5c354bca3159b7faf7e06f4cbe8b03b51519))
+
+
+### Bug Fixes
+
+* **health:** satisfy staticcheck partition sorting ([3986e71](https://github.com/Easonliuuuuu/vsfleet/commit/3986e71b555e38ddfde3fa22a67ea296e26c521b))
+
 ## [0.5.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.4.0...v0.5.0) (2026-09-05)
 
 

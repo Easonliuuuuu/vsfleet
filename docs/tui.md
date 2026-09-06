@@ -32,6 +32,7 @@ with several opens a short list to choose from.
 | Where the cursor is | What `Enter` offers |
 |---|---|
 | A VM's or host's own header | SSH, open in the vSphere/Host Client, copy the managed object reference |
+| A VM with an IP address | Add it as a vCenter context, or switch to its existing context |
 | A VM's IP address | SSH to it, copy an `ssh user@ip` command, copy the value |
 | A host, datastore, network, or cluster's own header | "Show VMs on this …" — narrows the VM table to exactly what belongs to it |
 | A VM's Host or Cluster field | Jump straight to that host's or cluster's own row |
@@ -57,7 +58,11 @@ contexts, `n`/`e`/`x` to add/edit/remove, `d` to diagnose, and `Esc` to return.
 
 Press `Enter` on a vApp to open its summary and expanded member hierarchy. Use
 the arrow keys to select nested vApps, VMs, and resource pools; `Enter` opens a
-VM detail inspector and `Esc` returns to the previous level.
+VM detail inspector and `Esc` returns to the previous level. A VM's header has
+the same SSH and copy actions as a regular VM, plus an action to seed a new
+vCenter context from its IP. The parent context's route is copied, and the
+saved context records the VM's managed object reference; once saved, the
+member row is annotated with the context name.
 
 ## History workspace
 

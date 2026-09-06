@@ -1591,6 +1591,33 @@ func (m *Model) selectByName(name string) {
 	}
 }
 
+// uniqueContextName returns a keyring-safe context name not already present in
+// the model's live context list. The object-name charset belongs to config;
+// this layer only handles collisions in the state it currently displays.
+func (m *Model) uniqueContextName(base string) string {
+	base = config.SlugName(base)
+	if base == "" {
+		base = "nested"
+	}
+	used := func(name string) bool {
+		for _, st := range m.states {
+			if st.cc.Name == name {
+				return true
+			}
+		}
+		return false
+	}
+	if !used(base) {
+		return base
+	}
+	for n := 2; ; n++ {
+		candidate := fmt.Sprintf("%s-%d", base, n)
+		if !used(candidate) {
+			return candidate
+		}
+	}
+}
+
 func (m *Model) busy() bool {
 	// A capture keeps the spinner running as surely as a load does. It sets
 	// contextState.capturing rather than loading, so without naming it here

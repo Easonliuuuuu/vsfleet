@@ -260,6 +260,99 @@ func TestProxiedContextDisablesBrowserActionsButNotSSH(t *testing.T) {
 	}
 }
 
+func TestVMHeaderOffersAddingItAsAContext(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+
+	if _, ok := findAction(m.actionsFor(r, 0), `Add "app-01" as a vCenter context`); !ok {
+		t.Fatalf("VM header did not offer context promotion: %+v", m.actionsFor(r, 0))
+	}
+}
+
+func TestAddAsContextIsDisabledWithoutAnAddress(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	r := findRow(t, m, vsphere.KindVM, "build-runner-3")
+	a, ok := findAction(m.actionsFor(r, 0), `Add "build-runner-3" as a vCenter context`)
+	if !ok {
+		t.Fatalf("VM without an address did not offer the disabled action: %+v", m.actionsFor(r, 0))
+	}
+	if a.disabled != "no address available" {
+		t.Errorf("disabled reason is %q, want no address available", a.disabled)
+	}
+}
+
+func TestAddAsContextSlugDeduplicatesAgainstExistingNames(t *testing.T) {
+	b := twoHealthy()
+	b.contexts = append(b.contexts, ctx("app-01", "https://vcsa.app-01.internal"))
+	m := newTestModel(t, b, Options{Current: "prod"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+
+	if _, ok := findAction(m.actionsFor(r, 0), `Add "app-01-2" as a vCenter context`); !ok {
+		t.Fatalf("context slug did not avoid the existing name: %+v", m.actionsFor(r, 0))
+	}
+}
+
+func TestAddAsContextSeedsTheFormFromTheVM(t *testing.T) {
+	b := twoHealthy()
+	b.contexts[1].Transport = config.TransportConfig{Type: config.TransportSOCKS5, Address: "127.0.0.1:1080", RemoteDNS: true}
+	m := newTestModel(t, b, Options{Current: "prod"})
+	press(t, m, "7", "enter", "enter")
+
+	a, ok := findAction(m.actionsFor(*m.vappVM, 0), `Add "app-01" as a vCenter context`)
+	if !ok {
+		t.Fatalf("member VM did not offer context promotion: %+v", m.actionsFor(*m.vappVM, 0))
+	}
+	a.run(m)
+	settleForm(m)
+	if m.form == nil {
+		t.Fatal("context promotion did not open the form")
+	}
+	if m.form.endpoint.Value() != "https://10.20.0.11" || m.form.username.Value() != "" {
+		t.Errorf("form was not seeded with endpoint/blank username: endpoint=%q username=%q", m.form.endpoint.Value(), m.form.username.Value())
+	}
+	if m.form.tlsIdx != 1 || m.form.thumbprint.Value() != "" {
+		t.Errorf("seeded form trust policy is tls=%d thumbprint=%q", m.form.tlsIdx, m.form.thumbprint.Value())
+	}
+	if m.form.transportIdx != 1 || m.form.proxyAddr.Value() != "127.0.0.1:1080" || !m.form.remoteDNS {
+		t.Errorf("parent route was not seeded: form=%+v", m.form)
+	}
+	if m.form.via != "prod" || m.form.viaMoRef != "prod-vm-1" || m.returnTo != modeVAppVMDetail {
+		t.Errorf("seeded provenance/return state is via=%q moref=%q return=%v", m.form.via, m.form.viaMoRef, m.returnTo)
+	}
+	if m.form.cursor != 3 {
+		t.Errorf("seeded form cursor is %d, want Username row 3", m.form.cursor)
+	}
+}
+
+func TestAddAsContextSwitchesToItsExistingContext(t *testing.T) {
+	b := twoHealthy()
+	nested := ctx("nested-app", "https://10.20.0.11")
+	nested.Via, nested.ViaMoRef = "prod", "prod-vm-1"
+	b.contexts = append(b.contexts, nested)
+	m := newTestModel(t, b, Options{Current: "prod"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	a, ok := findAction(m.actionsFor(r, 0), `Switch to context "nested-app"`)
+	if !ok {
+		t.Fatalf("existing nested context was not recognized: %+v", m.actionsFor(r, 0))
+	}
+	a.run(m)
+	if m.mode != modeBrowse || m.current() == nil || m.current().cc.Name != "nested-app" || m.allScope {
+		t.Fatalf("switch action did not select the nested context: mode=%v current=%v all=%v", m.mode, m.current(), m.allScope)
+	}
+}
+
+func TestAddAsContextRemainsEnabledInDemo(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Demo: true})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	a, ok := findAction(m.actionsFor(r, 0), `Add "app-01" as a vCenter context`)
+	if !ok {
+		t.Fatalf("demo VM did not offer context promotion: %+v", m.actionsFor(r, 0))
+	}
+	if a.disabled != "" {
+		t.Fatalf("context promotion should remain enabled in demo, got disabled=%q", a.disabled)
+	}
+}
+
 // TestActionPopupFitsTerminalWidth guards the popup the way
 // TestDetailViewNeverExceedsWidth already guards the rest of the interface:
 // a long label plus a long URL must truncate rather than wrap the frame.

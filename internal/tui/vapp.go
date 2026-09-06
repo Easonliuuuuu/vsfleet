@@ -23,22 +23,23 @@ type vappWorkspace struct {
 }
 
 type vappMember struct {
-	key      string
-	context  string
-	id       string
-	name     string
-	kind     vsphere.Kind
-	depth    int
-	state    string
-	cpu      string
-	memory   string
-	host     string
-	glyph    string
-	status   rowStatus
-	openable bool
-	missing  bool
-	cycle    bool
-	vm       *vsphere.VM
+	key       string
+	context   string
+	id        string
+	name      string
+	kind      vsphere.Kind
+	depth     int
+	state     string
+	cpu       string
+	memory    string
+	host      string
+	glyph     string
+	status    rowStatus
+	openable  bool
+	asContext string
+	missing   bool
+	cycle     bool
+	vm        *vsphere.VM
 }
 
 type vappChild struct {
@@ -102,7 +103,20 @@ func (m *Model) vappMembers(root *vsphere.VApp, inv *vsphere.Inventory) []vappMe
 	if root == nil || inv == nil {
 		return nil
 	}
-	return m.vappMembersFrom(root, inv, 0, map[string]bool{vappKey(root.Context, root.ID): true})
+	members := m.vappMembersFrom(root, inv, 0, map[string]bool{vappKey(root.Context, root.ID): true})
+	for i := range members {
+		if members[i].kind != vsphere.KindVM {
+			continue
+		}
+		address := ""
+		if members[i].vm != nil {
+			address = members[i].vm.IPAddress
+		}
+		if nested := m.nestedContextFor(members[i].context, members[i].id, address); nested != nil {
+			members[i].asContext = nested.cc.Name
+		}
+	}
+	return members
 }
 
 func (m *Model) vappMembersFrom(v *vsphere.VApp, inv *vsphere.Inventory, depth int, path map[string]bool) []vappMember {
@@ -399,6 +413,9 @@ func (m *Model) viewVAppDetail() []string {
 
 func (m *Model) renderVAppMember(member vappMember, cols []column, widths []int, selected bool) string {
 	name := strings.Repeat("  ", member.depth) + member.name
+	if member.asContext != "" {
+		name += "  → " + member.asContext
+	}
 	kind := "VM"
 	switch member.kind {
 	case vsphere.KindVApp:

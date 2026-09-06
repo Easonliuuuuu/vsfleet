@@ -145,6 +145,47 @@ func newContextForm(edit *contextState) *contextForm {
 	return f
 }
 
+// contextSeed is the connection information inherited when a VM is promoted
+// to a context. The parent route is copied so a nested vCenter reached through
+// a proxy starts with the same path back to the estate.
+type contextSeed struct {
+	name, endpoint string
+	transport      config.TransportConfig
+	via, viaMoRef  string
+}
+
+// newSeededContextForm opens the ordinary new-context form with the values a
+// VM can already prove. A nested VCSA is normally self-signed, so thumbprint
+// mode is selected with a blank fingerprint: system trust would fail and
+// insecure would hide the trust decision. Discover is the honest next step;
+// formDiscover deliberately does not call validate, while Test and Save do.
+func newSeededContextForm(seed contextSeed) *contextForm {
+	f := newContextForm(nil)
+	f.name.SetValue(seed.name)
+	f.endpoint.SetValue(seed.endpoint)
+	f.transportIdx = 0
+	switch seed.transport.Type {
+	case config.TransportSOCKS5:
+		f.transportIdx = 1
+	case config.TransportHTTPProxy:
+		f.transportIdx = 2
+	case config.TransportHTTPSProxy:
+		f.transportIdx = 3
+	}
+	if f.transportIdx != 0 {
+		f.proxyAddr.SetValue(seed.transport.Address)
+		f.proxyUser.SetValue(seed.transport.Username)
+		f.remoteDNS = seed.transport.RemoteDNS
+	}
+	f.tlsIdx = 1
+	f.thumbprint.SetValue("")
+	f.via, f.viaMoRef = seed.via, seed.viaMoRef
+	// Name, endpoint and provenance are seeded. Username is the only blank
+	// required field, so put the cursor there for the next honest input.
+	f.cursor = 3
+	return f
+}
+
 // rows lays the form out. It is rebuilt on every keystroke rather than cached,
 // because which rows exist depends on the current values of others — the
 // SOCKS5 fields only make sense once socks5 is chosen, the thumbprint only
@@ -308,12 +349,22 @@ func (f *contextForm) validate() string {
 	}
 }
 
-// enterForm opens the add/edit form. edit is nil for a new context.
-func (m *Model) enterForm(edit *contextState) tea.Cmd {
-	m.form = newContextForm(edit)
+// showForm opens the supplied add/edit form. Keeping the mode, focus and
+// cursor setup here means ordinary and VM-seeded forms behave identically.
+func (m *Model) showForm(f *contextForm) tea.Cmd {
+	m.form = f
 	m.mode = modeForm
 	m.form.syncFocus()
 	return textinput.Blink
+}
+
+// enterForm opens the add/edit form. edit is nil for a new context.
+func (m *Model) enterForm(edit *contextState) tea.Cmd {
+	return m.showForm(newContextForm(edit))
+}
+
+func (m *Model) enterFormSeeded(seed contextSeed) tea.Cmd {
+	return m.showForm(newSeededContextForm(seed))
 }
 
 func (m *Model) formTest() tea.Cmd {

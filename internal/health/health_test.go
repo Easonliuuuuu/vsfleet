@@ -3,6 +3,7 @@ package health
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -60,6 +61,24 @@ func TestEvaluateInitialRules(t *testing.T) {
 	}
 }
 
+func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
+	want := []string{
+		"cdrom-connected", "datastore-inaccessible", "datastore-space-low",
+		"guest-disk-space-low", "host-disconnected", "host-in-maintenance",
+		"snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated",
+		"usb-connected",
+	}
+	rules := Rules()
+	if len(rules) != len(want) {
+		t.Fatalf("rule count=%d, want %d", len(rules), len(want))
+	}
+	for i, rule := range rules {
+		if rule.ID != want[i] {
+			t.Errorf("rule %d=%q, want %q", i, rule.ID, want[i])
+		}
+	}
+}
+
 func TestEvaluateThresholdBoundaries(t *testing.T) {
 	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	data := healthFixture("5", finish)
@@ -107,9 +126,78 @@ func TestEvaluateSchemaGatesVersionAndPartitionRules(t *testing.T) {
 	for _, status := range report.Rules {
 		statuses[status.Rule] = status.Status
 	}
-	for _, id := range []string{"guest-disk-space-low", "tools-not-installed", "tools-outdated"} {
+	for _, id := range []string{"cdrom-connected", "usb-connected", "guest-disk-space-low", "tools-not-installed", "tools-outdated"} {
 		if statuses[id] != "not-evaluated" {
 			t.Errorf("%s status=%q, want not-evaluated", id, statuses[id])
+		}
+	}
+}
+
+func TestEvaluateConnectedDeviceRulesOnlyReportConnectedDevices(t *testing.T) {
+	cdConnected, cdDisconnected := true, false
+	usbConnected, usbDisconnected := true, false
+	data := assessment.ExportData{
+		Run:      assessment.Run{ID: 43, InventorySchemaVersion: "6"},
+		Contexts: []assessment.ContextRun{{Name: "prod", Datacenter: "dc-a"}},
+		VMs: []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: vsphere.VM{
+			Location: vsphere.Location{Datacenter: "dc-a"}, ID: "vm-1", Name: "app",
+			CDROMs: []vsphere.VMCDROM{
+				{Key: 102, Label: "CD/DVD drive 2", Connected: &cdDisconnected},
+				{Key: 101, Label: "CD/DVD drive 1", Connected: &cdConnected, BackingType: "iso", BackingPath: "[ds] app/install.iso"},
+			},
+			USBs: []vsphere.VMUSB{
+				{Key: 202, Label: "USB device 2", Connected: &usbDisconnected},
+				{Key: 201, Label: "USB device 1", Connected: &usbConnected, BackingType: "remoteHost", BackingHost: "esx-1"},
+			},
+		}}}},
+	}
+	report := Evaluate(data, Options{})
+	var findings []Finding
+	for _, finding := range report.Findings {
+		if finding.Rule == "cdrom-connected" || finding.Rule == "usb-connected" {
+			findings = append(findings, finding)
+		}
+	}
+	if len(findings) != 2 {
+		t.Fatalf("connected-device findings = %d, want 2: %+v", len(findings), findings)
+	}
+	if findings[0].Rule != "cdrom-connected" || !strings.Contains(findings[0].Message, "install.iso") {
+		t.Errorf("CD-ROM finding = %+v", findings[0])
+	}
+	if findings[1].Rule != "usb-connected" || !strings.Contains(findings[1].Message, "esx-1") {
+		t.Errorf("USB finding = %+v", findings[1])
+	}
+	for _, finding := range findings {
+		if finding.Severity != SeverityWarning || finding.Object.ID != "vm-1" {
+			t.Errorf("finding metadata = %+v", finding)
+		}
+	}
+	first := Evaluate(data, Options{})
+	data.VMs[0].Observation.VM.CDROMs[0], data.VMs[0].Observation.VM.CDROMs[1] = data.VMs[0].Observation.VM.CDROMs[1], data.VMs[0].Observation.VM.CDROMs[0]
+	data.VMs[0].Observation.VM.USBs[0], data.VMs[0].Observation.VM.USBs[1] = data.VMs[0].Observation.VM.USBs[1], data.VMs[0].Observation.VM.USBs[0]
+	second := Evaluate(data, Options{})
+	if !reflect.DeepEqual(first, second) {
+		t.Fatalf("connected-device evaluation is not deterministic:\nfirst=%+v\nsecond=%+v", first, second)
+	}
+}
+
+func TestEvaluateConnectedDeviceRulesAreSchemaGated(t *testing.T) {
+	connected := true
+	data := assessment.ExportData{
+		Run: assessment.Run{ID: 44, InventorySchemaVersion: "5"},
+		VMs: []assessment.ExportVM{{Observation: assessment.Observation{VM: vsphere.VM{
+			ID: "vm-1", Name: "app", CDROMs: []vsphere.VMCDROM{{Connected: &connected}}, USBs: []vsphere.VMUSB{{Connected: &connected}},
+		}}}},
+	}
+	report := Evaluate(data, Options{})
+	for _, status := range report.Rules {
+		if (status.Rule == "cdrom-connected" || status.Rule == "usb-connected") && status.Status != "not-evaluated" {
+			t.Errorf("%s status=%q, want not-evaluated", status.Rule, status.Status)
+		}
+	}
+	for _, finding := range report.Findings {
+		if finding.Rule == "cdrom-connected" || finding.Rule == "usb-connected" {
+			t.Fatalf("schema-gated rule emitted finding: %+v", finding)
 		}
 	}
 }

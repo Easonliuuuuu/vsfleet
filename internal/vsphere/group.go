@@ -32,7 +32,8 @@ type Detail int
 
 const (
 	// DetailSummary retrieves what a listing, a detail pane and a search
-	// result read. VM.Disks, VM.NICs and VM.Snapshots come back empty.
+	// result read. VM.Disks, VM.NICs, VM.CDROMs, VM.USBs and VM.Snapshots come
+	// back empty.
 	DetailSummary Detail = iota
 	// DetailFull additionally retrieves per-VM virtual devices, guest NIC
 	// bindings and snapshot trees. This is what a capture records and what

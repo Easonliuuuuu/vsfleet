@@ -2,6 +2,7 @@ package health
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -10,6 +11,13 @@ import (
 // rules is deliberately a single registry: the CLI, coverage sheet, and
 // evaluator all use the same IDs and ordering.
 var rules = []Rule{
+	{
+		ID: "cdrom-connected", Severity: SeverityWarning, MinSchema: 6,
+		Summary: "a virtual CD-ROM is currently connected", Needs: "VM CD-ROM connection inventory",
+		Eval: func(in Input, emit func(Finding)) {
+			evaluateRule("cdrom-connected", in, Options{Thresholds: in.Thresholds}, emit)
+		},
+	},
 	{
 		ID: "datastore-inaccessible", Severity: SeverityCritical,
 		Summary: "datastore is not accessible", Needs: "datastore inventory",
@@ -113,6 +121,13 @@ var rules = []Rule{
 			evaluateRule("tools-outdated", in, Options{Thresholds: in.Thresholds}, emit)
 		},
 	},
+	{
+		ID: "usb-connected", Severity: SeverityWarning, MinSchema: 6,
+		Summary: "a virtual USB device is currently connected", Needs: "VM USB connection inventory",
+		Eval: func(in Input, emit func(Finding)) {
+			evaluateRule("usb-connected", in, Options{Thresholds: in.Thresholds}, emit)
+		},
+	},
 }
 
 func nonempty(value, fallback string) string {
@@ -120,6 +135,25 @@ func nonempty(value, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func attachedDeviceDetails(kind, path, device, host string) string {
+	parts := make([]string, 0, 2)
+	if kind != "" {
+		parts = append(parts, kind)
+	}
+	if path != "" {
+		parts = append(parts, path)
+	} else if device != "" {
+		parts = append(parts, device)
+	}
+	if host != "" {
+		parts = append(parts, "host "+host)
+	}
+	if len(parts) == 0 {
+		return "backing details unavailable"
+	}
+	return strings.Join(parts, ", ")
 }
 
 // evaluateRule supplies threshold-dependent rule bodies without putting
@@ -164,6 +198,26 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 				}
 				emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: obj,
 					Message: fmt.Sprintf("Guest filesystem %q has %s%% free space (%s of %s)", label, percent(free), humanize.Bytes(partition.FreeBytes), humanize.Bytes(partition.CapacityBytes))})
+			}
+		}
+	case "cdrom-connected":
+		for _, item := range in.Data.VMs {
+			for _, cdrom := range item.Observation.VM.CDROMs {
+				if cdrom.Connected == nil || !*cdrom.Connected {
+					continue
+				}
+				emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation),
+					Message: fmt.Sprintf("CD-ROM %q is connected (%s)", nonempty(cdrom.Label, "unnamed CD-ROM"), attachedDeviceDetails(cdrom.BackingType, cdrom.BackingPath, cdrom.BackingDevice, cdrom.BackingHost))})
+			}
+		}
+	case "usb-connected":
+		for _, item := range in.Data.VMs {
+			for _, usb := range item.Observation.VM.USBs {
+				if usb.Connected == nil || !*usb.Connected {
+					continue
+				}
+				emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation),
+					Message: fmt.Sprintf("USB device %q is connected (%s)", nonempty(usb.Label, "unnamed USB device"), attachedDeviceDetails(usb.BackingType, usb.BackingPath, usb.BackingDevice, usb.BackingHost))})
 			}
 		}
 	case "snapshot-age":

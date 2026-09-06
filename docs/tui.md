@@ -21,6 +21,35 @@ quiet background refresh.
 | Operations | `d` | Diagnose the selected row's vCenter |
 | Help and exit | `?` / `q` | Show key reference / quit |
 
+## Detail pane actions
+
+Opening a row (`Enter`) puts a cursor on the detail pane itself: `↑`/`↓` move
+between the object's own header and each field that has a value, skipping
+any field the table already shows as `-`. Press `Enter` on the focused line
+to act on it — a field with exactly one action runs it immediately, and one
+with several opens a short list to choose from.
+
+| Where the cursor is | What `Enter` offers |
+|---|---|
+| A VM's or host's own header | SSH, open in the vSphere/Host Client, copy the managed object reference |
+| A VM's IP address | SSH to it, copy an `ssh user@ip` command, copy the value |
+| A host, datastore, network, or cluster's own header | "Show VMs on this …" — narrows the VM table to exactly what belongs to it |
+| A VM's Host or Cluster field | Jump straight to that host's or cluster's own row |
+| Any other field | Copy the value |
+
+An action that cannot run says why instead of doing nothing: a proxied
+vCenter has no route for your own browser, so its "open in …" actions are
+disabled with that reason while SSH — which can route through the same
+proxy — still works. `vsfleet demo` disables every action that would launch
+a real process or browser, so the shape of the feature is visible without
+touching your workstation.
+
+SSH picks a default user from `config.toml`'s `[ssh]` table (see
+[Configuration](configuration.md#ssh)) when set, otherwise it falls back to
+`~/.ssh/config` and your local username the way `ssh` always does. A jump
+("Show VMs on this host") stays on the table until `Esc` clears it, which it
+does before clearing anything else.
+
 ## Contexts and vApps
 
 On the Contexts screen (`c`), use `Enter` to select a context, `a` for all

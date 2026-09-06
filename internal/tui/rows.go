@@ -95,6 +95,42 @@ type field struct {
 	value string
 }
 
+// actionTarget is a row's own structured identity — the values a handoff
+// action needs, as opposed to their rendered form in row.detail. row.detail
+// exists to be read; actionTarget exists to be acted on, which is why the
+// guest IP and the managed object reference live here even though they are
+// already, separately, formatted into detail fields for display.
+type actionTarget struct {
+	// moref is the bare managed object reference value, e.g. "vm-1234" — the
+	// same string rendered as the "Managed object" detail field.
+	moref string
+	// morefKind is the vSphere managed object type a deep link needs
+	// ("VirtualMachine", "HostSystem", ...). It is derived from row.kind by
+	// the constructor below rather than stored per call site, so it can
+	// never drift out of step with it.
+	morefKind string
+	// address is what an SSH action connects to: the VM's guest IP, or the
+	// ESXi host's registered name (there is no management IP in Host — see
+	// hostRow). Empty means SSH has nowhere to reach.
+	address string
+	// path is a datastore-style path ("[datastore1]") for the one kind that
+	// has one; empty otherwise.
+	path string
+}
+
+// actionJoins names the other objects a row points at, read by a
+// cross-resource jump to filter a different kind's table down to only the
+// rows that belong to this one — "the VMs on this host", not every VM in
+// scope. Only VM/template rows populate the VM-shaped fields, and only host
+// rows populate cluster, because those are the only jumps the interface
+// offers; see jumpAction in actions.go.
+type actionJoins struct {
+	host       string
+	cluster    string
+	datastores []string
+	networks   []string
+}
+
 // row is one line in the resource table, already flattened. The table renderer
 // knows nothing about virtual machines or datastores: each kind supplies its
 // own columns, cells and detail fields, and everything below is generic.
@@ -117,6 +153,10 @@ type row struct {
 	// notes are the free-form paragraphs under the detail fields, used for
 	// annotations that would not survive being squeezed into a column.
 	notes []field
+	// target and joins back the detail pane's field-cursor actions — see
+	// actions.go. The browse table never reads either.
+	target actionTarget
+	joins  actionJoins
 }
 
 // columnsFor returns the columns for a kind. withContext adds the leading
@@ -439,11 +479,31 @@ func vmRow(vm vsphere.VM, withContext bool) row {
 			{"Inventory path", humanize.Dash(vm.Path)},
 			{"Managed object", vm.ID},
 		},
+		target: actionTarget{moref: vm.ID, morefKind: "VirtualMachine", address: vm.IPAddress, path: vm.Path},
+		joins:  actionJoins{host: vm.Host, cluster: vm.Cluster, datastores: vm.Datastores, networks: nicNetworks(vm.NICs)},
 	}
 	if vm.Annotation != "" {
 		r.notes = append(r.notes, field{"Notes", vm.Annotation})
 	}
 	return r
+}
+
+// nicNetworks lists the distinct networks a VM's adapters are attached to.
+// NICs are only populated at full fetch detail, so a VM loaded at summary
+// detail simply offers no network jump — that is missing evidence, not a VM
+// with no networking, the same convention VMPartition documents for guest
+// filesystems.
+func nicNetworks(nics []vsphere.VMNIC) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, n := range nics {
+		if n.Network == "" || seen[n.Network] {
+			continue
+		}
+		seen[n.Network] = true
+		out = append(out, n.Network)
+	}
+	return out
 }
 
 func templateRow(vm vsphere.VM, withContext bool) row {
@@ -474,7 +534,8 @@ func templateRow(vm vsphere.VM, withContext bool) row {
 			{"Inventory path", humanize.Dash(vm.Path)},
 			{"Managed object", vm.ID},
 		},
-		notes: noteOf(vm.Annotation),
+		notes:  noteOf(vm.Annotation),
+		target: actionTarget{moref: vm.ID, morefKind: "VirtualMachine", path: vm.Path},
 	}
 }
 
@@ -520,6 +581,13 @@ func hostRow(h vsphere.Host, withContext bool) row {
 			{"Inventory path", humanize.Dash(h.Path)},
 			{"Managed object", h.ID},
 		},
+		// address is the host's registered name, usually its FQDN. Host
+		// carries no management IP — config.network.vnic would supply the
+		// real vmk address, but it is a heavy property to fetch on every
+		// load of a large estate, so the name is what SSH and the Host
+		// Client link both use.
+		target: actionTarget{moref: h.ID, morefKind: "HostSystem", address: h.Name, path: h.Path},
+		joins:  actionJoins{cluster: h.Cluster},
 	}
 }
 
@@ -562,7 +630,20 @@ func clusterRow(c vsphere.Cluster, withContext bool) row {
 			{"Inventory path", humanize.Dash(c.Path)},
 			{"Managed object", c.ID},
 		},
+		target: actionTarget{moref: c.ID, morefKind: clusterMorefKind(c.Standalone), path: c.Path},
 	}
+}
+
+// clusterMorefKind names the managed object type behind a Cluster row.
+// listClusters retrieves both ComputeResource and ClusterComputeResource and
+// tells them apart by Self.Type (cluster.go); Standalone survives that one
+// bit of the distinction onto the domain object, so the deep link builder
+// does not need vim25/types imported here to rebuild it.
+func clusterMorefKind(standalone bool) string {
+	if standalone {
+		return "ComputeResource"
+	}
+	return "ClusterComputeResource"
 }
 
 func vappRow(v vsphere.VApp, withContext bool) row {
@@ -601,6 +682,7 @@ func vappRow(v vsphere.VApp, withContext bool) row {
 			{"Inventory path", humanize.Dash(v.Path)},
 			{"Managed object", v.ID},
 		},
+		target: actionTarget{moref: v.ID, morefKind: "VirtualApp", path: v.Path},
 	}
 }
 
@@ -649,6 +731,7 @@ func datastoreRow(d vsphere.Datastore, withContext bool) row {
 			{"Inventory path", humanize.Dash(d.Path)},
 			{"Managed object", d.ID},
 		},
+		target: actionTarget{moref: d.ID, morefKind: "Datastore", path: "[" + d.Name + "]"},
 	}
 }
 
@@ -678,6 +761,24 @@ func networkRow(n vsphere.Network, withContext bool) row {
 			{"Inventory path", humanize.Dash(n.Path)},
 			{"Managed object", n.ID},
 		},
+		target: actionTarget{moref: n.ID, morefKind: networkMorefKind(n.Type)},
+	}
+}
+
+// networkMorefKind inverts networkTypeName's humanization back into the
+// managed object type a deep link needs. It is an approximation — a link
+// built from "standard" always resolves to "Network" even though vCenter
+// itself resolves several MO types that way — but it is exactly the same
+// three-way distinction networkTypeName already draws, so it costs nothing
+// beyond the inverse table living here instead of on vsphere.Network.
+func networkMorefKind(humanized string) string {
+	switch humanized {
+	case "portgroup":
+		return "DistributedVirtualPortgroup"
+	case "opaque":
+		return "OpaqueNetwork"
+	default:
+		return "Network"
 	}
 }
 

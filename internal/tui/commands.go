@@ -422,3 +422,46 @@ func discoverThumbprint(ctx context.Context, b Backend, cc *config.Context) tea.
 		return formDiscoverMsg{sha256: sha256, sha1: sha1, subject: subject, notAfter: notAfter, err: err}
 	}
 }
+
+// handoffResultMsg reports what a detail-pane action did, so the footer can
+// say so the same way any other one-shot action does. verb names what was
+// attempted ("copied", "opened in the browser", "ssh session ended") rather
+// than which action ran, since that is what the message line actually says.
+type handoffResultMsg struct {
+	verb string
+	err  error
+}
+
+// copyCmd writes value to the clipboard through m.handoff. It never blocks
+// the interface: OSC 52 and the local clipboard command both return long
+// before an operator could notice.
+func (m *Model) copyCmd(value string) tea.Cmd {
+	h := m.handoff
+	return func() tea.Msg {
+		return handoffResultMsg{verb: "copied", err: h.Copy(value)}
+	}
+}
+
+// openURLCmd launches the browser through m.handoff. Like copyCmd it starts
+// the process and returns immediately — OpenURL does not wait for the
+// browser to exit, only for it to start.
+func (m *Model) openURLCmd(url string) tea.Cmd {
+	h := m.handoff
+	return func() tea.Msg {
+		return handoffResultMsg{verb: "opened in the browser", err: h.OpenURL(url)}
+	}
+}
+
+// sshCmd hands the whole terminal to an SSH session through
+// tea.ExecProcess, which suspends Bubble Tea's alternate screen around it
+// and restores it on return — the interface resumes exactly where it left
+// off once the operator disconnects.
+func (m *Model) sshCmd(spec SSHSpec) tea.Cmd {
+	cmd, err := m.handoff.SSH(spec)
+	if err != nil {
+		return func() tea.Msg { return handoffResultMsg{verb: "ssh", err: err} }
+	}
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return handoffResultMsg{verb: "ssh session ended", err: err}
+	})
+}

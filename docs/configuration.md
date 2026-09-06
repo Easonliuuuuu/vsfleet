@@ -69,6 +69,25 @@ warning. Passwords never go into TOML, logs, or command history.
 Proxy authentication can use a separate `keyring:<name>` reference. The
 unattended setup flags are documented by `vsfleet context add --help`.
 
+## SSH
+
+```toml
+[ssh]
+user = "ubuntu"
+```
+
+Sets the default remote username the TUI's SSH handoff action (see
+[Detail pane actions](tui.md#detail-pane-actions)) fills in ahead of a VM's
+guest IP or an ESXi host's address. It is not per-context — the setting is
+about who you are, not which vCenter the highlighted VM happens to live
+behind. Omitting `[ssh]` entirely leaves `ssh` to resolve a user the usual
+way, through `~/.ssh/config` and then your local username.
+
+SSH through a proxied context follows the same route vsfleet itself uses —
+an unauthenticated SOCKS5 or HTTP CONNECT proxy becomes an `ssh -o
+ProxyCommand=...` argument automatically. An authenticated proxy is declined:
+its stored password never reaches the command line of a launched process.
+
 ## TLS policies
 
 | Policy | Behavior |

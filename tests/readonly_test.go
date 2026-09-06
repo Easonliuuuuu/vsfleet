@@ -34,6 +34,17 @@ import (
 // The allowlist is deliberately exhaustive rather than a deny-list of known
 // dangerous verbs: a new call has to be justified here before it can ship,
 // which is the property that actually protects an operator's estate.
+//
+// What this guarantees is specifically about the vSphere API: vsfleet cannot
+// mutate a vCenter's state through it. The TUI's detail-pane handoff actions
+// (package tui, see actions.go) are a deliberately separate class of action
+// outside that guarantee — SSH, "open in browser" and clipboard copy launch
+// real local processes on the operator's own workstation, through
+// os/exec and a browser, never through vSphere's SOAP or REST APIs. That is
+// why they are not, and should not be, reachable from this file's allowlist
+// or from mutatingPackages below: the guarantee this file proves is that
+// vsfleet's own calls to vCenter cannot cause harm, not that every action a
+// keypress can trigger is a no-op.
 
 // readOnlyMethods are the vSphere operations vsfleet is allowed to invoke.
 //

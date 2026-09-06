@@ -40,7 +40,11 @@ screen is marked `DEMO · SAMPLE DATA`.
 > [!IMPORTANT]
 > **Strict read-only safety guarantee:** vsfleet is an inspection and diagnostic
 > tool. It does not power on/off VMs, create or revert snapshots, modify
-> networks, provision resources, or delete inventory objects.
+> networks, provision resources, or delete inventory objects. That guarantee is
+> about the vSphere API specifically: the TUI's detail-pane handoff actions
+> (SSH to a VM or host, open a resource in the vSphere/Host Client, copy an
+> identifier) launch real processes on your own workstation, never a vSphere
+> API call — see [the TUI guide](docs/tui.md#detail-pane-actions).
 
 ## Estate-wide RVTools exports
 

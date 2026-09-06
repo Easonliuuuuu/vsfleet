@@ -182,6 +182,12 @@ func (m *Model) viewMessage() string {
 	if m.filtering || m.filter.Value() != "" {
 		return truncate(t.accent.Render(m.filter.View())+t.dim.Render(m.filterHint()), m.width)
 	}
+	if m.jump != nil && m.jump.kind == m.kind && m.mode == modeBrowse {
+		// A jump explains a short table the way a filter explains one: the
+		// reader should never be left wondering whether five VMs is really
+		// every VM on this host or whether something failed to load.
+		return truncate(t.accent.Render("showing: "+m.jump.label)+t.dim.Render("  ·  esc clears"), m.width)
+	}
 	if m.message == "" {
 		return ""
 	}
@@ -587,14 +593,9 @@ func (m *Model) viewDetail() []string {
 
 func (m *Model) viewDetailRow(r row) []string {
 	t := m.theme
-	lines := []string{
-		// The kind comes from the row, not from the current tab: a detail pane
-		// opened from a search result is showing whatever that result was.
-		t.title.Render(r.name) + t.dim.Render("   "+kindLabel(r.kind)+" · "+r.context),
-		"",
-	}
-	for _, f := range r.detail {
-		lines = append(lines, "  "+t.label.Render(pad(f.label, labelColumnPad, false))+t.value.Render(f.value))
+	lines := []string{m.detailHeaderLine(r), ""}
+	for i, f := range r.detail {
+		lines = append(lines, m.detailFieldLine(2+i, f))
 	}
 	for _, n := range r.notes {
 		lines = append(lines, "", t.label.Render("  "+n.label))
@@ -602,7 +603,99 @@ func (m *Model) viewDetailRow(r row) []string {
 			lines = append(lines, "  "+t.value.Render(l))
 		}
 	}
+	if m.actions != nil {
+		lines = spliceLines(lines, m.detailCursor, m.actionListLines())
+	}
 	return scrollLines(lines, m.detailY, m.bodyHeight())
+}
+
+// detailHeaderLine renders the object's own name and kind — the field
+// cursor's line 0, and the line every object-level action (SSH, open in the
+// vSphere Client, jump to related rows) hangs off. Unfocused, it keeps the
+// original title/dim styling split; focused, the whole line takes the same
+// highlight the browse table gives its own cursor row, the way renderRow
+// restyles a whole joined line rather than its individual cells.
+func (m *Model) detailHeaderLine(r row) string {
+	t := m.theme
+	// The kind comes from the row, not from the current tab: a detail pane
+	// opened from a search result is showing whatever that result was.
+	text := r.name + "   " + kindLabel(r.kind) + " · " + r.context
+	if m.detailCursor == 0 {
+		return t.focused.Render("▸ " + text)
+	}
+	return "  " + t.title.Render(r.name) + t.dim.Render("   "+kindLabel(r.kind)+" · "+r.context)
+}
+
+// detailFieldLine renders one detail field, keeping the label dimmer than
+// its value when the line is not focused — the same distinction the pane
+// always drew — and collapsing both into one highlighted line when it is.
+func (m *Model) detailFieldLine(idx int, f field) string {
+	t := m.theme
+	label := pad(f.label, labelColumnPad, false)
+	if idx == m.detailCursor {
+		return t.focused.Render("▸ " + label + f.value)
+	}
+	return "  " + t.label.Render(label) + t.value.Render(f.value)
+}
+
+// spliceLines inserts insert immediately after position at in base, pushing
+// everything below it down — how the action popup opens directly beneath
+// the line it belongs to, rather than floating over unrelated content.
+func spliceLines(base []string, at int, insert []string) []string {
+	if at < 0 || at >= len(base) {
+		return append(append([]string{}, base...), insert...)
+	}
+	out := make([]string, 0, len(base)+len(insert))
+	out = append(out, base[:at+1]...)
+	out = append(out, insert...)
+	out = append(out, base[at+1:]...)
+	return out
+}
+
+// actionListLines renders the popup opened on the focused line: a bordered
+// box listing its actions, its own cursor marking which Enter would run.
+// Unavailable actions render dimmed with their reason in place of a value.
+func (m *Model) actionListLines() []string {
+	al := m.actions
+	t := m.theme
+	width := 20
+	texts := make([]string, len(al.items))
+	for i, a := range al.items {
+		texts[i] = a.label
+		switch {
+		case a.disabled != "":
+			texts[i] = a.label + "    " + a.disabled
+		case a.detail != "":
+			texts[i] = a.label + "  " + a.detail
+		}
+		if w := ansi.StringWidth(texts[i]) + 2; w > width {
+			width = w
+		}
+	}
+	if maxWidth := m.width - 8; maxWidth >= 10 && width > maxWidth {
+		width = maxWidth
+	}
+	border := t.rule.Render("┌" + strings.Repeat("─", width) + "┐")
+	lines := []string{"  " + border}
+	for i, a := range al.items {
+		marker := "  "
+		if i == al.cursor {
+			marker = "▸ "
+		}
+		body := pad(marker+texts[i], width, false)
+		var styled string
+		switch {
+		case a.disabled != "":
+			styled = t.faint.Render(body)
+		case i == al.cursor:
+			styled = t.focused.Render(body)
+		default:
+			styled = t.text.Render(body)
+		}
+		lines = append(lines, "  "+t.rule.Render("│")+styled+t.rule.Render("│"))
+	}
+	lines = append(lines, "  "+t.rule.Render("└"+strings.Repeat("─", width)+"┘"))
+	return lines
 }
 
 // viewDoctor renders a connection diagnosis stage by stage, which is the same

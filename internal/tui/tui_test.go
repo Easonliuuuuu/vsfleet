@@ -46,6 +46,12 @@ type fakeBackend struct {
 	discoverThumb  string
 	discoverSubj   string
 	currentContext string
+
+	// instanceIDs, keyed by context name, is what Status reports as
+	// session.Status.InstanceID — the vCenter server GUID that deep links
+	// need. Unset names report empty, matching an unconnected context or a
+	// vcsim-backed one.
+	instanceIDs map[string]string
 }
 
 func (b *fakeBackend) Contexts() []*config.Context { return b.contexts }
@@ -86,7 +92,7 @@ func (h fakeInventoryHandle) FetchGroup(group vsphere.FetchGroup, partial func(*
 }
 
 func (b *fakeBackend) Status(name string) (session.Status, bool) {
-	return session.Status{Name: name}, false
+	return session.Status{Name: name, InstanceID: b.instanceIDs[name]}, false
 }
 
 func (b *fakeBackend) Diagnose(_ context.Context, cc *config.Context) *vsphere.Diagnosis {

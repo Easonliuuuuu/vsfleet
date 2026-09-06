@@ -67,6 +67,7 @@ This is an interoperability profile, not RVTools or a replacement for it — see
 | Goal | Guide |
 |---|---|
 | Install and connect the first vCenter | [Getting Started](getting-started.md) |
+| Run unattended commands in Docker or Kubernetes | [Containers](containers.md) |
 | Find the right command or JSON output | [CLI Guide](commands.md) |
 | Capture, compare, and export inventory history | [Assessments](assessments.md) |
 | Learn the interactive terminal UI | [Terminal UI](tui.md) |

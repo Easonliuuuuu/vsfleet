@@ -136,6 +136,20 @@ func TestListInventory(t *testing.T) {
 	t.Logf("network: %+v", inv.Networks[0])
 }
 
+func TestListVMsCapturesConnectionState(t *testing.T) {
+	c, _ := newSimulator(t, nil)
+	vms, err := c.ListVMs(context.Background())
+	if err != nil {
+		t.Fatalf("ListVMs: %v", err)
+	}
+	if len(vms) == 0 {
+		t.Fatal("simulator produced no virtual machines")
+	}
+	if got := vms[0].ConnectionState; got != "connected" {
+		t.Fatalf("VM connection state=%q, want connected", got)
+	}
+}
+
 func TestListVApps(t *testing.T) {
 	c, _ := newSimulator(t, func(m *simulator.Model) {
 		m.Datacenter = 1

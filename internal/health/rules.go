@@ -128,6 +128,41 @@ var rules = []Rule{
 			evaluateRule("usb-connected", in, Options{Thresholds: in.Thresholds}, emit)
 		},
 	},
+	{
+		ID: "vm-inaccessible", Severity: SeverityCritical, MinSchema: 7,
+		Summary: "VM connection state is inaccessible", Needs: "VM connection state inventory",
+		Eval: func(in Input, emit func(Finding)) {
+			for _, item := range in.Data.VMs {
+				vm := item.Observation.VM
+				if vm.IsTemplate || !inaccessibleVMStates[vm.ConnectionState] {
+					continue
+				}
+				emit(Finding{Rule: "vm-inaccessible", Severity: SeverityCritical, Object: vmObject(in.Data, item.Observation),
+					Message: fmt.Sprintf("VM is %s", nonempty(vm.ConnectionState, "inaccessible"))})
+			}
+		},
+	},
+	{
+		ID: "vm-orphaned", Severity: SeverityCritical, MinSchema: 7,
+		Summary: "VM is orphaned from every host", Needs: "VM connection state inventory",
+		Eval: func(in Input, emit func(Finding)) {
+			for _, item := range in.Data.VMs {
+				vm := item.Observation.VM
+				if vm.IsTemplate || vm.ConnectionState != "orphaned" {
+					continue
+				}
+				emit(Finding{Rule: "vm-orphaned", Severity: SeverityCritical, Object: vmObject(in.Data, item.Observation),
+					Message: fmt.Sprintf("VM is %s", nonempty(vm.ConnectionState, "orphaned"))})
+			}
+		},
+	},
+}
+
+var inaccessibleVMStates = map[string]bool{
+	"inaccessible":  true,
+	"invalid":       true,
+	"disconnected":  true,
+	"notResponding": true,
 }
 
 func nonempty(value, fallback string) string {
@@ -186,6 +221,9 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 			return
 		}
 		for _, item := range in.Data.VMs {
+			if item.Observation.VM.IsTemplate {
+				continue
+			}
 			for _, partition := range item.Observation.VM.Partitions {
 				free, ok := freePct(partition.CapacityBytes, partition.FreeBytes)
 				if !ok || free >= thresholds.GuestDiskFreePct {
@@ -202,6 +240,9 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 		}
 	case "cdrom-connected":
 		for _, item := range in.Data.VMs {
+			if item.Observation.VM.IsTemplate {
+				continue
+			}
 			for _, cdrom := range item.Observation.VM.CDROMs {
 				if cdrom.Connected == nil || !*cdrom.Connected {
 					continue
@@ -212,6 +253,9 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 		}
 	case "usb-connected":
 		for _, item := range in.Data.VMs {
+			if item.Observation.VM.IsTemplate {
+				continue
+			}
 			for _, usb := range item.Observation.VM.USBs {
 				if usb.Connected == nil || !*usb.Connected {
 					continue
@@ -225,6 +269,9 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 			return
 		}
 		for _, item := range in.Data.VMs {
+			if item.Observation.VM.IsTemplate {
+				continue
+			}
 			finish := contextFinish(in.Data, contextName(item.Observation))
 			if finish.IsZero() {
 				continue
@@ -244,7 +291,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 	case "tools-not-installed":
 		for _, item := range in.Data.VMs {
 			vm := item.Observation.VM
-			if vm.ToolsVersionStatus != "guestToolsNotInstalled" {
+			if vm.IsTemplate || vm.ToolsVersionStatus != "guestToolsNotInstalled" {
 				continue
 			}
 			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation), Message: "VMware Tools are not installed (guestToolsNotInstalled)"})
@@ -258,7 +305,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 		}
 		for _, item := range in.Data.VMs {
 			vm := item.Observation.VM
-			if !outdated[vm.ToolsVersionStatus] {
+			if vm.IsTemplate || !outdated[vm.ToolsVersionStatus] {
 				continue
 			}
 			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VMware Tools are out of date (%s)", vm.ToolsVersionStatus)})

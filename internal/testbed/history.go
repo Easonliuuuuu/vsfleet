@@ -103,7 +103,12 @@ func collectContext(ctx context.Context, manager *session.Manager, cc *config.Co
 		return result, err
 	}
 	for _, group := range []vsphere.FetchGroup{vsphere.GroupVMs, vsphere.GroupHosts, vsphere.GroupClusters, vsphere.GroupResourcePools, vsphere.GroupDatastores} {
-		part := client.FetchGroup(opCtx, idx, group)
+		var part *vsphere.Inventory
+		if group == vsphere.GroupHosts {
+			part = client.FetchGroupWith(opCtx, idx, group, vsphere.FetchOptions{HostConfig: true})
+		} else {
+			part = client.FetchGroup(opCtx, idx, group)
+		}
 		switch group {
 		case vsphere.GroupVMs:
 			collection := assessment.CollectionResult{Kind: "vm", Status: "success", ItemCount: len(part.VMs)}

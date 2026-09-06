@@ -57,6 +57,9 @@ type FetchOptions struct {
 	// BrowseDatastoreFiles opts the datastore group into a bounded, read-only
 	// HostDatastoreBrowser query. It is ignored for every other group.
 	BrowseDatastoreFiles bool
+	// HostConfig opts the host group into the expensive config.storageDevice
+	// and config.network properties. It is ignored for every other group.
+	HostConfig bool
 	// OnPartial, when set, is called with each page of results as it
 	// arrives, carrying only that page's objects. It is called from the
 	// goroutine driving the fetch, before FetchGroupWith returns, and the
@@ -188,7 +191,7 @@ func (c *Client) FetchGroupWith(ctx context.Context, idx *Index, group FetchGrou
 		}
 	case GroupHosts:
 		reportStage(ctx, StageLoadingHosts)
-		if hosts, err := c.listHosts(ctx, idx.idx); err != nil {
+		if hosts, err := c.listHostsWith(ctx, idx.idx, opts.HostConfig); err != nil {
 			fail(err, KindHost)
 		} else {
 			inv.Hosts = hosts

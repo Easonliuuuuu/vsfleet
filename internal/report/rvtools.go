@@ -42,6 +42,12 @@ var (
 	toolsHeaders        = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
 	partitionHeaders    = append([]string{"VM", "Powerstate", "Template", "Disk Key", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
 	hostHeaders         = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	hbaHeaders          = append([]string{"Device", "Bus", "Status", "Model", "Driver", "PCI", "Storage protocol", "WWNN", "WWPN", "iSCSI name", "iSCSI alias", "Type"}, hostTailHeaders...)
+	nicHeaders          = append([]string{"Device", "PCI", "Driver", "Mac Address", "Link speed Mb", "Duplex", "Wake on LAN", "Switch"}, hostTailHeaders...)
+	switchHeaders       = append([]string{"Switch", "# Ports", "Free ports", "MTU", "Uplinks", "Promiscuous mode", "MAC changes", "Forged transmits", "Traffic shaping"}, hostTailHeaders...)
+	portHeaders         = append([]string{"Port group", "Switch", "VLAN", "Promiscuous mode", "MAC changes", "Forged transmits"}, hostTailHeaders...)
+	vmkHeaders          = append([]string{"Device", "Port group", "Mac Address", "MTU", "TSO", "Netstack", "DHCP", "IP Address", "Subnet mask", "Service console"}, hostTailHeaders...)
+	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
 	clusterHeaders      = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overhead limit", "CPU reservation", "CPU level", "CPU shares", "CPU expandable reservation", "Mem configured", "Mem limit", "Mem overhead limit", "Mem reservation", "Mem level", "Mem shares", "Mem expandable reservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -79,6 +85,12 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 		{name: "vNetwork", headers: networkHeaders, rows: networkRows(data)},
 		{name: "vTools", headers: toolsHeaders, rows: toolsRows(data)},
 		{name: "vHost", headers: hostHeaders, rows: hostRows(data)},
+		{name: "vHBA", headers: hbaHeaders, rows: hbaRows(data)},
+		{name: "vNIC", headers: nicHeaders, rows: nicRows(data)},
+		{name: "vSwitch", headers: switchHeaders, rows: switchRows(data)},
+		{name: "vPort", headers: portHeaders, rows: portRows(data)},
+		{name: "vSC+VMK", headers: vmkHeaders, rows: vmkRows(data)},
+		{name: "vMultiPath", headers: multipathHeaders, rows: multipathRows(data)},
 		{name: "vCluster", headers: clusterHeaders, rows: clusterRows(data)},
 		{name: "vRP", headers: resourcePoolHeaders, rows: resourcePoolRows(data)},
 		{name: "vDatastore", headers: datastoreHeaders, rows: datastoreRows(data)},
@@ -88,7 +100,7 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 	}, nil
 }
 
-// WriteRVTools writes the thirteen RVTools-compatible sheets plus the
+// WriteRVTools writes the nineteen RVTools-compatible sheets plus the
 // vsfleetCoverage extension sheet. vHealth is derived from the supplied
 // report; callers evaluate it before entering the renderer. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
@@ -471,6 +483,106 @@ func hostRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
+var hostTailHeaders = []string{"Host", "Datacenter", "Cluster", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+
+func hostTail(data assessment.ExportData, resource assessment.ResourceObservation, host vsphere.Host) []any {
+	return []any{
+		nonempty(host.Name, resource.Name), host.Datacenter, host.Cluster,
+		nonempty(host.ID, resource.ID), contextEndpoint(data, resource.Context), resource.VCenterID, resource.Context,
+	}
+}
+
+func hostConfigResources(data assessment.ExportData) []struct {
+	resource assessment.ResourceObservation
+	host     vsphere.Host
+} {
+	resources := make([]struct {
+		resource assessment.ResourceObservation
+		host     vsphere.Host
+	}, 0)
+	for _, resource := range data.Resources {
+		if resource.Kind != "host" {
+			continue
+		}
+		var host vsphere.Host
+		if err := json.Unmarshal(resource.Payload, &host); err != nil {
+			continue
+		}
+		resources = append(resources, struct {
+			resource assessment.ResourceObservation
+			host     vsphere.Host
+		}{resource: resource, host: host})
+	}
+	return resources
+}
+
+func hbaRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range hostConfigResources(data) {
+		for _, hba := range item.host.HBAs {
+			row := []any{hba.Device, hba.Bus, hba.Status, hba.Model, hba.Driver, hba.PCI, hba.StorageProtocol,
+				optionalInt64(hba.WWNN), optionalInt64(hba.WWPN), optionalString(hba.IScsiName), optionalString(hba.IScsiAlias), hba.Type}
+			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+		}
+	}
+	return rows
+}
+
+func nicRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range hostConfigResources(data) {
+		for _, nic := range item.host.NICs {
+			row := []any{nic.Device, nic.PCI, nic.Driver, nic.MAC, optionalInt32(nic.LinkSpeedMB), optionalBool(nic.Duplex), nic.WakeOnLAN, optionalString(nic.Switch)}
+			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+		}
+	}
+	return rows
+}
+
+func switchRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range hostConfigResources(data) {
+		for _, sw := range item.host.VSwitches {
+			row := []any{sw.Name, sw.NumPorts, sw.FreePorts, sw.MTU, strings.Join(sw.Uplinks, ", "), optionalBool(sw.Promiscuous), optionalBool(sw.MACChanges), optionalBool(sw.ForgedTransmits), optionalBool(sw.TrafficShaping)}
+			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+		}
+	}
+	return rows
+}
+
+func portRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range hostConfigResources(data) {
+		for _, port := range item.host.PortGroups {
+			row := []any{port.Name, port.Switch, port.VLAN, optionalBool(port.Promiscuous), optionalBool(port.MACChanges), optionalBool(port.ForgedTransmits)}
+			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+		}
+	}
+	return rows
+}
+
+func vmkRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range hostConfigResources(data) {
+		for _, vmk := range item.host.VMKs {
+			row := []any{vmk.Device, vmk.PortGroup, vmk.MAC, vmk.MTU, optionalBool(vmk.TSO), vmk.Netstack, optionalBool(vmk.DHCP), optionalString(vmk.IP), optionalString(vmk.SubnetMask), vmk.ServiceConsole}
+			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+		}
+	}
+	return rows
+}
+
+func multipathRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range hostConfigResources(data) {
+		for _, multipath := range item.host.Multipaths {
+			row := []any{multipath.LUN, multipath.DevicePath, multipath.Policy, multipath.PathCount, multipath.Active, multipath.Standby, multipath.Dead, multipath.Disabled, multipath.WorkingPaths}
+			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+		}
+	}
+	return rows
+}
+
 func clusterRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, r := range data.Resources {
@@ -590,17 +702,35 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 		}
 	}
 	resources := make(map[string]map[string]int)
+	hostConfigCounts := make(map[string]map[string]int)
 	for _, r := range data.Resources {
 		if resources[r.Context] == nil {
 			resources[r.Context] = make(map[string]int)
 		}
 		resources[r.Context][r.Kind]++
+		if r.Kind == "host" {
+			var host vsphere.Host
+			if err := json.Unmarshal(r.Payload, &host); err == nil {
+				counts := hostConfigCounts[r.Context]
+				if counts == nil {
+					counts = make(map[string]int)
+					hostConfigCounts[r.Context] = counts
+				}
+				counts["vHBA"] += len(host.HBAs)
+				counts["vNIC"] += len(host.NICs)
+				counts["vSwitch"] += len(host.VSwitches)
+				counts["vPort"] += len(host.PortGroups)
+				counts["vSC+VMK"] += len(host.VMKs)
+				counts["vMultiPath"] += len(host.Multipaths)
+			}
+		}
 	}
-	rows := make([][]any, 0, len(data.Contexts)*13)
+	rows := make([][]any, 0, len(data.Contexts)*19)
 	devicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 2)
 	toolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 3)
 	partitionsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 4)
 	poolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 8)
+	hostConfigRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 9)
 	if !devicesRecorded {
 		diskCounts = make(map[string]int)
 		networkCounts = make(map[string]int)
@@ -608,6 +738,9 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 	if !partitionsRecorded {
 		partitionCounts = make(map[string]int)
 		partitionVMs = make(map[string]int)
+	}
+	if !hostConfigRecorded {
+		hostConfigCounts = make(map[string]map[string]int)
 	}
 	for _, c := range data.Contexts {
 		collections := make(map[string]assessment.CollectionRun)
@@ -617,6 +750,7 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 		for _, spec := range []struct {
 			kind, sheet string
 			count       int
+			hostConfig  bool
 		}{
 			{kind: "vm", sheet: "vInfo", count: counts[c.Name]},
 			{kind: "vcpu", sheet: "vCPU", count: counts[c.Name]},
@@ -626,6 +760,12 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			{kind: "vnetwork", sheet: "vNetwork", count: networkCounts[c.Name]},
 			{kind: "vtools", sheet: "vTools", count: counts[c.Name]},
 			{kind: "host", sheet: "vHost", count: resources[c.Name]["host"]},
+			{kind: "host", sheet: "vHBA", count: hostConfigCounts[c.Name]["vHBA"], hostConfig: true},
+			{kind: "host", sheet: "vNIC", count: hostConfigCounts[c.Name]["vNIC"], hostConfig: true},
+			{kind: "host", sheet: "vSwitch", count: hostConfigCounts[c.Name]["vSwitch"], hostConfig: true},
+			{kind: "host", sheet: "vPort", count: hostConfigCounts[c.Name]["vPort"], hostConfig: true},
+			{kind: "host", sheet: "vSC+VMK", count: hostConfigCounts[c.Name]["vSC+VMK"], hostConfig: true},
+			{kind: "host", sheet: "vMultiPath", count: hostConfigCounts[c.Name]["vMultiPath"], hostConfig: true},
 			{kind: "cluster", sheet: "vCluster", count: resources[c.Name]["cluster"]},
 			{kind: "resourcepool", sheet: "vRP", count: resources[c.Name]["resourcepool"]},
 			{kind: "datastore", sheet: "vDatastore", count: resources[c.Name]["datastore"]},
@@ -639,6 +779,9 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 				continue
 			}
 			switch {
+			case spec.hostConfig && !hostConfigRecorded:
+				status = "not recorded"
+				message = "capture predates host storage and network inventory"
 			case (spec.kind == "vdisk" || spec.kind == "vnetwork") && !devicesRecorded:
 				status = "not recorded"
 				message = "capture predates per-VM device inventory"
@@ -686,6 +829,12 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 					// a version — say so rather than claiming the tab is
 					// unrecorded.
 					message = "capture predates VMware Tools version inventory"
+				}
+			case spec.hostConfig:
+				if collection, ok := collections["host"]; ok {
+					status, message = collection.Status, collection.Error
+				} else {
+					status = "not recorded"
 				}
 			default:
 				if collection, ok := collections[spec.kind]; ok {
@@ -828,7 +977,65 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 		a, b := data.Resources[i], data.Resources[j]
 		return less(a.Context, resourceDC(a), a.Name, a.ID, b.Context, resourceDC(b), b.Name, b.ID)
 	})
+	for i := range data.Resources {
+		if data.Resources[i].Kind != "host" {
+			continue
+		}
+		var host vsphere.Host
+		if err := json.Unmarshal(data.Resources[i].Payload, &host); err != nil {
+			continue
+		}
+		canonicalHost(&host)
+		if payload, err := json.Marshal(host); err == nil {
+			data.Resources[i].Payload = payload
+		}
+	}
 	return data
+}
+
+func canonicalHost(host *vsphere.Host) {
+	if host == nil {
+		return
+	}
+	sort.SliceStable(host.HBAs, func(i, j int) bool {
+		if host.HBAs[i].Device != host.HBAs[j].Device {
+			return host.HBAs[i].Device < host.HBAs[j].Device
+		}
+		return host.HBAs[i].Key < host.HBAs[j].Key
+	})
+	sort.SliceStable(host.NICs, func(i, j int) bool {
+		if host.NICs[i].Device != host.NICs[j].Device {
+			return host.NICs[i].Device < host.NICs[j].Device
+		}
+		return host.NICs[i].Key < host.NICs[j].Key
+	})
+	sort.SliceStable(host.VSwitches, func(i, j int) bool {
+		if host.VSwitches[i].Name != host.VSwitches[j].Name {
+			return host.VSwitches[i].Name < host.VSwitches[j].Name
+		}
+		return host.VSwitches[i].Key < host.VSwitches[j].Key
+	})
+	for i := range host.VSwitches {
+		sort.Strings(host.VSwitches[i].Uplinks)
+	}
+	sort.SliceStable(host.PortGroups, func(i, j int) bool {
+		if host.PortGroups[i].Name != host.PortGroups[j].Name {
+			return host.PortGroups[i].Name < host.PortGroups[j].Name
+		}
+		return host.PortGroups[i].Key < host.PortGroups[j].Key
+	})
+	sort.SliceStable(host.VMKs, func(i, j int) bool {
+		if host.VMKs[i].Device != host.VMKs[j].Device {
+			return host.VMKs[i].Device < host.VMKs[j].Device
+		}
+		return host.VMKs[i].Key < host.VMKs[j].Key
+	})
+	sort.SliceStable(host.Multipaths, func(i, j int) bool {
+		if host.Multipaths[i].LUN != host.Multipaths[j].LUN {
+			return host.Multipaths[i].LUN < host.Multipaths[j].LUN
+		}
+		return host.Multipaths[i].Key < host.Multipaths[j].Key
+	})
 }
 
 func less(ac, ad, an, ai, bc, bd, bn, bi string) bool {

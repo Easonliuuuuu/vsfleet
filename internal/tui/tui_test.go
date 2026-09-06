@@ -724,6 +724,76 @@ func TestVAppWorkspaceShowsNestedVMsAndSupportsDrillDown(t *testing.T) {
 	}
 }
 
+func TestVAppMemberDetailOffersTheMemberActionsNotTheVAppActions(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	press(t, m, "7", "enter", "enter")
+	m.openFieldActions()
+
+	if m.mode != modeVAppVMDetail || m.vappVM == nil {
+		t.Fatalf("expected the vAPP member detail pane, mode=%v member=%+v", m.mode, m.vappVM)
+	}
+	if m.actions == nil {
+		t.Fatalf("member header should open an action list: mode=%v cursor=%d member=%+v", m.mode, m.detailCursor, m.vappVM)
+	}
+	if _, ok := findAction(m.actions.items, "SSH to 10.20.0.11"); !ok {
+		t.Fatalf("member detail opened the wrong actions: %+v", m.actions)
+	}
+}
+
+func TestVAppMemberDetailResetsTheFieldCursorOnEntry(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	m.detailCursor = 8
+	press(t, m, "7", "enter", "enter")
+
+	if m.detailCursor != 0 {
+		t.Fatalf("member detail cursor is %d, want 0", m.detailCursor)
+	}
+}
+
+func TestVAppDetailResetsTheFieldCursorOnEntry(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	m.detailCursor = 8
+	press(t, m, "7", "enter")
+
+	if m.detailCursor != 0 {
+		t.Fatalf("vAPP detail cursor is %d, want 0", m.detailCursor)
+	}
+}
+
+func TestVAppMemberDetailCursorWalksTheMember(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	press(t, m, "7", "enter", "enter")
+	for range 20 {
+		press(t, m, "down")
+	}
+
+	want := len(m.vappVM.detail) + 1
+	if m.detailCursor != want {
+		t.Fatalf("member detail cursor stopped at %d, want %d", m.detailCursor, want)
+	}
+}
+
+func TestJumpFromAVAppMemberLeavesTheWorkspace(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	press(t, m, "7", "enter", "enter")
+	idx := -1
+	for i, f := range m.vappVM.detail {
+		if f.label == "Host" {
+			idx = i + 2
+			break
+		}
+	}
+	if idx < 0 {
+		t.Fatal("member detail has no Host field")
+	}
+	m.detailCursor = idx
+	press(t, m, "enter", "enter")
+
+	if m.mode != modeBrowse || m.vapp != nil || m.vappVM != nil {
+		t.Fatalf("jump should leave the vAPP workspace, mode=%v vapp=%+v member=%+v", m.mode, m.vapp, m.vappVM)
+	}
+}
+
 func TestVAppWorkspaceFitsMinimumWidth(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 	m.width, m.height = minTermWidth, 24

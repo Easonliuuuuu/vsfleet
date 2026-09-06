@@ -178,6 +178,21 @@ with Go 1.25 or newer:
 go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest
 ```
 
+### Container (automation)
+
+The official image is published for Linux amd64 and arm64 at
+`ghcr.io/easonliuuuuu/vsfleet`. It is intended for unattended commands and
+stable JSON, CSV, or XLSX exports; use a native install for the interactive
+terminal UI:
+
+```sh
+docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest compatibility report --sheet vInfo -o json
+```
+
+See the [Containers guide](https://easonliuuuuu.github.io/vsfleet/containers/)
+for mounted configuration, secrets, history, private CAs, and signature
+verification.
+
 See [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/)
 for build-from-source instructions and shell completion.
 
@@ -209,6 +224,7 @@ The full operator guide is published at
 [easonliuuuuu.github.io/vsfleet](https://easonliuuuuu.github.io/vsfleet/):
 
 - [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/)
+- [Containers](https://easonliuuuuu.github.io/vsfleet/containers/)
 - [CLI Guide](https://easonliuuuuu.github.io/vsfleet/commands/)
 - [Assessments and History](https://easonliuuuuu.github.io/vsfleet/assessments/)
 - [Terminal UI](https://easonliuuuuu.github.io/vsfleet/tui/)

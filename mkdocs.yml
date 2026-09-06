@@ -46,6 +46,7 @@ exclude_docs: |
 nav:
   - Home: index.md
   - Getting Started: getting-started.md
+  - Containers: containers.md
   - CLI Guide: commands.md
   - Assessments: assessments.md
   - Terminal UI: tui.md

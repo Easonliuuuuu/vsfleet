@@ -31,6 +31,22 @@ Requires Go 1.25 or newer:
 go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest
 ```
 
+### Container (automation)
+
+The official image is available from GitHub Container Registry for Linux
+amd64 and arm64:
+
+```sh
+docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest compatibility report --sheet vInfo -o json
+```
+
+Use a version tag such as `v0.5.0` for repeatable deployments, or pin the
+image digest in production. The image runs as an unprivileged user and is
+designed for unattended commands, assessments, and exports. It does not
+include a shell, browser, SSH client, OS keyring, or `exec:` credential helper,
+so install the native binary for the interactive terminal UI and workstation
+handoffs. See the [Containers guide](containers.md) for mounts and secrets.
+
 ### Build from source
 
 ```sh

@@ -121,6 +121,8 @@ func TestSaveRoundTrip(t *testing.T) {
 		Name:       "prod",
 		Endpoint:   "vcsa.prod.internal",
 		Username:   "svc@vsphere.local",
+		Via:        "parent",
+		ViaMoRef:   "VirtualMachine:vm-1234",
 		Credential: credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "prod"},
 		Transport:  config.TransportConfig{Type: config.TransportSOCKS5, Address: "127.0.0.1:1080", RemoteDNS: true},
 		TLS:        config.TLSConfig{Mode: config.TLSInsecure},
@@ -167,6 +169,9 @@ func TestSaveRoundTrip(t *testing.T) {
 	}
 	if got.Credential.String() != "keyring:prod" {
 		t.Errorf("credential did not round-trip: %q", got.Credential.String())
+	}
+	if got.Via != "parent" || got.ViaMoRef != "VirtualMachine:vm-1234" {
+		t.Errorf("provenance did not round-trip: via=%q moref=%q", got.Via, got.ViaMoRef)
 	}
 	if reloaded.CurrentContext != "prod" {
 		t.Errorf("current context did not round-trip: %q", reloaded.CurrentContext)
@@ -305,6 +310,8 @@ func TestSameConnection(t *testing.T) {
 		"proxy credential": func(c *config.Context) { c.Transport.Credential.Value = "prod-proxy" },
 		"TLS mode":         func(c *config.Context) { c.TLS.Mode = config.TLSInsecure },
 		"thumbprint":       func(c *config.Context) { c.TLS.Thumbprint = "DD:EE:FF" },
+		"via":              func(c *config.Context) { c.Via = "parent" },
+		"via moref":        func(c *config.Context) { c.ViaMoRef = "VirtualMachine:vm-1" },
 	}
 	for what, change := range changes {
 		other := base()
@@ -328,5 +335,61 @@ func TestSameConnection(t *testing.T) {
 	}
 	if !nilCtx.SameConnection(nil) {
 		t.Error("two nil contexts should compare equal rather than panic")
+	}
+}
+
+func TestDanglingViaStillLoads(t *testing.T) {
+	cfg, err := config.Load(write(t, `version = 1
+
+[[contexts]]
+name = "nested"
+endpoint = "https://10.20.0.11"
+username = "administrator@vsphere.local"
+via = "removed-parent"
+via_moref = "VirtualMachine:vm-1234"
+
+[contexts.transport]
+type = "direct"
+
+[contexts.tls]
+mode = "system"
+`))
+	if err != nil {
+		t.Fatalf("Load with dangling provenance: %v", err)
+	}
+	nested, err := cfg.Context("nested")
+	if err != nil {
+		t.Fatalf("Context(nested): %v", err)
+	}
+	if nested.Via != "removed-parent" || nested.ViaMoRef != "VirtualMachine:vm-1234" {
+		t.Errorf("dangling provenance was not retained: via=%q moref=%q", nested.Via, nested.ViaMoRef)
+	}
+}
+
+func TestNormalizeClearsSelfReferentialVia(t *testing.T) {
+	cc := &config.Context{Name: "nested", Via: " nested ", ViaMoRef: " vm-123 "}
+	cc.Normalize()
+	if cc.Via != "" {
+		t.Errorf("self-referential via was retained: %q", cc.Via)
+	}
+	if cc.ViaMoRef != "vm-123" {
+		t.Errorf("via moref was not trimmed: %q", cc.ViaMoRef)
+	}
+}
+
+func TestSlugName(t *testing.T) {
+	cases := map[string]string{
+		"Nested vCenter / API": "nested-vcenter-api",
+		"VCSA.UPPER":           "vcsa.upper",
+		"spaces   and/slashes": "spaces-and-slashes",
+		"already---slug":       "already-slug",
+		"nested.vc":            "nested.vc",
+		"東京":                   "",
+		"!!!":                  "",
+	}
+	for in, want := range cases {
+		if got := config.SlugName(in); got != want {
+			t.Errorf("SlugName(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

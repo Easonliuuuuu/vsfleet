@@ -32,6 +32,8 @@ name = "customer-enclave"
 endpoint = "https://vcsa.enclave.internal"
 username = "readonly@vsphere.local"
 credential = "keyring:customer-enclave"
+via = "prod"
+via_moref = "vm-1234"
 
 [contexts.transport]
 type = "socks5"

@@ -52,6 +52,7 @@ type contextForm struct {
 	name, endpoint, username, password textinput.Model
 	datacenter, proxyAddr, proxyUser   textinput.Model
 	proxyPass, thumbprint              textinput.Model
+	via, viaMoRef                      string
 
 	credIdx      int // 0 keyring, 1 prompt
 	transportIdx int // 0 direct, 1 socks5
@@ -115,6 +116,8 @@ func newContextForm(edit *contextState) *contextForm {
 	f.name.SetValue(cc.Name)
 	f.endpoint.SetValue(cc.Endpoint)
 	f.username.SetValue(cc.Username)
+	f.via = cc.Via
+	f.viaMoRef = cc.ViaMoRef
 	f.datacenter.SetValue(cc.Datacenter)
 	if cc.Credential.Scheme == credentials.SchemePrompt {
 		f.credIdx = 1
@@ -153,8 +156,11 @@ func (f *contextForm) rows() []formRow {
 	} else {
 		rows = append(rows, formRow{label: "Name", kind: rowText, input: &f.name})
 	}
+	rows = append(rows, formRow{label: "Endpoint", kind: rowText, input: &f.endpoint, hint: "e.g. https://vcsa.example.internal"})
+	if f.via != "" {
+		rows = append(rows, formRow{label: "Added from", kind: rowStatic, static: f.via})
+	}
 	rows = append(rows,
-		formRow{label: "Endpoint", kind: rowText, input: &f.endpoint, hint: "e.g. https://vcsa.example.internal"},
 		formRow{label: "Username", kind: rowText, input: &f.username, hint: "e.g. administrator@vsphere.local"},
 		formRow{label: "Credential", kind: rowSelect, options: []string{"keyring", "prompt"}, idx: &f.credIdx,
 			hint: "keyring stores the password in the OS secret store; prompt asks every run"},
@@ -236,6 +242,8 @@ func (f *contextForm) input() contextops.Input {
 		Name:       strings.TrimSpace(f.name.Value()),
 		Endpoint:   strings.TrimSpace(f.endpoint.Value()),
 		Username:   strings.TrimSpace(f.username.Value()),
+		Via:        strings.TrimSpace(f.via),
+		ViaMoRef:   strings.TrimSpace(f.viaMoRef),
 		Datacenter: strings.TrimSpace(f.datacenter.Value()),
 		SetCurrent: f.setCurrent,
 		Replace:    f.editing,

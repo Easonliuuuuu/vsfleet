@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"unicode"
 
 	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 )
@@ -145,12 +146,17 @@ func NormalizeThumbprint(s string) string {
 }
 
 // Context is one vCenter and everything needed to reach it: where it is, who
-// to log in as, how to route there, and how to verify its certificate.
+// to log in as, how to route there, and how to verify its certificate. Via and
+// ViaMoRef record provenance for nested contexts; they are never consulted
+// when connecting.
 type Context struct {
 	Name       string          `toml:"name" json:"name"`
 	Endpoint   string          `toml:"endpoint" json:"endpoint"`
 	Username   string          `toml:"username" json:"username"`
 	Credential credentials.Ref `toml:"credential,omitempty" json:"credential,omitempty"`
+	// Via identifies the parent context from which this context was added.
+	Via      string `toml:"via,omitempty" json:"via,omitempty"`
+	ViaMoRef string `toml:"via_moref,omitempty" json:"via_moref,omitempty"`
 	// Datacenter is an optional default for inventory queries.
 	Datacenter string          `toml:"datacenter,omitempty" json:"datacenter,omitempty"`
 	Transport  TransportConfig `toml:"transport" json:"transport"`
@@ -254,12 +260,45 @@ func (c *Context) Validate() error {
 	return nil
 }
 
+// SlugName turns an object name into a context-name candidate. Context names
+// reject spaces and slashes, so every other character becomes one separator;
+// lowercase ASCII letters, digits, dots, underscores and hyphens survive.
+// Leading and trailing separators are discarded, and an input with no legal
+// characters returns an empty candidate.
+func SlugName(s string) string {
+	var out strings.Builder
+	lastDash := false
+	for _, r := range s {
+		r = unicode.ToLower(r)
+		allowed := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '_'
+		if !allowed {
+			r = '-'
+		}
+		if r == '-' {
+			if lastDash || out.Len() == 0 {
+				lastDash = true
+				continue
+			}
+			lastDash = true
+		} else {
+			lastDash = false
+		}
+		out.WriteRune(r)
+	}
+	return strings.TrimSuffix(out.String(), "-")
+}
+
 // Normalize fills in defaults so that a context written by hand behaves the
 // same as one produced by "vsfleet context add".
 func (c *Context) Normalize() {
 	c.Name = strings.TrimSpace(c.Name)
 	c.Username = strings.TrimSpace(c.Username)
 	c.Endpoint = strings.TrimSpace(c.Endpoint)
+	c.Via = strings.TrimSpace(c.Via)
+	c.ViaMoRef = strings.TrimSpace(c.ViaMoRef)
+	if c.Via == c.Name {
+		c.Via = ""
+	}
 	if c.Transport.Type == "" {
 		c.Transport.Type = TransportDirect
 	}

@@ -75,7 +75,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 	if err != nil {
 		return err
 	}
-	for _, kind := range []string{"host", "cluster", "datastore"} {
+	for _, kind := range []string{"host", "cluster", "resourcepool", "datastore"} {
 		baseByVC, targetByVC := make(map[string][]storedResource), make(map[string][]storedResource)
 		// vcNames resolves a VCenterID back to its context name for the "not
 		// comparable" messages below, the same way Diff does for VMs.
@@ -227,15 +227,17 @@ func compareResources(kind string, base, target []storedResource, includeRuntime
 }
 
 var resourceStableFields = map[string][]string{
-	"host":      {"name", "datacenter", "path", "cluster", "vendor", "model", "version", "build", "cpu_cores", "cpu_threads", "cpu_mhz", "memory_mb"},
-	"cluster":   {"name", "datacenter", "path", "standalone", "cpu_cores", "total_cpu_mhz", "total_memory_mb", "drs_enabled", "ha_enabled"},
-	"datastore": {"name", "datacenter", "path", "type"},
+	"host":         {"name", "datacenter", "path", "cluster", "vendor", "model", "version", "build", "cpu_cores", "cpu_threads", "cpu_mhz", "memory_mb"},
+	"cluster":      {"name", "datacenter", "path", "standalone", "cpu_cores", "total_cpu_mhz", "total_memory_mb", "drs_enabled", "ha_enabled"},
+	"resourcepool": {"name", "datacenter", "path", "owner", "root", "cpu_reservation_mhz", "cpu_limit_mhz", "cpu_overhead_limit_mhz", "cpu_expandable", "cpu_shares", "cpu_level", "mem_configured_mb", "mem_reservation_mb", "mem_limit_mb", "mem_overhead_limit_mb", "mem_expandable", "mem_shares", "mem_level"},
+	"datastore":    {"name", "datacenter", "path", "type"},
 }
 
 var resourceRuntimeFields = map[string][]string{
-	"host":      {"power_state", "connection_state", "in_maintenance", "vm_count", "cpu_usage_mhz", "memory_usage_mb"},
-	"cluster":   {"hosts", "effective_hosts"},
-	"datastore": {"accessible", "maintenance", "capacity_bytes", "free_bytes"},
+	"host":         {"power_state", "connection_state", "in_maintenance", "vm_count", "cpu_usage_mhz", "memory_usage_mb"},
+	"cluster":      {"hosts", "effective_hosts"},
+	"resourcepool": {},
+	"datastore":    {"accessible", "maintenance", "capacity_bytes", "free_bytes"},
 }
 
 func changedResourceFields(kind string, before, after json.RawMessage, includeRuntime bool) []FieldChange {

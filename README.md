@@ -59,13 +59,14 @@ byte-identical, and every export prints a SHA256 receipt.
 
 ### Supported tabs
 
-vsfleet renders **twelve** RVTools tabs, using RVTools' own column names:
+vsfleet renders **thirteen** RVTools tabs, using RVTools' own column names:
 
 `vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
-`vHost` · `vCluster` · `vDatastore` · `vSnapshot` · `vHealth`
+`vHost` · `vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
 
 RVTools itself ships roughly thirty. If your pipeline needs a tab that is not
-in that list — `vRP` is a common example — vsfleet is not yet a drop-in for it.
+in that list — `vHBA`, `vNIC`, `vSwitch` or `vLicense`, for example — vsfleet is
+not yet a drop-in for it.
 This is a **compatible** export, not a replacement for RVTools.
 
 `vPartition` reports guest filesystem usage, which only VMware Tools inside

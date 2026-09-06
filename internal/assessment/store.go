@@ -37,7 +37,7 @@ const (
 	leaseHeartbeat = 20 * time.Second
 )
 
-var persistedKinds = []string{"vm", "host", "cluster", "datastore"}
+var persistedKinds = []string{"vm", "host", "cluster", "datastore", "resourcepool"}
 
 var runLabelPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 

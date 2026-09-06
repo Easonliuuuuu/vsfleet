@@ -21,12 +21,16 @@ const (
 	KindVApp      Kind = "vapp"
 	KindDatastore Kind = "datastore"
 	KindNetwork   Kind = "network"
+	// KindResourcePool is capture-only: resource pools are persisted for
+	// assessment exports, but are not a browsable inventory kind yet.
+	KindResourcePool Kind = "resourcepool"
 )
 
-// AllKinds lists every kind the inventory API can enumerate.
+// AllKinds lists every browsable kind the inventory API can enumerate.
 var AllKinds = []Kind{KindVM, KindTemplate, KindHost, KindCluster, KindDatastore, KindNetwork, KindVApp}
 
 // ParseKind maps a user-supplied string onto a Kind, tolerating plurals.
+// KindResourcePool is intentionally omitted because it is capture-only.
 func ParseKind(s string) (Kind, error) {
 	switch s {
 	case "vm", "vms", "virtualmachine", "virtualmachines":
@@ -264,6 +268,34 @@ type Cluster struct {
 	HAEnabled     bool   `json:"ha_enabled"`
 }
 
+// ResourcePool is a vSphere resource-pool configuration record. It is
+// persisted for assessment exports, but intentionally is not part of the
+// browsable inventory vocabulary in AllKinds.
+type ResourcePool struct {
+	Location
+	ID                  string   `json:"id"`
+	Name                string   `json:"name"`
+	Root                bool     `json:"root"`
+	Parent              string   `json:"parent"`
+	Owner               string   `json:"owner"`
+	Status              string   `json:"status"`
+	ConfigStatus        string   `json:"config_status"`
+	VMRefs              []string `json:"vm_refs"`
+	CPUReservationMHz   *int64   `json:"cpu_reservation_mhz,omitempty"`
+	CPULimitMHz         *int64   `json:"cpu_limit_mhz,omitempty"`
+	CPUOverheadLimitMHz *int64   `json:"cpu_overhead_limit_mhz,omitempty"`
+	CPUExpandable       bool     `json:"cpu_expandable"`
+	CPUShares           int32    `json:"cpu_shares"`
+	CPULevel            string   `json:"cpu_level"`
+	MemConfiguredMB     int64    `json:"mem_configured_mb"`
+	MemReservationMB    *int64   `json:"mem_reservation_mb,omitempty"`
+	MemLimitMB          *int64   `json:"mem_limit_mb,omitempty"`
+	MemOverheadLimitMB  *int64   `json:"mem_overhead_limit_mb,omitempty"`
+	MemExpandable       bool     `json:"mem_expandable"`
+	MemShares           int32    `json:"mem_shares"`
+	MemLevel            string   `json:"mem_level"`
+}
+
 // VApp is a logical vSphere application container. Membership fields contain
 // only direct children; nested vApps and resource pools are represented
 // separately so a detail view never mistakes descendants for direct members.
@@ -344,15 +376,16 @@ type Network struct {
 // read. Errors records what did not come back; every kind missing from it
 // enumerated cleanly, even if empty.
 type Inventory struct {
-	Context    string           `json:"context"`
-	VMs        []VM             `json:"vms"`
-	Templates  []VM             `json:"templates"`
-	Hosts      []Host           `json:"hosts"`
-	Clusters   []Cluster        `json:"clusters"`
-	VApps      []VApp           `json:"vapps"`
-	Datastores []Datastore      `json:"datastores"`
-	Networks   []Network        `json:"networks"`
-	Errors     []InventoryError `json:"errors,omitempty"`
+	Context       string           `json:"context"`
+	VMs           []VM             `json:"vms"`
+	Templates     []VM             `json:"templates"`
+	Hosts         []Host           `json:"hosts"`
+	Clusters      []Cluster        `json:"clusters"`
+	ResourcePools []ResourcePool   `json:"resource_pools"`
+	VApps         []VApp           `json:"vapps"`
+	Datastores    []Datastore      `json:"datastores"`
+	Networks      []Network        `json:"networks"`
+	Errors        []InventoryError `json:"errors,omitempty"`
 }
 
 // InventoryError is one resource kind ListInventory could not enumerate.
@@ -385,6 +418,8 @@ func (i *Inventory) Slice(group FetchGroup) *Inventory {
 		part.Hosts = i.Hosts
 	case GroupClusters:
 		part.Clusters = i.Clusters
+	case GroupResourcePools:
+		part.ResourcePools = i.ResourcePools
 	case GroupVApps:
 		part.VApps = i.VApps
 	case GroupDatastores:
@@ -432,6 +467,8 @@ func (i *Inventory) ApplyGroup(group FetchGroup, part *Inventory) {
 		i.Hosts = part.Hosts
 	case GroupClusters:
 		i.Clusters = part.Clusters
+	case GroupResourcePools:
+		i.ResourcePools = part.ResourcePools
 	case GroupVApps:
 		i.VApps = part.VApps
 	case GroupDatastores:
@@ -461,6 +498,8 @@ func (i *Inventory) MergeGroup(group FetchGroup, part *Inventory) {
 		i.Hosts = sortByName(append(i.Hosts, part.Hosts...), func(h Host) string { return h.Name })
 	case GroupClusters:
 		i.Clusters = sortByName(append(i.Clusters, part.Clusters...), func(c Cluster) string { return c.Name })
+	case GroupResourcePools:
+		i.ResourcePools = sortByName(append(i.ResourcePools, part.ResourcePools...), func(r ResourcePool) string { return r.Name })
 	case GroupVApps:
 		i.VApps = sortByName(append(i.VApps, part.VApps...), func(v VApp) string { return v.Name })
 	case GroupDatastores:

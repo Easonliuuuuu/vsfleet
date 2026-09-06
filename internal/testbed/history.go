@@ -102,7 +102,7 @@ func collectContext(ctx context.Context, manager *session.Manager, cc *config.Co
 	if err != nil {
 		return result, err
 	}
-	for _, group := range []vsphere.FetchGroup{vsphere.GroupVMs, vsphere.GroupHosts, vsphere.GroupClusters, vsphere.GroupDatastores} {
+	for _, group := range []vsphere.FetchGroup{vsphere.GroupVMs, vsphere.GroupHosts, vsphere.GroupClusters, vsphere.GroupResourcePools, vsphere.GroupDatastores} {
 		part := client.FetchGroup(opCtx, idx, group)
 		switch group {
 		case vsphere.GroupVMs:
@@ -118,6 +118,8 @@ func collectContext(ctx context.Context, manager *session.Manager, cc *config.Co
 			result.Collections = append(result.Collections, hostCollection("host", result.VCenterID, cc.Name, part.Hosts))
 		case vsphere.GroupClusters:
 			result.Collections = append(result.Collections, clusterCollection("cluster", result.VCenterID, cc.Name, part.Clusters))
+		case vsphere.GroupResourcePools:
+			result.Collections = append(result.Collections, resourceCollection("resourcepool", result.VCenterID, cc.Name, part.ResourcePools, func(v vsphere.ResourcePool) string { return v.ID }, func(v vsphere.ResourcePool) string { return v.Name }))
 		case vsphere.GroupDatastores:
 			result.Collections = append(result.Collections, datastoreCollection("datastore", result.VCenterID, cc.Name, part.Datastores))
 		}
@@ -172,7 +174,7 @@ func healthyContexts(contexts []*config.Context) []*config.Context {
 
 func failedResult(name, message string) assessment.ContextResult {
 	result := assessment.ContextResult{Name: name, Status: "failed", Error: message}
-	for _, kind := range []string{"vm", "host", "cluster", "datastore"} {
+	for _, kind := range []string{"vm", "host", "cluster", "resourcepool", "datastore"} {
 		result.Collections = append(result.Collections, assessment.CollectionResult{Kind: kind, Status: "failed", Error: message})
 	}
 	return result

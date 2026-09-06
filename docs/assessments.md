@@ -68,7 +68,7 @@ runs are intentionally part of the analysis.
 Exports read one persisted run and do not contact vCenter or open a live
 session. The `rvtools` format is an XLSX workbook containing `vInfo`, `vCPU`,
 `vMemory`, per-VM `vDisk`, `vPartition` and `vNetwork`, `vTools`, `vHost`,
-`vCluster`, `vDatastore`, `vSnapshot`, `vHealth`, and `vsfleetCoverage` sheets.
+`vCluster`, `vRP`, `vDatastore`, `vSnapshot`, `vHealth`, and `vsfleetCoverage` sheets.
 
 ```sh
 vsfleet assessment export latest --format rvtools --file ./estate.xlsx
@@ -115,14 +115,14 @@ devices remain a named follow-up.
 
 ### What "RVTools-compatible" means here
 
-vsfleet renders twelve RVTools tabs and uses RVTools' own column names, so a
+vsfleet renders thirteen RVTools tabs and uses RVTools' own column names, so a
 tool that reads those tabs by name can read a vsfleet export:
 
 `vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
-`vHost` · `vCluster` · `vDatastore` · `vSnapshot` · `vHealth`
+`vHost` · `vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
 
-RVTools itself ships roughly thirty tabs. `vRP`, `vHBA`, `vNIC`,
-`vSwitch` and `vLicense` are among those vsfleet does not render today. If a downstream sizing or migration tool requires one of them,
+RVTools itself ships roughly thirty tabs. `vHBA`, `vNIC`, `vSwitch` and
+`vLicense` are among those vsfleet does not render today. If a downstream sizing or migration tool requires one of them,
 vsfleet is not yet a drop-in for that pipeline. This is a **compatible**
 export, not a replacement for RVTools.
 
@@ -145,6 +145,20 @@ Because a short tab would otherwise be indistinguishable from a small estate,
 example `18 of 40 VMs reported guest filesystems; the rest had no running
 VMware Tools`. Captures taken before this tab existed are marked
 `not recorded` rather than empty.
+
+### Resource pools are export evidence
+
+`vRP` includes every resource pool in the datacenter scope, including each
+cluster or standalone host's root `Resources` pool. vApps are reported on their
+own terms and are not duplicated as resource-pool rows. Resource pools are
+captured for the export and assessment ledger, not made into a browsable TUI
+tab or CLI inventory noun.
+
+The tab covers resource-pool identity and CPU/memory allocation configuration.
+RVTools also exposes runtime and statistics columns such as current usage,
+unreserved capacity, entitlement, memory pressure, and tags; this read-only
+capture does not request those volatile or unavailable fields, so it leaves
+them out rather than guessing values.
 
 The `vsfleetCoverage` sheet is the part RVTools has no equivalent for: it names
 every tab and vCenter in the run with its collection status, item count, and

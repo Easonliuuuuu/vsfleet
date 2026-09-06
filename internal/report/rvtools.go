@@ -24,6 +24,8 @@ import (
 const (
 	dateFormat = "yyyy/mm/dd hh:mm:ss"
 	miB        = float64(1 << 20)
+	// coverageSheetName is vsfleet's own worksheet, not an RVTools layout.
+	coverageSheetName = "vsfleetCoverage"
 )
 
 var (
@@ -82,7 +84,7 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 		{name: "vDatastore", headers: datastoreHeaders, rows: datastoreRows(data)},
 		{name: "vSnapshot", headers: snapshotHeaders, rows: snapshotRows(data), dateCols: []int{4}},
 		{name: "vHealth", headers: healthHeaders, rows: healthRows(data, healthReport)},
-		{name: "vsfleetCoverage", headers: coverageHeaders, rows: coverageRows(data, healthReport), dateCols: []int{2, 3}},
+		{name: coverageSheetName, headers: coverageHeaders, rows: coverageRows(data, healthReport), dateCols: []int{2, 3}},
 	}, nil
 }
 

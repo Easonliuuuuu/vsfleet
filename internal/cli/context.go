@@ -63,12 +63,12 @@ func (f *contextFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.username, "username", "", "vCenter username, e.g. administrator@vsphere.local")
 	fl.StringVar(&f.via, "via", "", "parent context this was added from (context add --force drops it unless --via is passed again)")
 	fl.StringVar(&f.viaMoRef, "via-moref", "", "managed object reference of the VM this was added from")
-	fl.StringVar(&f.credential, "credential", "", "credential reference: keyring:<key> or prompt")
+	fl.StringVar(&f.credential, "credential", "", "credential reference: keyring:<key>, prompt, env:<VAR>, file:<path> or exec:<program>")
 	fl.StringVar(&f.datacenter, "datacenter", "", "default datacenter for inventory queries")
 	fl.StringVar(&f.transport, "transport", "", "network route: direct, socks5, http or https")
 	fl.StringVar(&f.proxyAddress, "proxy-address", "", "proxy address for socks5/http/https, host:port")
 	fl.StringVar(&f.proxyUsername, "proxy-username", "", "username for a proxy that requires authentication")
-	fl.StringVar(&f.proxyCredential, "proxy-credential", "", "credential reference for the proxy password: keyring:<key> (default keyring:<name>-proxy)")
+	fl.StringVar(&f.proxyCredential, "proxy-credential", "", "credential reference for the proxy password: keyring:<key>, env:<VAR>, file:<path> or exec:<program> (default keyring:<name>-proxy)")
 	fl.BoolVar(&f.remoteDNS, "remote-dns", false, "resolve the vCenter hostname at the proxy (socks5 only; http and https always do)")
 	fl.StringVar(&f.tlsMode, "tls", "", "certificate policy: system, thumbprint or insecure")
 	fl.StringVar(&f.thumbprint, "thumbprint", "", "certificate fingerprint to pin; with --tls thumbprint and no value, the presented certificate is fetched")
@@ -126,6 +126,36 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		TLS: config.TLSConfig{Mode: f.tlsMode, Thumbprint: f.thumbprint},
 	}
 
+	// The credential references are parsed before any password is read, so a
+	// reference that cannot hold a password rejects the request without first
+	// consuming the operator's standard input.
+	var credRef credentials.Ref
+	if f.credential != "" {
+		ref, err := credentials.ParseRef(f.credential)
+		if err != nil {
+			return err
+		}
+		credRef = ref
+	}
+	var proxyCredRef credentials.Ref
+	if f.proxyCredential != "" {
+		ref, err := credentials.ParseRef(f.proxyCredential)
+		if err != nil {
+			return err
+		}
+		proxyCredRef = ref
+	}
+	// env, file and exec name where the password lives; they do not store one.
+	// Reading a password here and then dropping it silently — which is what
+	// contextops.Save does for any non-keyring scheme — would leave an
+	// operator believing a secret was saved that never was.
+	if credRef.NonInteractive() && f.passwordStdin {
+		return fmt.Errorf("--password-stdin cannot be combined with --credential %s: %s resolves the password when it is needed, so there is nothing to store", credRef, credRef.Scheme)
+	}
+	if proxyCredRef.NonInteractive() && f.proxyPasswordStdin {
+		return fmt.Errorf("--proxy-password-stdin cannot be combined with --proxy-credential %s: %s resolves the password when it is needed, so there is nothing to store", proxyCredRef, proxyCredRef.Scheme)
+	}
+
 	var password string
 	var havePassword bool
 	if f.passwordStdin {
@@ -165,22 +195,6 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		}
 	}
 
-	var credRef credentials.Ref
-	if f.credential != "" {
-		ref, err := credentials.ParseRef(f.credential)
-		if err != nil {
-			return err
-		}
-		credRef = ref
-	}
-	var proxyCredRef credentials.Ref
-	if f.proxyCredential != "" {
-		ref, err := credentials.ParseRef(f.proxyCredential)
-		if err != nil {
-			return err
-		}
-		proxyCredRef = ref
-	}
 	// A pinned context with no fingerprint yet: fetch what the server presents
 	// so the operator can look at it before trusting it. This runs before
 	// validation, which would otherwise reject the not-yet-known fingerprint.

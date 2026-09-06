@@ -28,9 +28,23 @@ and read-only information collection APIs are implemented.
   * Windows: Credential Manager
 * **Volatile Memory:** Passwords stored in memory are dereferenced as soon as
   sessions terminate.
-* **Headless Safety:** On systems without a secret store (e.g., locked-down
-  containers or headless minimal Linux), vsfleet safely falls back to prompt
-  mode (`prompt`) rather than failing or storing credentials insecurely.
+* **Headless Safety:** On systems with no secret store and no terminal
+  (locked-down containers, systemd units, CI runners), the password is resolved
+  from a source the platform already secures: `env:<VAR>`, `file:<path>`, or
+  `exec:<program>`. Each names *where* the password lives and never contains
+  it, so `config.toml` stays safe to commit. These sources never fall back to
+  an interactive prompt — a missing one is an error naming what is missing,
+  rather than a prompt that would read whatever a scheduled job had on
+  standard input. Where a terminal does exist and nothing is configured,
+  vsfleet falls back to prompt mode rather than storing credentials insecurely.
+* **Credential Helper Execution:** `exec:<program>` runs a program you name and
+  reads the password from its standard output. It names a program and nothing
+  else — no arguments and no shell — so a configuration file cannot become a
+  shell command, and no secret is placed on a command line where `ps` would
+  reveal it. The helper inherits no standard input and is killed when its
+  context's timeout expires. Anyone who can write your `config.toml` can choose
+  which program runs, so protect it with the same care as any file naming an
+  executable.
 
 ### 3. Local Assessment History
 Historical assessments are opt-in, explicit captures written to a local SQLite

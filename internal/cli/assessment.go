@@ -32,6 +32,21 @@ type doctorExitError struct{ message string }
 func (e *doctorExitError) Error() string { return e.message }
 func (e *doctorExitError) ExitCode() int { return 1 }
 
+// partialExitError reports a capture that stored real evidence from some
+// vCenters but not all of them. It is raised only under --fail-on-partial:
+// a scheduled job that has always treated one site being down as routine must
+// keep behaving the way it did before the flag existed.
+type partialExitError struct {
+	runID      int64
+	successful int
+	total      int
+}
+
+func (e *partialExitError) Error() string {
+	return fmt.Sprintf("assessment %d is partial: %d of %d contexts returned inventory", e.runID, e.successful, e.total)
+}
+func (e *partialExitError) ExitCode() int { return 3 }
+
 func newAssessmentCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare historical assessments"}
 	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
@@ -628,6 +643,7 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 	var label, note string
 	var pin bool
 	var browseDatastores bool
+	var failOnPartial bool
 	cmd := &cobra.Command{Use: "run", Short: "Capture a point-in-time inventory assessment", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		contexts, err := a.Contexts()
 		if err != nil {
@@ -655,12 +671,16 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 		if run.Status == assessment.RunFailed {
 			return fmt.Errorf("assessment %d failed: no context returned VM inventory", run.ID)
 		}
+		if failOnPartial && run.Status == assessment.RunPartial {
+			return &partialExitError{runID: run.ID, successful: run.SuccessfulContexts, total: run.RequestedContexts}
+		}
 		return nil
 	}}
 	cmd.Flags().StringVar(&label, "label", "", "stable label for this assessment (used as a selector)")
 	cmd.Flags().StringVar(&note, "note", "", "operator note stored with this assessment")
 	cmd.Flags().BoolVar(&pin, "pin", false, "pin this assessment against deletion")
 	cmd.Flags().BoolVar(&browseDatastores, "browse-datastores", false, "record VM disk files from each accessible datastore (requires Datastore.Browse; adds time on large estates)")
+	cmd.Flags().BoolVar(&failOnPartial, "fail-on-partial", false, "exit 3 when the capture stored evidence from some contexts but not all")
 	return cmd
 }
 

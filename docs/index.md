@@ -54,7 +54,8 @@ This is an interoperability profile, not RVTools or a replacement for it — see
 - Keep healthy results usable when another vCenter is offline or timing out.
 - Route each context independently through direct TCP, SOCKS5, HTTP, or HTTPS
   CONNECT proxies.
-- Keep passwords in the operating system keyring or an interactive prompt;
+- Keep passwords in the operating system keyring, an interactive prompt, or an
+  unattended source for cron, systemd, containers and CI;
   they never go into `config.toml`.
 - Pin TLS thumbprints for private or self-signed vCenters.
 - Capture immutable, local SQLite assessments and explain drift over time.

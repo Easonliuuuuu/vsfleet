@@ -131,9 +131,18 @@ func (p *Prompt) Delete(context.Context, Ref) error {
 // It reports whether the credential came from the prompt, so callers can offer
 // to persist it.
 func Resolve(ctx context.Context, r *Resolver, ref Ref, label string) (c Credential, prompted bool, err error) {
-	c, err = r.Get(ctx, ref)
+	c, err = r.Get(WithLabel(ctx, label), ref)
 	if err == nil {
 		return c, false, nil
+	}
+	// A non-interactive reference never falls back to the prompt. The whole
+	// point of env:, file: and exec: is to run where no one is watching, and
+	// Prompt.ReadSecret on a non-terminal reads a line from standard input
+	// rather than failing — so a mistyped variable name in a cron job would
+	// not error, it would quietly consume whatever that job had piped in and
+	// try it as a password. Failing here says what is actually wrong.
+	if ref.NonInteractive() {
+		return Credential{}, false, err
 	}
 	// A keyring can be present but unavailable while its desktop secret store
 	// is locked. The interactive interface can still make progress by asking

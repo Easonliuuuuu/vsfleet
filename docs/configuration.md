@@ -50,14 +50,64 @@ Editing or removing a context invalidates its existing session and cache.
 
 ## Credentials
 
+A credential reference names *where* the password lives. It never contains the
+password, so it is safe in `config.toml`, in version control, and in anything
+that prints your configuration.
+
 | Value | Behavior |
 |---|---|
 | `keyring:<name>` | Read the password from the native OS secret store |
 | `prompt` | Prompt interactively on each run and store nothing on disk |
+| `env:<VAR>` | Read the password from an environment variable |
+| `file:<path>` | Read the password from a file; one trailing newline is stripped |
+| `exec:<program>` | Run a program and read the password from its standard output |
 
-On systems without an active Secret Service, such as a headless server, SSH
-bastion, or container, `context add` records `credential = "prompt"` with a
-warning. Passwords never go into TOML, logs, or command history.
+Passwords never go into TOML, logs, or command history.
+
+### Unattended sources
+
+`env`, `file` and `exec` resolve without a terminal, which is what makes cron,
+systemd, containers and CI possible. They are read-only: they say where a
+password is, and nothing stores one through them, so `--password-stdin` is
+rejected when combined with them rather than accepted and silently discarded.
+
+They also never fall back to the interactive prompt. A missing variable or an
+unreadable file is an error naming exactly what is missing — not a password
+prompt that would read whatever a scheduled job happened to have on standard
+input.
+
+`env` suits CI runners and container runtimes that inject secrets into the
+process environment. On a shared host another process of the same user can
+read `/proc/<pid>/environ`, so prefer `file` where that matters.
+
+`file` is the shape a systemd `LoadCredential=` unit, a Kubernetes secret
+mount, and a Docker secret all present. File permissions are not enforced,
+because Kubernetes projects secret volumes world-readable inside the container
+by default; protecting the file is yours to decide.
+
+`exec` reaches a secret manager vsfleet does not integrate with. The reference
+names a program and nothing else — no arguments and no shell — so a
+configuration file cannot become a shell command, and no secret is ever placed
+on a command line where `ps` would show it. A helper needing arguments is a
+wrapper script; it is told which context it is answering for:
+
+```sh
+#!/bin/sh
+# /usr/local/bin/vsfleet-credential
+exec vault read -field=password "secret/vcenter/$VSFLEET_CONTEXT"
+```
+
+| Variable | Value |
+|---|---|
+| `VSFLEET_CONTEXT` | The context whose password is being resolved |
+| `VSFLEET_CREDENTIAL_REF` | The reference being resolved, e.g. `exec:/usr/local/bin/vsfleet-credential` |
+
+The helper inherits no standard input, and a helper that hangs fails its own
+context's `--timeout` rather than holding up the rest of the estate.
+
+On systems without an active Secret Service and without one of the unattended
+sources configured, such as a headless server or SSH bastion, `context add`
+records `credential = "prompt"` with a warning.
 
 ## Network routes
 
@@ -68,8 +118,9 @@ warning. Passwords never go into TOML, logs, or command history.
 | `http` | HTTP CONNECT forward proxy |
 | `https` | HTTPS CONNECT forward proxy with TLS |
 
-Proxy authentication can use a separate `keyring:<name>` reference. The
-unattended setup flags are documented by `vsfleet context add --help`.
+Proxy authentication can use a separate credential reference of any scheme
+above, set with `--proxy-credential`. The unattended setup flags are documented
+by `vsfleet context add --help`.
 
 ## SSH
 

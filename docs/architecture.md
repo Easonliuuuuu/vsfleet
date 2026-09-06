@@ -145,6 +145,13 @@ formats are byte-identical across repeated exports of unchanged stored
 evidence and agree with each other on content. `vHealth` is derived at export
 time from persisted evidence; it is not a separately collected sheet.
 
+`report.Profile` describes that same worksheet set column by column — cell
+type, unit, and when a cell is left empty — and is what
+`vsfleet compatibility report` renders. It is built by running the real sheet
+builder over empty export data, so the description is derived from the exporter
+rather than maintained alongside it, and a test fails the build if a worksheet
+gains a column that nothing describes.
+
 ---
 
 ## 3. Source Code Organization

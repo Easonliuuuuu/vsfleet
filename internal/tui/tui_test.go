@@ -16,6 +16,7 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -2224,5 +2225,59 @@ func TestDemoBadgeMarksSampleData(t *testing.T) {
 	plain := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 	if header := ansi.Strip(plain.viewHeader()); strings.Contains(header, demoBadge) {
 		t.Errorf("a real run must not claim to be a demo, got %q", header)
+	}
+}
+
+// The form's credential row is a two-way choice between keyring and prompt, so
+// a context resolved from an environment variable, a file or a helper has no
+// index to sit on. It must be preserved rather than quietly rewritten to
+// keyring:<name>, which would drop the reference and leave the context looking
+// for a password nothing ever stored.
+func TestFormPreservesANonInteractiveCredential(t *testing.T) {
+	cc := &config.Context{
+		Name:       "prod",
+		Endpoint:   "https://vcsa.example.internal",
+		Username:   "operator@vsphere.local",
+		Credential: credentials.Ref{Scheme: credentials.SchemeEnv, Value: "VSFLEET_PROD_PASSWORD"},
+	}
+	f := newContextForm(&contextState{cc: cc})
+
+	// Shown, not offered: no scheme picker and no password field, because
+	// neither applies to a reference the form cannot edit.
+	rows := f.rows()
+	if !hasLabel(rows, "Credential") {
+		t.Fatal("the credential row disappeared")
+	}
+	if hasLabel(rows, "Password") {
+		t.Error("a read-only credential source has no password to type into the form")
+	}
+
+	in := f.input()
+	if in.Credential != cc.Credential {
+		t.Errorf("the form rewrote the credential to %v, want %v", in.Credential, cc.Credential)
+	}
+	if in.HavePassword {
+		t.Error("the form invented a password for a reference that cannot store one")
+	}
+}
+
+// The keyring and prompt paths are unchanged by that.
+func TestFormStillChoosesBetweenKeyringAndPrompt(t *testing.T) {
+	f := newContextForm(nil)
+	f.name.SetValue("prod")
+
+	if !hasLabel(f.rows(), "Password") {
+		t.Error("the keyring choice should offer a password field")
+	}
+	if in := f.input(); in.Credential.Scheme != credentials.SchemeKeyring || in.Credential.Value != "prod" {
+		t.Errorf("keyring choice produced %v", in.Credential)
+	}
+
+	f.credIdx = 1
+	if hasLabel(f.rows(), "Password") {
+		t.Error("the prompt choice stores nothing, so it has no password field")
+	}
+	if in := f.input(); in.Credential.Scheme != credentials.SchemePrompt {
+		t.Errorf("prompt choice produced %v", in.Credential)
 	}
 }

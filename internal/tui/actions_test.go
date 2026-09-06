@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -257,6 +258,47 @@ func TestProxiedContextDisablesBrowserActionsButNotSSH(t *testing.T) {
 	ssh, ok := findAction(items, "SSH to "+r.target.address)
 	if !ok || ssh.disabled != "" {
 		t.Errorf("SSH should still be offered through the proxy, got %+v", ssh)
+	}
+}
+
+func TestSSHUsesPerKindUsers(t *testing.T) {
+	fake := &fakeHandoff{}
+	m := newTestModel(t, twoHealthy(), Options{
+		Current:     "prod",
+		Handoff:     fake,
+		SSHUser:     "legacy",
+		SSHVMUser:   "ubuntu",
+		SSHHostUser: "root",
+	})
+	vm := findRow(t, m, vsphere.KindVM, "app-01")
+	host := findRow(t, m, vsphere.KindHost, "esxi-01")
+	if cmd := m.sshAction(vm, vm.target.address).run(m); cmd == nil {
+		t.Fatal("VM SSH action did not create a command")
+	}
+	if cmd := m.sshAction(host, host.target.address).run(m); cmd == nil {
+		t.Fatal("host SSH action did not create a command")
+	}
+	if len(fake.ssh) != 2 || fake.ssh[0].User != "ubuntu" || fake.ssh[1].User != "root" {
+		t.Fatalf("per-kind SSH users were not applied: %+v", fake.ssh)
+	}
+}
+
+func TestSSHUserFallsBackToLegacySharedUser(t *testing.T) {
+	fake := &fakeHandoff{}
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Handoff: fake, SSHUser: "admin"})
+	vm := findRow(t, m, vsphere.KindVM, "app-01")
+	if cmd := m.sshAction(vm, vm.target.address).run(m); cmd == nil {
+		t.Fatal("SSH action did not create a command")
+	}
+	if len(fake.ssh) != 1 || fake.ssh[0].User != "admin" {
+		t.Fatalf("legacy SSH user was not used: %+v", fake.ssh)
+	}
+}
+
+func TestSSHFailureRetainsLastDiagnostic(t *testing.T) {
+	err := sshFailure(errors.New("exit status 255"), "ssh: connect to host 10.20.0.11 port 22: Connection refused\n")
+	if err == nil || !strings.Contains(err.Error(), "Connection refused") || !strings.Contains(err.Error(), "255") {
+		t.Fatalf("SSH diagnostic was not retained: %v", err)
 	}
 }
 

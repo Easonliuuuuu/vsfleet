@@ -43,8 +43,13 @@ type Config struct {
 // falls back to its own usual resolution (~/.ssh/config, then the local
 // username) rather than vsfleet inventing one.
 type SSHConfig struct {
-	// User is the default remote username for both VMs and ESXi hosts.
+	// User is the backwards-compatible default remote username for both VMs
+	// and ESXi hosts. VMUser and HostUser take precedence when set.
 	User string `toml:"user,omitempty" json:"user,omitempty"`
+	// VMUser is the default remote username for VM guest addresses.
+	VMUser string `toml:"vm_user,omitempty" json:"vm_user,omitempty"`
+	// HostUser is the default remote username for ESXi host addresses.
+	HostUser string `toml:"host_user,omitempty" json:"host_user,omitempty"`
 }
 
 // DefaultPath returns the configuration file path, honouring VSFLEET_CONFIG and

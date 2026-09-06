@@ -125,6 +125,8 @@ func runUI(a *App, cmd *cobra.Command) error {
 		Out:             a.out(),
 		Assessment:      assessmentService,
 		SSHUser:         cfg.SSH.User,
+		SSHVMUser:       cfg.SSH.VMUser,
+		SSHHostUser:     cfg.SSH.HostUser,
 	})
 	// A clean run is the only one worth remembering: a program that never
 	// really started (no TTY, say) has nothing truthful to say about where

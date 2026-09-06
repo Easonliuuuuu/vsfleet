@@ -471,9 +471,13 @@ type Options struct {
 	// and that promise has to hold for these actions too, not just for the
 	// vSphere API calls the rest of the program makes.
 	Demo bool
-	// SSHUser is the default remote username the SSH handoff action fills
-	// in ahead of a VM's or host's address — config.toml's [ssh] table.
-	// Empty leaves ssh(1) to resolve a user the ordinary way.
+	// SSHVMUser and SSHHostUser are the optional default remote usernames the
+	// SSH handoff action fills in for VM guests and ESXi hosts. Empty values
+	// leave ssh(1) to resolve a user from its normal configuration.
+	SSHVMUser   string
+	SSHHostUser string
+	// SSHUser is the backwards-compatible shared fallback for both target
+	// kinds. Per-kind values take precedence when set.
 	SSHUser string
 	// Handoff is what the detail pane's actions use to reach the clipboard,
 	// the browser, and a terminal. Nil gets the real implementation; tests
@@ -628,7 +632,11 @@ type Model struct {
 	// handoff reaches the clipboard, the browser, and a terminal on the
 	// operator's own workstation; see Options.Handoff.
 	handoff Handoff
-	// sshUser is the configured default remote user; see Options.SSHUser.
+	// sshVMUser and sshHostUser are the configured per-kind defaults; see
+	// Options.SSHVMUser and Options.SSHHostUser.
+	sshVMUser   string
+	sshHostUser string
+	// sshUser is the backwards-compatible shared fallback.
 	sshUser string
 	// out is where a launched process's own I/O and the OSC 52 clipboard
 	// escape are written — the same stream Options.Out gives Bubble Tea.
@@ -671,6 +679,8 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		credCoord:       opts.Credentials,
 		assessment:      opts.Assessment,
 		demo:            opts.Demo,
+		sshVMUser:       opts.SSHVMUser,
+		sshHostUser:     opts.SSHHostUser,
 		sshUser:         opts.SSHUser,
 		handoff:         opts.Handoff,
 		out:             opts.Out,

@@ -130,11 +130,13 @@ SQLite read transaction and passes it to the `internal/report` writer. It never
 loads configuration or credentials and never creates a session. Inventory
 schema version 3 (distinct from the ledger's own schema version above) adds
 the VMware Tools version and version status to VM payloads, backing the
-`vTools` tab; older rows still populate its running-status column, with the
-version columns left blank and the gap noted on `vsfleetCoverage`. A shared
+`vTools` tab; version 8 adds persisted resource-pool observations for the
+`vRP` export tab. Older rows still populate the `vTools` running-status column,
+with the version columns left blank and the gap noted on `vsfleetCoverage`; runs
+before version 8 mark `vRP` as not recorded. A shared
 `rvtoolsSheets` builder canonicalizes and validates the run once and returns
 every RVTools tab (`vInfo`, `vCPU`, `vMemory`, per-VM `vDisk`/`vNetwork`,
-`vTools`, `vHost`, `vCluster`, `vDatastore`, `vSnapshot`, `vHealth`,
+`vTools`, `vHost`, `vCluster`, `vRP`, `vDatastore`, `vSnapshot`, `vHealth`,
 `vsfleetCoverage`) in
 tab order; the XLSX writer normalizes ZIP entry order and timestamps on top of
 it, and the CSV writer renders the same tabs as one file per sheet, so both

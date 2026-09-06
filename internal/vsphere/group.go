@@ -12,12 +12,15 @@ type FetchGroup string
 
 // Fetch groups, in the order a sequential caller retrieves them.
 const (
-	GroupVMs        FetchGroup = "vms"
-	GroupHosts      FetchGroup = "hosts"
-	GroupClusters   FetchGroup = "clusters"
-	GroupVApps      FetchGroup = "vapps"
-	GroupDatastores FetchGroup = "datastores"
-	GroupNetworks   FetchGroup = "networks"
+	GroupVMs      FetchGroup = "vms"
+	GroupHosts    FetchGroup = "hosts"
+	GroupClusters FetchGroup = "clusters"
+	// GroupResourcePools is capture-only and deliberately absent from
+	// AllGroups because the browsable inventory never requests it.
+	GroupResourcePools FetchGroup = "resourcepools"
+	GroupVApps         FetchGroup = "vapps"
+	GroupDatastores    FetchGroup = "datastores"
+	GroupNetworks      FetchGroup = "networks"
 )
 
 // AllGroups lists every fetch group ListInventory enumerates.
@@ -96,6 +99,8 @@ func GroupFor(k Kind) FetchGroup {
 		return GroupHosts
 	case KindCluster:
 		return GroupClusters
+	case KindResourcePool:
+		return GroupResourcePools
 	case KindVApp:
 		return GroupVApps
 	case KindDatastore:
@@ -195,6 +200,13 @@ func (c *Client) FetchGroupWith(ctx context.Context, idx *Index, group FetchGrou
 			fail(err, KindCluster)
 		} else {
 			inv.Clusters = clusters
+			opts.partial(inv.Slice(group))
+		}
+	case GroupResourcePools:
+		if resourcePools, err := c.listResourcePools(ctx, idx.idx); err != nil {
+			fail(err, KindResourcePool)
+		} else {
+			inv.ResourcePools = resourcePools
 			opts.partial(inv.Slice(group))
 		}
 	case GroupVApps:

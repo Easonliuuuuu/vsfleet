@@ -12,17 +12,18 @@ import (
 
 type RunStatus string
 
-// CurrentInventorySchemaVersion identifies the fields captured in VM payloads.
-// Version 2 adds per-VM disks and network adapters; version 3 adds the
+// CurrentInventorySchemaVersion identifies the fields captured in inventory
+// payloads. Version 2 adds per-VM disks and network adapters; version 3 adds the
 // VMware Tools version and version status; version 4 adds guest filesystem
 // partitions; version 5 adds the virtual disks backing each of them; version 6
 // adds normalized CD-ROM and USB devices (including connection and backing
-// identity); version 7 adds VM connection state. All keep the payload
+// identity); version 7 adds VM connection state; version 8 adds resource-pool
+// observations. All keep the payload
 // backward-compatible with older ledger rows:
 // a reader of an older run sees the field absent, which is what it is. Health
 // rules that need the version-6 evidence must therefore remain not-evaluated
 // for runs captured before this schema.
-const CurrentInventorySchemaVersion = "7"
+const CurrentInventorySchemaVersion = "8"
 
 const (
 	RunRunning  RunStatus = "running"
@@ -74,7 +75,7 @@ type CollectionRun struct {
 }
 
 // ResourceObservation is the durable, versioned representation used for
-// hosts, clusters, and datastores. Payload contains the original typed object
+// hosts, clusters, datastores, and resource pools. Payload contains the original typed object
 // so new fields can be added without another ledger migration; the indexed
 // identity columns keep diffs and trend queries inexpensive.
 type ResourceObservation struct {

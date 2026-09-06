@@ -18,6 +18,7 @@ func TestGroupForMapsEveryKind(t *testing.T) {
 		{vsphere.KindTemplate, vsphere.GroupVMs},
 		{vsphere.KindHost, vsphere.GroupHosts},
 		{vsphere.KindCluster, vsphere.GroupClusters},
+		{vsphere.KindResourcePool, vsphere.GroupResourcePools},
 		{vsphere.KindVApp, vsphere.GroupVApps},
 		{vsphere.KindDatastore, vsphere.GroupDatastores},
 		{vsphere.KindNetwork, vsphere.GroupNetworks},
@@ -44,6 +45,16 @@ func TestGroupForMapsEveryKind(t *testing.T) {
 			t.Errorf("group %s is in AllGroups but no kind maps to it", g)
 		}
 	}
+	for _, k := range vsphere.AllKinds {
+		if k == vsphere.KindResourcePool {
+			t.Fatal("resourcepool must remain absent from AllKinds")
+		}
+	}
+	for _, g := range vsphere.AllGroups {
+		if g == vsphere.GroupResourcePools {
+			t.Fatal("resourcepools must remain absent from AllGroups")
+		}
+	}
 }
 
 // TestFetchGroupPopulatesOnlyItsOwnKinds checks the isolation FetchGroup
@@ -68,7 +79,7 @@ func TestFetchGroupPopulatesOnlyItsOwnKinds(t *testing.T) {
 
 	empty := func(inv *vsphere.Inventory) bool {
 		return len(inv.VMs) == 0 && len(inv.Templates) == 0 && len(inv.Hosts) == 0 &&
-			len(inv.Clusters) == 0 && len(inv.VApps) == 0 && len(inv.Datastores) == 0 && len(inv.Networks) == 0
+			len(inv.Clusters) == 0 && len(inv.ResourcePools) == 0 && len(inv.VApps) == 0 && len(inv.Datastores) == 0 && len(inv.Networks) == 0
 	}
 
 	for _, tc := range []struct {
@@ -78,6 +89,7 @@ func TestFetchGroupPopulatesOnlyItsOwnKinds(t *testing.T) {
 		{vsphere.GroupVMs, func(i *vsphere.Inventory) bool { return len(i.VMs) > 0 }},
 		{vsphere.GroupHosts, func(i *vsphere.Inventory) bool { return len(i.Hosts) > 0 }},
 		{vsphere.GroupClusters, func(i *vsphere.Inventory) bool { return len(i.Clusters) > 0 }},
+		{vsphere.GroupResourcePools, func(i *vsphere.Inventory) bool { return len(i.ResourcePools) > 0 }},
 		{vsphere.GroupVApps, func(i *vsphere.Inventory) bool { return len(i.VApps) > 0 }},
 		{vsphere.GroupDatastores, func(i *vsphere.Inventory) bool { return len(i.Datastores) > 0 }},
 		{vsphere.GroupNetworks, func(i *vsphere.Inventory) bool { return len(i.Networks) > 0 }},
@@ -97,6 +109,8 @@ func TestFetchGroupPopulatesOnlyItsOwnKinds(t *testing.T) {
 			blanked.Hosts = nil
 		case vsphere.GroupClusters:
 			blanked.Clusters = nil
+		case vsphere.GroupResourcePools:
+			blanked.ResourcePools = nil
 		case vsphere.GroupVApps:
 			blanked.VApps = nil
 		case vsphere.GroupDatastores:

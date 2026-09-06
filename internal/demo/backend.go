@@ -165,6 +165,7 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		{Kind: "vm", Status: "success", ItemCount: len(observations)},
 		{Kind: "host", Status: "success", ItemCount: len(inv.Hosts), Resources: demoResources(cc.Name, "demo-prod-vc", "host", inv.Hosts)},
 		{Kind: "cluster", Status: "success", ItemCount: len(inv.Clusters), Resources: demoResources(cc.Name, "demo-prod-vc", "cluster", inv.Clusters)},
+		{Kind: "resourcepool", Status: "success", ItemCount: len(inv.ResourcePools), Resources: demoResources(cc.Name, "demo-prod-vc", "resourcepool", inv.ResourcePools)},
 		{Kind: "datastore", Status: "success", ItemCount: len(inv.Datastores), Resources: demoResources(cc.Name, "demo-prod-vc", "datastore", inv.Datastores)},
 	}
 	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: cc.Name, VCenterID: "demo-prod-vc", Status: "success", VMs: observations, Collections: collections}, now.Add(time.Minute)); err != nil {
@@ -189,6 +190,10 @@ func demoResources(contextName, vcenterID, kind string, values any) []assessment
 		for _, value := range typed {
 			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
 		}
+	case []vsphere.ResourcePool:
+		for _, value := range typed {
+			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
+		}
 	case []vsphere.Datastore:
 		for _, value := range typed {
 			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
@@ -201,6 +206,8 @@ func makeDemoResource(contextName, vcenterID, kind, id, name string, value any) 
 	payload, _ := json.Marshal(value)
 	return assessment.ResourceObservation{Context: contextName, VCenterID: vcenterID, Kind: kind, ID: id, Name: name, Payload: payload}
 }
+
+func int64Value(value int64) *int64 { return &value }
 
 // The remaining methods satisfy the TUI backend contract. The presentation is
 // deliberately read-only so a recording cannot imply that sample contexts can
@@ -252,6 +259,11 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 		Clusters: []vsphere.Cluster{
 			{Location: loc("host", "compute-a"), ID: name + "-cluster-1", Name: "compute-a", Hosts: 4, EffectiveHost: 4, CPUCores: 128, TotalCPUMHz: 307200, TotalMemoryMB: 2097152, DRSEnabled: true, HAEnabled: true},
 			{Location: loc("host", "compute-b"), ID: name + "-cluster-2", Name: "compute-b", Hosts: 3, EffectiveHost: 3, CPUCores: 96, TotalCPUMHz: 230400, TotalMemoryMB: 1572864, DRSEnabled: true, HAEnabled: true},
+		},
+		ResourcePools: []vsphere.ResourcePool{
+			{Location: vsphere.Location{Context: name, Datacenter: datacenter, Path: "/" + datacenter + "/host/compute-a/Resources"}, ID: name + "-pool-root-a", Name: "Resources", Root: true, Owner: "compute-a", Status: "green", ConfigStatus: "green", VMRefs: []string{name + "-vm-1", name + "-vm-2"}, CPUReservationMHz: int64Value(0), CPULimitMHz: int64Value(-1), CPUExpandable: true, CPUShares: 4000, CPULevel: "normal", MemConfiguredMB: 49152, MemReservationMB: int64Value(0), MemLimitMB: int64Value(-1), MemExpandable: true, MemShares: 4000, MemLevel: "normal"},
+			{Location: vsphere.Location{Context: name, Datacenter: datacenter, Path: "/" + datacenter + "/host/compute-a/Resources/api-pool"}, ID: name + "-pool-1", Name: "api-pool", Parent: "Resources", Owner: "compute-a", Status: "green", ConfigStatus: "green", VMRefs: []string{name + "-vm-1"}, CPUReservationMHz: int64Value(2000), CPULimitMHz: int64Value(16000), CPUExpandable: true, CPUShares: 2000, CPULevel: "normal", MemConfiguredMB: 16384, MemReservationMB: int64Value(4096), MemLimitMB: int64Value(32768), MemExpandable: true, MemShares: 2000, MemLevel: "normal"},
+			{Location: vsphere.Location{Context: name, Datacenter: datacenter, Path: "/" + datacenter + "/host/compute-b/Resources"}, ID: name + "-pool-root-b", Name: "Resources", Root: true, Owner: "compute-b", Status: "green", ConfigStatus: "green", VMRefs: []string{name + "-vm-3"}, CPUReservationMHz: int64Value(0), CPULimitMHz: int64Value(-1), CPUExpandable: true, CPUShares: 4000, CPULevel: "normal", MemConfiguredMB: 24576, MemReservationMB: int64Value(0), MemLimitMB: int64Value(-1), MemExpandable: true, MemShares: 4000, MemLevel: "normal"},
 		},
 		VApps: []vsphere.VApp{
 			{

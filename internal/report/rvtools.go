@@ -31,20 +31,21 @@ var (
 	// per-VM tab: vInfo has its own tail (it also carries the SMBIOS UUID and
 	// omits Folder), but vDisk, vNetwork, vSnapshot, vCPU, vMemory, and vTools
 	// all end in exactly these columns.
-	vmTailHeaders    = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	vmHeaders        = []string{"VM", "Powerstate", "Template", "Guest state", "CPUs", "Memory", "Primary IP Address", "Folder", "In Use MiB", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs"}, vmTailHeaders...)
-	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB"}, vmTailHeaders...)
-	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "SharedBus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	networkHeaders   = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	toolsHeaders     = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
-	partitionHeaders = append([]string{"VM", "Powerstate", "Template", "Disk Key", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
-	hostHeaders      = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	clusterHeaders   = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	datastoreHeaders = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	snapshotHeaders  = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	healthHeaders    = []string{"Name", "Message", "Message type", "vsfleet Rule", "Object type", "Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	coverageHeaders  = []string{"Run ID", "Run label", "Run started", "Run finished", "Run status", "Context", "Endpoint", "Datacenter", "vCenter ID", "Sheet", "Collection status", "Item count", "Error"}
+	vmTailHeaders       = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	vmHeaders           = []string{"VM", "Powerstate", "Template", "Guest state", "CPUs", "Memory", "Primary IP Address", "Folder", "In Use MiB", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	cpuHeaders          = append([]string{"VM", "Powerstate", "Template", "CPUs"}, vmTailHeaders...)
+	memoryHeaders       = append([]string{"VM", "Powerstate", "Template", "Size MiB"}, vmTailHeaders...)
+	diskHeaders         = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "SharedBus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	networkHeaders      = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	toolsHeaders        = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
+	partitionHeaders    = append([]string{"VM", "Powerstate", "Template", "Disk Key", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
+	hostHeaders         = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	clusterHeaders      = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overhead limit", "CPU reservation", "CPU level", "CPU shares", "CPU expandable reservation", "Mem configured", "Mem limit", "Mem overhead limit", "Mem reservation", "Mem level", "Mem shares", "Mem expandable reservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	healthHeaders       = []string{"Name", "Message", "Message type", "vsfleet Rule", "Object type", "Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	coverageHeaders     = []string{"Run ID", "Run label", "Run started", "Run finished", "Run status", "Context", "Endpoint", "Datacenter", "vCenter ID", "Sheet", "Collection status", "Item count", "Error"}
 )
 
 // sheet is one rendered RVTools tab: a header row plus its data rows, in the
@@ -77,6 +78,7 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 		{name: "vTools", headers: toolsHeaders, rows: toolsRows(data)},
 		{name: "vHost", headers: hostHeaders, rows: hostRows(data)},
 		{name: "vCluster", headers: clusterHeaders, rows: clusterRows(data)},
+		{name: "vRP", headers: resourcePoolHeaders, rows: resourcePoolRows(data)},
 		{name: "vDatastore", headers: datastoreHeaders, rows: datastoreRows(data)},
 		{name: "vSnapshot", headers: snapshotHeaders, rows: snapshotRows(data), dateCols: []int{4}},
 		{name: "vHealth", headers: healthHeaders, rows: healthRows(data, healthReport)},
@@ -84,7 +86,7 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 	}, nil
 }
 
-// WriteRVTools writes the twelve RVTools-compatible sheets plus the
+// WriteRVTools writes the thirteen RVTools-compatible sheets plus the
 // vsfleetCoverage extension sheet. vHealth is derived from the supplied
 // report; callers evaluate it before entering the renderer. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
@@ -482,6 +484,37 @@ func clusterRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
+func resourcePoolRows(data assessment.ExportData) [][]any {
+	vmCPUs := make(map[string]int32, len(data.VMs))
+	for _, item := range data.VMs {
+		vmCPUs[item.Observation.VM.ID] = item.Observation.VM.CPU
+	}
+
+	rows := make([][]any, 0)
+	for _, r := range data.Resources {
+		if r.Kind != "resourcepool" {
+			continue
+		}
+		var pool vsphere.ResourcePool
+		if err := json.Unmarshal(r.Payload, &pool); err != nil {
+			continue
+		}
+		vCPUs := int32(0)
+		for _, vmRef := range pool.VMRefs {
+			vCPUs += vmCPUs[vmRef]
+		}
+		rows = append(rows, []any{
+			pool.Path, nonempty(pool.Name, r.Name), pool.Status, len(pool.VMRefs), vCPUs,
+			optionalInt64(pool.CPULimitMHz), optionalInt64(pool.CPUOverheadLimitMHz), optionalInt64(pool.CPUReservationMHz),
+			pool.CPULevel, pool.CPUShares, pool.CPUExpandable, pool.MemConfiguredMB,
+			optionalInt64(pool.MemLimitMB), optionalInt64(pool.MemOverheadLimitMB), optionalInt64(pool.MemReservationMB),
+			pool.MemLevel, pool.MemShares, pool.MemExpandable, pool.ConfigStatus,
+			nonempty(pool.ID, r.ID), pool.Datacenter, contextEndpoint(data, r.Context), r.VCenterID, r.Context,
+		})
+	}
+	return rows
+}
+
 func datastoreRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, r := range data.Resources {
@@ -561,10 +594,11 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 		}
 		resources[r.Context][r.Kind]++
 	}
-	rows := make([][]any, 0, len(data.Contexts)*12)
+	rows := make([][]any, 0, len(data.Contexts)*13)
 	devicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 2)
 	toolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 3)
 	partitionsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 4)
+	poolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 8)
 	if !devicesRecorded {
 		diskCounts = make(map[string]int)
 		networkCounts = make(map[string]int)
@@ -591,6 +625,7 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			{kind: "vtools", sheet: "vTools", count: counts[c.Name]},
 			{kind: "host", sheet: "vHost", count: resources[c.Name]["host"]},
 			{kind: "cluster", sheet: "vCluster", count: resources[c.Name]["cluster"]},
+			{kind: "resourcepool", sheet: "vRP", count: resources[c.Name]["resourcepool"]},
 			{kind: "datastore", sheet: "vDatastore", count: resources[c.Name]["datastore"]},
 			{kind: "snapshot", sheet: "vSnapshot", count: snapshotCounts[c.Name]},
 			{kind: "vhealth", sheet: "vHealth", count: healthFindingsForContext(healthReport, c.Name)},
@@ -608,6 +643,9 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			case spec.kind == "vpartition" && !partitionsRecorded:
 				status = "not recorded"
 				message = "capture predates guest partition inventory"
+			case spec.kind == "resourcepool" && !poolsRecorded:
+				status = "not recorded"
+				message = "capture predates resource pool inventory"
 			// Partitions are reported by VMware Tools rather than by vCenter,
 			// so a successful VM capture can still leave this tab partial —
 			// a powered-off VM, or one without Tools running, contributes
@@ -853,6 +891,8 @@ func validateResources(resources []assessment.ResourceObservation) error {
 			value = &vsphere.Cluster{}
 		case "datastore":
 			value = &vsphere.Datastore{}
+		case "resourcepool":
+			value = &vsphere.ResourcePool{}
 		default:
 			return fmt.Errorf("unsupported persisted resource kind %q", resource.Kind)
 		}

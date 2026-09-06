@@ -190,7 +190,7 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context, b
 	// A single index is reused for all groups. Groups are intentionally
 	// sequential within one vCenter to keep API load predictable; contexts are
 	// still collected concurrently by Capture.
-	for _, group := range []vsphere.FetchGroup{vsphere.GroupVMs, vsphere.GroupHosts, vsphere.GroupClusters, vsphere.GroupDatastores} {
+	for _, group := range []vsphere.FetchGroup{vsphere.GroupVMs, vsphere.GroupHosts, vsphere.GroupClusters, vsphere.GroupResourcePools, vsphere.GroupDatastores} {
 		var part *vsphere.Inventory
 		if group == vsphere.GroupDatastores {
 			part = client.FetchGroupWith(opCtx, idx, group, vsphere.FetchOptions{BrowseDatastoreFiles: browseDatastores})
@@ -220,6 +220,8 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context, b
 			r.Collections = append(r.Collections, resourceCollection("host", r.VCenterID, cc.Name, part.Hosts, part.ErrorFor))
 		case vsphere.GroupClusters:
 			r.Collections = append(r.Collections, resourceCollection("cluster", r.VCenterID, cc.Name, part.Clusters, part.ErrorFor))
+		case vsphere.GroupResourcePools:
+			r.Collections = append(r.Collections, resourceCollection("resourcepool", r.VCenterID, cc.Name, part.ResourcePools, part.ErrorFor))
 		case vsphere.GroupDatastores:
 			r.Collections = append(r.Collections, resourceCollection("datastore", r.VCenterID, cc.Name, part.Datastores, part.ErrorFor))
 		}
@@ -258,6 +260,8 @@ func resourceCollection[T any](kind, vcenter, contextName string, values []T, er
 		case vsphere.Host:
 			id, name = v.ID, v.Name
 		case vsphere.Cluster:
+			id, name = v.ID, v.Name
+		case vsphere.ResourcePool:
 			id, name = v.ID, v.Name
 		case vsphere.Datastore:
 			id, name = v.ID, v.Name

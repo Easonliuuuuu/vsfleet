@@ -38,6 +38,8 @@ type contextFlags struct {
 	name               string
 	endpoint           string
 	username           string
+	via                string
+	viaMoRef           string
 	credential         string
 	datacenter         string
 	transport          string
@@ -59,6 +61,8 @@ func (f *contextFlags) register(cmd *cobra.Command) {
 	fl.StringVar(&f.name, "name", "", "context name")
 	fl.StringVar(&f.endpoint, "endpoint", "", "vCenter endpoint, e.g. https://vcsa.example.internal")
 	fl.StringVar(&f.username, "username", "", "vCenter username, e.g. administrator@vsphere.local")
+	fl.StringVar(&f.via, "via", "", "parent context this was added from (context add --force drops it unless --via is passed again)")
+	fl.StringVar(&f.viaMoRef, "via-moref", "", "managed object reference of the VM this was added from")
 	fl.StringVar(&f.credential, "credential", "", "credential reference: keyring:<key> or prompt")
 	fl.StringVar(&f.datacenter, "datacenter", "", "default datacenter for inventory queries")
 	fl.StringVar(&f.transport, "transport", "", "network route: direct, socks5, http or https")
@@ -110,6 +114,8 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		Name:       f.name,
 		Endpoint:   f.endpoint,
 		Username:   f.username,
+		Via:        f.via,
+		ViaMoRef:   f.viaMoRef,
 		Datacenter: f.datacenter,
 		Transport: config.TransportConfig{
 			Type:      f.transport,
@@ -185,7 +191,7 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 	}
 
 	in := contextops.Input{
-		Name: cc.Name, Endpoint: cc.Endpoint, Username: cc.Username, Datacenter: cc.Datacenter,
+		Name: cc.Name, Endpoint: cc.Endpoint, Username: cc.Username, Via: cc.Via, ViaMoRef: cc.ViaMoRef, Datacenter: cc.Datacenter,
 		Transport: cc.Transport, TLS: cc.TLS, Credential: credRef,
 		Password: password, HavePassword: havePassword,
 		ProxyCredential: proxyCredRef, ProxyPassword: proxyPassword, HaveProxyPassword: haveProxyPassword,
@@ -444,6 +450,7 @@ func newContextShowCommand(a *App) *cobra.Command {
 			fmt.Fprintf(a.out(), "Context: %s\n", c.Name)
 			f := newFields(a.out())
 			f.add("Endpoint", c.Endpoint)
+			f.add("Added from", c.Via)
 			f.add("Username", c.Username)
 			f.add("Credential", dash(c.Credential.String()))
 			f.add("Datacenter", c.Datacenter)

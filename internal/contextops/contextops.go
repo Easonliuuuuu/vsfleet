@@ -19,9 +19,13 @@ import (
 // Gathering them — prompting on a terminal, reading form fields — is the
 // front end's job; this package never asks a question.
 type Input struct {
-	Name       string
-	Endpoint   string
-	Username   string
+	Name     string
+	Endpoint string
+	Username string
+	// Via and ViaMoRef preserve where a nested context was discovered. They
+	// describe provenance only and do not affect how the connection is made.
+	Via        string
+	ViaMoRef   string
 	Datacenter string
 	Transport  config.TransportConfig
 	TLS        config.TLSConfig
@@ -61,6 +65,8 @@ func Build(in Input) *config.Context {
 		Name:       in.Name,
 		Endpoint:   in.Endpoint,
 		Username:   in.Username,
+		Via:        in.Via,
+		ViaMoRef:   in.ViaMoRef,
 		Datacenter: in.Datacenter,
 		Transport:  in.Transport,
 		TLS:        in.TLS,

@@ -51,10 +51,6 @@ func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool)
 	return out, nil
 }
 
-func newHost(c *Client, idx *index, m *mo.HostSystem) Host {
-	return newHostWithConfig(c, idx, m, false)
-}
-
 func newHostWithConfig(c *Client, idx *index, m *mo.HostSystem, withConfig bool) Host {
 	h := Host{
 		Location:        idx.locate(c, m.Self, m.Name),

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -90,8 +91,21 @@ func (r *runner) run(stdin string, args ...string) (stdout, stderr string, err e
 	}
 	root := cli.NewRootCommand(app)
 	root.SetArgs(append([]string{"--config", r.configPath}, args...))
+	defer func() { _ = app.Close(context.Background()) }()
 	err = root.ExecuteContext(context.Background())
 	return out.String(), errOut.String(), err
+}
+
+func TestRunnerClosesHistoryDatabase(t *testing.T) {
+	r := newRunner(t)
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+
+	if _, _, err := r.run("", "--history-db", dbPath, "assessment", "list"); err != nil {
+		t.Fatalf("assessment list: %v", err)
+	}
+	if err := os.Remove(dbPath); err != nil {
+		t.Fatalf("history database remained open after command: %v", err)
+	}
 }
 
 // mustRun fails the test if the command does not succeed.

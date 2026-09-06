@@ -56,10 +56,8 @@ func runHealth(t *testing.T, dbPath string, args ...string) (string, string, err
 	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
 	root.SetArgs(append([]string{"--history-db", dbPath, "health"}, args...))
+	defer func() { _ = a.Close(context.Background()) }()
 	err := root.ExecuteContext(context.Background())
-	if a.history != nil {
-		_ = a.history.Close()
-	}
 	return out.String(), errOut.String(), err
 }
 

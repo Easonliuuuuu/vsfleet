@@ -65,8 +65,8 @@ func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
 	want := []string{
 		"cdrom-connected", "datastore-inaccessible", "datastore-space-low",
 		"guest-disk-space-low", "host-disconnected", "host-in-maintenance",
-		"snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated",
-		"usb-connected",
+		"snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected",
+		"vm-inaccessible", "vm-orphaned",
 	}
 	rules := Rules()
 	if len(rules) != len(want) {
@@ -75,6 +75,34 @@ func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
 	for i, rule := range rules {
 		if rule.ID != want[i] {
 			t.Errorf("rule %d=%q, want %q", i, rule.ID, want[i])
+		}
+	}
+}
+
+func TestEvaluateVMConnectionRules(t *testing.T) {
+	data := assessment.ExportData{
+		Run:      assessment.Run{ID: 45, InventorySchemaVersion: "7"},
+		Contexts: []assessment.ContextRun{{Name: "prod", Datacenter: "dc-a"}},
+		VMs: []assessment.ExportVM{
+			{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: vsphere.VM{ID: "vm-orphan", Name: "orphan", ConnectionState: "orphaned"}}},
+			{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: vsphere.VM{ID: "vm-broken", Name: "broken", ConnectionState: "notResponding"}}},
+			{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: vsphere.VM{ID: "vm-ok", Name: "ok", ConnectionState: "connected"}}},
+			{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: vsphere.VM{ID: "tpl", Name: "template", IsTemplate: true, ConnectionState: "orphaned"}}},
+		},
+	}
+	report := Evaluate(data, Options{})
+	got := map[string]Finding{}
+	for _, finding := range report.Findings {
+		if finding.Rule == "vm-inaccessible" || finding.Rule == "vm-orphaned" {
+			got[finding.Rule] = finding
+		}
+	}
+	if len(got) != 2 || got["vm-orphaned"].Object.ID != "vm-orphan" || !strings.Contains(got["vm-inaccessible"].Message, "notResponding") {
+		t.Fatalf("VM connection findings=%+v", got)
+	}
+	for _, status := range report.Rules {
+		if (status.Rule == "vm-inaccessible" || status.Rule == "vm-orphaned") && status.Status != "evaluated" {
+			t.Errorf("%s status=%q, want evaluated", status.Rule, status.Status)
 		}
 	}
 }

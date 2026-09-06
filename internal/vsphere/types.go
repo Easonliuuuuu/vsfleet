@@ -69,6 +69,7 @@ type VM struct {
 	BIOSUUID           string        `json:"bios_uuid,omitempty"`
 	Name               string        `json:"name"`
 	PowerState         string        `json:"power_state"`
+	ConnectionState    string        `json:"connection_state"`
 	IsTemplate         bool          `json:"is_template"`
 	CPU                int32         `json:"cpu"`
 	MemoryMB           int64         `json:"memory_mb"`

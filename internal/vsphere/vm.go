@@ -24,6 +24,7 @@ var vmSummaryProps = []string{
 	"config.hardware.numCPU",
 	"config.hardware.memoryMB",
 	"runtime.powerState",
+	"runtime.connectionState",
 	"runtime.host",
 	"guest.ipAddress",
 	"guest.guestState",
@@ -149,14 +150,15 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		loc.Path = idx.path(*m.Parent, "") + "/" + m.Name
 	}
 	vm := VM{
-		Location:   loc,
-		ID:         m.Self.Value,
-		Name:       m.Name,
-		PowerState: string(m.Runtime.PowerState),
-		Host:       idx.name(m.Runtime.Host),
-		Cluster:    idx.clusterOf(m.Runtime.Host),
-		Folder:     idx.folderPath(m.Parent, loc.Datacenter),
-		Datastores: idx.names(m.Datastore),
+		Location:        loc,
+		ID:              m.Self.Value,
+		Name:            m.Name,
+		PowerState:      string(m.Runtime.PowerState),
+		ConnectionState: string(m.Runtime.ConnectionState),
+		Host:            idx.name(m.Runtime.Host),
+		Cluster:         idx.clusterOf(m.Runtime.Host),
+		Folder:          idx.folderPath(m.Parent, loc.Datacenter),
+		Datastores:      idx.names(m.Datastore),
 	}
 	if cfg := m.Config; cfg != nil {
 		vm.IsTemplate = cfg.Template

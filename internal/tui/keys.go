@@ -189,7 +189,10 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeVAppDetail:
 		return []key.Binding{k.Up, k.Down, k.Open, k.Back, k.Help, k.Quit}
 	case modeVAppVMDetail:
-		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
+		if m.actions != nil {
+			return []key.Binding{k.Up, k.Down, k.RunAction, k.CancelAction}
+		}
+		return []key.Binding{k.Up, k.Down, k.Open, k.Timeline, k.Back, k.Help, k.Quit}
 	case modeDoctor:
 		return []key.Binding{k.Reload, k.Back, k.Help, k.Quit}
 	case modeHelp:

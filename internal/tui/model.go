@@ -611,14 +611,15 @@ type Model struct {
 
 	// detailCursor is which line of the open detail pane the field cursor is
 	// on — index 0 is the object's own header, everything else maps onto
-	// r.detail through detailFocusable. detailY remains the pane's scroll
-	// offset, now derived from detailCursor rather than moved directly; see
-	// scrollDetailIntoView.
+	// r.detail through detailFocusable. It is reachable from modeDetail and
+	// modeVAppVMDetail. detailY remains the pane's scroll offset, now derived
+	// from detailCursor rather than moved directly; see scrollDetailIntoView.
 	detailCursor int
 	// actions is the popup listing what the focused line can do, open while
 	// non-nil — the same nil-means-closed idiom credPrompt uses. Unlike
-	// credPrompt it is only ever reachable from modeDetail, so it takes key
-	// priority inside handleDetailKey rather than globally in handleKey.
+	// credPrompt it is only ever reachable from modeDetail or
+	// modeVAppVMDetail, so it takes key priority inside their handlers rather
+	// than globally in handleKey.
 	actions *actionList
 	// jump narrows the table to the rows one cross-resource action pointed
 	// at — "the VMs on this host" — until Esc clears it. See m.rows().
@@ -1266,6 +1267,29 @@ func (m *Model) currentRow() (row, bool) {
 		return row{}, false
 	}
 	return rows[m.cursor], true
+}
+
+// detailRow returns the row the detail cursor and its actions are actually
+// working on. The normal detail pane follows the browse cursor, but the vApp
+// member pane has its own VM row while the browse cursor remains on the vApp.
+// The browse-semantics callers — preserveCursor, open and rowContext — must
+// continue using currentRow so opening a member never changes the resource
+// selection underneath it.
+func (m *Model) detailRow() (row, bool) {
+	if m.mode == modeVAppVMDetail {
+		if m.vappVM == nil {
+			return row{}, false
+		}
+		return *m.vappVM, true
+	}
+	return m.currentRow()
+}
+
+// clearVAppWorkspace drops both the workspace tree and its selected member.
+// Cross-resource jumps leave the workspace entirely, so keeping either value
+// around could let a later Esc reopen stale vApp state.
+func (m *Model) clearVAppWorkspace() {
+	m.vapp, m.vappVM = nil, nil
 }
 
 // counts totals one kind across everything in scope, for the tab bar.
@@ -2520,7 +2544,7 @@ func detailTotalLines(r row, width int) int {
 // focusable. Hitting either edge leaves the cursor where it was, matching
 // how the browse cursor stops rather than wraps.
 func (m *Model) moveDetailCursor(delta int) {
-	r, ok := m.currentRow()
+	r, ok := m.detailRow()
 	if !ok {
 		return
 	}
@@ -2563,7 +2587,7 @@ func (m *Model) scrollDetailIntoView(n int) {
 // actually is — a deliberate trade for not tracking two independent
 // positions through the rest of the pane's logic.
 func (m *Model) scrollDetailPage(dir int) {
-	r, ok := m.currentRow()
+	r, ok := m.detailRow()
 	if !ok {
 		return
 	}

@@ -23,8 +23,8 @@ type action struct {
 // actionList is the popup opened on a line with more than one action,
 // non-nil on Model exactly while it is open — the same idiom credPrompt
 // already uses. Unlike credPrompt it is only ever reachable from
-// modeDetail, so it takes key priority inside handleDetailKey rather than
-// globally in handleKey.
+// modeDetail or modeVAppVMDetail, so it takes key priority inside their
+// handlers rather than globally in handleKey.
 type actionList struct {
 	items  []action
 	cursor int
@@ -150,6 +150,7 @@ func jumpAction(label string, kind vsphere.Kind, matcher, value string) action {
 		m.kind = kind
 		m.filter.SetValue("")
 		m.cursor, m.offset = 0, 0
+		m.clearVAppWorkspace()
 		m.mode = m.detailFrom
 		return nil
 	}}
@@ -166,6 +167,7 @@ func jumpToNamed(label string, kind vsphere.Kind, name string) action {
 		m.kind = kind
 		m.filter.SetValue(name)
 		m.cursor, m.offset = 0, 0
+		m.clearVAppWorkspace()
 		m.mode = m.detailFrom
 		return nil
 	}}
@@ -248,7 +250,7 @@ func (m *Model) runAction(a action) tea.Cmd {
 // unreachable today, but a future field type might have nothing to copy)
 // does nothing.
 func (m *Model) openFieldActions() tea.Cmd {
-	r, ok := m.currentRow()
+	r, ok := m.detailRow()
 	if !ok {
 		return nil
 	}
@@ -266,8 +268,8 @@ func (m *Model) openFieldActions() tea.Cmd {
 
 // handleActionsKey drives the open popup: it owns every key ahead of the
 // pane underneath it, the same priority credPrompt holds globally — except
-// this overlay is reachable only from modeDetail, so the check lives at the
-// top of handleDetailKey instead of handleKey.
+// this overlay is reachable only from modeDetail or modeVAppVMDetail, so the
+// check lives at the top of those handlers instead of handleKey.
 func (m *Model) handleActionsKey(msg tea.KeyMsg) tea.Cmd {
 	al := m.actions
 	switch {

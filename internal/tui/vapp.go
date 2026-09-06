@@ -59,7 +59,7 @@ const (
 func (m *Model) openVApp(r row) tea.Cmd {
 	m.vapp = &vappWorkspace{roots: []string{r.key}}
 	m.vappVM = nil
-	m.detailY = 0
+	m.detailCursor, m.detailY = 0, 0
 	m.mode = modeVAppDetail
 	return nil
 }
@@ -432,7 +432,7 @@ func (m *Model) handleVAppDetailKey(msg tea.KeyMsg) tea.Cmd {
 	root, st, ok := m.activeVApp()
 	if !ok || root == nil || st == nil || st.inv == nil || m.vapp == nil {
 		if key.Matches(msg, m.keys.Back) {
-			m.vapp = nil
+			m.clearVAppWorkspace()
 			m.mode = modeBrowse
 		}
 		return nil
@@ -445,7 +445,7 @@ func (m *Model) handleVAppDetailKey(msg tea.KeyMsg) tea.Cmd {
 			m.vapp.roots = m.vapp.roots[:len(m.vapp.roots)-1]
 			m.vapp.cursor, m.vapp.offset = 0, 0
 		} else {
-			m.vapp = nil
+			m.clearVAppWorkspace()
 			m.mode = modeBrowse
 		}
 	case key.Matches(msg, m.keys.Up):
@@ -468,13 +468,14 @@ func (m *Model) handleVAppDetailKey(msg tea.KeyMsg) tea.Cmd {
 		if member.kind == vsphere.KindVApp && member.openable {
 			m.vapp.roots = append(m.vapp.roots, member.key)
 			m.vapp.cursor, m.vapp.offset = 0, 0
+			m.detailCursor = 0
 			return nil
 		}
 		if member.kind == vsphere.KindVM && member.openable && member.vm != nil {
 			r := vmRow(*member.vm, false)
 			r.kind = vsphere.KindVM
 			m.vappVM = &r
-			m.detailY = 0
+			m.detailCursor, m.detailY = 0, 0
 			m.mode = modeVAppVMDetail
 		}
 	}
@@ -493,6 +494,9 @@ func (m *Model) handleVAppVMDetailKey(msg tea.KeyMsg) tea.Cmd {
 		m.mode = modeVAppDetail
 		return nil
 	}
+	if m.actions != nil {
+		return m.handleActionsKey(msg)
+	}
 	switch {
 	case key.Matches(msg, m.keys.Back):
 		m.vappVM = nil
@@ -507,12 +511,16 @@ func (m *Model) handleVAppVMDetailKey(msg tea.KeyMsg) tea.Cmd {
 		m.timelineFrom = modeVAppVMDetail
 		m.mode = modeHistoryTimeline
 		return loadHistoryTimelineCmd(m.ctx, m.assessment, m.vappVM.name, false, false)
+	case key.Matches(msg, m.keys.Open):
+		return m.openFieldActions()
 	case key.Matches(msg, m.keys.Up):
-		if m.detailY > 0 {
-			m.detailY--
-		}
+		m.moveDetailCursor(-1)
 	case key.Matches(msg, m.keys.Down):
-		m.detailY++
+		m.moveDetailCursor(1)
+	case key.Matches(msg, m.keys.PageUp):
+		m.scrollDetailPage(-1)
+	case key.Matches(msg, m.keys.PageDown):
+		m.scrollDetailPage(1)
 	}
 	return nil
 }

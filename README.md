@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <strong>RVTools-compatible vSphere exports across every vCenter at once.</strong><br>
-  <sub>From Linux, macOS, or Windows &mdash; no GUI, no .NET. Read-only by construction, and it remembers what changed.</sub>
+  <strong>Read-only vSphere estate assessment and diagnostics across every vCenter.</strong><br>
+  <sub>Inspect, assess migration readiness, and track what changed &mdash; from Linux, macOS, or Windows, with no GUI or .NET runtime.</sub>
 </p>
 
 <p align="center">
@@ -46,11 +46,18 @@ screen is marked `DEMO · SAMPLE DATA`.
 > identifier) launch real processes on your own workstation, never a vSphere
 > API call — see [the TUI guide](docs/tui.md#detail-pane-actions).
 
-## Estate-wide RVTools exports
+> [!NOTE]
+> vsfleet is a personal open-source project, not an official Dell Technologies
+> product, and is not sponsored, endorsed, or supported by Dell Technologies.
+> Its export interoperability was independently implemented without RVTools
+> source code or non-public documentation. RVTools is a Dell Technologies
+> product; references to RVTools describe export-file interoperability only.
 
-RVTools is the format most migration and sizing tools read. vsfleet writes it
-for your whole estate in one run, from any operating system, with no GUI and no
-.NET runtime:
+## Migration and sizing exports
+
+vsfleet exports a stored assessment for migration planning, sizing, audit, and
+other downstream workflows. The XLSX export uses the existing `rvtools` format
+name for interoperability with tools that consume selected worksheet layouts:
 
 ```sh
 vsfleet assessment run --all-contexts --label q3-audit
@@ -63,15 +70,14 @@ byte-identical, and every export prints a SHA256 receipt.
 
 ### Supported tabs
 
-vsfleet renders **thirteen** RVTools tabs, using RVTools' own column names:
+The compatibility export renders **thirteen** worksheet layouts:
 
 `vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
 `vHost` · `vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
 
-RVTools itself ships roughly thirty. If your pipeline needs a tab that is not
-in that list — `vHBA`, `vNIC`, `vSwitch` or `vLicense`, for example — vsfleet is
-not yet a drop-in for it.
-This is a **compatible** export, not a replacement for RVTools.
+Compatibility is limited to the listed worksheet names and columns. A pipeline
+that requires other worksheets is not supported by this export profile. This is
+an interoperability export, not RVTools and not a replacement for it.
 
 `vPartition` reports guest filesystem usage, which only VMware Tools inside
 the guest can measure. VMs with no running Tools contribute no rows, and
@@ -170,7 +176,7 @@ vsfleet context test prod
 vsfleet vm list
 vsfleet search ubuntu --all-contexts
 
-# Capture the estate and export it for a migration or sizing tool
+# Capture the estate and export it for migration planning or sizing
 vsfleet assessment run --all-contexts
 vsfleet assessment export --format rvtools --file estate.xlsx
 ```

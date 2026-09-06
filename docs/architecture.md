@@ -134,8 +134,9 @@ the VMware Tools version and version status to VM payloads, backing the
 `vRP` export tab. Older rows still populate the `vTools` running-status column,
 with the version columns left blank and the gap noted on `vsfleetCoverage`; runs
 before version 8 mark `vRP` as not recorded. A shared
-`rvtoolsSheets` builder canonicalizes and validates the run once and returns
-every RVTools tab (`vInfo`, `vCPU`, `vMemory`, per-VM `vDisk`/`vNetwork`,
+`rvtoolsSheets` compatibility-sheet builder canonicalizes and validates the run
+once and returns every supported worksheet (`vInfo`, `vCPU`, `vMemory`,
+per-VM `vDisk`/`vNetwork`,
 `vTools`, `vHost`, `vCluster`, `vRP`, `vDatastore`, `vSnapshot`, `vHealth`,
 `vsfleetCoverage`) in
 tab order; the XLSX writer normalizes ZIP entry order and timestamps on top of

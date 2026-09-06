@@ -1,12 +1,11 @@
-# RVTools-compatible exports across every vCenter at once
+# vSphere estate assessment and diagnostics across every vCenter
 
 vsfleet is an open-source Go CLI and terminal UI for VMware vSphere operators
-and site reliability engineers. It writes RVTools-compatible inventory exports
-for a whole estate in one run — from Linux, macOS or Windows, with no GUI and
-no .NET runtime — and keeps every capture so you can say what changed. It
-organizes each vCenter into a named context, then lets you inspect inventory,
-search the estate, diagnose connectivity, and compare historical observations
-without juggling browser tabs or scripts.
+and site reliability engineers. It inspects inventory, diagnoses connectivity,
+assesses migration readiness, and preserves historical observations across a
+whole estate in one run — from Linux, macOS or Windows, with no GUI and no .NET
+runtime. It organizes each vCenter into a named context, so you can search the
+estate and compare changes without juggling browser tabs or scripts.
 
 ![vsfleet inspecting inventory across three vCenters](assets/vsfleet.gif){ width="1200" }
 
@@ -21,17 +20,24 @@ sites and one whose proxy refuses the connection. It reads no configuration,
 opens no keyring, dials nothing, and writes nothing back. Every screen is
 marked `DEMO · SAMPLE DATA`.
 
-## Export the estate
+> [!NOTE]
+> vsfleet is a personal open-source project, not an official Dell Technologies
+> product, and is not sponsored, endorsed, or supported by Dell Technologies.
+> Its export interoperability was independently implemented without RVTools
+> source code or non-public documentation. RVTools is a Dell Technologies
+> product; references to RVTools describe export-file interoperability only.
+
+## Export the estate for migration planning and sizing
 
 ```sh
 vsfleet assessment run --all-contexts --label q3-audit
 vsfleet assessment export --format rvtools --file estate.xlsx
 ```
 
-Thirteen RVTools tabs are rendered using RVTools' own column names: `vInfo`,
-`vCPU`, `vMemory`, `vDisk`, `vPartition`, `vNetwork`, `vTools`, `vHost`,
-`vCluster`, `vRP`, `vDatastore`, `vSnapshot` and `vHealth`. RVTools itself ships roughly thirty,
-so this is a **compatible** export rather than a replacement — see
+The `rvtools` format renders a documented subset of worksheet layouts used by
+RVTools exports: `vInfo`, `vCPU`, `vMemory`, `vDisk`, `vPartition`, `vNetwork`,
+`vTools`, `vHost`, `vCluster`, `vRP`, `vDatastore`, `vSnapshot`, and `vHealth`.
+This is an interoperability profile, not RVTools or a replacement for it — see
 [Assessments](assessments.md) for the full tab reference and the
 `vsfleetCoverage` sheet.
 

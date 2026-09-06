@@ -113,18 +113,25 @@ accessible datastore. Use `vsfleet assessment run --browse-datastores`; runs
 without a successful browse mark the rule `not-evaluated`. Connected floppy
 devices remain a named follow-up.
 
-### What "RVTools-compatible" means here
+### RVTools file interoperability
 
-vsfleet renders thirteen RVTools tabs and uses RVTools' own column names, so a
-tool that reads those tabs by name can read a vsfleet export:
+The `rvtools` export profile renders thirteen worksheet layouts used by RVTools
+exports, so a downstream tool that reads those worksheet names and columns can
+consume the corresponding parts of a vsfleet export:
 
 `vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
 `vHost` · `vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
 
-RVTools itself ships roughly thirty tabs. `vHBA`, `vNIC`, `vSwitch` and
-`vLicense` are among those vsfleet does not render today. If a downstream sizing or migration tool requires one of them,
-vsfleet is not yet a drop-in for that pipeline. This is a **compatible**
-export, not a replacement for RVTools.
+Compatibility is limited to the listed worksheet names and columns. Other
+worksheets are outside this export profile, so a downstream pipeline that
+requires them is not supported. This is an interoperability export, not RVTools
+and not a replacement for it.
+
+vsfleet is a personal open-source project, not an official Dell Technologies
+product, and is not sponsored, endorsed, or supported by Dell Technologies. Its
+export interoperability was independently implemented without RVTools source
+code or non-public documentation. RVTools is a Dell Technologies product;
+references here describe export-file interoperability only.
 
 ### Guest partitions need VMware Tools
 
@@ -155,15 +162,12 @@ captured for the export and assessment ledger, not made into a browsable TUI
 tab or CLI inventory noun.
 
 The tab covers resource-pool identity and CPU/memory allocation configuration.
-RVTools also exposes runtime and statistics columns such as current usage,
-unreserved capacity, entitlement, memory pressure, and tags; this read-only
-capture does not request those volatile or unavailable fields, so it leaves
-them out rather than guessing values.
+This read-only capture does not request additional volatile or unavailable
+runtime fields, so it leaves them out rather than guessing values.
 
-The `vsfleetCoverage` sheet is the part RVTools has no equivalent for: it names
-every tab and vCenter in the run with its collection status, item count, and
-the error where one occurred. A partial estate is reported as partial rather
-than handed over as if it were whole.
+The `vsfleetCoverage` sheet records every tab and vCenter in the run with its
+collection status, item count, and any error. A partial estate is reported as
+partial rather than handed over as if it were whole.
 
 ## Retention and recovery
 

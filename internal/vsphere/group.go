@@ -51,6 +51,9 @@ type FetchOptions struct {
 	// means DefaultPageSize; a negative value asks for no paging at all,
 	// which leaves the page size to the server.
 	PageSize int
+	// BrowseDatastoreFiles opts the datastore group into a bounded, read-only
+	// HostDatastoreBrowser query. It is ignored for every other group.
+	BrowseDatastoreFiles bool
 	// OnPartial, when set, is called with each page of results as it
 	// arrives, carrying only that page's objects. It is called from the
 	// goroutine driving the fetch, before FetchGroupWith returns, and the
@@ -204,7 +207,7 @@ func (c *Client) FetchGroupWith(ctx context.Context, idx *Index, group FetchGrou
 		}
 	case GroupDatastores:
 		reportStage(ctx, StageLoadingDatastores)
-		if datastores, err := c.listDatastores(ctx, idx.idx); err != nil {
+		if datastores, err := c.listDatastoresWith(ctx, idx.idx, opts.BrowseDatastoreFiles); err != nil {
 			fail(err, KindDatastore)
 		} else {
 			inv.Datastores = datastores

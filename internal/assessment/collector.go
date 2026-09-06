@@ -71,6 +71,7 @@ type CaptureOptions struct {
 	Pinned                 bool
 	ToolVersion            string
 	InventorySchemaVersion string
+	BrowseDatastores       bool
 	Now                    func() time.Time
 	Progress               func(ContextProgress)
 }
@@ -129,7 +130,7 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 			if opts.Progress != nil {
 				opts.Progress(ContextProgress{Context: cc.Name, Status: "connecting"})
 			}
-			result := c.captureContext(ctx, cc)
+			result := c.captureContext(ctx, cc, opts.BrowseDatastores)
 			if err := c.Store.SaveContextWithLease(ctx, run.ID, result, now(), lease); err != nil {
 				result.Status = "failed"
 				result.Error = fmt.Sprintf("save assessment: %v", err)
@@ -157,7 +158,7 @@ func errorFrom(s string) error {
 	return fmt.Errorf("%s", s)
 }
 
-func (c *Collector) captureContext(parent context.Context, cc *config.Context) ContextResult {
+func (c *Collector) captureContext(parent context.Context, cc *config.Context, browseDatastores bool) ContextResult {
 	r := ContextResult{Name: cc.Name, Status: "failed"}
 	opCtx, cancel, tracker := c.Manager.Operation(parent)
 	defer cancel()
@@ -190,7 +191,12 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context) C
 	// sequential within one vCenter to keep API load predictable; contexts are
 	// still collected concurrently by Capture.
 	for _, group := range []vsphere.FetchGroup{vsphere.GroupVMs, vsphere.GroupHosts, vsphere.GroupClusters, vsphere.GroupDatastores} {
-		part := client.FetchGroup(opCtx, idx, group)
+		var part *vsphere.Inventory
+		if group == vsphere.GroupDatastores {
+			part = client.FetchGroupWith(opCtx, idx, group, vsphere.FetchOptions{BrowseDatastoreFiles: browseDatastores})
+		} else {
+			part = client.FetchGroup(opCtx, idx, group)
+		}
 		switch group {
 		case vsphere.GroupVMs:
 			itemCount := len(part.VMs) + len(part.Templates)

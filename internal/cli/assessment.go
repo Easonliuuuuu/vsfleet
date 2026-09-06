@@ -627,6 +627,7 @@ func sparkline(values []float64) string {
 func newAssessmentRunCommand(a *App) *cobra.Command {
 	var label, note string
 	var pin bool
+	var browseDatastores bool
 	cmd := &cobra.Command{Use: "run", Short: "Capture a point-in-time inventory assessment", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		contexts, err := a.Contexts()
 		if err != nil {
@@ -636,7 +637,7 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		run, err := service.Capture(cmd.Context(), assessment.CaptureOptions{Contexts: contexts, Source: "cli", Label: label, Note: note, Pinned: pin, ToolVersion: version.String(), InventorySchemaVersion: assessment.CurrentInventorySchemaVersion, Progress: func(p assessment.ContextProgress) {
+		run, err := service.Capture(cmd.Context(), assessment.CaptureOptions{Contexts: contexts, Source: "cli", Label: label, Note: note, Pinned: pin, BrowseDatastores: browseDatastores, ToolVersion: version.String(), InventorySchemaVersion: assessment.CurrentInventorySchemaVersion, Progress: func(p assessment.ContextProgress) {
 			if p.Error != nil {
 				fmt.Fprintf(a.errOut(), "%s %s: %v\n", glyphFail, p.Context, p.Error)
 			}
@@ -659,6 +660,7 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 	cmd.Flags().StringVar(&label, "label", "", "stable label for this assessment (used as a selector)")
 	cmd.Flags().StringVar(&note, "note", "", "operator note stored with this assessment")
 	cmd.Flags().BoolVar(&pin, "pin", false, "pin this assessment against deletion")
+	cmd.Flags().BoolVar(&browseDatastores, "browse-datastores", false, "record VM disk files from each accessible datastore (requires Datastore.Browse; adds time on large estates)")
 	return cmd
 }
 

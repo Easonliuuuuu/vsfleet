@@ -23,6 +23,7 @@ configuration, history database, and output options shown below.
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
 | `vsfleet assessment ...` | Capture and compare historical observations |
+| `vsfleet compatibility report` | Describe every worksheet and column the export writes |
 
 ## Inventory and search
 
@@ -45,6 +46,26 @@ failure is reported separately with its context and diagnostic information.
 `vsfleet assessment doctor` checks the local history database. `vsfleet health`
 assesses the estate described by the stored evidence.
 
+## Export compatibility
+
+`vsfleet compatibility report` describes what the `rvtools` export profile
+writes: every worksheet, every column, each cell's type and unit, and when a
+cell is left empty.
+
+```sh
+vsfleet compatibility report                      # every worksheet
+vsfleet compatibility report --sheet vPartition   # one of them
+vsfleet compatibility report -o json | jq         # for a pipeline
+```
+
+It reads no configuration, opens no keyring and contacts no vCenter, so it can
+be used to decide whether an export fits a downstream pipeline before setting
+vsfleet up at all. It is generated from the same definitions the exporter
+writes from, so it cannot drift from the workbook.
+
+It describes what vsfleet emits. It makes no claim about any other tool's
+schema — compare it against what your pipeline requires.
+
 ## Assessments
 
 Assessment captures are read-only and store their evidence locally. Add
@@ -59,6 +80,21 @@ vsfleet health latest
 
 Without the flag, `datastore-zombie-vmdk` is reported as `not-evaluated`, not as
 a clean result.
+
+## Exit codes
+
+A scheduled collection reacts to the exit code, so it is a contract rather than
+an implementation detail:
+
+| Code | Meaning |
+|---|---|
+| `0` | The command did what was asked |
+| `1` | vsfleet could not do its job: bad configuration, an unreachable estate, an unreadable database |
+| `2` | The tool worked and the estate did not pass: `assessment diff` policy violations, or `health --fail-on-findings` |
+| `3` | A capture stored evidence from some contexts but not all — only with `assessment run --fail-on-partial` |
+
+A partial capture exits `0` unless `--fail-on-partial` is passed, so upgrading
+does not change what an existing scheduled job does.
 
 ## JSON output
 

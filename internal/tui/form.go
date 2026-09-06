@@ -54,7 +54,13 @@ type contextForm struct {
 	proxyPass, thumbprint              textinput.Model
 	via, viaMoRef                      string
 
-	credIdx      int // 0 keyring, 1 prompt
+	credIdx int // 0 keyring, 1 prompt
+	// managedCred holds a credential reference this form does not offer to
+	// edit — env, file or exec. The form's credential row is a two-way choice
+	// between keyring and prompt, so without somewhere to keep it, editing an
+	// unattended context through the interface would silently rewrite its
+	// reference to keyring:<name> and lose where the password actually lives.
+	managedCred  credentials.Ref
 	transportIdx int // 0 direct, 1 socks5
 	tlsIdx       int // 0 system, 1 thumbprint, 2 insecure
 	remoteDNS    bool
@@ -121,6 +127,9 @@ func newContextForm(edit *contextState) *contextForm {
 	f.datacenter.SetValue(cc.Datacenter)
 	if cc.Credential.Scheme == credentials.SchemePrompt {
 		f.credIdx = 1
+	}
+	if cc.Credential.NonInteractive() {
+		f.managedCred = cc.Credential
 	}
 	switch cc.Transport.Type {
 	case config.TransportSOCKS5:
@@ -201,17 +210,23 @@ func (f *contextForm) rows() []formRow {
 	if f.via != "" {
 		rows = append(rows, formRow{label: "Added from", kind: rowStatic, static: f.via})
 	}
-	rows = append(rows,
-		formRow{label: "Username", kind: rowText, input: &f.username, hint: "e.g. administrator@vsphere.local"},
-		formRow{label: "Credential", kind: rowSelect, options: []string{"keyring", "prompt"}, idx: &f.credIdx,
-			hint: "keyring stores the password in the OS secret store; prompt asks every run"},
-	)
-	if f.credIdx == 0 {
-		label := "Password"
-		if f.editing {
-			label = "Password (blank keeps the stored one)"
+	rows = append(rows, formRow{label: "Username", kind: rowText, input: &f.username, hint: "e.g. administrator@vsphere.local"})
+	if !f.managedCred.IsZero() {
+		// Shown, not offered: the reference is preserved exactly as configured,
+		// and changing it belongs where it was set — config.toml or
+		// "vsfleet context add --credential".
+		rows = append(rows, formRow{label: "Credential", kind: rowStatic, static: f.managedCred.String(),
+			hint: "resolved without a prompt; edit it with vsfleet context add --credential"})
+	} else {
+		rows = append(rows, formRow{label: "Credential", kind: rowSelect, options: []string{"keyring", "prompt"}, idx: &f.credIdx,
+			hint: "keyring stores the password in the OS secret store; prompt asks every run"})
+		if f.credIdx == 0 {
+			label := "Password"
+			if f.editing {
+				label = "Password (blank keeps the stored one)"
+			}
+			rows = append(rows, formRow{label: label, kind: rowSecret, input: &f.password})
 		}
-		rows = append(rows, formRow{label: label, kind: rowSecret, input: &f.password})
 	}
 	rows = append(rows, formRow{label: "Route", kind: rowSelect, options: []string{"direct", "socks5", "http", "https"}, idx: &f.transportIdx})
 	if f.transportIdx != 0 {
@@ -317,9 +332,12 @@ func (f *contextForm) input() contextops.Input {
 	default:
 		in.TLS = config.TLSConfig{Mode: config.TLSSystem}
 	}
-	if f.credIdx == 1 {
+	switch {
+	case !f.managedCred.IsZero():
+		in.Credential = f.managedCred
+	case f.credIdx == 1:
 		in.Credential = credentials.Ref{Scheme: credentials.SchemePrompt}
-	} else {
+	default:
 		in.Credential = credentials.Ref{Scheme: credentials.SchemeKeyring, Value: in.Name}
 		if pw := f.password.Value(); pw != "" {
 			in.Password, in.HavePassword = pw, true

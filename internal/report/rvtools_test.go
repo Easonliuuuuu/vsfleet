@@ -557,3 +557,73 @@ func TestWriteRVToolsHealthCoverageStates(t *testing.T) {
 		})
 	}
 }
+
+// TestEveryExportedColumnIsDocumented is the guard that keeps the
+// compatibility report honest. Profile walks the real exporter output, so a
+// column added to a worksheet without a description in compatibility.go fails
+// here rather than shipping a report that quietly omits it.
+func TestEveryExportedColumnIsDocumented(t *testing.T) {
+	profile, err := Profile()
+	if err != nil {
+		t.Fatalf("building the compatibility profile: %v", err)
+	}
+	if len(profile) != len(rvtoolsTabOrder) {
+		t.Fatalf("profile describes %d worksheets, export renders %d", len(profile), len(rvtoolsTabOrder))
+	}
+	for i, spec := range profile {
+		if spec.Name != rvtoolsTabOrder[i] {
+			t.Errorf("worksheet %d is %q, want %q", i, spec.Name, rvtoolsTabOrder[i])
+		}
+		if spec.DerivesFrom == "" {
+			t.Errorf("%s: no collection named as its source", spec.Name)
+		}
+		if len(spec.Columns) == 0 {
+			t.Errorf("%s: no columns described", spec.Name)
+		}
+		for _, col := range spec.Columns {
+			if col.Kind == "" {
+				t.Errorf("%s column %q: no cell kind", spec.Name, col.Name)
+			}
+		}
+	}
+}
+
+// The profile must describe the columns the exporter actually writes, in the
+// order it writes them — that is what lets a reader map a description to a
+// spreadsheet column.
+func TestProfileMatchesRenderedHeaderRow(t *testing.T) {
+	when := time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC)
+	data := sampleExportData(when)
+	var buf bytes.Buffer
+	if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+		t.Fatalf("writing the workbook: %v", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("reopening the workbook: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	profile, err := Profile()
+	if err != nil {
+		t.Fatalf("building the compatibility profile: %v", err)
+	}
+	for _, spec := range profile {
+		rows, err := f.GetRows(spec.Name)
+		if err != nil {
+			t.Fatalf("%s: reading rows: %v", spec.Name, err)
+		}
+		if len(rows) == 0 {
+			t.Fatalf("%s: no header row", spec.Name)
+		}
+		header := rows[0]
+		if len(header) != len(spec.Columns) {
+			t.Errorf("%s: workbook has %d columns, profile describes %d", spec.Name, len(header), len(spec.Columns))
+			continue
+		}
+		for i, cell := range header {
+			if cell != spec.Columns[i].Name {
+				t.Errorf("%s column %d: workbook says %q, profile says %q", spec.Name, i, cell, spec.Columns[i].Name)
+			}
+		}
+	}
+}

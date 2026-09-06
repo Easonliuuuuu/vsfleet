@@ -73,7 +73,9 @@ vsfleet context add
 
 The wizard asks for an endpoint, username, route, certificate policy, and
 password, then tests the connection before saving. Passwords are stored in the
-OS keyring when available; headless systems use the safe `prompt` reference.
+OS keyring when available. On a headless system, point the context at where the
+password already lives with `--credential env:<VAR>`, `file:<path>` or
+`exec:<program>` — see [unattended sources](configuration.md#unattended-sources).
 
 ## Explore inventory
 

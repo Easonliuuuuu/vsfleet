@@ -14,7 +14,8 @@ vsfleet status
 `vsfleet doctor` verifies the path to a vCenter in strict order:
 
 1. **Configuration:** Validate TOML properties and context settings.
-2. **Credentials:** Resolve a keyring reference or confirm prompt mode.
+2. **Credentials:** Resolve the credential reference — a keyring entry, an
+   environment variable, a file, or a helper program — or confirm prompt mode.
 3. **Routing and proxy:** Confirm proxy reachability and authentication.
 4. **DNS resolution:** Resolve locally or through the configured proxy.
 5. **TCP handshake:** Establish transport to port 443.

@@ -127,6 +127,21 @@ worksheets are outside this export profile, so a downstream pipeline that
 requires them is not supported. This is an interoperability export, not RVTools
 and not a replacement for it.
 
+`vsfleet compatibility report` prints the full column-level reference: every
+worksheet, each column's type and unit, and when a cell is left empty. It is
+generated from the same definitions the exporter writes from, so it cannot
+drift from the workbook, and it needs no configuration, no keyring and no
+vCenter:
+
+```sh
+vsfleet compatibility report --sheet vPartition
+vsfleet compatibility report -o json | jq
+```
+
+It describes what vsfleet emits and what those values mean. It makes no claim
+about any other tool's schema; compare it against what your pipeline
+requires.
+
 vsfleet is a personal open-source project, not an official Dell Technologies
 product, and is not sponsored, endorsed, or supported by Dell Technologies. Its
 export interoperability was independently implemented without RVTools source

@@ -70,11 +70,18 @@ func (a *App) Prompt() *credentials.Prompt {
 	return a.prompt
 }
 
-// Resolver returns the credential resolver: OS keyring first, falling back to
-// an interactive prompt when nothing is stored.
+// Resolver returns the credential resolver. A keyring reference falls back to
+// an interactive prompt when nothing is stored; the non-interactive sources —
+// env, file and exec — never do, because they exist to run unattended.
 func (a *App) Resolver() *credentials.Resolver {
 	if a.resolver == nil {
-		a.resolver = credentials.NewResolver(credentials.NewKeyring(), a.Prompt())
+		a.resolver = credentials.NewResolver(
+			credentials.NewKeyring(),
+			credentials.NewEnv(),
+			credentials.NewFile(),
+			credentials.NewExec(),
+			a.Prompt(),
+		)
 	}
 	return a.resolver
 }
@@ -241,6 +248,7 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 		newUICommand(a),
 		newAssessmentCommand(a),
 		newHealthCommand(a),
+		newCompatibilityCommand(a),
 	)
 	root.AddCommand(newInventoryCommands(a)...)
 	return root

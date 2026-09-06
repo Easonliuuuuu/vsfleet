@@ -79,6 +79,17 @@ Compatibility is limited to the listed worksheet names and columns. A pipeline
 that requires other worksheets is not supported by this export profile. This is
 an interoperability export, not RVTools and not a replacement for it.
 
+To see exactly what you get — every column, its type and unit, and when a cell
+is left empty — without a vCenter or any configuration:
+
+```sh
+vsfleet compatibility report --sheet vPartition
+```
+
+The report is generated from the same definitions the exporter writes from, so
+it cannot drift from the workbook. It describes what vsfleet emits and makes no
+claim about any other tool's schema.
+
 `vPartition` reports guest filesystem usage, which only VMware Tools inside
 the guest can measure. VMs with no running Tools contribute no rows, and
 `vsfleetCoverage` says how many of them answered rather than leaving a short
@@ -118,7 +129,8 @@ without juggling browser tabs or writing brittle scripts.
 - Keep healthy results usable when another vCenter is offline or timing out.
 - Route each context independently through direct TCP, SOCKS5, HTTP, or HTTPS
   CONNECT proxies.
-- Keep passwords in the native OS keyring or an interactive prompt; never write
+- Keep passwords in the native OS keyring, an interactive prompt, or an
+  unattended source for cron, systemd, containers and CI; never write
   them to `config.toml`.
 - Pin TLS thumbprints for private or self-signed certificates.
 - Capture immutable local SQLite assessments and explain drift over time.

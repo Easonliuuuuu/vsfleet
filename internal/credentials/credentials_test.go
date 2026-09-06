@@ -30,9 +30,20 @@ func TestParseRef(t *testing.T) {
 		{in: "prompt:lab", scheme: "prompt", value: "lab"},
 		{in: "  keyring:lab  ", scheme: "keyring", value: "lab"},
 		{in: ""},
+		{in: "env:VSFLEET_PROD_PASSWORD", scheme: "env", value: "VSFLEET_PROD_PASSWORD"},
+		{in: "file:/run/secrets/vcenter", scheme: "file", value: "/run/secrets/vcenter"},
+		{in: "exec:/usr/local/bin/vsfleet-credential", scheme: "exec", value: "/usr/local/bin/vsfleet-credential"},
+		// A Windows path keeps its drive letter: only the first colon splits
+		// the scheme from the value.
+		{in: `file:C:\secrets\vcenter`, scheme: "file", value: `C:\secrets\vcenter`},
 		{in: "keyring", bad: true},
 		{in: "vault:secret/vcenter", bad: true},
 		{in: "hunter2", bad: true},
+		{in: "env", bad: true},
+		{in: "env:", bad: true},
+		{in: "file", bad: true},
+		{in: "file:  ", bad: true},
+		{in: "exec:", bad: true},
 	}
 	for _, tc := range cases {
 		ref, err := credentials.ParseRef(tc.in)

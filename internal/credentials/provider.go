@@ -38,7 +38,23 @@ type Ref struct {
 const (
 	SchemeKeyring = "keyring"
 	SchemePrompt  = "prompt"
+	SchemeEnv     = "env"
+	SchemeFile    = "file"
+	SchemeExec    = "exec"
 )
+
+// nonInteractiveSchemes are the schemes that resolve a secret without a
+// terminal, which is what makes cron, systemd, container and CI collection
+// possible. They are read-only sources: nothing is stored under them, and a
+// miss must never fall through to an interactive prompt — see Resolve.
+var nonInteractiveSchemes = map[string]bool{
+	SchemeEnv:  true,
+	SchemeFile: true,
+	SchemeExec: true,
+}
+
+// NonInteractive reports whether a reference resolves without a terminal.
+func (r Ref) NonInteractive() bool { return nonInteractiveSchemes[r.Scheme] }
 
 // ParseRef parses the textual form of a credential reference. An empty string
 // yields the zero Ref, which means "prompt interactively".
@@ -59,8 +75,20 @@ func ParseRef(s string) (Ref, error) {
 			return Ref{}, fmt.Errorf("credential reference %q: keyring requires a key, e.g. keyring:customer-a", s)
 		}
 	case SchemePrompt:
+	case SchemeEnv:
+		if strings.TrimSpace(value) == "" {
+			return Ref{}, fmt.Errorf("credential reference %q: env requires a variable name, e.g. env:VSFLEET_PROD_PASSWORD", s)
+		}
+	case SchemeFile:
+		if strings.TrimSpace(value) == "" {
+			return Ref{}, fmt.Errorf("credential reference %q: file requires a path, e.g. file:/run/secrets/vcenter", s)
+		}
+	case SchemeExec:
+		if strings.TrimSpace(value) == "" {
+			return Ref{}, fmt.Errorf("credential reference %q: exec requires a program, e.g. exec:/usr/local/bin/vsfleet-credential", s)
+		}
 	default:
-		return Ref{}, fmt.Errorf("credential reference %q: unknown scheme %q (supported: keyring, prompt)", s, scheme)
+		return Ref{}, fmt.Errorf("credential reference %q: unknown scheme %q (supported: keyring, prompt, env, file, exec)", s, scheme)
 	}
 	return Ref{Scheme: scheme, Value: strings.TrimSpace(value)}, nil
 }

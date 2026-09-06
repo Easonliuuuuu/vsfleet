@@ -32,6 +32,8 @@ func newHealthTestHistoryDB(t *testing.T, findings bool) string {
 	if !findings {
 		vm.PowerState = "poweredOff"
 		vm.ToolsState = "guestToolsRunning"
+	} else {
+		vm.ConnectionState = "orphaned"
 	}
 	if err := s.SaveContext(context.Background(), run.ID, assessment.ContextResult{
 		Name: "prod", VCenterID: "vc-uuid", Status: "success",
@@ -71,6 +73,9 @@ func TestHealthCommandExitCodes(t *testing.T) {
 	if !strings.Contains(stdout, "tools-not-running") {
 		t.Fatalf("health output=%s", stdout)
 	}
+	if !strings.Contains(stdout, "vm-orphaned") {
+		t.Fatalf("health output omitted orphaned VM finding=%s", stdout)
+	}
 
 	cleanDB := newHealthTestHistoryDB(t, false)
 	if _, _, err := runHealth(t, cleanDB, "latest", "--fail-on-findings"); err != nil {
@@ -94,12 +99,12 @@ func TestHealthCommandJSONAndRuleListing(t *testing.T) {
 	if report["run_id"] != float64(1) {
 		t.Fatalf("health JSON=%v", report)
 	}
-	if stderr != "" {
-		t.Fatalf("unexpected health warning: %s", stderr)
+	if !strings.Contains(stderr, "datastore-zombie-vmdk") {
+		t.Fatalf("health output did not explain skipped datastore browsing: %s", stderr)
 	}
 
 	stdout, _, err = runHealth(t, db, "--list-rules")
-	if err != nil || !strings.Contains(stdout, "datastore-inaccessible") || !strings.Contains(stdout, "tools-outdated") {
+	if err != nil || !strings.Contains(stdout, "datastore-inaccessible") || !strings.Contains(stdout, "datastore-zombie-vmdk") || !strings.Contains(stdout, "vm-orphaned") || !strings.Contains(stdout, "tools-outdated") {
 		t.Fatalf("rule listing err=%v output=%s", err, stdout)
 	}
 }
@@ -133,8 +138,8 @@ func TestHealthCommandReportsConnectedDevicesFromStoredEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stderr != "" {
-		t.Fatalf("unexpected health warning: %s", stderr)
+	if !strings.Contains(stderr, "datastore-zombie-vmdk") {
+		t.Fatalf("health output did not explain skipped datastore browsing: %s", stderr)
 	}
 	if !strings.Contains(stdout, `"rule": "cdrom-connected"`) || !strings.Contains(stdout, `"rule": "usb-connected"`) || !strings.Contains(stdout, "install.iso") || !strings.Contains(stdout, "esx-1") {
 		t.Fatalf("health JSON missing connected-device findings: %s", stdout)

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -41,6 +42,43 @@ var rules = []Rule{
 		Summary: "datastore free space is below the configured floor", Needs: "datastore capacity and free-space inventory",
 		Eval: func(in Input, emit func(Finding)) {
 			evaluateRule("datastore-space-low", in, Options{Thresholds: in.Thresholds}, emit)
+		},
+	},
+	{
+		ID: "datastore-zombie-vmdk", Severity: SeverityWarning,
+		Summary: "datastore contains an unreferenced virtual disk", Needs: "a capture run with --browse-datastores",
+		Skip: func(in Input) (bool, string) {
+			for _, resource := range in.Data.Resources {
+				if resource.Kind != "datastore" {
+					continue
+				}
+				var datastore vsphere.Datastore
+				if decodeResource(resource, &datastore) && datastore.BrowseStatus == "success" {
+					return false, ""
+				}
+			}
+			return true, "a capture run with --browse-datastores"
+		},
+		Eval: func(in Input, emit func(Finding)) {
+			referenced := referencedDiskPaths(in.Data)
+			for _, resource := range in.Data.Resources {
+				if resource.Kind != "datastore" {
+					continue
+				}
+				var datastore vsphere.Datastore
+				if !decodeResource(resource, &datastore) || datastore.BrowseStatus != "success" {
+					continue
+				}
+				for _, file := range datastore.Files {
+					path := normalizeDatastorePath(file.Path)
+					if path == "" || !strings.HasSuffix(path, ".vmdk") || referencedDatastoreFile(path, referenced) {
+						continue
+					}
+					obj := resourceObject(in.Data, resource, "datastore", datastore.Name, datastore.ID, datastore.Datacenter)
+					emit(Finding{Rule: "datastore-zombie-vmdk", Severity: SeverityWarning, Object: obj,
+						Message: fmt.Sprintf("Unreferenced VMDK %q (%s)", file.Path, humanize.Bytes(file.SizeBytes))})
+				}
+			}
 		},
 	},
 	{
@@ -170,6 +208,82 @@ func nonempty(value, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func referencedDiskPaths(data assessment.ExportData) map[string]struct{} {
+	referenced := make(map[string]struct{})
+	for _, item := range data.VMs {
+		for _, disk := range item.Observation.VM.Disks {
+			if path := normalizeDatastorePath(disk.BackingPath); path != "" {
+				referenced[path] = struct{}{}
+			}
+		}
+	}
+	return referenced
+}
+
+func referencedDatastoreFile(path string, referenced map[string]struct{}) bool {
+	if _, ok := referenced[path]; ok {
+		return true
+	}
+	base, ok := snapshotDeltaBase(path)
+	if !ok {
+		return false
+	}
+	_, ok = referenced[base]
+	return ok
+}
+
+func snapshotDeltaBase(path string) (string, bool) {
+	close := strings.IndexByte(path, ']')
+	if close < 0 {
+		return "", false
+	}
+	relative := strings.TrimSpace(path[close+1:])
+	slash := strings.LastIndexByte(relative, '/')
+	directory, name := relative[:slash+1], relative[slash+1:]
+	if slash < 0 {
+		directory, name = "", relative
+	}
+	name = strings.TrimSuffix(name, ".vmdk")
+	hyphen := strings.LastIndexByte(name, '-')
+	if hyphen < 0 || len(name)-hyphen-1 != 6 || !allDigits(name[hyphen+1:]) {
+		return "", false
+	}
+	base := path[:close+1] + " " + directory + name[:hyphen] + ".vmdk"
+	return normalizeDatastorePath(base), true
+}
+
+func allDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeDatastorePath(value string) string {
+	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	open, close := strings.IndexByte(value, '['), strings.IndexByte(value, ']')
+	if open != 0 || close <= open {
+		return ""
+	}
+	datastore := strings.ToLower(strings.TrimSpace(value[open+1 : close]))
+	relative := strings.Trim(strings.TrimSpace(value[close+1:]), "/")
+	for strings.Contains(relative, "//") {
+		relative = strings.ReplaceAll(relative, "//", "/")
+	}
+	if datastore == "" {
+		return ""
+	}
+	if relative == "" {
+		return "[" + datastore + "]"
+	}
+	return "[" + datastore + "] " + strings.Join(strings.Fields(relative), " ")
 }
 
 func attachedDeviceDetails(kind, path, device, host string) string {

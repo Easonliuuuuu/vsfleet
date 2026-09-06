@@ -5,10 +5,12 @@ package demo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
@@ -41,10 +43,12 @@ func NewBackend() *Backend {
 		}),
 	}
 
+	prodInventory := sampleInventory("prod-vc", "Taipei", "10.20.0")
+	addDemoHealthEvidence(prodInventory)
 	return &Backend{
 		contexts: contexts,
 		inventories: map[string]*vsphere.Inventory{
-			"prod-vc": sampleInventory("prod-vc", "Taipei", "10.20.0"),
+			"prod-vc": prodInventory,
 			"edge-vc": sampleInventory("edge-vc", "Hsinchu", "10.42.0"),
 		},
 		failures: map[string]error{
@@ -55,6 +59,27 @@ func NewBackend() *Backend {
 			"edge-vc": healthyDiagnosis(contexts[1], 127*time.Millisecond),
 			"dr-site": failedDiagnosis(contexts[2]),
 		},
+	}
+}
+
+// addDemoHealthEvidence keeps the presentation estate useful for the health
+// workstream too: one VM is orphaned and one VMDK is visible to the optional
+// datastore browser but is not referenced by any VM or template.
+func addDemoHealthEvidence(inv *vsphere.Inventory) {
+	if inv == nil || len(inv.VMs) < 3 || len(inv.Templates) == 0 || len(inv.Datastores) == 0 {
+		return
+	}
+	inv.VMs[2].ConnectionState = "orphaned"
+	inv.VMs[0].Disks = []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 80 << 30, BackingPath: "[nvme-01] api-01/api-01.vmdk"}}
+	inv.VMs[2].Disks = []vsphere.VMDisk{{Key: 102, Label: "Hard disk 1", CapacityBytes: 120 << 30, BackingPath: "[nvme-01] build-runner-03/build-runner-03.vmdk"}}
+	inv.Templates[0].Disks = []vsphere.VMDisk{{Key: 103, Label: "Hard disk 1", CapacityBytes: 16 << 30, BackingPath: "[nvme-01] templates/ubuntu-24.04-golden.vmdk"}}
+	inv.Datastores[0].BrowseStatus = "success"
+	inv.Datastores[0].Files = []vsphere.DatastoreFile{
+		{Path: "[nvme-01] api-01/api-01.vmdk", SizeBytes: 80 << 30},
+		{Path: "[nvme-01] api-01/api-01-000001.vmdk", SizeBytes: 4 << 30},
+		{Path: "[nvme-01] build-runner-03/build-runner-03.vmdk", SizeBytes: 120 << 30},
+		{Path: "[nvme-01] lost+found/orphan.vmdk", SizeBytes: 20 << 30},
+		{Path: "[nvme-01] templates/ubuntu-24.04-golden.vmdk", SizeBytes: 16 << 30},
 	}
 }
 
@@ -113,6 +138,68 @@ func (b *Backend) Status(name string) (session.Status, bool) {
 // Diagnose implements tui.Backend.
 func (b *Backend) Diagnose(_ context.Context, cc *config.Context) *vsphere.Diagnosis {
 	return b.diagnoses[cc.Name]
+}
+
+// AssessmentService returns a seeded, in-memory history service for the
+// presentation demo. It lets the History health pane show the same orphaned
+// VM and zombie-VMDK evidence as the inventory without touching disk.
+func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
+	store, err := assessment.OpenMemory()
+	if err != nil {
+		return nil, nil, err
+	}
+	closeStore := func() { _ = store.Close() }
+	cc := b.contexts[0]
+	inv := b.inventories[cc.Name]
+	now := time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC)
+	run, err := store.StartRunWithMetadata(context.Background(), "demo", []*config.Context{cc}, now, assessment.RunMetadata{InventorySchemaVersion: assessment.CurrentInventorySchemaVersion})
+	if err != nil {
+		closeStore()
+		return nil, nil, err
+	}
+	observations := make([]assessment.Observation, 0, len(inv.VMs)+len(inv.Templates))
+	for _, vm := range append(append([]vsphere.VM(nil), inv.VMs...), inv.Templates...) {
+		observations = append(observations, assessment.Observation{Context: cc.Name, VCenterID: "demo-prod-vc", VM: vm})
+	}
+	collections := []assessment.CollectionResult{
+		{Kind: "vm", Status: "success", ItemCount: len(observations)},
+		{Kind: "host", Status: "success", ItemCount: len(inv.Hosts), Resources: demoResources(cc.Name, "demo-prod-vc", "host", inv.Hosts)},
+		{Kind: "cluster", Status: "success", ItemCount: len(inv.Clusters), Resources: demoResources(cc.Name, "demo-prod-vc", "cluster", inv.Clusters)},
+		{Kind: "datastore", Status: "success", ItemCount: len(inv.Datastores), Resources: demoResources(cc.Name, "demo-prod-vc", "datastore", inv.Datastores)},
+	}
+	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: cc.Name, VCenterID: "demo-prod-vc", Status: "success", VMs: observations, Collections: collections}, now.Add(time.Minute)); err != nil {
+		closeStore()
+		return nil, nil, err
+	}
+	if _, err := store.FinishRun(context.Background(), run.ID, now.Add(2*time.Minute)); err != nil {
+		closeStore()
+		return nil, nil, err
+	}
+	return &assessment.Service{Store: store}, closeStore, nil
+}
+
+func demoResources(contextName, vcenterID, kind string, values any) []assessment.ResourceObservation {
+	var resources []assessment.ResourceObservation
+	switch typed := values.(type) {
+	case []vsphere.Host:
+		for _, value := range typed {
+			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
+		}
+	case []vsphere.Cluster:
+		for _, value := range typed {
+			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
+		}
+	case []vsphere.Datastore:
+		for _, value := range typed {
+			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
+		}
+	}
+	return resources
+}
+
+func makeDemoResource(contextName, vcenterID, kind, id, name string, value any) assessment.ResourceObservation {
+	payload, _ := json.Marshal(value)
+	return assessment.ResourceObservation{Context: contextName, VCenterID: vcenterID, Kind: kind, ID: id, Name: name, Payload: payload}
 }
 
 // The remaining methods satisfy the TUI backend contract. The presentation is

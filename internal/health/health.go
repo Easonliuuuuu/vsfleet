@@ -58,6 +58,7 @@ type Rule struct {
 	Summary   string
 	MinSchema int
 	Needs     string
+	Skip      func(Input) (bool, string)
 	Eval      func(in Input, emit func(Finding))
 }
 
@@ -135,6 +136,15 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 			status.Status = "not-evaluated"
 			status.Reason = rule.Needs
 		default:
+			if rule.Skip != nil {
+				skip, reason := rule.Skip(in)
+				if skip {
+					status.Status = "not-evaluated"
+					status.Reason = reason
+					report.Rules = append(report.Rules, status)
+					continue
+				}
+			}
 			status.Status = "evaluated"
 			before := len(report.Findings)
 			rule.Eval(in, func(f Finding) {

@@ -45,6 +45,21 @@ failure is reported separately with its context and diagnostic information.
 `vsfleet assessment doctor` checks the local history database. `vsfleet health`
 assesses the estate described by the stored evidence.
 
+## Assessments
+
+Assessment captures are read-only and store their evidence locally. Add
+`--browse-datastores` when the account has the vSphere `Datastore.Browse`
+privilege and you want zombie-VMDK checks; the bounded file listing adds time on
+large estates and is disabled by default.
+
+```sh
+vsfleet assessment run --all-contexts --browse-datastores
+vsfleet health latest
+```
+
+Without the flag, `datastore-zombie-vmdk` is reported as `not-evaluated`, not as
+a clean result.
+
 ## JSON output
 
 Use `-o json` for automation. The output is designed for `jq`, `awk`, and other

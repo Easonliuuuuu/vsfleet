@@ -795,17 +795,70 @@ func TestJumpFromAVAppMemberLeavesTheWorkspace(t *testing.T) {
 }
 
 func TestVAppWorkspaceFitsMinimumWidth(t *testing.T) {
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	b := twoHealthy()
+	nested := ctx("nested-vcenter-context-with-a-long-name", "https://10.20.0.11")
+	nested.Via, nested.ViaMoRef = "prod", "prod-vm-1"
+	b.contexts = append(b.contexts, nested)
+	m := newTestModel(t, b, Options{Current: "prod"})
 	m.width, m.height = minTermWidth, 24
 	press(t, m, "7", "enter")
+	out := m.View()
 	for _, line := range strings.Split(m.View(), "\n") {
 		if width := ansi.StringWidth(line); width > minTermWidth {
 			t.Fatalf("vAPP detail line is %d columns wide at minimum width: %q", width, line)
 		}
 	}
-	if !strings.Contains(m.View(), "app-01") {
-		t.Errorf("minimum-width vAPP workspace should retain the VM member name:\n%s", m.View())
+	if !strings.Contains(out, "app-01") {
+		t.Errorf("minimum-width vAPP workspace should retain the VM member name:\n%s", out)
 	}
+	if strings.Contains(out, "→ nested-vcenter-context-with-a-long-name") {
+		t.Errorf("minimum-width vAPP workspace should truncate the annotation suffix:\n%s", out)
+	}
+}
+
+func TestVAppMemberIsMarkedWithItsSavedContext(t *testing.T) {
+	b := twoHealthy()
+	nested := ctx("nested-app", "https://10.20.0.11")
+	nested.Via, nested.ViaMoRef = "prod", "prod-vm-1"
+	b.contexts = append(b.contexts, nested)
+	m := newTestModel(t, b, Options{Current: "prod"})
+	press(t, m, "7", "enter")
+
+	for _, member := range m.vappMembers(mustActiveVApp(t, m), m.byName["prod"].inv) {
+		if member.name == "app-01" {
+			if member.asContext != "nested-app" {
+				t.Fatalf("member annotation is %q, want nested-app", member.asContext)
+			}
+			return
+		}
+	}
+	t.Fatal("app-01 member not found")
+}
+
+func TestHandMadeContextStillAnnotatesAMember(t *testing.T) {
+	b := twoHealthy()
+	b.contexts = append(b.contexts, ctx("handmade", "https://10.20.0.11"))
+	m := newTestModel(t, b, Options{Current: "prod"})
+	press(t, m, "7", "enter")
+
+	for _, member := range m.vappMembers(mustActiveVApp(t, m), m.byName["prod"].inv) {
+		if member.name == "app-01" {
+			if member.asContext != "handmade" {
+				t.Fatalf("member annotation is %q, want handmade", member.asContext)
+			}
+			return
+		}
+	}
+	t.Fatal("app-01 member not found")
+}
+
+func mustActiveVApp(t *testing.T, m *Model) *vsphere.VApp {
+	t.Helper()
+	root, _, ok := m.activeVApp()
+	if !ok || root == nil {
+		t.Fatal("vAPP workspace has no active root")
+	}
+	return root
 }
 
 func TestVAppWorkspaceReportsMissingAndCyclicMembers(t *testing.T) {
@@ -1533,6 +1586,79 @@ func TestEditContextPrefillsAndUpdatesInPlace(t *testing.T) {
 	}
 	if edited.Endpoint != "https://vcsa.prod.internal" {
 		t.Errorf("editing changed the endpoint to %q", edited.Endpoint)
+	}
+}
+
+func TestEditingANestedContextKeepsItsProvenance(t *testing.T) {
+	b := twoHealthy()
+	nested := ctx("nested-app", "https://10.20.0.11")
+	nested.Via, nested.ViaMoRef = "prod", "prod-vm-1"
+	b.contexts = append(b.contexts, nested)
+	m := newTestModel(t, b, Options{Current: "nested-app"})
+
+	press(t, m, "c", "e")
+	settleForm(m)
+	if m.form == nil || m.form.via != "prod" || m.form.viaMoRef != "prod-vm-1" {
+		t.Fatalf("nested form lost its provenance: form=%+v", m.form)
+	}
+	save := -1
+	for i, r := range m.form.rows() {
+		if r.kind == rowButton && r.static == "Save" {
+			save = i
+			break
+		}
+	}
+	if save < 0 {
+		t.Fatal("nested context form has no Save button")
+	}
+	m.form.cursor = save
+	m.form.syncFocus()
+	press(t, m, "enter")
+
+	saved, err := findContext(b.contexts, "nested-app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Via != "prod" || saved.ViaMoRef != "prod-vm-1" {
+		t.Fatalf("editing dropped provenance: via=%q moref=%q", saved.Via, saved.ViaMoRef)
+	}
+}
+
+func TestSavingANestedContextReturnsToTheMemberPane(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod"})
+	press(t, m, "7", "enter", "enter", "enter")
+	// The member header's actions are SSH, add-context, open, MoRef, copy.
+	press(t, m, "down", "enter")
+	settleForm(m)
+	if m.form == nil {
+		t.Fatal("adding a nested context did not open the form")
+	}
+	m.form.username.SetValue("administrator@vsphere.local")
+	m.form.thumbprint.SetValue("AA:BB:CC")
+	save := -1
+	for i, r := range m.form.rows() {
+		if r.kind == rowButton && r.static == "Save" {
+			save = i
+			break
+		}
+	}
+	if save < 0 {
+		t.Fatal("seeded context form has no Save button")
+	}
+	m.form.cursor = save
+	m.form.syncFocus()
+	press(t, m, "enter")
+
+	if m.mode != modeVAppVMDetail || m.vapp == nil || m.vappVM == nil {
+		t.Fatalf("saving should return to the member pane, mode=%v vapp=%+v member=%+v", m.mode, m.vapp, m.vappVM)
+	}
+	saved, err := findContext(b.contexts, "app-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Via != "prod" || saved.ViaMoRef != "prod-vm-1" {
+		t.Fatalf("saved nested context provenance is via=%q moref=%q", saved.Via, saved.ViaMoRef)
 	}
 }
 

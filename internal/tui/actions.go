@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -141,6 +144,71 @@ func (m *Model) sshCommandCopyAction(address string) action {
 	return action{label: "Copy " + cmd, run: func(m *Model) tea.Cmd { return m.copyCmd(cmd) }}
 }
 
+// nestedContextFor finds the context represented by a VM in the parent
+// context. Saved provenance is authoritative because a VM's IP can change;
+// the host-name fallback keeps hand-made contexts and older files useful.
+func (m *Model) nestedContextFor(parentContext, moref, address string) *contextState {
+	for _, st := range m.states {
+		if st.cc.Via == parentContext && st.cc.ViaMoRef == moref {
+			return st
+		}
+	}
+	if address == "" {
+		return nil
+	}
+	for _, st := range m.states {
+		if st.cc.Name == parentContext {
+			continue
+		}
+		if st.cc.Host() == address {
+			return st
+		}
+	}
+	return nil
+}
+
+// addContextAction promotes a VM with an address to a context form. It is not
+// disabled in demo mode: this launches no process and opens no browser. The
+// demo backend refuses the save itself, which is where the presentation's
+// read-only promise is enforced.
+func (m *Model) addContextAction(r row, address string) action {
+	if nested := m.nestedContextFor(r.context, r.target.moref, address); nested != nil {
+		name := nested.cc.Name
+		return action{
+			label: fmt.Sprintf("Switch to context %q", name),
+			run: func(m *Model) tea.Cmd {
+				m.selectByName(name)
+				m.allScope = false
+				m.cursor, m.offset = 0, 0
+				m.setMessage("", false)
+				m.mode = modeBrowse
+				return tea.Batch(m.ensureSelectedLoaded(false)...)
+			},
+		}
+	}
+
+	slug := m.uniqueContextName(r.name)
+	label := fmt.Sprintf("Add %q as a vCenter context", slug)
+	if address == "" {
+		return action{label: label, disabled: "no address available"}
+	}
+	transport := config.TransportConfig{Type: config.TransportDirect}
+	if parent := m.byName[r.context]; parent != nil {
+		transport = parent.cc.Transport
+	}
+	seed := contextSeed{
+		name:      slug,
+		endpoint:  "https://" + address,
+		transport: transport,
+		via:       r.context,
+		viaMoRef:  r.target.moref,
+	}
+	return action{label: label, run: func(m *Model) tea.Cmd {
+		m.returnTo = m.mode
+		return m.enterFormSeeded(seed)
+	}}
+}
+
 // jumpAction narrows the table to kind's rows whose actionJoins field named
 // by matcher equals value — "the VMs on this host" — until Esc clears it.
 // See jumpConstraint and its use in Model.rows.
@@ -180,6 +248,7 @@ func (m *Model) objectActions(r row) []action {
 		if r.target.address != "" {
 			out = append(out, m.sshAction(r, r.target.address))
 		}
+		out = append(out, m.addContextAction(r, r.target.address))
 		out = append(out, m.openAction(r))
 		out = append(out, copyNamed("Copy MoRef", r.target.moref))
 	case vsphere.KindTemplate:

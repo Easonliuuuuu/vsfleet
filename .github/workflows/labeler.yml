@@ -1,0 +1,227 @@
+name: Auto label
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Apply repository labels
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const managedLabels = {
+              tui: {
+                color: "1d76db",
+                description: "Terminal UI and interactive operator experience"
+              },
+              assessment: {
+                color: "5319e7",
+                description: "Assessments, findings, health, history, drift, and trends"
+              },
+              compatibility: {
+                color: "0e8a16",
+                description: "RVTools interoperability and export compatibility"
+              },
+              vsphere: {
+                color: "0052cc",
+                description: "vSphere API, inventory collection, and resource mapping"
+              },
+              docs: {
+                color: "0075ca",
+                description: "Documentation and examples"
+              },
+              ci: {
+                color: "6f42c1",
+                description: "CI, GitHub Actions, and repository automation"
+              },
+              release: {
+                color: "fbca04",
+                description: "Release tooling, packaging, and versioning"
+              },
+              config: {
+                color: "bfdadc",
+                description: "Configuration, contexts, and operator settings"
+              }
+            };
+
+            for (const [name, spec] of Object.entries(managedLabels)) {
+              try {
+                await github.rest.issues.getLabel({ owner, repo, name });
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner,
+                  repo,
+                  name,
+                  color: spec.color,
+                  description: spec.description
+                });
+              }
+            }
+
+            // workflow_dispatch is useful for creating/synchronizing managed labels.
+            if (context.eventName === "workflow_dispatch") {
+              core.info("Managed labels are present.");
+              return;
+            }
+
+            const item = context.payload.pull_request ?? context.payload.issue;
+            if (!item) {
+              core.info("No issue or pull request payload to label.");
+              return;
+            }
+
+            const text = `${item.title ?? ""}\n${item.body ?? ""}`.toLowerCase();
+            const labels = new Set();
+
+            const textRules = {
+              tui: [
+                /\btui\b/,
+                /terminal ui/,
+                /bubble tea/,
+                /\bkeybind(?:ing)?s?\b/,
+                /\bpane\b/,
+                /\bcursor\b/
+              ],
+              assessment: [
+                /\bassessment\b/,
+                /\bfindings?\b/,
+                /\bhealth\b/,
+                /\bdrift\b/,
+                /\btrends?\b/,
+                /\bhistory\b/,
+                /\breadiness\b/,
+                /\bpolicy\b/
+              ],
+              compatibility: [
+                /\brvtools\b/,
+                /\bcompatibility\b/,
+                /\binteroperability\b/,
+                /\bworksheet\b/,
+                /\bxlsx\b/
+              ],
+              vsphere: [
+                /\bvsphere api\b/,
+                /\bvcenter api\b/,
+                /\bgovmomi\b/
+              ],
+              docs: [
+                /\bdocumentation\b/,
+                /\breadme\b/,
+                /\bdocs?\b/
+              ],
+              ci: [
+                /\bgithub actions?\b/,
+                /\bworkflow\b/,
+                /\bdependabot\b/,
+                /\bcontinuous integration\b/
+              ],
+              release: [
+                /\brelease please\b/,
+                /\brelease-please\b/,
+                /\bgoreleaser\b/,
+                /\bversioning\b/
+              ],
+              config: [
+                /\bconfiguration\b/,
+                /\bconfig\.toml\b/,
+                /\bcontexts?\b/,
+                /\bkeyring\b/,
+                /\bcredentials?\b/
+              ]
+            };
+
+            for (const [label, patterns] of Object.entries(textRules)) {
+              if (patterns.some((pattern) => pattern.test(text))) {
+                labels.add(label);
+              }
+            }
+
+            if (context.payload.pull_request) {
+              const pullNumber = context.payload.pull_request.number;
+              const changedFiles = await github.paginate(
+                github.rest.pulls.listFiles,
+                {
+                  owner,
+                  repo,
+                  pull_number: pullNumber,
+                  per_page: 100
+                }
+              );
+              const paths = changedFiles.map((file) => file.filename);
+
+              const anyPath = (predicate) => paths.some(predicate);
+              const startsWithAny = (path, prefixes) =>
+                prefixes.some((prefix) => path.startsWith(prefix));
+
+              if (anyPath((path) =>
+                startsWithAny(path, ["internal/tui/", "internal/uistate/"]) ||
+                path === "docs/tui.md"
+              )) labels.add("tui");
+
+              if (anyPath((path) =>
+                startsWithAny(path, ["internal/assessment/", "internal/health/"]) ||
+                path === "docs/assessments.md"
+              )) labels.add("assessment");
+
+              if (anyPath((path) =>
+                path.startsWith("internal/report/") ||
+                /(?:rvtools|compatibility)/i.test(path)
+              )) labels.add("compatibility");
+
+              if (anyPath((path) => path.startsWith("internal/vsphere/"))) {
+                labels.add("vsphere");
+              }
+
+              if (anyPath((path) =>
+                path.startsWith("docs/") ||
+                path === "README.md" ||
+                path === "mkdocs.yml"
+              )) labels.add("docs");
+
+              if (anyPath((path) =>
+                path.startsWith(".github/workflows/") ||
+                path === ".github/dependabot.yml"
+              )) labels.add("ci");
+
+              if (anyPath((path) =>
+                path === ".github/workflows/release.yml" ||
+                path === "release-please-config.json" ||
+                path === ".release-please-manifest.json" ||
+                path === ".goreleaser.yml" ||
+                path === "CHANGELOG.md"
+              )) labels.add("release");
+
+              if (anyPath((path) =>
+                startsWithAny(path, ["internal/config/", "internal/contextops/"]) ||
+                path === "docs/configuration.md"
+              )) labels.add("config");
+            }
+
+            if (labels.size === 0) {
+              core.info("No automatic labels matched.");
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: item.number,
+              labels: [...labels].sort()
+            });
+
+            core.info(`Applied labels: ${[...labels].sort().join(", ")}`);

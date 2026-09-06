@@ -131,14 +131,16 @@ loads configuration or credentials and never creates a session. Inventory
 schema version 3 (distinct from the ledger's own schema version above) adds
 the VMware Tools version and version status to VM payloads, backing the
 `vTools` tab; version 8 adds persisted resource-pool observations for the
-`vRP` export tab. Older rows still populate the `vTools` running-status column,
+`vRP` export tab; version 9 adds host storage and network sub-objects for the
+`vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, and `vMultiPath` tabs. Older rows still populate the `vTools` running-status column,
 with the version columns left blank and the gap noted on `vsfleetCoverage`; runs
-before version 8 mark `vRP` as not recorded. A shared
+before version 8 mark `vRP` as not recorded, and runs before version 9 mark the
+six host configuration tabs as not recorded. A shared
 `rvtoolsSheets` compatibility-sheet builder canonicalizes and validates the run
 once and returns every supported worksheet (`vInfo`, `vCPU`, `vMemory`,
 per-VM `vDisk`/`vNetwork`,
-`vTools`, `vHost`, `vCluster`, `vRP`, `vDatastore`, `vSnapshot`, `vHealth`,
-`vsfleetCoverage`) in
+`vTools`, `vHost`, `vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, `vMultiPath`,
+`vRP`, `vDatastore`, `vSnapshot`, `vHealth`, `vsfleetCoverage`) in
 tab order; the XLSX writer normalizes ZIP entry order and timestamps on top of
 it, and the CSV writer renders the same tabs as one file per sheet, so both
 formats are byte-identical across repeated exports of unchanged stored

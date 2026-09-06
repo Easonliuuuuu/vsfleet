@@ -194,6 +194,8 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context, b
 		var part *vsphere.Inventory
 		if group == vsphere.GroupDatastores {
 			part = client.FetchGroupWith(opCtx, idx, group, vsphere.FetchOptions{BrowseDatastoreFiles: browseDatastores})
+		} else if group == vsphere.GroupHosts {
+			part = client.FetchGroupWith(opCtx, idx, group, vsphere.FetchOptions{HostConfig: true})
 		} else {
 			part = client.FetchGroup(opCtx, idx, group)
 		}

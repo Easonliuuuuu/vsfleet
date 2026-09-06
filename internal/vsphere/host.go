@@ -19,6 +19,8 @@ var hostProps = []string{
 	"vm",
 }
 
+var hostConfigProps = []string{"config.storageDevice", "config.network"}
+
 // ListHosts returns the ESXi hosts in a vCenter.
 func (c *Client) ListHosts(ctx context.Context) ([]Host, error) {
 	idx, err := newIndex(ctx, c)
@@ -29,19 +31,31 @@ func (c *Client) ListHosts(ctx context.Context) ([]Host, error) {
 }
 
 func (c *Client) listHosts(ctx context.Context, idx *index) ([]Host, error) {
+	return c.listHostsWith(ctx, idx, false)
+}
+
+func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool) ([]Host, error) {
 	var raw []mo.HostSystem
-	if err := retrieve(ctx, c, idx.root, []string{"HostSystem"}, []string{"HostSystem"}, hostProps, &raw); err != nil {
+	props := hostProps
+	if withConfig {
+		props = append(append([]string(nil), props...), hostConfigProps...)
+	}
+	if err := retrieve(ctx, c, idx.root, []string{"HostSystem"}, []string{"HostSystem"}, props, &raw); err != nil {
 		return nil, err
 	}
 	out := make([]Host, 0, len(raw))
 	for i := range raw {
-		out = append(out, newHost(c, idx, &raw[i]))
+		out = append(out, newHostWithConfig(c, idx, &raw[i], withConfig))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
 }
 
 func newHost(c *Client, idx *index, m *mo.HostSystem) Host {
+	return newHostWithConfig(c, idx, m, false)
+}
+
+func newHostWithConfig(c *Client, idx *index, m *mo.HostSystem, withConfig bool) Host {
 	h := Host{
 		Location:        idx.locate(c, m.Self, m.Name),
 		ID:              m.Self.Value,
@@ -74,6 +88,9 @@ func newHost(c *Client, idx *index, m *mo.HostSystem) Host {
 	}
 	if qs.OverallMemoryUsage != 0 {
 		h.MemoryUsageMB = int64(qs.OverallMemoryUsage)
+	}
+	if withConfig {
+		mapHostConfig(&h, m.Config)
 	}
 	return h
 }

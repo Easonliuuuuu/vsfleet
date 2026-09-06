@@ -54,7 +54,7 @@ cell is left empty.
 
 ```sh
 vsfleet compatibility report                      # every worksheet
-vsfleet compatibility report --sheet vPartition   # one of them
+vsfleet compatibility report --sheet vHBA         # one of them
 vsfleet compatibility report -o json | jq         # for a pipeline
 ```
 

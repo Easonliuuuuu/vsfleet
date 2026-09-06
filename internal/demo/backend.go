@@ -208,6 +208,8 @@ func makeDemoResource(contextName, vcenterID, kind, id, name string, value any) 
 }
 
 func int64Value(value int64) *int64 { return &value }
+func int32Value(value int32) *int32 { return &value }
+func boolValue(value bool) *bool    { return &value }
 
 // The remaining methods satisfy the TUI backend contract. The presentation is
 // deliberately read-only so a recording cannot imply that sample contexts can
@@ -253,8 +255,22 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 			{Location: loc("vm", "windows-2025-core"), ID: name + "-tpl-2", Name: "windows-2025-core", IsTemplate: true, CPU: 4, MemoryMB: 8192, GuestOS: "Microsoft Windows Server 2025", StorageGB: 64},
 		},
 		Hosts: []vsphere.Host{
-			{Location: loc("host", "esxi-01"), ID: name + "-host-1", Name: "esxi-01", Cluster: "compute-a", PowerState: "poweredOn", ConnectionState: "connected", Vendor: "Dell Inc.", Model: "PowerEdge R750", Version: "8.0.3", Build: "24022515", CPUCores: 32, CPUThreads: 64, CPUMHz: 2400, MemoryMB: 524288, CPUUsageMHz: 18400, MemoryUsageMB: 244000, VMCount: 31},
-			{Location: loc("host", "esxi-02"), ID: name + "-host-2", Name: "esxi-02", Cluster: "compute-a", PowerState: "poweredOn", ConnectionState: "connected", Vendor: "Dell Inc.", Model: "PowerEdge R750", Version: "8.0.3", Build: "24022515", CPUCores: 32, CPUThreads: 64, CPUMHz: 2400, MemoryMB: 524288, CPUUsageMHz: 22100, MemoryUsageMB: 301000, VMCount: 38},
+			{Location: loc("host", "esxi-01"), ID: name + "-host-1", Name: "esxi-01", Cluster: "compute-a", PowerState: "poweredOn", ConnectionState: "connected", Vendor: "Dell Inc.", Model: "PowerEdge R750", Version: "8.0.3", Build: "24022515", CPUCores: 32, CPUThreads: 64, CPUMHz: 2400, MemoryMB: 524288, CPUUsageMHz: 18400, MemoryUsageMB: 244000, VMCount: 31,
+				HBAs:       []vsphere.HostHBA{{Key: name + "-hba-1", Device: "vmhba0", Bus: 3, Status: "online", Model: "QLogic 2692", Driver: "qlnativefc", PCI: "0000:5e:00.0", StorageProtocol: "fc", Type: "HostFibreChannelHba", WWNN: int64Value(0x50014380242a1234), WWPN: int64Value(0x50014380242a1235)}},
+				NICs:       []vsphere.HostNIC{{Key: name + "-pnic-1", Device: "vmnic0", PCI: "0000:18:00.0", Driver: "i40en", MAC: "00:50:56:aa:01:01", LinkSpeedMB: int32Value(10000), Duplex: boolValue(true), WakeOnLAN: false, Switch: "vSwitch0"}},
+				VSwitches:  []vsphere.HostVSwitch{{Key: name + "-switch-1", Name: "vSwitch0", NumPorts: 128, FreePorts: 120, MTU: 1500, Uplinks: []string{"vmnic0"}, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true), TrafficShaping: boolValue(false)}},
+				PortGroups: []vsphere.HostPortGroup{{Key: name + "-port-1", Name: "Management Network", Switch: "vSwitch0", VLAN: 120, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true)}},
+				VMKs:       []vsphere.HostVMKernel{{Key: name + "-vmk-1", Device: "vmk0", PortGroup: "Management Network", MAC: "00:50:56:aa:01:02", MTU: 1500, TSO: boolValue(true), Netstack: "defaultTcpipStack", DHCP: boolValue(false), IP: subnet + ".10", SubnetMask: "255.255.255.0", ServiceConsole: false}},
+				Multipaths: []vsphere.HostMultipath{{Key: name + "-lun-1", LUN: "naa.60060160.example.0001", DevicePath: "/vmfs/devices/disks/naa.60060160.example.0001", Policy: "VMW_PSP_RR", PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 1}},
+			},
+			{Location: loc("host", "esxi-02"), ID: name + "-host-2", Name: "esxi-02", Cluster: "compute-a", PowerState: "poweredOn", ConnectionState: "connected", Vendor: "Dell Inc.", Model: "PowerEdge R750", Version: "8.0.3", Build: "24022515", CPUCores: 32, CPUThreads: 64, CPUMHz: 2400, MemoryMB: 524288, CPUUsageMHz: 22100, MemoryUsageMB: 301000, VMCount: 38,
+				HBAs:       []vsphere.HostHBA{{Key: name + "-hba-2", Device: "vmhba1", Bus: 4, Status: "online", Model: "Broadcom 57508", Driver: "bnxtroce", PCI: "0000:af:00.0", StorageProtocol: "iscsi", Type: "HostInternetScsiHba", IScsiName: "iqn.2026-09.example:" + name + ":esxi-02", IScsiAlias: "esxi-02.example.internal"}},
+				NICs:       []vsphere.HostNIC{{Key: name + "-pnic-2", Device: "vmnic1", PCI: "0000:19:00.0", Driver: "ixgben", MAC: "00:50:56:aa:02:01", LinkSpeedMB: int32Value(10000), Duplex: boolValue(true), WakeOnLAN: false, Switch: "vSwitch0"}},
+				VSwitches:  []vsphere.HostVSwitch{{Key: name + "-switch-2", Name: "vSwitch0", NumPorts: 128, FreePorts: 119, MTU: 1500, Uplinks: []string{"vmnic1"}, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true), TrafficShaping: boolValue(false)}},
+				PortGroups: []vsphere.HostPortGroup{{Key: name + "-port-2", Name: "Management Network", Switch: "vSwitch0", VLAN: 120, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true)}},
+				VMKs:       []vsphere.HostVMKernel{{Key: name + "-vmk-2", Device: "vmk0", PortGroup: "Management Network", MAC: "00:50:56:aa:02:02", MTU: 1500, TSO: boolValue(true), Netstack: "defaultTcpipStack", DHCP: boolValue(false), IP: subnet + ".20", SubnetMask: "255.255.255.0", ServiceConsole: false}},
+				Multipaths: []vsphere.HostMultipath{{Key: name + "-lun-2", LUN: "naa.60060160.example.0002", DevicePath: "/vmfs/devices/disks/naa.60060160.example.0002", Policy: "VMW_PSP_RR", PathCount: 2, Active: 2, WorkingPaths: 2}},
+			},
 		},
 		Clusters: []vsphere.Cluster{
 			{Location: loc("host", "compute-a"), ID: name + "-cluster-1", Name: "compute-a", Hosts: 4, EffectiveHost: 4, CPUCores: 128, TotalCPUMHz: 307200, TotalMemoryMB: 2097152, DRSEnabled: true, HAEnabled: true},

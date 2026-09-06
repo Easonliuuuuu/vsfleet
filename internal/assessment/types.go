@@ -18,12 +18,13 @@ type RunStatus string
 // partitions; version 5 adds the virtual disks backing each of them; version 6
 // adds normalized CD-ROM and USB devices (including connection and backing
 // identity); version 7 adds VM connection state; version 8 adds resource-pool
-// observations. All keep the payload
+// observations; version 9 adds host storage adapter, multipath, physical NIC,
+// virtual switch, port group and VMkernel adapter inventory. All keep the payload
 // backward-compatible with older ledger rows:
 // a reader of an older run sees the field absent, which is what it is. Health
 // rules that need the version-6 evidence must therefore remain not-evaluated
 // for runs captured before this schema.
-const CurrentInventorySchemaVersion = "8"
+const CurrentInventorySchemaVersion = "9"
 
 const (
 	RunRunning  RunStatus = "running"

@@ -70,10 +70,11 @@ byte-identical, and every export prints a SHA256 receipt.
 
 ### Supported tabs
 
-The compatibility export renders **thirteen** worksheet layouts:
+The compatibility export renders **nineteen** worksheet layouts:
 
 `vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
-`vHost` · `vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
+`vHost` · `vHBA` · `vNIC` · `vSwitch` · `vPort` · `vSC+VMK` · `vMultiPath` ·
+`vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
 
 Compatibility is limited to the listed worksheet names and columns. A pipeline
 that requires other worksheets is not supported by this export profile. This is
@@ -94,6 +95,12 @@ claim about any other tool's schema.
 the guest can measure. VMs with no running Tools contribute no rows, and
 `vsfleetCoverage` says how many of them answered rather than leaving a short
 tab to look like a small estate.
+
+The host-scoped sheets report HBAs, multipath LUN aggregates, physical NICs,
+standard virtual switches, standard port groups, and VMkernel/service-console
+adapters. They come from host configuration properties, so captures do not
+query separate storage or network manager endpoints. Distributed switches and
+ports, and a TUI surface for this nested data, remain deliberate follow-ups.
 
 Every export also carries a `vsfleetCoverage` sheet naming what collected, what
 failed, and why, per vCenter and per tab. A partial estate is reported as

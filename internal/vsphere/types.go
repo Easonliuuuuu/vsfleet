@@ -233,23 +233,117 @@ type VMSnapshot struct {
 // Host is an ESXi host.
 type Host struct {
 	Location
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Cluster         string `json:"cluster"`
-	PowerState      string `json:"power_state"`
-	ConnectionState string `json:"connection_state"`
-	InMaintenance   bool   `json:"in_maintenance"`
-	Vendor          string `json:"vendor"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Cluster         string          `json:"cluster"`
+	PowerState      string          `json:"power_state"`
+	ConnectionState string          `json:"connection_state"`
+	InMaintenance   bool            `json:"in_maintenance"`
+	Vendor          string          `json:"vendor"`
+	Model           string          `json:"model"`
+	Version         string          `json:"version"`
+	Build           string          `json:"build"`
+	CPUCores        int32           `json:"cpu_cores"`
+	CPUThreads      int32           `json:"cpu_threads"`
+	CPUMHz          int32           `json:"cpu_mhz"`
+	MemoryMB        int64           `json:"memory_mb"`
+	CPUUsageMHz     int64           `json:"cpu_usage_mhz"`
+	MemoryUsageMB   int64           `json:"memory_usage_mb"`
+	VMCount         int             `json:"vm_count"`
+	HBAs            []HostHBA       `json:"hbas,omitempty"`
+	NICs            []HostNIC       `json:"nics,omitempty"`
+	VSwitches       []HostVSwitch   `json:"vswitches,omitempty"`
+	PortGroups      []HostPortGroup `json:"port_groups,omitempty"`
+	VMKs            []HostVMKernel  `json:"vmks,omitempty"`
+	Multipaths      []HostMultipath `json:"multipaths,omitempty"`
+}
+
+// HostHBA is a normalized host bus adapter. WWNs are pointers because a
+// transport can report a real zero value differently from an omitted one.
+type HostHBA struct {
+	Key             string `json:"key,omitempty"`
+	Device          string `json:"device"`
+	Bus             int32  `json:"bus"`
+	Status          string `json:"status"`
 	Model           string `json:"model"`
-	Version         string `json:"version"`
-	Build           string `json:"build"`
-	CPUCores        int32  `json:"cpu_cores"`
-	CPUThreads      int32  `json:"cpu_threads"`
-	CPUMHz          int32  `json:"cpu_mhz"`
-	MemoryMB        int64  `json:"memory_mb"`
-	CPUUsageMHz     int64  `json:"cpu_usage_mhz"`
-	MemoryUsageMB   int64  `json:"memory_usage_mb"`
-	VMCount         int    `json:"vm_count"`
+	Driver          string `json:"driver,omitempty"`
+	PCI             string `json:"pci,omitempty"`
+	StorageProtocol string `json:"storage_protocol,omitempty"`
+	Type            string `json:"type"`
+	WWNN            *int64 `json:"wwnn,omitempty"`
+	WWPN            *int64 `json:"wwpn,omitempty"`
+	IScsiName       string `json:"iscsi_name,omitempty"`
+	IScsiAlias      string `json:"iscsi_alias,omitempty"`
+}
+
+// HostNIC is one physical NIC from a host's network configuration.
+type HostNIC struct {
+	Key         string `json:"key,omitempty"`
+	Device      string `json:"device"`
+	PCI         string `json:"pci,omitempty"`
+	Driver      string `json:"driver,omitempty"`
+	MAC         string `json:"mac,omitempty"`
+	LinkSpeedMB *int32 `json:"link_speed_mb,omitempty"`
+	Duplex      *bool  `json:"duplex,omitempty"`
+	WakeOnLAN   bool   `json:"wake_on_lan"`
+	Switch      string `json:"switch,omitempty"`
+}
+
+// HostVSwitch is one standard virtual switch and its effective security
+// policy. Distributed switches are intentionally outside this model.
+type HostVSwitch struct {
+	Key             string   `json:"key,omitempty"`
+	Name            string   `json:"name"`
+	NumPorts        int32    `json:"num_ports"`
+	FreePorts       int32    `json:"free_ports"`
+	MTU             int32    `json:"mtu"`
+	Uplinks         []string `json:"uplinks,omitempty"`
+	Promiscuous     *bool    `json:"promiscuous,omitempty"`
+	MACChanges      *bool    `json:"mac_changes,omitempty"`
+	ForgedTransmits *bool    `json:"forged_transmits,omitempty"`
+	TrafficShaping  *bool    `json:"traffic_shaping,omitempty"`
+}
+
+// HostPortGroup is one standard-switch port group and its effective policy.
+type HostPortGroup struct {
+	Key             string `json:"key,omitempty"`
+	Name            string `json:"name"`
+	Switch          string `json:"switch"`
+	VLAN            int32  `json:"vlan"`
+	Promiscuous     *bool  `json:"promiscuous,omitempty"`
+	MACChanges      *bool  `json:"mac_changes,omitempty"`
+	ForgedTransmits *bool  `json:"forged_transmits,omitempty"`
+}
+
+// HostVMKernel is one host VMkernel adapter, including whether it came from
+// the legacy service-console collection.
+type HostVMKernel struct {
+	Key            string `json:"key,omitempty"`
+	Device         string `json:"device"`
+	PortGroup      string `json:"port_group,omitempty"`
+	MAC            string `json:"mac,omitempty"`
+	MTU            int32  `json:"mtu"`
+	TSO            *bool  `json:"tso,omitempty"`
+	Netstack       string `json:"netstack,omitempty"`
+	DHCP           *bool  `json:"dhcp,omitempty"`
+	IP             string `json:"ip,omitempty"`
+	SubnetMask     string `json:"subnet_mask,omitempty"`
+	ServiceConsole bool   `json:"service_console"`
+}
+
+// HostMultipath is one host/LUN aggregate. Individual paths are counted but
+// deliberately not expanded into rows, keeping exports bounded on large SANs.
+type HostMultipath struct {
+	Key          string `json:"key,omitempty"`
+	LUN          string `json:"lun"`
+	DevicePath   string `json:"device_path,omitempty"`
+	Policy       string `json:"policy,omitempty"`
+	PathCount    int    `json:"path_count"`
+	Active       int    `json:"active"`
+	Standby      int    `json:"standby"`
+	Dead         int    `json:"dead"`
+	Disabled     int    `json:"disabled"`
+	WorkingPaths int    `json:"working_paths"`
 }
 
 // Cluster is a compute cluster. Standalone hosts appear as a ComputeResource

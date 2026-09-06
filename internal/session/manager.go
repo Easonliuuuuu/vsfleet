@@ -78,6 +78,11 @@ type Status struct {
 	LastTry    time.Time
 	Attempts   int
 	Datacenter string
+	// InstanceID is the vCenter's server GUID (About.InstanceUuid), used to
+	// build vSphere Client deep links. It is empty until connected, and
+	// vCenter simulators such as vcsim report it empty even then — callers
+	// that need it must treat empty as "unavailable", not "unknown yet".
+	InstanceID string
 }
 
 // Snapshot returns the current status of the session.
@@ -99,6 +104,7 @@ func (s *Session) Snapshot() Status {
 	if s.client != nil {
 		st.Version = s.client.About.FullVersion()
 		st.Route = s.client.Route()
+		st.InstanceID = s.client.About.InstanceID
 	}
 	return st
 }

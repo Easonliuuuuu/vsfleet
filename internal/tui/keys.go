@@ -85,6 +85,13 @@ type keyMap struct {
 	EditRun    key.Binding
 	NoteRun    key.Binding
 	PinRun     key.Binding
+
+	// RunAction and CancelAction are display-only relabels of Open and Back
+	// for the detail pane's action popup — same physical keys as
+	// AllScopeBrief is to AllScope, carrying no keys of their own so
+	// key.Matches never matches them directly.
+	RunAction    key.Binding
+	CancelAction key.Binding
 }
 
 func defaultKeys() keyMap {
@@ -142,6 +149,9 @@ func defaultKeys() keyMap {
 		// the focused pane happened to mean.
 		NoteRun: key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "edit note")),
 		PinRun:  key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "toggle pin")),
+
+		RunAction:    key.NewBinding(key.WithHelp("enter", "run")),
+		CancelAction: key.NewBinding(key.WithHelp("esc", "cancel")),
 	}
 }
 
@@ -172,7 +182,10 @@ type helpSection struct {
 func (k keyMap) footerHints(m *Model) []key.Binding {
 	switch m.mode {
 	case modeDetail:
-		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
+		if m.actions != nil {
+			return []key.Binding{k.Up, k.Down, k.RunAction, k.CancelAction}
+		}
+		return []key.Binding{k.Up, k.Down, k.Open, k.Timeline, k.Back, k.Help, k.Quit}
 	case modeVAppDetail:
 		return []key.Binding{k.Up, k.Down, k.Open, k.Back, k.Help, k.Quit}
 	case modeVAppVMDetail:

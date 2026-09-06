@@ -28,9 +28,23 @@ type Config struct {
 	Version        int        `toml:"version"`
 	CurrentContext string     `toml:"current_context,omitempty"`
 	Contexts       []*Context `toml:"contexts"`
+	// SSH configures the TUI's SSH handoff action. It is not per-context: an
+	// operator's own username is the same person regardless of which
+	// vCenter the highlighted VM or host happens to live behind.
+	SSH SSHConfig `toml:"ssh,omitempty"`
 
 	// path is where this config was loaded from, used by Save.
 	path string
+}
+
+// SSHConfig holds settings for the TUI's SSH handoff action — see the
+// detail pane's field-cursor actions in package tui. It is optional
+// throughout: a config with no [ssh] table gets a zero SSHConfig, and SSH
+// falls back to its own usual resolution (~/.ssh/config, then the local
+// username) rather than vsfleet inventing one.
+type SSHConfig struct {
+	// User is the default remote username for both VMs and ESXi hosts.
+	User string `toml:"user,omitempty" json:"user,omitempty"`
 }
 
 // DefaultPath returns the configuration file path, honouring VSFLEET_CONFIG and

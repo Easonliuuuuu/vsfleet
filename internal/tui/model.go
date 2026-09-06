@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -465,7 +466,21 @@ type Options struct {
 	// Demo marks the interface as showing synthetic sample data rather than
 	// a real estate. It only labels the header: the fixtures come from the
 	// backend, so this claims nothing the caller has not already arranged.
+	// It also disables every detail-pane action that launches a process or a
+	// browser (see actionsFor) — "vsfleet demo" promises it dials nothing,
+	// and that promise has to hold for these actions too, not just for the
+	// vSphere API calls the rest of the program makes.
 	Demo bool
+	// SSHUser is the default remote username the SSH handoff action fills
+	// in ahead of a VM's or host's address — config.toml's [ssh] table.
+	// Empty leaves ssh(1) to resolve a user the ordinary way.
+	SSHUser string
+	// Handoff is what the detail pane's actions use to reach the clipboard,
+	// the browser, and a terminal. Nil gets the real implementation; tests
+	// substitute a recording fake, the same seam Backend already is (see
+	// backend.go) and for the same reason — a feature that launches real
+	// external processes is only testable behind one.
+	Handoff Handoff
 }
 
 // Snapshot is what is worth remembering about the interface between runs:
@@ -594,6 +609,30 @@ type Model struct {
 	// demo labels the header as sample data; see Options.Demo.
 	demo bool
 
+	// detailCursor is which line of the open detail pane the field cursor is
+	// on — index 0 is the object's own header, everything else maps onto
+	// r.detail through detailFocusable. detailY remains the pane's scroll
+	// offset, now derived from detailCursor rather than moved directly; see
+	// scrollDetailIntoView.
+	detailCursor int
+	// actions is the popup listing what the focused line can do, open while
+	// non-nil — the same nil-means-closed idiom credPrompt uses. Unlike
+	// credPrompt it is only ever reachable from modeDetail, so it takes key
+	// priority inside handleDetailKey rather than globally in handleKey.
+	actions *actionList
+	// jump narrows the table to the rows one cross-resource action pointed
+	// at — "the VMs on this host" — until Esc clears it. See m.rows().
+	jump *jumpConstraint
+
+	// handoff reaches the clipboard, the browser, and a terminal on the
+	// operator's own workstation; see Options.Handoff.
+	handoff Handoff
+	// sshUser is the configured default remote user; see Options.SSHUser.
+	sshUser string
+	// out is where a launched process's own I/O and the OSC 52 clipboard
+	// escape are written — the same stream Options.Out gives Bubble Tea.
+	out io.Writer
+
 	width, height int
 	message       string
 	messageBad    bool
@@ -631,6 +670,15 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		credCoord:       opts.Credentials,
 		assessment:      opts.Assessment,
 		demo:            opts.Demo,
+		sshUser:         opts.SSHUser,
+		handoff:         opts.Handoff,
+		out:             opts.Out,
+	}
+	if m.handoff == nil {
+		m.handoff = realHandoff{}
+	}
+	if m.out == nil {
+		m.out = os.Stdout
 	}
 	for i, cc := range contexts {
 		st := newContextState(cc)
@@ -1111,8 +1159,61 @@ func (m *Model) rows() []row {
 		}
 		out = kept
 	}
+	if m.jump != nil && m.jump.kind == m.kind {
+		kept := out[:0]
+		for _, r := range out {
+			if m.jump.matches(r) {
+				kept = append(kept, r)
+			}
+		}
+		out = kept
+	}
 	m.sortMode.apply(out)
 	return out
+}
+
+// jumpConstraint is what a cross-resource action leaves behind: "only the
+// rows joined to this one", narrowing the table the way the text filter
+// cannot — vm.Host does not contain the host's own name as a substring, so
+// "the VMs on this host" needs a real predicate over row.joins rather than
+// another string to search for. It applies only while the table is showing
+// the kind it was built for; switching tabs away from it and back drops it
+// rather than silently reapplying a stale constraint to an unrelated kind.
+type jumpConstraint struct {
+	kind    vsphere.Kind
+	matcher string
+	value   string
+	// label is what the message line reports, so a narrowed table explains
+	// itself instead of just looking short.
+	label string
+}
+
+// matches reports whether r belongs to the constraint's target. matcher
+// names which of row.joins to compare — "host", "cluster", "datastore", or
+// "network" — datastores and networks are multi-valued on a VM, so those two
+// check membership rather than equality.
+func (j *jumpConstraint) matches(r row) bool {
+	switch j.matcher {
+	case "host":
+		return r.joins.host == j.value
+	case "cluster":
+		return r.joins.cluster == j.value
+	case "datastore":
+		return containsString(r.joins.datastores, j.value)
+	case "network":
+		return containsString(r.joins.networks, j.value)
+	default:
+		return true
+	}
+}
+
+func containsString(items []string, v string) bool {
+	for _, s := range items {
+		if s == v {
+			return true
+		}
+	}
+	return false
 }
 
 // failuresInScope lists the contexts with no usable data at all, so the
@@ -1210,6 +1311,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case stageMsg:
 		return m, m.applyStage(msg)
+
+	case handoffResultMsg:
+		if msg.err != nil {
+			m.setMessage(msg.verb+" failed: "+msg.err.Error(), true)
+		} else if msg.verb == "copied" || msg.verb == "opened in the browser" {
+			m.setMessage(msg.verb, false)
+		}
+		return m, nil
 
 	case credRequestMsg:
 		// A second concurrent ask cannot arrive here: the coordinator only
@@ -2015,7 +2124,15 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 		// nothing when blinking is off. Asking it beats hard-coding a blink.
 		return m.filter.Focus()
 	case key.Matches(msg, m.keys.Back):
-		if m.filter.Value() != "" {
+		switch {
+		case m.jump != nil:
+			// A jump is cleared on its own keypress, ahead of the filter: it
+			// is the more specific of the two narrowings, so backing out one
+			// step at a time means the jump first, the way it would if a
+			// filter were typed after arriving at the jump's table.
+			m.jump = nil
+			m.clampCursor()
+		case m.filter.Value() != "":
 			m.filter.SetValue("")
 			m.clampCursor()
 		}
@@ -2051,6 +2168,7 @@ func (m *Model) selectKindByNumber(s string) {
 		return
 	}
 	m.kind = k
+	m.jump = nil
 	m.cursor, m.offset = 0, 0
 }
 
@@ -2263,7 +2381,7 @@ func (m *Model) open() tea.Cmd {
 		return m.openVApp(r)
 	}
 	m.mode = modeDetail
-	m.detailY = 0
+	m.detailCursor, m.detailY = 0, 0
 	return nil
 }
 
@@ -2324,6 +2442,12 @@ func (m *Model) handleHelpKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
+	// The action popup owns every key ahead of the pane underneath it, the
+	// same priority credPrompt holds globally (see handleKey) — it just
+	// never needs that global reach, since it is only ever opened from here.
+	if m.actions != nil {
+		return m.handleActionsKey(msg)
+	}
 	switch {
 	case key.Matches(msg, m.keys.Back):
 		m.mode = m.detailFrom
@@ -2338,12 +2462,16 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 		m.timelineFrom = modeDetail
 		m.mode = modeHistoryTimeline
 		return loadHistoryTimelineCmd(m.ctx, m.assessment, row.name, false, false)
+	case key.Matches(msg, m.keys.Open):
+		return m.openFieldActions()
 	case key.Matches(msg, m.keys.Up):
-		if m.detailY > 0 {
-			m.detailY--
-		}
+		m.moveDetailCursor(-1)
 	case key.Matches(msg, m.keys.Down):
-		m.detailY++
+		m.moveDetailCursor(1)
+	case key.Matches(msg, m.keys.PageUp):
+		m.scrollDetailPage(-1)
+	case key.Matches(msg, m.keys.PageDown):
+		m.scrollDetailPage(1)
 	case key.Matches(msg, m.keys.NextTab), key.Matches(msg, m.keys.PrevTab):
 		// Moving through the list from inside a detail pane keeps the pane
 		// open, which is how you compare two VMs without going back and forth.
@@ -2352,9 +2480,96 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 			delta = -1
 		}
 		m.move(delta)
-		m.detailY = 0
+		m.detailCursor, m.detailY = 0, 0
 	}
 	return nil
+}
+
+// detailFocusable reports, for each of the physical lines viewDetailRow
+// renders before any notes, whether the field cursor may stop there: the
+// object header (index 0) always can, index 1 is always the blank line
+// beneath it and never can, and a field line can unless humanize.Dash
+// blanked its value — there is nothing there to act on. Notes are excluded
+// entirely: they are free-form paragraphs, not identifiers, so paging is the
+// only way to read them.
+func detailFocusable(r row) []bool {
+	out := make([]bool, 2+len(r.detail))
+	out[0] = true
+	for i, f := range r.detail {
+		out[2+i] = f.value != "-"
+	}
+	return out
+}
+
+// detailTotalLines is the true scroll extent of a detail pane — every
+// physical line viewDetailRow renders, wrapped notes included — as opposed
+// to detailFocusable's shorter list of cursor stops. PageUp/PageDown read
+// this so paging can reach the notes a field cursor deliberately skips.
+func detailTotalLines(r row, width int) int {
+	n := 2 + len(r.detail)
+	for _, note := range r.notes {
+		n += 2 + len(wrap(note.value, width-4))
+	}
+	return n
+}
+
+// moveDetailCursor steps the field cursor to the next focusable line in
+// delta's direction, skipping the blank line and any dash field the same
+// way scrollIntoView's browse-table counterpart skips nothing — there is
+// always somewhere valid to land, since the object header is always
+// focusable. Hitting either edge leaves the cursor where it was, matching
+// how the browse cursor stops rather than wraps.
+func (m *Model) moveDetailCursor(delta int) {
+	r, ok := m.currentRow()
+	if !ok {
+		return
+	}
+	focusable := detailFocusable(r)
+	i := m.detailCursor
+	for {
+		ni := i + delta
+		if ni < 0 || ni >= len(focusable) {
+			return
+		}
+		i = ni
+		if focusable[i] {
+			m.detailCursor = i
+			m.scrollDetailIntoView(len(focusable))
+			return
+		}
+	}
+}
+
+// scrollDetailIntoView keeps the focused line inside the visible window,
+// the same clamp scrollIntoView uses for the browse table and vapp.go's
+// member list use for theirs.
+func (m *Model) scrollDetailIntoView(n int) {
+	h := m.bodyHeight()
+	if h <= 0 {
+		return
+	}
+	if m.detailCursor < m.detailY {
+		m.detailY = m.detailCursor
+	}
+	if m.detailCursor >= m.detailY+h {
+		m.detailY = m.detailCursor - h + 1
+	}
+	m.detailY = clamp(m.detailY, 0, max(0, n-h))
+}
+
+// scrollDetailPage moves the viewport by a page without moving the field
+// cursor, so PageUp/PageDown can reach the notes section a cursor never
+// visits. The next Up/Down snaps the view back to wherever the cursor
+// actually is — a deliberate trade for not tracking two independent
+// positions through the rest of the pane's logic.
+func (m *Model) scrollDetailPage(dir int) {
+	r, ok := m.currentRow()
+	if !ok {
+		return
+	}
+	h := m.bodyHeight()
+	limit := max(0, detailTotalLines(r, m.width)-h)
+	m.detailY = clamp(m.detailY+dir*h, 0, limit)
 }
 
 func (m *Model) handleDoctorKey(msg tea.KeyMsg) tea.Cmd {
@@ -2378,6 +2593,7 @@ func (m *Model) cycleTab(delta int) {
 	}
 	i = (i + delta + len(kinds)) % len(kinds)
 	m.kind = kinds[i]
+	m.jump = nil
 	m.cursor, m.offset = 0, 0
 }
 

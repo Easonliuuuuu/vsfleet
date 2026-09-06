@@ -1,0 +1,127 @@
+package vsphere
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/vmware/govmomi"
+	"github.com/vmware/govmomi/find"
+	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
+
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+)
+
+func browseSimulator(t *testing.T) (*Client, *simulator.Model) {
+	t.Helper()
+	model := simulator.VPX()
+	model.Datacenter = 1
+	model.Cluster = 1
+	model.ClusterHost = 1
+	model.App = 1
+	model.Machine = 2
+	model.Datastore = 1
+	if err := model.Create(); err != nil {
+		t.Fatalf("create simulator model: %v", err)
+	}
+	t.Cleanup(model.Remove)
+	server := model.Service.NewServer()
+	t.Cleanup(server.Close)
+	gc, err := govmomi.NewClient(context.Background(), server.URL, true)
+	if err != nil {
+		t.Fatalf("connect to simulator: %v", err)
+	}
+	t.Cleanup(func() { _ = gc.Logout(context.Background()) })
+	cc := &config.Context{Name: "sim", Endpoint: server.URL.String(), Username: "user", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
+	cc.Normalize()
+	return NewClientForTest(cc, gc), model
+}
+
+func seedSimulatorVMDK(t *testing.T, c *Client) {
+	t.Helper()
+	finder := find.NewFinder(c.VIM(), false)
+	datacenter, err := finder.DefaultDatacenter(context.Background())
+	if err != nil {
+		t.Fatalf("find simulator datacenter: %v", err)
+	}
+	finder.SetDatacenter(datacenter)
+	datastore, err := finder.DefaultDatastore(context.Background())
+	if err != nil {
+		t.Fatalf("find simulator datastore: %v", err)
+	}
+	var props mo.Datastore
+	if err := datastore.Properties(context.Background(), datastore.Reference(), []string{"summary"}, &props); err != nil {
+		t.Fatalf("read simulator datastore path: %v", err)
+	}
+	dir := filepath.Join(props.Summary.Url, "fixture")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatalf("create simulator datastore fixture: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "orphan.vmdk"), []byte("synthetic vmdk"), 0o600); err != nil {
+		t.Fatalf("write simulator datastore fixture: %v", err)
+	}
+}
+
+func TestBrowseDatastoresAgainstSimulator(t *testing.T) {
+	c, _ := browseSimulator(t)
+	seedSimulatorVMDK(t, c)
+	idx, err := c.NewIndex(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := c.FetchGroupWith(context.Background(), idx, GroupDatastores, FetchOptions{PageSize: -1, BrowseDatastoreFiles: true})
+	if len(inv.Errors) != 0 {
+		t.Fatalf("browse errors=%v", inv.Errors)
+	}
+	if len(inv.Datastores) == 0 {
+		t.Fatal("simulator returned no datastores")
+	}
+	for _, datastore := range inv.Datastores {
+		if datastore.BrowseStatus != "success" {
+			t.Fatalf("datastore browse status=%q error=%q", datastore.BrowseStatus, datastore.BrowseError)
+		}
+		if len(datastore.Files) == 0 {
+			t.Fatalf("datastore %q browse returned no files", datastore.Name)
+		}
+	}
+}
+
+func TestBrowseDatastorePermissionFailureIsProvenance(t *testing.T) {
+	c, model := browseSimulator(t)
+	model.Service.FaultInjector().AddRule(&simulator.FaultInjectionRule{
+		MethodName:  "SearchDatastoreSubFolders_Task",
+		ObjectType:  "*",
+		ObjectName:  "*",
+		Probability: 1,
+		FaultType:   simulator.FaultTypeNoPermission,
+		Message:     "Datastore.Browse denied",
+		Enabled:     true,
+	})
+	idx, err := c.NewIndex(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv := c.FetchGroupWith(context.Background(), idx, GroupDatastores, FetchOptions{PageSize: -1, BrowseDatastoreFiles: true})
+	if len(inv.Datastores) == 0 {
+		t.Fatal("simulator returned no datastores")
+	}
+	for _, datastore := range inv.Datastores {
+		if datastore.BrowseStatus != "failed" || datastore.BrowseError == "" || len(datastore.Files) != 0 {
+			t.Fatalf("failed browse lost provenance: %+v", datastore)
+		}
+	}
+}
+
+func TestDatastoreFilesCapIsHonored(t *testing.T) {
+	files := make([]types.BaseFileInfo, 0, datastoreBrowseFileCap+1)
+	for i := 0; i < datastoreBrowseFileCap+1; i++ {
+		files = append(files, &types.VmDiskFileInfo{FileInfo: types.FileInfo{Path: "disk.vmdk"}})
+	}
+	got := datastoreFiles("ds", types.ArrayOfHostDatastoreBrowserSearchResults{HostDatastoreBrowserSearchResults: []types.HostDatastoreBrowserSearchResults{{FolderPath: "[ds]", File: files}}})
+	if len(got) != datastoreBrowseFileCap {
+		t.Fatalf("datastore file count=%d, want cap %d", len(got), datastoreBrowseFileCap)
+	}
+}

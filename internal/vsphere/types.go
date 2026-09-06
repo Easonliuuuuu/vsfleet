@@ -290,13 +290,25 @@ type VApp struct {
 // Datastore is a backing store for VM files.
 type Datastore struct {
 	Location
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Type          string `json:"type"`
-	Accessible    bool   `json:"accessible"`
-	CapacityBytes int64  `json:"capacity_bytes"`
-	FreeBytes     int64  `json:"free_bytes"`
-	Maintenance   string `json:"maintenance"`
+	ID            string          `json:"id"`
+	Name          string          `json:"name"`
+	Type          string          `json:"type"`
+	Accessible    bool            `json:"accessible"`
+	CapacityBytes int64           `json:"capacity_bytes"`
+	FreeBytes     int64           `json:"free_bytes"`
+	Maintenance   string          `json:"maintenance"`
+	Files         []DatastoreFile `json:"files,omitempty"`
+	BrowseStatus  string          `json:"browse_status,omitempty"`
+	BrowseError   string          `json:"browse_error,omitempty"`
+}
+
+// DatastoreFile is read-only metadata returned by an opt-in datastore browser
+// query. Path is the canonical [datastore] relative path used to join files to
+// VM disk backing paths; content is never downloaded.
+type DatastoreFile struct {
+	Path      string    `json:"path"`
+	SizeBytes int64     `json:"size_bytes"`
+	Modified  time.Time `json:"modified,omitempty"`
 }
 
 // UsedBytes is capacity minus free space.

@@ -124,6 +124,20 @@ func (a *App) History() (*assessment.Store, error) {
 	return s, nil
 }
 
+// Close releases resources opened by the application. It is deliberately a
+// pure release: callers that only build a command tree can close it without
+// causing any lazy accessor to run.
+func (a *App) Close(ctx context.Context) error {
+	var errs []error
+	if a.mgr != nil {
+		errs = append(errs, a.mgr.Close(ctx))
+	}
+	if a.history != nil {
+		errs = append(errs, a.history.Close())
+	}
+	return errors.Join(errs...)
+}
+
 func (a *App) Collector() (*assessment.Collector, error) {
 	if a.collector != nil {
 		return a.collector, nil
@@ -259,12 +273,7 @@ func Execute(ctx context.Context) int {
 	a := &App{In: os.Stdin, Out: os.Stdout, Err: os.Stderr}
 	root := NewRootCommand(a)
 	defer func() {
-		if a.mgr != nil {
-			_ = a.mgr.Close(context.WithoutCancel(ctx))
-		}
-		if a.history != nil {
-			_ = a.history.Close()
-		}
+		_ = a.Close(ctx)
 	}()
 	if err := root.ExecuteContext(ctx); err != nil {
 		fmt.Fprintf(a.errOut(), "vsfleet: %v\n", err)

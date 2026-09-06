@@ -47,16 +47,9 @@ func runExport(t *testing.T, dbPath string, args ...string) (stdout, stderr stri
 	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
 	root.SetArgs(append([]string{"--history-db", dbPath, "assessment", "export"}, args...))
+	defer func() { _ = a.Close(context.Background()) }()
 	if err := root.ExecuteContext(context.Background()); err != nil {
-		if a.history != nil {
-			_ = a.history.Close()
-		}
 		t.Fatalf("export failed: %v (stderr=%s)", err, errOut.String())
-	}
-	if a.history != nil {
-		if err := a.history.Close(); err != nil {
-			t.Fatal(err)
-		}
 	}
 	return out.String(), errOut.String()
 }
@@ -67,10 +60,8 @@ func runExportExpectError(t *testing.T, dbPath string, args ...string) error {
 	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
 	root.SetArgs(append([]string{"--history-db", dbPath, "assessment", "export"}, args...))
+	defer func() { _ = a.Close(context.Background()) }()
 	err := root.ExecuteContext(context.Background())
-	if a.history != nil {
-		_ = a.history.Close()
-	}
 	return err
 }
 

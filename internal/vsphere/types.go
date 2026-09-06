@@ -86,6 +86,8 @@ type VM struct {
 	Annotation         string        `json:"annotation"`
 	Disks              []VMDisk      `json:"disks,omitempty"`
 	NICs               []VMNIC       `json:"nics,omitempty"`
+	CDROMs             []VMCDROM     `json:"cdroms,omitempty"`
+	USBs               []VMUSB       `json:"usbs,omitempty"`
 	Snapshots          []VMSnapshot  `json:"snapshots,omitempty"`
 	Partitions         []VMPartition `json:"partitions,omitempty"`
 }
@@ -164,6 +166,50 @@ type VMNIC struct {
 	DirectPathIO    *bool    `json:"direct_path_io,omitempty"`
 	IPv4            []string `json:"ipv4,omitempty"`
 	IPv6            []string `json:"ipv6,omitempty"`
+}
+
+// VMCDROM is one virtual CD-ROM from a VM's hardware configuration. The
+// connection flags are pointers because vSphere omits connectable state for
+// devices where it cannot report a current state (for example, a powered-off
+// VM); nil is therefore different from a known disconnected device.
+type VMCDROM struct {
+	Key              int32  `json:"key"`
+	Label            string `json:"label"`
+	Connected        *bool  `json:"connected,omitempty"`
+	StartsConnected  *bool  `json:"starts_connected,omitempty"`
+	BackingType      string `json:"backing_type,omitempty"`
+	BackingPath      string `json:"backing_path,omitempty"`
+	BackingDevice    string `json:"backing_device,omitempty"`
+	BackingHost      string `json:"backing_host,omitempty"`
+	BackingDatastore string `json:"backing_datastore,omitempty"`
+	BackingObjectID  string `json:"backing_object_id,omitempty"`
+	UseAutoDetect    *bool  `json:"use_auto_detect,omitempty"`
+	Controller       string `json:"controller,omitempty"`
+	ControllerLabel  string `json:"controller_label,omitempty"`
+	UnitNumber       *int32 `json:"unit_number,omitempty"`
+}
+
+// VMUSB is one attached virtual USB device. USB controllers are intentionally
+// not represented here: they are infrastructure for USB attachments, not
+// devices an operator can accidentally leave connected to a guest.
+type VMUSB struct {
+	Key              int32    `json:"key"`
+	Label            string   `json:"label"`
+	Connected        *bool    `json:"connected,omitempty"`
+	Vendor           int32    `json:"vendor,omitempty"`
+	Product          int32    `json:"product,omitempty"`
+	Family           []string `json:"family,omitempty"`
+	Speed            []string `json:"speed,omitempty"`
+	BackingType      string   `json:"backing_type,omitempty"`
+	BackingPath      string   `json:"backing_path,omitempty"`
+	BackingDevice    string   `json:"backing_device,omitempty"`
+	BackingHost      string   `json:"backing_host,omitempty"`
+	BackingDatastore string   `json:"backing_datastore,omitempty"`
+	BackingObjectID  string   `json:"backing_object_id,omitempty"`
+	UseAutoDetect    *bool    `json:"use_auto_detect,omitempty"`
+	Controller       string   `json:"controller,omitempty"`
+	ControllerLabel  string   `json:"controller_label,omitempty"`
+	UnitNumber       *int32   `json:"unit_number,omitempty"`
 }
 
 // VMSnapshot is one read-only entry in a VM snapshot tree.

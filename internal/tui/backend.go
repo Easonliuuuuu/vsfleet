@@ -165,8 +165,8 @@ type sessionInventoryHandle struct {
 
 func (h *sessionInventoryHandle) FetchGroup(group vsphere.FetchGroup, partial func(*vsphere.Inventory)) *vsphere.Inventory {
 	inv := h.client.FetchGroupWith(h.ctx, h.idx, group, vsphere.FetchOptions{
-		// The interface renders none of what DetailFull adds — no disks, no
-		// NICs, no snapshot trees — and those three properties dominate what
+		// The interface renders none of what DetailFull adds — no disks, NICs,
+		// CD-ROMs, USBs, or snapshot trees — and those properties dominate what
 		// a virtual machine costs to retrieve. A capture still records them;
 		// see vsphere.Detail.
 		Detail: vsphere.DetailSummary,

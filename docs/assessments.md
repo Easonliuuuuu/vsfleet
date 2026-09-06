@@ -88,7 +88,8 @@ on `vsfleetCoverage`.
 `vsfleet health [RUN]` evaluates the evidence in a stored assessment without
 contacting vCenter. The first rule set reports inaccessible or low-space
 datastores, disconnected or maintenance-mode hosts, old snapshots, low-space
-guest filesystems, and VMware Tools that are missing, stopped, or outdated.
+guest filesystems, VMware Tools that are missing, stopped, or outdated, and
+currently connected CD-ROM/ISO and USB devices.
 
 The defaults are a 30-day maximum snapshot age and 10% minimum free space for
 datastores and guest filesystems. Use `--max-snapshot-age`,
@@ -104,11 +105,11 @@ coverage message, so exporting unchanged evidence with the same options stays
 reproducible. Rules that need inventory fields introduced after an older run
 are marked `not-evaluated`, rather than making an empty tab look healthy.
 
-This increment deliberately does not assess connected CD/ISO, floppy, or USB
-devices, orphaned or inaccessible VMs, or zombie VMDKs. Those checks need
-additional persisted inventory (and, for zombie files, a datastore-browser
-operation), so they remain named follow-ups rather than being inferred from
-evidence that was never collected.
+This increment deliberately does not assess connected floppy devices, orphaned
+or inaccessible VMs, or zombie VMDKs. Those checks need additional persisted
+inventory (and, for zombie files, a datastore-browser operation), so they
+remain named follow-ups rather than being inferred from evidence that was never
+collected.
 
 ### What "RVTools-compatible" means here
 

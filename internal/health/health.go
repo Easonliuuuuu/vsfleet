@@ -210,6 +210,28 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 			data.VMs[i].Snapshots = append([]vsphere.VMSnapshot(nil), data.VMs[i].Observation.VM.Snapshots...)
 		}
 		data.VMs[i].Observation.VM.Partitions = append([]vsphere.VMPartition(nil), data.VMs[i].Observation.VM.Partitions...)
+		data.VMs[i].Observation.VM.CDROMs = append([]vsphere.VMCDROM(nil), data.VMs[i].Observation.VM.CDROMs...)
+		data.VMs[i].Observation.VM.USBs = append([]vsphere.VMUSB(nil), data.VMs[i].Observation.VM.USBs...)
+		for n := range data.VMs[i].Observation.VM.USBs {
+			data.VMs[i].Observation.VM.USBs[n].Family = append([]string(nil), data.VMs[i].Observation.VM.USBs[n].Family...)
+			data.VMs[i].Observation.VM.USBs[n].Speed = append([]string(nil), data.VMs[i].Observation.VM.USBs[n].Speed...)
+			sort.Strings(data.VMs[i].Observation.VM.USBs[n].Family)
+			sort.Strings(data.VMs[i].Observation.VM.USBs[n].Speed)
+		}
+		sort.SliceStable(data.VMs[i].Observation.VM.CDROMs, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.CDROMs[a], data.VMs[i].Observation.VM.CDROMs[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			return x.Label < y.Label
+		})
+		sort.SliceStable(data.VMs[i].Observation.VM.USBs, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.USBs[a], data.VMs[i].Observation.VM.USBs[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			return x.Label < y.Label
+		})
 		sort.SliceStable(data.VMs[i].Observation.VM.Partitions, func(a, b int) bool {
 			x, y := data.VMs[i].Observation.VM.Partitions[a], data.VMs[i].Observation.VM.Partitions[b]
 			if !strings.EqualFold(x.Path, y.Path) {

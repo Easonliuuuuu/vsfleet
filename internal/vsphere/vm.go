@@ -38,9 +38,10 @@ var vmSummaryProps = []string{
 // rather than scalars, and they dominate the cost of retrieving a VM:
 // config.hardware.device alone returns every disk, NIC, controller and
 // virtual peripheral the machine has. Nothing in a listing reads them —
-// VM.Disks, VM.NICs and VM.Snapshots exist for the assessment ledger and the
-// RVTools export — so a listing that asked for them anyway was paying for an
-// estate's worth of device inventory to show a name and a power state.
+// VM.Disks, VM.NICs, VM.CDROMs, VM.USBs and VM.Snapshots exist for the
+// assessment ledger and the RVTools export — so a listing that asked for them
+// anyway was paying for an estate's worth of device inventory to show a name
+// and a power state.
 var vmDetailProps = []string{
 	"config.hardware.device",
 	"guest.net",
@@ -165,7 +166,7 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.Annotation = strings.TrimSpace(cfg.Annotation)
 		vm.CPU = cfg.Hardware.NumCPU
 		vm.MemoryMB = int64(cfg.Hardware.MemoryMB)
-		vm.Disks, vm.NICs = walkDevices(cfg.Hardware.Device, m.Guest, idx)
+		vm.Disks, vm.NICs, vm.CDROMs, vm.USBs = walkDevices(cfg.Hardware.Device, m.Guest, idx)
 	}
 	if snap := m.Snapshot; snap != nil {
 		vm.Snapshots = flattenSnapshots(snap.RootSnapshotList, "", snap.CurrentSnapshot)
@@ -232,7 +233,10 @@ func guestDiskKeys(mappings []types.GuestInfoVirtualDiskMapping) []int32 {
 	return out
 }
 
-func walkDevices(devices []types.BaseVirtualDevice, guest *types.GuestInfo, idx *index) ([]VMDisk, []VMNIC) {
+// walkDevices normalizes the full hardware device list in one pass. Summary
+// fetches never provide this list; full VM captures use it to persist all
+// device evidence without a second retrieval.
+func walkDevices(devices []types.BaseVirtualDevice, guest *types.GuestInfo, idx *index) ([]VMDisk, []VMNIC, []VMCDROM, []VMUSB) {
 	controllers := make(map[int32]deviceController)
 	for _, device := range devices {
 		if device == nil {
@@ -256,6 +260,8 @@ func walkDevices(devices []types.BaseVirtualDevice, guest *types.GuestInfo, idx 
 	}
 	var disks []VMDisk
 	var nics []VMNIC
+	var cdroms []VMCDROM
+	var usbs []VMUSB
 	for _, device := range devices {
 		if device == nil {
 			continue
@@ -271,11 +277,17 @@ func walkDevices(devices []types.BaseVirtualDevice, guest *types.GuestInfo, idx 
 			// All concrete ethernet card types embed VirtualEthernetCard but do
 			// not share a Go type, so normalize them through their base device.
 			nics = append(nics, newVMNICFromDevice(device, guestByKey, guestByMAC, idx))
+		case *types.VirtualCdrom:
+			cdroms = append(cdroms, newVMCDROM(d, controllers[d.ControllerKey]))
+		case *types.VirtualUSB:
+			usbs = append(usbs, newVMUSB(d, controllers[d.ControllerKey]))
 		}
 	}
 	sort.Slice(disks, func(i, j int) bool { return disks[i].Key < disks[j].Key })
 	sort.Slice(nics, func(i, j int) bool { return nics[i].Key < nics[j].Key })
-	return disks, nics
+	sort.Slice(cdroms, func(i, j int) bool { return cdroms[i].Key < cdroms[j].Key })
+	sort.Slice(usbs, func(i, j int) bool { return usbs[i].Key < usbs[j].Key })
+	return disks, nics, cdroms, usbs
 }
 
 type deviceController struct {
@@ -306,9 +318,97 @@ func deviceControllerFor(device types.BaseVirtualDevice) (deviceController, bool
 		return deviceController{"AHCI", label, "", nil}, true
 	case *types.VirtualNVMEController:
 		return deviceController{"NVMe", label, c.SharedBus, nil}, true
+	case *types.VirtualUSBController:
+		return deviceController{"USB", label, "", nil}, true
+	case *types.VirtualUSBXHCIController:
+		return deviceController{"USB 3", label, "", nil}, true
 	default:
 		return deviceController{}, false
 	}
+}
+
+// normalizedBacking contains the identity vSphere exposes for a device's
+// backing. File-backed devices use Path/Datastore/ObjectID; host-backed
+// devices use Device/Host. Keeping all variants in one shape means the JSON
+// ledger remains useful without persisting govmomi's polymorphic objects.
+type normalizedBacking struct {
+	typeName, path, device, host, datastore, objectID string
+	useAutoDetect                                     *bool
+}
+
+func normalizeBacking(backing types.BaseVirtualDeviceBackingInfo) normalizedBacking {
+	var out normalizedBacking
+	switch b := backing.(type) {
+	case *types.VirtualCdromAtapiBackingInfo:
+		out.typeName, out.device, out.useAutoDetect = "atapi", b.DeviceName, clonePtr(b.UseAutoDetect)
+	case *types.VirtualCdromIsoBackingInfo:
+		out.typeName = "iso"
+		out.file(b.VirtualDeviceFileBackingInfo)
+	case *types.VirtualCdromPassthroughBackingInfo:
+		out.typeName, out.device, out.useAutoDetect = "passthrough", b.DeviceName, clonePtr(b.UseAutoDetect)
+	case *types.VirtualCdromRemoteAtapiBackingInfo:
+		out.typeName, out.device, out.useAutoDetect = "remoteAtapi", b.DeviceName, clonePtr(b.UseAutoDetect)
+	case *types.VirtualCdromRemotePassthroughBackingInfo:
+		out.typeName, out.device, out.useAutoDetect = "remotePassthrough", b.DeviceName, clonePtr(b.UseAutoDetect)
+	case *types.VirtualUSBUSBBackingInfo:
+		out.typeName, out.device, out.useAutoDetect = "usb", b.DeviceName, clonePtr(b.UseAutoDetect)
+	case *types.VirtualUSBRemoteClientBackingInfo:
+		out.typeName, out.device, out.host, out.useAutoDetect = "remoteClient", b.DeviceName, b.Hostname, clonePtr(b.UseAutoDetect)
+	case *types.VirtualUSBRemoteHostBackingInfo:
+		out.typeName, out.device, out.host, out.useAutoDetect = "remoteHost", b.DeviceName, b.Hostname, clonePtr(b.UseAutoDetect)
+	}
+	// Preserve useful backing fields even for newer or unknown subclasses.
+	if out.path == "" {
+		if b, ok := backing.(types.BaseVirtualDeviceFileBackingInfo); ok {
+			out.file(*b.GetVirtualDeviceFileBackingInfo())
+		}
+	}
+	if out.device == "" {
+		if b, ok := backing.(types.BaseVirtualDeviceDeviceBackingInfo); ok {
+			device := b.GetVirtualDeviceDeviceBackingInfo()
+			out.device, out.useAutoDetect = device.DeviceName, clonePtr(device.UseAutoDetect)
+		}
+	}
+	return out
+}
+
+func (b *normalizedBacking) file(info types.VirtualDeviceFileBackingInfo) {
+	b.path, b.datastore = info.FileName, refValue(info.Datastore)
+	if info.BackingObjectId != nil {
+		b.objectID = *info.BackingObjectId
+	}
+}
+
+func newVMCDROM(device *types.VirtualCdrom, controller deviceController) VMCDROM {
+	out := VMCDROM{
+		Key: device.Key, Label: deviceLabel(device.DeviceInfo),
+		Controller: controller.typeName, ControllerLabel: controller.label,
+		UnitNumber: clonePtr(device.UnitNumber),
+	}
+	if device.Connectable != nil {
+		out.Connected, out.StartsConnected = clonePtr(&device.Connectable.Connected), clonePtr(&device.Connectable.StartConnected)
+	}
+	b := normalizeBacking(device.Backing)
+	out.BackingType, out.BackingPath, out.BackingDevice = b.typeName, b.path, b.device
+	out.BackingHost, out.BackingDatastore, out.BackingObjectID, out.UseAutoDetect = b.host, b.datastore, b.objectID, b.useAutoDetect
+	return out
+}
+
+func newVMUSB(device *types.VirtualUSB, controller deviceController) VMUSB {
+	connected := device.Connected
+	out := VMUSB{
+		Key: device.Key, Label: deviceLabel(device.DeviceInfo), Connected: &connected,
+		Vendor: device.Vendor, Product: device.Product,
+		Family: append([]string(nil), device.Family...), Speed: append([]string(nil), device.Speed...),
+		Controller: controller.typeName, ControllerLabel: controller.label,
+		UnitNumber: clonePtr(device.UnitNumber),
+	}
+	b := normalizeBacking(device.Backing)
+	out.BackingType, out.BackingPath, out.BackingDevice = b.typeName, b.path, b.device
+	out.BackingHost, out.BackingDatastore, out.BackingObjectID, out.UseAutoDetect = b.host, b.datastore, b.objectID, b.useAutoDetect
+	sort.Strings(out.Family)
+	sort.Strings(out.Speed)
+	return out
 }
 
 func newVMDisk(d *types.VirtualDisk, controller deviceController) VMDisk {

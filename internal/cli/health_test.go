@@ -103,3 +103,40 @@ func TestHealthCommandJSONAndRuleListing(t *testing.T) {
 		t.Fatalf("rule listing err=%v output=%s", err, stdout)
 	}
 }
+
+func TestHealthCommandReportsConnectedDevicesFromStoredEvidence(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+	s, err := assessment.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	run, err := s.StartRunWithMetadata(context.Background(), "test", []*config.Context{{Name: "prod", Endpoint: "https://vc.example", Datacenter: "dc-a"}}, when, assessment.RunMetadata{InventorySchemaVersion: assessment.CurrentInventorySchemaVersion})
+	if err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	connected := true
+	vm := vsphere.VM{ID: "vm-1", Name: "app", CDROMs: []vsphere.VMCDROM{{Key: 301, Label: "CD/DVD drive 1", Connected: &connected, BackingType: "iso", BackingPath: "[ds] app/install.iso"}}, USBs: []vsphere.VMUSB{{Key: 401, Label: "USB device 1", Connected: &connected, BackingType: "remoteHost", BackingHost: "esx-1"}}}
+	if err := s.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-uuid", Status: "success", VMs: []assessment.Observation{{Context: "prod", VCenterID: "vc-uuid", VM: vm}}, Collections: []assessment.CollectionResult{{Kind: "vm", Status: "success", ItemCount: 1}}}, when.Add(time.Minute)); err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	if _, err := s.FinishRun(context.Background(), run.ID, when.Add(time.Minute)); err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := runHealth(t, dbPath, "latest", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stderr != "" {
+		t.Fatalf("unexpected health warning: %s", stderr)
+	}
+	if !strings.Contains(stdout, `"rule": "cdrom-connected"`) || !strings.Contains(stdout, `"rule": "usb-connected"`) || !strings.Contains(stdout, "install.iso") || !strings.Contains(stdout, "esx-1") {
+		t.Fatalf("health JSON missing connected-device findings: %s", stdout)
+	}
+}

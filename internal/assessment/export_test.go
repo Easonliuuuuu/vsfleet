@@ -24,7 +24,8 @@ func TestLoadExportDataUsesPersistedEvidence(t *testing.T) {
 	}
 	connected := true
 	vm := vsphere.VM{ID: "vm-1", Name: "app", Disks: []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 8 << 30}}, NICs: []vsphere.VMNIC{{Key: 201, Label: "Network adapter 1", Network: "VM Network", Connected: &connected, IPv4: []string{"192.0.2.20"}}}, CDROMs: []vsphere.VMCDROM{{Key: 301, Label: "CD/DVD drive 1", Connected: &connected, BackingType: "iso", BackingPath: "[ds] app/install.iso"}}, USBs: []vsphere.VMUSB{{Key: 401, Label: "USB device 1", Connected: &connected, BackingType: "remoteHost", BackingHost: "esx-1"}}, Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when}}}
-	if err := s.SaveContext(context.Background(), run.ID, ContextResult{Name: "prod", VCenterID: "vc-uuid", Status: "success", VMs: []Observation{{Context: "prod", VCenterID: "vc-uuid", VM: vm}}, Collections: []CollectionResult{{Kind: "vm", Status: "success", ItemCount: 1}, {Kind: "host", Status: "empty"}, {Kind: "cluster", Status: "empty"}, {Kind: "datastore", Status: "empty"}}}, when.Add(time.Minute)); err != nil {
+	template := vsphere.VM{ID: "tpl-1", Name: "golden", IsTemplate: true}
+	if err := s.SaveContext(context.Background(), run.ID, ContextResult{Name: "prod", VCenterID: "vc-uuid", Status: "success", VMs: []Observation{{Context: "prod", VCenterID: "vc-uuid", VM: vm}, {Context: "prod", VCenterID: "vc-uuid", VM: template}}, Collections: []CollectionResult{{Kind: "vm", Status: "success", ItemCount: 2}, {Kind: "host", Status: "empty"}, {Kind: "cluster", Status: "empty"}, {Kind: "datastore", Status: "empty"}}}, when.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.FinishRun(context.Background(), run.ID, when.Add(time.Minute)); err != nil {
@@ -34,7 +35,7 @@ func TestLoadExportDataUsesPersistedEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(data.Contexts) != 1 || len(data.VMs) != 1 || len(data.VMs[0].Snapshots) != 1 {
+	if len(data.Contexts) != 1 || len(data.VMs) != 2 || len(data.VMs[0].Snapshots) != 1 {
 		t.Fatalf("export data=%+v", data)
 	}
 	if len(data.VMs[0].Observation.VM.Disks) != 1 || len(data.VMs[0].Observation.VM.NICs) != 1 || data.VMs[0].Observation.VM.NICs[0].Network != "VM Network" {

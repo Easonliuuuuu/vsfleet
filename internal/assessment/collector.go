@@ -193,15 +193,19 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context) C
 		part := client.FetchGroup(opCtx, idx, group)
 		switch group {
 		case vsphere.GroupVMs:
-			collection := CollectionResult{Kind: "vm", ItemCount: len(part.VMs)}
+			itemCount := len(part.VMs) + len(part.Templates)
+			collection := CollectionResult{Kind: "vm", ItemCount: itemCount}
 			if msg, failed := part.ErrorFor(vsphere.KindVM); failed {
 				collection.Status, collection.Error = "failed", msg
 			} else {
 				collection.Status = "success"
-				if len(part.VMs) == 0 {
+				if itemCount == 0 {
 					collection.Status = "empty"
 				}
 				for _, vm := range part.VMs {
+					r.VMs = append(r.VMs, Observation{VCenterID: r.VCenterID, Context: cc.Name, VM: vm})
+				}
+				for _, vm := range part.Templates {
 					r.VMs = append(r.VMs, Observation{VCenterID: r.VCenterID, Context: cc.Name, VM: vm})
 				}
 			}

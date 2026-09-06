@@ -123,7 +123,7 @@ func (c *Client) browseDatastoreFiles(parent context.Context, datastore string, 
 
 	files := datastoreFiles(datastore, result)
 	sort.SliceStable(files, func(i, j int) bool {
-		if strings.ToLower(files[i].Path) != strings.ToLower(files[j].Path) {
+		if !strings.EqualFold(files[i].Path, files[j].Path) {
 			return strings.ToLower(files[i].Path) < strings.ToLower(files[j].Path)
 		}
 		if files[i].Path != files[j].Path {

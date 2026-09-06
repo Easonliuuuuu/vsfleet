@@ -76,19 +76,22 @@ unattended setup flags are documented by `vsfleet context add --help`.
 ```toml
 [ssh]
 user = "ubuntu"
+# vm_user = "ubuntu"
+# host_user = "root"
 ```
 
 Sets the default remote username the TUI's SSH handoff action (see
-[Detail pane actions](tui.md#detail-pane-actions)) fills in ahead of a VM's
-guest IP or an ESXi host's address. It is not per-context — the setting is
-about who you are, not which vCenter the highlighted VM happens to live
-behind. Omitting `[ssh]` entirely leaves `ssh` to resolve a user the usual
-way, through `~/.ssh/config` and then your local username.
+[Detail pane actions](tui.md#detail-pane-actions)) fills in ahead of a target
+address. `vm_user` applies to VM guest IPs and `host_user` applies to ESXi host
+names. The older shared `user` setting remains the fallback for both kinds.
+When the applicable setting is empty, `ssh` resolves a user through
+`~/.ssh/config` and then the local username.
 
 SSH through a proxied context follows the same route vsfleet itself uses —
 an unauthenticated SOCKS5 or HTTP CONNECT proxy becomes an `ssh -o
-ProxyCommand=...` argument automatically. An authenticated proxy is declined:
-its stored password never reaches the command line of a launched process.
+ProxyCommand=...` argument automatically when a compatible `nc` is installed.
+HTTPS and authenticated proxies are declined because their credentials or TLS
+handshake cannot safely be represented by the generated command.
 
 ## TLS policies
 

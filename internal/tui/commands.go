@@ -3,7 +3,10 @@ package tui
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -461,7 +464,33 @@ func (m *Model) sshCmd(spec SSHSpec) tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return handoffResultMsg{verb: "ssh", err: err} }
 	}
+	diagnostic := &tailBuffer{max: 8 * 1024}
+	stderr := cmd.Stderr
+	if stderr == nil {
+		stderr = os.Stderr
+	}
+	cmd.Stderr = io.MultiWriter(stderr, diagnostic)
 	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		return handoffResultMsg{verb: "ssh session ended", err: err}
+		return handoffResultMsg{verb: "ssh session ended", err: sshFailure(err, diagnostic.String())}
 	})
+}
+
+// sshFailure retains the final useful line from SSH's stderr. Bubble Tea
+// restores the alternate screen before delivering the callback, so without
+// this detail the operator sees only OpenSSH's generic exit status 255.
+func sshFailure(err error, stderr string) error {
+	if err == nil {
+		return nil
+	}
+	var last string
+	for _, line := range strings.Split(stderr, "\n") {
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\r"))
+		if line != "" {
+			last = line
+		}
+	}
+	if last == "" {
+		return err
+	}
+	return fmt.Errorf("%w: %s", err, last)
 }

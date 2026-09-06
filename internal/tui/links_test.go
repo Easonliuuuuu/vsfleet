@@ -72,6 +72,41 @@ func TestProxyArgsHTTPConnect(t *testing.T) {
 	}
 }
 
+func TestProxyArgsHTTPSIsExplicitlyUnsupported(t *testing.T) {
+	tc := config.TransportConfig{Type: config.TransportHTTPSProxy, Address: "proxy.internal:3129"}
+	args, reason := proxyArgs(tc)
+	if args != nil || reason == "" || !strings.Contains(reason, "HTTPS") {
+		t.Fatalf("expected HTTPS proxy to be declined, got args=%v reason=%q", args, reason)
+	}
+}
+
+func TestSSHCommandIncludesProxyAndQuotesOption(t *testing.T) {
+	got := sshCommand(SSHSpec{
+		Address: "10.20.0.11",
+		User:    "ubuntu",
+		ProxyArgs: []string{
+			"-o", "ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p",
+		},
+	})
+	want := "ssh -o 'ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p' ubuntu@10.20.0.11"
+	if got != want {
+		t.Fatalf("sshCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestTailBufferKeepsOnlyRecentOutput(t *testing.T) {
+	w := &tailBuffer{max: 8}
+	if _, err := w.Write([]byte("123456")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("7890")); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := w.String(), "34567890"; got != want {
+		t.Fatalf("tailBuffer.String() = %q, want %q", got, want)
+	}
+}
+
 func TestIsDirect(t *testing.T) {
 	if !isDirect(config.TransportConfig{}) {
 		t.Error("an empty transport type must count as direct")

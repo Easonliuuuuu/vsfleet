@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -121,27 +123,69 @@ func (m *Model) sshAction(r row, address string) action {
 	if m.demo {
 		return action{label: label, disabled: demoDisabledReason}
 	}
-	spec := SSHSpec{Address: address, User: m.sshUser}
+	spec, reason := m.sshSpec(r, address)
+	if reason != "" {
+		return action{label: label, disabled: reason}
+	}
+	return action{label: label, detail: sshCommand(spec), run: func(m *Model) tea.Cmd { return m.sshCmd(spec) }}
+}
+
+func (m *Model) sshSpec(r row, address string) (SSHSpec, string) {
+	spec := SSHSpec{Address: address, User: m.sshUserFor(r.kind)}
 	if st := m.byName[r.context]; st != nil {
 		args, reason := proxyArgs(st.cc.Transport)
 		if reason != "" {
-			return action{label: label, disabled: reason}
+			return spec, reason
 		}
 		spec.ProxyArgs = args
 	}
-	return action{label: label, run: func(m *Model) tea.Cmd { return m.sshCmd(spec) }}
+	return spec, ""
+}
+
+func (m *Model) sshUserFor(kind vsphere.Kind) string {
+	switch kind {
+	case vsphere.KindHost:
+		if m.sshHostUser != "" {
+			return m.sshHostUser
+		}
+	case vsphere.KindVM:
+		if m.sshVMUser != "" {
+			return m.sshVMUser
+		}
+	}
+	return m.sshUser
 }
 
 // sshCommandCopyAction is "Copy ssh user@address" for a VM's IP field — the
 // string an operator pastes into a second tmux pane rather than handing this
 // program's own terminal over.
-func (m *Model) sshCommandCopyAction(address string) action {
-	target := address
-	if m.sshUser != "" {
-		target = m.sshUser + "@" + address
-	}
-	cmd := "ssh " + target
+func (m *Model) sshCommandCopyAction(r row, address string) action {
+	spec, _ := m.sshSpec(r, address)
+	cmd := sshCommand(spec)
 	return action{label: "Copy " + cmd, run: func(m *Model) tea.Cmd { return m.copyCmd(cmd) }}
+}
+
+func sshCommand(spec SSHSpec) string {
+	target := spec.Address
+	if spec.User != "" {
+		target = spec.User + "@" + spec.Address
+	}
+	args := append([]string{}, spec.ProxyArgs...)
+	args = append(args, target)
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = shellQuote(arg)
+	}
+	return "ssh " + strings.Join(quoted, " ")
+}
+
+func shellQuote(value string) string {
+	if value != "" && strings.IndexFunc(value, func(r rune) bool {
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("_@%+=:,./-", r))
+	}) < 0 {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 // nestedContextFor finds the context represented by a VM in the parent
@@ -287,7 +331,7 @@ func (m *Model) objectActions(r row) []action {
 func (m *Model) fieldActions(r row, f field) []action {
 	switch {
 	case r.kind == vsphere.KindVM && f.label == "IP address":
-		return []action{m.sshAction(r, f.value), m.sshCommandCopyAction(f.value), copyAction(f.value)}
+		return []action{m.sshAction(r, f.value), m.sshCommandCopyAction(r, f.value), copyAction(f.value)}
 	case r.kind == vsphere.KindVM && f.label == "Host":
 		return []action{jumpToNamed("Show this host", vsphere.KindHost, f.value), copyAction(f.value)}
 	case r.kind == vsphere.KindVM && f.label == "Cluster":

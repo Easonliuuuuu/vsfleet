@@ -111,6 +111,16 @@ func TestLoadMissingFileIsEmpty(t *testing.T) {
 	}
 }
 
+func TestLoadSSHUsers(t *testing.T) {
+	cfg, err := config.Load(write(t, sample+"\n[ssh]\nuser = \"legacy\"\nvm_user = \"ubuntu\"\nhost_user = \"root\"\n"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.SSH.User != "legacy" || cfg.SSH.VMUser != "ubuntu" || cfg.SSH.HostUser != "root" {
+		t.Fatalf("SSH users parsed as %+v", cfg.SSH)
+	}
+}
+
 func TestSaveRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "config.toml")
 	cfg, err := config.Load(path)

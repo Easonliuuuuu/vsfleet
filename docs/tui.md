@@ -40,14 +40,16 @@ with several opens a short list to choose from.
 
 An action that cannot run says why instead of doing nothing: a proxied
 vCenter has no route for your own browser, so its "open in …" actions are
-disabled with that reason while SSH — which can route through the same
-proxy — still works. `vsfleet demo` disables every action that would launch
+disabled with that reason while SSH through a supported unauthenticated
+SOCKS5 or HTTP route can still work. `vsfleet demo` disables every action that would launch
 a real process or browser, so the shape of the feature is visible without
 touching your workstation.
 
-SSH picks a default user from `config.toml`'s `[ssh]` table (see
+SSH picks a default VM or ESXi user from `config.toml`'s `[ssh]` table (see
 [Configuration](configuration.md#ssh)) when set, otherwise it falls back to
-`~/.ssh/config` and your local username the way `ssh` always does. A jump
+`~/.ssh/config` and your local username the way `ssh` always does. Failed SSH
+sessions retain the final diagnostic line from OpenSSH in the footer, rather
+than reducing the cause to exit status 255. A jump
 ("Show VMs on this host") stays on the table until `Esc` clears it, which it
 does before clearing anything else.
 

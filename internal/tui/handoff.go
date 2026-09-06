@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
+	"sync"
 
 	"github.com/atotto/clipboard"
 	"github.com/muesli/termenv"
@@ -105,15 +107,35 @@ func (realHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	if spec.Address == "" {
 		return nil, errors.New("nothing to connect to")
 	}
+	if len(spec.ProxyArgs) > 0 {
+		if err := checkNetcat(); err != nil {
+			return nil, err
+		}
+	}
 	target := spec.Address
 	if spec.User != "" {
 		target = spec.User + "@" + spec.Address
 	}
 	args := append([]string{}, spec.ProxyArgs...)
 	args = append(args, target)
-	cmd := exec.Command("ssh", args...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return cmd, nil
+	return exec.Command("ssh", args...), nil
+}
+
+// checkNetcat verifies the feature set required by the generated
+// ProxyCommand. Different netcat implementations use different proxy flags;
+// failing before SSH starts gives the operator a useful explanation instead
+// of another opaque exit status 255.
+func checkNetcat() error {
+	path, err := exec.LookPath("nc")
+	if err != nil {
+		return errors.New("SSH proxy requires nc with -X and -x support")
+	}
+	out, _ := exec.Command(path, "-h").CombinedOutput()
+	help := string(out)
+	if !strings.Contains(help, "-X") || !strings.Contains(help, "-x") {
+		return errors.New("SSH proxy requires a netcat implementation with -X and -x support")
+	}
+	return nil
 }
 
 // proxyArgs turns a context's network route into extra ssh(1) arguments, so
@@ -131,11 +153,42 @@ func proxyArgs(t config.TransportConfig) (args []string, disabledReason string) 
 	switch t.Type {
 	case config.TransportSOCKS5:
 		return []string{"-o", "ProxyCommand=nc -X 5 -x " + t.Address + " %h %p"}, ""
-	case config.TransportHTTPProxy, config.TransportHTTPSProxy:
+	case config.TransportHTTPProxy:
 		return []string{"-o", "ProxyCommand=nc -X connect -x " + t.Address + " %h %p"}, ""
+	case config.TransportHTTPSProxy:
+		return nil, "HTTPS proxy — SSH has no TLS-capable ProxyCommand configured"
 	default:
 		return nil, ""
 	}
+}
+
+// tailBuffer keeps only the end of a subprocess diagnostic. SSH remains
+// interactive because the command's stderr is also written to the terminal,
+// while the bounded copy survives Bubble Tea restoring its alternate screen.
+type tailBuffer struct {
+	mu  sync.Mutex
+	max int
+	b   []byte
+}
+
+func (w *tailBuffer) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(p) >= w.max {
+		w.b = append(w.b[:0], p[len(p)-w.max:]...)
+		return len(p), nil
+	}
+	if len(w.b)+len(p) > w.max {
+		w.b = append(w.b[:0], w.b[len(w.b)+len(p)-w.max:]...)
+	}
+	w.b = append(w.b, p...)
+	return len(p), nil
+}
+
+func (w *tailBuffer) String() string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return string(w.b)
 }
 
 // isDirect reports whether t reaches its vCenter without a proxy — and so

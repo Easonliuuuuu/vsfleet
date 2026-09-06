@@ -168,6 +168,36 @@ func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestRVToolsPreservesTemplateRowsAndHealthCoverageGaps(t *testing.T) {
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	data := sampleExportData(when)
+	data.VMs = append(data.VMs, assessment.ExportVM{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{ID: "tpl-1", Name: "golden", IsTemplate: true}}})
+	var output bytes.Buffer
+	if err := WriteRVTools(&output, data, healthReport(data)); err != nil {
+		t.Fatal(err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if got, _ := f.GetCellValue("vInfo", "A2"); got != "golden" {
+		t.Fatalf("template vInfo name=%q", got)
+	}
+	if got, _ := f.GetCellValue("vInfo", "C2"); !strings.EqualFold(got, "true") {
+		t.Fatalf("template vInfo flag=%q", got)
+	}
+	if got, _ := f.GetCellValue("vsfleetCoverage", "J13"); got != "vHealth" {
+		t.Fatalf("health coverage sheet=%q", got)
+	}
+	if got, _ := f.GetCellValue("vsfleetCoverage", "K13"); got != "partial" {
+		t.Fatalf("health coverage status=%q", got)
+	}
+	if got, _ := f.GetCellValue("vsfleetCoverage", "M13"); !strings.Contains(got, "datastore-zombie-vmdk") {
+		t.Fatalf("health coverage message=%q", got)
+	}
+}
+
 func readCSV(t *testing.T, data []byte) [][]string {
 	t.Helper()
 	records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
@@ -476,7 +506,7 @@ func TestWriteRVToolsHealthCoverageStates(t *testing.T) {
 	for _, tc := range []struct {
 		name, schema, vmStatus, wantStatus, wantMessage string
 	}{
-		{name: "success with thresholds", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "success", wantStatus: "success", wantMessage: "max-snapshot-age=30d"},
+		{name: "successful capture without browse", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "success", wantStatus: "partial", wantMessage: "datastore-zombie-vmdk"},
 		{name: "schema gated", schema: "3", vmStatus: "success", wantStatus: "partial", wantMessage: "guest-disk-space-low"},
 		{name: "VM collection failure", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "failed", wantStatus: "failed", wantMessage: "permission denied"},
 	} {

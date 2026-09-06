@@ -63,7 +63,7 @@ func TestEvaluateInitialRules(t *testing.T) {
 
 func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
 	want := []string{
-		"cdrom-connected", "datastore-inaccessible", "datastore-space-low",
+		"cdrom-connected", "datastore-inaccessible", "datastore-space-low", "datastore-zombie-vmdk",
 		"guest-disk-space-low", "host-disconnected", "host-in-maintenance",
 		"snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected",
 		"vm-inaccessible", "vm-orphaned",
@@ -105,6 +105,51 @@ func TestEvaluateVMConnectionRules(t *testing.T) {
 			t.Errorf("%s status=%q, want evaluated", status.Rule, status.Status)
 		}
 	}
+}
+
+func TestEvaluateZombieVMDKConservativelyMatchesReferencesAndDeltas(t *testing.T) {
+	datastorePayload, _ := json.Marshal(vsphere.Datastore{
+		Location:     vsphere.Location{Datacenter: "dc-a"},
+		ID:           "ds-1",
+		Name:         "datastore-1",
+		BrowseStatus: "success",
+		Files: []vsphere.DatastoreFile{
+			{Path: "[datastore-1] app/disk.vmdk", SizeBytes: 8 << 30},
+			{Path: "[datastore-1] app/disk-000001.vmdk", SizeBytes: 2 << 30},
+			{Path: "[datastore-1] orphan/orphan.vmdk", SizeBytes: 4 << 30},
+			{Path: "[datastore-1] templates/golden.vmdk", SizeBytes: 1 << 30},
+		},
+	})
+	data := assessment.ExportData{
+		Run: assessment.Run{ID: 46, InventorySchemaVersion: "7"},
+		VMs: []assessment.ExportVM{
+			{Observation: assessment.Observation{VM: vsphere.VM{Disks: []vsphere.VMDisk{{BackingPath: "[DATASTORE-1] app/disk.vmdk"}}}}},
+			{Observation: assessment.Observation{VM: vsphere.VM{IsTemplate: true, Disks: []vsphere.VMDisk{{BackingPath: "[datastore-1] templates/golden.vmdk"}}}}},
+		},
+		Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-1", Kind: "datastore", ID: "ds-1", Name: "datastore-1", Payload: datastorePayload}},
+	}
+	report := Evaluate(data, Options{})
+	var zombies []Finding
+	for _, finding := range report.Findings {
+		if finding.Rule == "datastore-zombie-vmdk" {
+			zombies = append(zombies, finding)
+		}
+	}
+	if len(zombies) != 1 || !strings.Contains(zombies[0].Message, "orphan/orphan.vmdk") {
+		t.Fatalf("zombie findings=%+v", zombies)
+	}
+
+	data.Resources[0].Payload, _ = json.Marshal(vsphere.Datastore{ID: "ds-1", Name: "datastore-1"})
+	report = Evaluate(data, Options{})
+	for _, status := range report.Rules {
+		if status.Rule == "datastore-zombie-vmdk" {
+			if status.Status != "not-evaluated" || status.Reason != "a capture run with --browse-datastores" {
+				t.Fatalf("zombie status=%+v", status)
+			}
+			return
+		}
+	}
+	t.Fatal("datastore-zombie-vmdk status was not reported")
 }
 
 func TestEvaluateThresholdBoundaries(t *testing.T) {

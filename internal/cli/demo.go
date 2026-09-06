@@ -23,8 +23,8 @@ and writes nothing back: it does not remember the last screen the way a real
 run does. The header says DEMO on every screen so a screenshot cannot be
 mistaken for a live estate.
 
-Historical assessments are unavailable in the demo, since there is no captured
-run behind the sample data to compare against.`,
+The History pane includes one seeded, in-memory assessment with intentionally
+unhealthy orphaned-VM and zombie-VMDK evidence. Nothing is written to disk.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDemo(a, cmd)
@@ -36,15 +36,23 @@ run behind the sample data to compare against.`,
 
 // runDemo is deliberately a fraction of runUI. Every side-effecting
 // dependency on App is a lazy accessor, so the demo's promise to leave the
-// operator's machine alone is kept by not reaching for them: no Config, no
-// Resolver, no Sessions, no Assessment, and no uistate load or save.
+// operator's machine alone is kept by using only the synthetic backend and an
+// in-memory assessment store: no Config, Resolver, Sessions, or uistate load
+// or save.
 func runDemo(a *App, cmd *cobra.Command) error {
-	_, err := tui.Run(cmd.Context(), demo.NewBackend(), tui.Options{
+	backend := demo.NewBackend()
+	service, closeHistory, err := backend.AssessmentService()
+	if err != nil {
+		return err
+	}
+	defer closeHistory()
+	_, err = tui.Run(cmd.Context(), backend, tui.Options{
 		Current:         "prod-vc",
 		Demo:            true,
 		RefreshInterval: a.RefreshInterval,
 		In:              a.in(),
 		Out:             a.out(),
+		Assessment:      service,
 	})
 	return err
 }

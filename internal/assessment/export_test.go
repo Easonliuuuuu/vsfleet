@@ -44,6 +44,9 @@ func TestLoadExportDataUsesPersistedEvidence(t *testing.T) {
 	if len(data.VMs[0].Observation.VM.CDROMs) != 1 || len(data.VMs[0].Observation.VM.USBs) != 1 || data.VMs[0].Observation.VM.CDROMs[0].BackingPath == "" || data.VMs[0].Observation.VM.USBs[0].BackingHost != "esx-1" {
 		t.Fatalf("connected-device evidence was not persisted: %+v", data.VMs[0].Observation.VM)
 	}
+	if len(data.VMs) != 2 || !data.VMs[1].Observation.VM.IsTemplate {
+		t.Fatalf("template evidence was not persisted: %+v", data.VMs)
+	}
 	if data.Contexts[0].Endpoint != "https://vc.example" || data.VMs[0].Observation.VCenterID != "vc-uuid" {
 		t.Fatalf("provenance=%+v", data)
 	}

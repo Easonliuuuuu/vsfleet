@@ -87,3 +87,12 @@ Assessment history is separate from `config.toml` and defaults to
 `--history-db` to override it. The private database contains inventory,
 identifiers, paths, annotations, snapshot metadata, and coverage, but never
 credentials or session cookies.
+
+## vSphere permissions
+
+Use a read-only vSphere account. Inventory and assessment collection do not
+need write privileges. The optional `vsfleet assessment run
+--browse-datastores` path additionally needs `Datastore.Browse` on the
+datastores to inspect VM disk-file metadata; it still performs no inventory
+mutation. Without that privilege or without the flag, zombie-VMDK health is
+reported as not evaluated.

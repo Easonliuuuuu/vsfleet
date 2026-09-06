@@ -8,6 +8,7 @@ vCenter.
 
 ```sh
 vsfleet assessment run --all-contexts
+vsfleet assessment run --all-contexts --browse-datastores
 vsfleet assessment run --all-contexts \
   --label nightly --note "pre-change baseline" --pin
 vsfleet assessment list
@@ -87,9 +88,10 @@ on `vsfleetCoverage`.
 
 `vsfleet health [RUN]` evaluates the evidence in a stored assessment without
 contacting vCenter. The first rule set reports inaccessible or low-space
-datastores, disconnected or maintenance-mode hosts, old snapshots, low-space
-guest filesystems, VMware Tools that are missing, stopped, or outdated, and
-currently connected CD-ROM/ISO and USB devices.
+datastores, disconnected or maintenance-mode hosts, orphaned or inaccessible
+VMs, unreferenced VMDKs, old snapshots, low-space guest filesystems, VMware
+Tools that are missing, stopped, or outdated, and currently connected CD-ROM/
+ISO and USB devices.
 
 The defaults are a 30-day maximum snapshot age and 10% minimum free space for
 datastores and guest filesystems. Use `--max-snapshot-age`,
@@ -105,11 +107,11 @@ coverage message, so exporting unchanged evidence with the same options stays
 reproducible. Rules that need inventory fields introduced after an older run
 are marked `not-evaluated`, rather than making an empty tab look healthy.
 
-This increment deliberately does not assess connected floppy devices, orphaned
-or inaccessible VMs, or zombie VMDKs. Those checks need additional persisted
-inventory (and, for zombie files, a datastore-browser operation), so they
-remain named follow-ups rather than being inferred from evidence that was never
-collected.
+Zombie-VMDK evidence is opt-in because it requires the vSphere
+`Datastore.Browse` privilege and adds a bounded directory listing per
+accessible datastore. Use `vsfleet assessment run --browse-datastores`; runs
+without a successful browse mark the rule `not-evaluated`. Connected floppy
+devices remain a named follow-up.
 
 ### What "RVTools-compatible" means here
 

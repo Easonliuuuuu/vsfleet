@@ -3,6 +3,7 @@ package tests
 import (
 	"bytes"
 	"encoding/xml"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -64,20 +66,21 @@ import (
 // for invoking arbitrary operations, so approving it would defeat the point
 // of the list.
 var readOnlyMethods = map[string]string{
-	"RetrieveServiceContent":       "read: the service's own capability document, on connect",
-	"Login":                        "session: nothing is readable without one",
-	"Logout":                       "session: release it rather than leaving it to time out",
-	"SessionIsActive":              "read: is this session still valid (the doctor/status ping)",
-	"CreateContainerView":          "transient view object this tool creates for its own enumeration",
-	"DestroyView":                  "cleanup of that same view; never touches inventory",
-	"RetrievePropertiesEx":         "read: the property collector, how all inventory is enumerated",
-	"ContinueRetrievePropertiesEx": "read: the next page of that same enumeration",
-	"CancelRetrievePropertiesEx":   "read path: abandons a paged enumeration",
-	"RetrieveProperties":           "read: the pre-6.0 property collector call",
-	"CreatePropertyCollector":      "this tool's own private cursor for a paged read; session-scoped, holds no inventory",
-	"CreateFilter":                 "read: declares which properties that cursor should report",
-	"WaitForUpdatesEx":             "read: reports those property values, a page at a time",
-	"DestroyPropertyCollector":     "cleanup of that same cursor and its filter; never touches inventory",
+	"RetrieveServiceContent":         "read: the service's own capability document, on connect",
+	"Login":                          "session: nothing is readable without one",
+	"Logout":                         "session: release it rather than leaving it to time out",
+	"SessionIsActive":                "read: is this session still valid (the doctor/status ping)",
+	"CreateContainerView":            "transient view object this tool creates for its own enumeration",
+	"DestroyView":                    "cleanup of that same view; never touches inventory",
+	"RetrievePropertiesEx":           "read: the property collector, how all inventory is enumerated",
+	"ContinueRetrievePropertiesEx":   "read: the next page of that same enumeration",
+	"CancelRetrievePropertiesEx":     "read path: abandons a paged enumeration",
+	"RetrieveProperties":             "read: the pre-6.0 property collector call",
+	"CreatePropertyCollector":        "this tool's own private cursor for a paged read; session-scoped, holds no inventory",
+	"CreateFilter":                   "read: declares which properties that cursor should report",
+	"WaitForUpdatesEx":               "read: reports those property values, a page at a time",
+	"DestroyPropertyCollector":       "cleanup of that same cursor and its filter; never touches inventory",
+	"SearchDatastoreSubFolders_Task": "read: creates a task only as a handle for directory listing and returns file metadata; cannot modify inventory",
 }
 
 // soapRecorder collects the operation name of every SOAP request that
@@ -208,6 +211,7 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 		{"vm", "list", "--all-contexts"},
 		{"search", "DC0"},
 		{"search", "LocalDS", "--kind", "datastore"},
+		{"assessment", "run", "--browse-datastores"},
 	} {
 		stdout, stderr, err := r.run(testPassword+"\n", args...)
 		if err != nil {
@@ -228,6 +232,65 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 				"If this is genuinely safe, add it to readOnlyMethods with the reason. "+
 				"If it modifies a vCenter, it must not ship.", m)
 		}
+	}
+}
+
+// TestOnlyDatastoreBrowserSOAPShimDefinesFault keeps the one deliberate
+// exception to the package-level mutation guard narrow and reviewable. A
+// hand-rolled SOAP body must not quietly become a second escape hatch for
+// arbitrary vSphere operations.
+func TestOnlyDatastoreBrowserSOAPShimDefinesFault(t *testing.T) {
+	root := ".."
+	var faultMethods []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || d.Name() == "vendor" {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		src, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, src, 0)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			fn, ok := node.(*ast.FuncDecl)
+			if ok && fn.Recv != nil && fn.Name.Name == "Fault" {
+				faultMethods = append(faultMethods, path)
+			}
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(faultMethods) != 1 || !strings.HasSuffix(faultMethods[0], filepath.Join("internal", "vsphere", "datastore_browse.go")) {
+		t.Fatalf("hand-rolled SOAP Fault implementations=%v, want only internal/vsphere/datastore_browse.go", faultMethods)
+	}
+
+	path := filepath.Join(root, "internal", "vsphere", "datastore_browse.go")
+	src, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operationNames := regexp.MustCompile(`[A-Za-z][A-Za-z0-9]*_Task\b`).FindAllString(string(src), -1)
+	seen := map[string]bool{}
+	for _, name := range operationNames {
+		seen[name] = true
+	}
+	if !seen["SearchDatastoreSubFolders_Task"] || len(seen) != 1 {
+		t.Fatalf("datastore browser SOAP shim names operations %v, want only SearchDatastoreSubFolders_Task", seen)
 	}
 }
 

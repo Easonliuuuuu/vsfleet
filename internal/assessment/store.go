@@ -53,6 +53,17 @@ func DefaultPath() (string, error) {
 }
 
 func Open(path string) (*Store, error) {
+	return open(path, false)
+}
+
+// OpenMemory opens an isolated history database backed only by process memory.
+// It is used by the synthetic demo so the History panes can show deterministic
+// evidence without creating or modifying a file on the operator's machine.
+func OpenMemory() (*Store, error) {
+	return open(":memory:", true)
+}
+
+func open(path string, memory bool) (*Store, error) {
 	if path == "" {
 		var err error
 		path, err = DefaultPath()
@@ -68,6 +79,13 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	if memory {
+		// SQLite in-memory databases are connection-local. A single pooled
+		// connection keeps migrations and later history queries on the same
+		// database while preserving the Store API used by file-backed history.
+		db.SetMaxOpenConns(1)
+		db.SetMaxIdleConns(1)
+	}
 	// journal_mode is recorded in the database header, so unlike the
 	// connection-scoped pragmas it is set once rather than per connection.
 	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
@@ -82,7 +100,9 @@ func Open(path string) (*Store, error) {
 	// A running row is recovered only when it has no live lease. Active
 	// captures (including captures in another process) are left untouched.
 	_ = s.recoverOrphanedRuns(context.Background())
-	_ = os.Chmod(path, 0o600)
+	if !memory {
+		_ = os.Chmod(path, 0o600)
+	}
 	return s, nil
 }
 

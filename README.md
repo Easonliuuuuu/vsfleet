@@ -191,6 +191,7 @@ vsfleet assessment trends capacity        # Compute and storage trends over time
 vsfleet assessment trends churn           # VMs created and destroyed
 vsfleet assessment snapshots              # Snapshot ages, oldest first
 vsfleet health latest                     # Health findings on stored evidence
+vsfleet blast-radius datastore ds-prod-01 # What depends on a datastore
 ```
 
 ### Migration & Sizing Exports (RVTools Interoperability)

@@ -143,6 +143,28 @@ Readiness is deliberately conservative: a failed or missing collector yields
 `unknown`, and a blind vCenter is named in the `Not evaluated` section. The
 verdict can never say `ready` over evidence that was not collected.
 
+### Topology and dependency queries
+
+The `topology`, `dependencies`, and `blast-radius` commands query the same
+stored assessment ledger without contacting vCenter. They merge objects across
+contexts only when strong identity evidence intersects: VM instance or BIOS
+UUIDs, datastore backing identity, distributed switch and port-group keys, or
+NSX identifiers. A display name is only a context-scoped fallback and is
+marked `inferred`.
+
+Confidence is explicit: `complete` means the required collections answered and
+all returned relationships are resolved; `partial` means a collection was
+blind, a reference was unresolved, or a network was reconstructed; `unknown`
+means the subject cannot be resolved, every checked context is blind, or a
+non-local datastore in schema 11 or later has no backing identity. A query
+whose name matches distinct subjects returns all of them with an ambiguity
+header; use `--context` to narrow it rather than guessing.
+
+Network inventory is persisted beginning with inventory schema 12. Older runs
+can still reconstruct network nodes from distributed switches, host port
+groups, and VM NIC references, but those answers carry the schema reason and
+are capped at `partial`.
+
 ### RVTools file interoperability
 
 The `rvtools` export profile renders twenty-one worksheet layouts used by RVTools

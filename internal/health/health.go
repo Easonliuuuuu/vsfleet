@@ -190,9 +190,9 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 					continue
 				}
 			}
-			status.Blind = blindContexts(data.Contexts, rule.NeedsCollections)
+			status.Blind = assessment.BlindContexts(data.Contexts, rule.NeedsCollections)
 			for _, context := range status.Blind {
-				report.CoverageIssues = append(report.CoverageIssues, assessment.CoverageIssue{Scope: "health", Context: context, Message: fmt.Sprintf("%s rule is blind: %s", rule.ID, coverageReason(data.Contexts, context, rule.NeedsCollections))})
+				report.CoverageIssues = append(report.CoverageIssues, assessment.CoverageIssue{Scope: "health", Context: context, Message: fmt.Sprintf("%s rule is blind: %s", rule.ID, assessment.CoverageReason(data.Contexts, context, rule.NeedsCollections))})
 			}
 			status.Status = "evaluated"
 			before := len(report.Findings)
@@ -231,7 +231,7 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 					if !containsString(status.Blind, context) {
 						status.Blind = append(status.Blind, context)
 					}
-					message := fmt.Sprintf("%s rule is blind: %s", rule.ID, coverageReason(data.Contexts, context, rule.NeedsCollections))
+					message := fmt.Sprintf("%s rule is blind: %s", rule.ID, assessment.CoverageReason(data.Contexts, context, rule.NeedsCollections))
 					if !containsCoverageIssue(report.CoverageIssues, context, message) {
 						report.CoverageIssues = append(report.CoverageIssues, assessment.CoverageIssue{Scope: "health", Context: context, Message: message})
 					}
@@ -242,7 +242,7 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 		report.Rules = append(report.Rules, status)
 	}
 	for _, context := range data.Contexts {
-		if contextComplete(context) {
+		if assessment.ContextComplete(context, completeCollections) {
 			report.Coverage.CompleteContexts++
 		}
 	}
@@ -309,35 +309,6 @@ func Rules() []Rule {
 
 var completeCollections = []string{"vm", "host", "cluster", "resourcepool", "dvswitch", "datastore"}
 
-func blindContexts(contexts []assessment.ContextRun, needs []string) []string {
-	if len(needs) == 0 {
-		return nil
-	}
-	out := make([]string, 0)
-	for _, context := range contexts {
-		statuses := make(map[string]string, len(context.Collections))
-		for _, collection := range context.Collections {
-			statuses[collection.Kind] = collection.Status
-		}
-		blind := false
-		for _, kind := range needs {
-			status := statuses[kind]
-			if kind == "vm" && context.VMStatus != "" {
-				status = context.VMStatus
-			}
-			if !assessment.Successful(status) {
-				blind = true
-				break
-			}
-		}
-		if blind {
-			out = append(out, context.Name)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 func containsString(values []string, wanted string) bool {
 	for _, value := range values {
 		if value == wanted {
@@ -354,51 +325,6 @@ func containsCoverageIssue(values []assessment.CoverageIssue, context, message s
 		}
 	}
 	return false
-}
-
-func coverageReason(contexts []assessment.ContextRun, name string, needs []string) string {
-	for _, context := range contexts {
-		if context.Name != name {
-			continue
-		}
-		statuses := make(map[string]assessment.CollectionRun, len(context.Collections))
-		for _, collection := range context.Collections {
-			statuses[collection.Kind] = collection
-		}
-		for _, kind := range needs {
-			status, ok := statuses[kind]
-			value := status.Status
-			errorText := status.Error
-			if kind == "vm" && context.VMStatus != "" {
-				value, errorText = context.VMStatus, context.Error
-				ok = true
-			}
-			if !ok || !assessment.Successful(value) {
-				if !ok {
-					return kind + " collection was not recorded"
-				}
-				return kind + " collection: " + nonempty(errorText, value)
-			}
-		}
-	}
-	return "required collection was not recorded"
-}
-
-func contextComplete(context assessment.ContextRun) bool {
-	statuses := make(map[string]string, len(context.Collections))
-	for _, collection := range context.Collections {
-		statuses[collection.Kind] = collection.Status
-	}
-	for _, kind := range completeCollections {
-		status := statuses[kind]
-		if kind == "vm" && context.VMStatus != "" {
-			status = context.VMStatus
-		}
-		if !assessment.Successful(status) {
-			return false
-		}
-	}
-	return true
 }
 
 func inventorySchema(value string) int {
@@ -536,10 +462,6 @@ func resourceObject(data assessment.ExportData, r assessment.ResourceObservation
 		}
 	}
 	return Object{Kind: kind, Name: name, ID: id, Context: r.Context, VCenterID: r.VCenterID, Datacenter: datacenter}
-}
-
-func decodeResource(r assessment.ResourceObservation, target any) bool {
-	return json.Unmarshal(r.Payload, target) == nil
 }
 
 func freePct(capacity, free int64) (float64, bool) {

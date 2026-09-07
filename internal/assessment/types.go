@@ -21,12 +21,13 @@ type RunStatus string
 // observations; version 9 adds host storage adapter, multipath, physical NIC,
 // virtual switch, port group and VMkernel adapter inventory; version 10 adds
 // distributed virtual switch and port group inventory; version 11 adds
-// datastore backing identity and browse-truncation provenance. All keep the payload
+// datastore backing identity and browse-truncation provenance; version 12 adds
+// persisted network inventory. All keep the payload
 // backward-compatible with older ledger rows:
 // a reader of an older run sees the field absent, which is what it is. Health
 // rules that need the version-6 evidence must therefore remain not-evaluated
 // for runs captured before this schema.
-const CurrentInventorySchemaVersion = "11"
+const CurrentInventorySchemaVersion = "12"
 
 const (
 	RunRunning  RunStatus = "running"

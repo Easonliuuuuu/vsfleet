@@ -1238,6 +1238,12 @@ func validateResources(resources []assessment.ResourceObservation) error {
 	for _, resource := range resources {
 		var value any
 		switch resource.Kind {
+		case "network":
+			// Network inventory is consumed by the headless topology graph. The
+			// RVTools profile has no standalone persisted-network worksheet;
+			// VM NIC and distributed-port-group sheets remain the compatibility
+			// representation, so this collection is intentionally ignored here.
+			continue
 		case "host":
 			value = &vsphere.Host{}
 		case "cluster":

@@ -122,6 +122,9 @@ to distinguish shared storage from same-name independent datastores. Resource di
 reference identity and keep volatile utilization/state fields behind
 `--include-runtime`. Trends aggregate estate totals before context/resource
 drill-downs, and every JSON trend/report envelope carries a schema version.
+Inventory schema version 12 persists network observations, while the headless
+`internal/topology` graph joins those observations with VM, host, datastore,
+distributed-switch, and resource-pool evidence for offline dependency queries.
 Run labels, notes, pinning, and the renewable fenced lease from schema version 2
 remain intact; the lease also serializes prune, backup, and restore operations.
 The TUI's History hub switches between Changes, Trends, Runs, and Health, while all
@@ -186,6 +189,7 @@ vsfleet/
 │   ├── search/            # Cross-vCenter estate search engine
 │   ├── session/           # Session management, caching, and connection pooling
 │   ├── transport/         # Network dialers (Direct, SOCKS5, HTTP/HTTPS CONNECT)
+│   ├── topology/          # Deterministic cross-vCenter relationship graph and queries
 │   ├── tui/               # Charmbracelet Bubble Tea terminal user interface
 │   ├── uistate/           # Persistent UI view state (last visited tab, context)
 │   ├── version/           # Build-time version metadata (injected by GoReleaser)

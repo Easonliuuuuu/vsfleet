@@ -262,6 +262,9 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 		newUICommand(a),
 		newAssessmentCommand(a),
 		newHealthCommand(a),
+		newTopologyCommand(a),
+		newDependenciesCommand(a),
+		newBlastRadiusCommand(a),
 		newCompatibilityCommand(a),
 	)
 	root.AddCommand(newInventoryCommands(a)...)

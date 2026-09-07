@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
@@ -71,25 +72,53 @@ var rules = []Rule{
 			return true, "a capture run with --browse-datastores"
 		},
 		Eval: func(in Input, emit func(Finding)) {
-			referenced := referencedDiskPaths(in.Data)
-			for _, resource := range in.Data.Resources {
-				if resource.Kind != "datastore" {
+			for _, orphan := range Orphans(in.Data).Entries {
+				if orphan.Confidence == ConfidenceUnknown {
 					continue
 				}
-				var datastore vsphere.Datastore
-				if !decodeResource(resource, &datastore) || datastore.BrowseStatus != "success" {
+				severity := SeverityInfo
+				if orphan.Confidence == ConfidenceVerified {
+					severity = SeverityWarning
+				}
+				evidence := []Evidence{
+					{Field: "confidence", Observed: string(orphan.Confidence)},
+					{Field: "path", Observed: orphan.Path, Expected: "referenced by a VM or template"},
+					{Field: "size", Observed: humanize.Bytes(orphan.SizeBytes)},
+				}
+				if !orphan.Modified.IsZero() {
+					evidence = append(evidence, Evidence{Field: "last_modified", Observed: orphan.Modified.UTC().Format(time.RFC3339)})
+				}
+				if len(orphan.CheckedContexts) > 0 {
+					evidence = append(evidence, Evidence{Field: "checked_contexts", Observed: strings.Join(orphan.CheckedContexts, ", ")})
+				}
+				message := fmt.Sprintf("%s VMDK %q (%s)", orphanConfidenceLabel(orphan.Confidence), orphan.Path, humanize.Bytes(orphan.SizeBytes))
+				if len(orphan.ReferencedBy) > 0 {
+					message += "; referenced by " + orphan.ReferencedBy[0].VM + " @ " + orphan.ReferencedBy[0].Context
+				}
+				emit(Finding{Rule: "datastore-zombie-vmdk", Severity: severity, Confidence: orphan.Confidence, Object: orphan.Object, Message: message, Evidence: evidence})
+			}
+		},
+		Resolve: func(in Input) (string, string, []string) {
+			unknown := false
+			blindSet := make(map[string]bool)
+			for _, orphan := range Orphans(in.Data).Entries {
+				if orphan.Confidence != ConfidenceUnknown {
 					continue
 				}
-				for _, file := range datastore.Files {
-					path := normalizeDatastorePath(file.Path)
-					if path == "" || !strings.HasSuffix(path, ".vmdk") || referencedDatastoreFile(path, referenced) {
-						continue
-					}
-					obj := resourceObject(in.Data, resource, "datastore", datastore.Name, datastore.ID, datastore.Datacenter)
-					emit(Finding{Rule: "datastore-zombie-vmdk", Severity: SeverityWarning, Object: obj,
-						Message: fmt.Sprintf("Unreferenced VMDK %q (%s)", file.Path, humanize.Bytes(file.SizeBytes)), Evidence: []Evidence{{Field: "path", Observed: file.Path, Expected: "referenced by a VM or template"}}})
+				unknown = true
+				for _, blind := range orphan.Blind {
+					blindSet[blind.Context] = true
 				}
 			}
+			if !unknown {
+				return "", "", nil
+			}
+			blind := make([]string, 0, len(blindSet))
+			for context := range blindSet {
+				blind = append(blind, context)
+			}
+			sort.Strings(blind)
+			return "unknown", "orphan coverage is incomplete", blind
 		},
 	},
 	{

@@ -16,7 +16,7 @@ import (
 )
 
 // ReportSchemaVersion versions the machine-readable finding envelope.
-const ReportSchemaVersion = 2
+const ReportSchemaVersion = 3
 
 type Severity string
 
@@ -58,6 +58,7 @@ type Finding struct {
 	Rule           string     `json:"rule"`
 	Category       Category   `json:"category"`
 	Severity       Severity   `json:"severity"`
+	Confidence     Confidence `json:"confidence,omitempty"`
 	Object         Object     `json:"object"`
 	Message        string     `json:"message"`
 	Evidence       []Evidence `json:"evidence,omitempty"`
@@ -84,6 +85,7 @@ type Rule struct {
 	NeedsCollections []string
 	Skip             func(Input) (bool, string)
 	Eval             func(in Input, emit func(Finding))
+	Resolve          func(in Input) (result, reason string, blind []string)
 }
 
 type Thresholds struct {
@@ -217,6 +219,25 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 			if len(rule.NeedsCollections) > 0 && len(status.Blind) >= len(data.Contexts) {
 				status.Result = "unknown"
 			}
+			if rule.Resolve != nil {
+				result, reason, blind := rule.Resolve(in)
+				if result != "" {
+					status.Result = result
+				}
+				if reason != "" {
+					status.Reason = reason
+				}
+				for _, context := range blind {
+					if !containsString(status.Blind, context) {
+						status.Blind = append(status.Blind, context)
+					}
+					message := fmt.Sprintf("%s rule is blind: %s", rule.ID, coverageReason(data.Contexts, context, rule.NeedsCollections))
+					if !containsCoverageIssue(report.CoverageIssues, context, message) {
+						report.CoverageIssues = append(report.CoverageIssues, assessment.CoverageIssue{Scope: "health", Context: context, Message: message})
+					}
+				}
+				sort.Strings(status.Blind)
+			}
 		}
 		report.Rules = append(report.Rules, status)
 	}
@@ -315,6 +336,24 @@ func blindContexts(contexts []assessment.ContextRun, needs []string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
+func containsCoverageIssue(values []assessment.CoverageIssue, context, message string) bool {
+	for _, value := range values {
+		if value.Context == context && value.Message == message {
+			return true
+		}
+	}
+	return false
 }
 
 func coverageReason(contexts []assessment.ContextRun, name string, needs []string) string {

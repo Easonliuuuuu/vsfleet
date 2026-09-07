@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
@@ -45,11 +46,13 @@ func NewBackend() *Backend {
 
 	prodInventory := sampleInventory("prod-vc", "Taipei", "10.20.0")
 	addDemoHealthEvidence(prodInventory)
+	edgeInventory := sampleInventory("edge-vc", "Hsinchu", "10.42.0")
+	addDemoSharedDatastoreEvidence(edgeInventory)
 	return &Backend{
 		contexts: contexts,
 		inventories: map[string]*vsphere.Inventory{
 			"prod-vc": prodInventory,
-			"edge-vc": sampleInventory("edge-vc", "Hsinchu", "10.42.0"),
+			"edge-vc": edgeInventory,
 		},
 		failures: map[string]error{
 			"dr-site": errors.New("proxy 10.24.0.8:3128: connection refused"),
@@ -74,13 +77,28 @@ func addDemoHealthEvidence(inv *vsphere.Inventory) {
 	inv.VMs[2].Disks = []vsphere.VMDisk{{Key: 102, Label: "Hard disk 1", CapacityBytes: 120 << 30, BackingPath: "[nvme-01] build-runner-03/build-runner-03.vmdk"}}
 	inv.Templates[0].Disks = []vsphere.VMDisk{{Key: 103, Label: "Hard disk 1", CapacityBytes: 16 << 30, BackingPath: "[nvme-01] templates/ubuntu-24.04-golden.vmdk"}}
 	inv.Datastores[0].BrowseStatus = "success"
+	inv.Datastores[0].Backing = vsphere.DatastoreBacking{VMFSUUID: "demo-vmfs-nvme-01", Extents: []string{"naa.demo.6000"}}
 	inv.Datastores[0].Files = []vsphere.DatastoreFile{
 		{Path: "[nvme-01] api-01/api-01.vmdk", SizeBytes: 80 << 30},
 		{Path: "[nvme-01] api-01/api-01-000001.vmdk", SizeBytes: 4 << 30},
 		{Path: "[nvme-01] build-runner-03/build-runner-03.vmdk", SizeBytes: 120 << 30},
 		{Path: "[nvme-01] lost+found/orphan.vmdk", SizeBytes: 20 << 30},
+		{Path: "[nvme-01] finance01/finance01.vmdk", SizeBytes: 420 << 30, Modified: time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)},
 		{Path: "[nvme-01] templates/ubuntu-24.04-golden.vmdk", SizeBytes: 16 << 30},
 	}
+}
+
+func addDemoSharedDatastoreEvidence(inv *vsphere.Inventory) {
+	if inv == nil || len(inv.VMs) == 0 || len(inv.Datastores) == 0 {
+		return
+	}
+	inv.Datastores[0].Name = "san-prod-01"
+	inv.Datastores[0].Path = strings.Replace(inv.Datastores[0].Path, "nvme-01", "san-prod-01", 1)
+	inv.Datastores[0].Backing = vsphere.DatastoreBacking{VMFSUUID: "demo-vmfs-nvme-01", Extents: []string{"naa.demo.6000"}}
+	inv.Datastores[0].BrowseStatus = "success"
+	inv.Datastores[0].Files = []vsphere.DatastoreFile{{Path: "[san-prod-01] finance01/finance01.vmdk", SizeBytes: 420 << 30, Modified: time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)}}
+	inv.VMs[0].Datastores = []string{"san-prod-01"}
+	inv.VMs[0].Disks = []vsphere.VMDisk{{Key: 201, Label: "Hard disk 1", CapacityBytes: 420 << 30, BackingPath: "[san-prod-01] finance01/finance01.vmdk"}}
 }
 
 func newContext(name, endpoint string, route config.TransportConfig) *config.Context {
@@ -152,7 +170,7 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 	cc := b.contexts[0]
 	inv := b.inventories[cc.Name]
 	now := time.Date(2026, 9, 6, 0, 0, 0, 0, time.UTC)
-	run, err := store.StartRunWithMetadata(context.Background(), "demo", []*config.Context{cc}, now, assessment.RunMetadata{InventorySchemaVersion: assessment.CurrentInventorySchemaVersion})
+	run, err := store.StartRunWithMetadata(context.Background(), "demo", b.contexts, now, assessment.RunMetadata{InventorySchemaVersion: assessment.CurrentInventorySchemaVersion})
 	if err != nil {
 		closeStore()
 		return nil, nil, err
@@ -170,6 +188,29 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		{Kind: "dvswitch", Status: "success", ItemCount: len(inv.DVSwitches), Resources: demoResources(cc.Name, "demo-prod-vc", "dvswitch", inv.DVSwitches)},
 	}
 	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: cc.Name, VCenterID: "demo-prod-vc", Status: "success", VMs: observations, Collections: collections}, now.Add(time.Minute)); err != nil {
+		closeStore()
+		return nil, nil, err
+	}
+	edge := b.contexts[1]
+	edgeInv := b.inventories[edge.Name]
+	edgeObservations := make([]assessment.Observation, 0, len(edgeInv.VMs)+len(edgeInv.Templates))
+	for _, vm := range append(append([]vsphere.VM(nil), edgeInv.VMs...), edgeInv.Templates...) {
+		edgeObservations = append(edgeObservations, assessment.Observation{Context: edge.Name, VCenterID: "demo-edge-vc", VM: vm})
+	}
+	edgeCollections := []assessment.CollectionResult{
+		{Kind: "vm", Status: "success", ItemCount: len(edgeObservations)},
+		{Kind: "host", Status: "success", ItemCount: len(edgeInv.Hosts), Resources: demoResources(edge.Name, "demo-edge-vc", "host", edgeInv.Hosts)},
+		{Kind: "cluster", Status: "success", ItemCount: len(edgeInv.Clusters), Resources: demoResources(edge.Name, "demo-edge-vc", "cluster", edgeInv.Clusters)},
+		{Kind: "resourcepool", Status: "success", ItemCount: len(edgeInv.ResourcePools), Resources: demoResources(edge.Name, "demo-edge-vc", "resourcepool", edgeInv.ResourcePools)},
+		{Kind: "datastore", Status: "success", ItemCount: len(edgeInv.Datastores), Resources: demoResources(edge.Name, "demo-edge-vc", "datastore", edgeInv.Datastores)},
+		{Kind: "dvswitch", Status: "success", ItemCount: len(edgeInv.DVSwitches), Resources: demoResources(edge.Name, "demo-edge-vc", "dvswitch", edgeInv.DVSwitches)},
+	}
+	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: edge.Name, VCenterID: "demo-edge-vc", Status: "success", VMs: edgeObservations, Collections: edgeCollections}, now.Add(time.Minute)); err != nil {
+		closeStore()
+		return nil, nil, err
+	}
+	dr := b.contexts[2]
+	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: dr.Name, VCenterID: "demo-dr-site", Status: "failed", Error: "proxy 10.24.0.8:3128: connection refused", Collections: []assessment.CollectionResult{{Kind: "vm", Status: "failed", Error: "proxy connection refused"}, {Kind: "host", Status: "failed"}, {Kind: "cluster", Status: "failed"}, {Kind: "resourcepool", Status: "failed"}, {Kind: "dvswitch", Status: "failed"}, {Kind: "datastore", Status: "failed"}}}, now.Add(time.Minute)); err != nil {
 		closeStore()
 		return nil, nil, err
 	}

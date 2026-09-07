@@ -56,4 +56,12 @@ func TestAssessmentServiceSeedsNewHealthFindingsInMemory(t *testing.T) {
 	if !found["vm-orphaned"] || !found["datastore-zombie-vmdk"] {
 		t.Fatalf("demo health findings=%v", found)
 	}
+	orphans := health.Orphans(data)
+	confidence := map[health.Confidence]bool{}
+	for _, entry := range orphans.Entries {
+		confidence[entry.Confidence] = true
+	}
+	if !confidence[health.ConfidenceVerified] || !confidence[health.ConfidenceOtherContext] {
+		t.Fatalf("demo orphan confidence=%v entries=%+v", confidence, orphans.Entries)
+	}
 }

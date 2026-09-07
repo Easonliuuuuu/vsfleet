@@ -101,11 +101,81 @@ func TestEvaluateMigrationReadinessRules(t *testing.T) {
 	}
 }
 
+func TestEvaluateExpandedMigrationReadiness(t *testing.T) {
+	secure, auto, locked := true, true, true
+	reservation, limit := int64(128), int64(500)
+	unlimited := int64(-1)
+	problem := vsphere.VM{
+		Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"},
+		ID:       "vm-problem", Name: "problem", ConfigurationAvailable: true, CPU: 4, Firmware: "bios", CoresPerSocket: 2,
+		AutoCoresPerSocket: &auto, SecureBootEnabled: &secure,
+		CPUAllocation:                &vsphere.VMResourceAllocation{Reservation: &reservation, Limit: &limit},
+		MemoryAllocation:             &vsphere.VMResourceAllocation{Reservation: &reservation, Limit: &unlimited},
+		MemoryReservationLockedToMax: &locked,
+		ManagedBy:                    &vsphere.VMManagedBy{ExtensionKey: "com.example", Type: "appliance"},
+		Disks: []vsphere.VMDisk{
+			{Key: 1, Label: "RDM", Raw: true, BackingType: "rdm", RawLUNID: "naa.1", RawCompatibilityMode: "physicalMode"},
+			{Key: 2, Label: "shared", UUID: "shared-uuid", Sharing: "sharingMultiWriter", SharedBus: "physicalSharing"},
+		},
+		NICs:       []vsphere.VMNIC{{Key: 3, Label: "manual", MACAddress: "00:50:56:aa:bb:cc", MACAddressType: "manual"}, {Key: 4, Label: "sriov", Adapter: "SR-IOV"}},
+		TPMs:       []vsphere.VMTPM{{Key: 5, Label: "TPM"}},
+		PCIDevices: []vsphere.VMPCIDevice{{Key: 6, Label: "GPU", BackingType: "device"}},
+		Floppies:   []vsphere.VMFloppy{{Key: 7, Label: "floppy", BackingType: "image", BackingPath: "[ds] problem/boot.img"}},
+	}
+	peerSecure := false
+	peer := vsphere.VM{Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"}, ID: "vm-peer", Name: "peer", ConfigurationAvailable: true, Firmware: "efi", SecureBootEnabled: &peerSecure, CPU: 1, CoresPerSocket: 1,
+		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited},
+		Disks: []vsphere.VMDisk{{Key: 2, Label: "shared", UUID: "shared-uuid", Sharing: "sharingMultiWriter"}}}
+	data := assessment.ExportData{Run: assessment.Run{ID: 60, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, VMs: []assessment.ExportVM{
+		{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: problem}},
+		{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: peer}},
+	}}
+	report := Evaluate(data, Options{})
+	got := make(map[string][]Finding)
+	for _, finding := range report.Findings {
+		got[finding.Rule] = append(got[finding.Rule], finding)
+	}
+	for _, rule := range []string{"bios-firmware", "custom-cpu-topology", "custom-resource-allocation", "extension-managed-vm", "floppy-present", "manual-mac-address", "secure-boot-enabled", "vtpm-present", "rdm-present", "shared-disk", "host-device-passthrough"} {
+		if len(got[rule]) == 0 {
+			t.Errorf("expanded rule %s did not fire", rule)
+		}
+	}
+	if len(got["host-device-passthrough"]) != 2 || len(got["shared-disk"]) != 2 {
+		t.Errorf("passthrough/shared findings = host %d shared %d", len(got["host-device-passthrough"]), len(got["shared-disk"]))
+	}
+	readiness := Readiness(report)
+	if readiness.Verdict != "blocked" || len(readiness.Blockers) == 0 || len(readiness.Advisories) == 0 || len(readiness.Unresolved) != 0 {
+		t.Fatalf("expanded readiness = verdict %q blockers %d advisories %d unresolved %+v", readiness.Verdict, len(readiness.Blockers), len(readiness.Advisories), readiness.Unresolved)
+	}
+	for _, status := range report.Rules {
+		if status.Rule == "bios-firmware" || status.Rule == "custom-cpu-topology" || status.Rule == "custom-resource-allocation" || status.Rule == "extension-managed-vm" || status.Rule == "floppy-present" || status.Rule == "manual-mac-address" || status.Rule == "secure-boot-enabled" {
+			if status.Result != "fail" {
+				t.Errorf("advisory %s result=%q", status.Rule, status.Result)
+			}
+		}
+	}
+}
+
+func TestMigrationReadinessDoesNotTreatAdvisoriesOrMissingConfigurationAsReady(t *testing.T) {
+	unlimited := int64(-1)
+	advisoryVM := vsphere.VM{Location: vsphere.Location{Context: "prod"}, ID: "vm-1", Name: "legacy", ConfigurationAvailable: true, Firmware: "bios", CPU: 1, CoresPerSocket: 1,
+		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}}
+	base := assessment.ExportData{Run: assessment.Run{ID: 61, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, VMs: []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: advisoryVM}}}}
+	if got := Readiness(Evaluate(base, Options{})); got.Verdict != "ready" || len(got.Advisories) != 1 {
+		t.Fatalf("advisory-only readiness = %+v", got)
+	}
+	base.VMs[0].Observation.VM.ConfigurationAvailable = false
+	unknown := Readiness(Evaluate(base, Options{}))
+	if unknown.Verdict != "unknown" || len(unknown.Unresolved) == 0 {
+		t.Fatalf("incomplete migration evidence readiness = %+v", unknown)
+	}
+}
+
 func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
 	want := []string{
-		"cdrom-connected", "cluster-network-inconsistent", "datastore-inaccessible", "datastore-space-low", "datastore-zombie-vmdk",
-		"dvportgroup-promiscuous", "dvswitch-host-coverage", "guest-disk-space-low", "host-disconnected", "host-in-maintenance", "host-path-redundancy", "portgroup-promiscuous",
-		"snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected", "vm-inaccessible", "vm-orphaned",
+		"bios-firmware", "cdrom-connected", "cluster-network-inconsistent", "custom-cpu-topology", "custom-resource-allocation", "datastore-inaccessible", "datastore-space-low", "datastore-zombie-vmdk",
+		"dvportgroup-promiscuous", "dvswitch-host-coverage", "extension-managed-vm", "floppy-present", "guest-disk-space-low", "host-device-passthrough", "host-disconnected", "host-in-maintenance", "host-path-redundancy", "manual-mac-address", "portgroup-promiscuous",
+		"rdm-present", "secure-boot-enabled", "shared-disk", "snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected", "vm-inaccessible", "vm-orphaned", "vtpm-present",
 	}
 	rules := Rules()
 	if len(rules) != len(want) {

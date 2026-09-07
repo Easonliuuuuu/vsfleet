@@ -122,7 +122,11 @@ to distinguish shared storage from same-name independent datastores. Resource di
 reference identity and keep volatile utilization/state fields behind
 `--include-runtime`. Trends aggregate estate totals before context/resource
 drill-downs, and every JSON trend/report envelope carries a schema version.
-Inventory schema version 12 persists network observations, while the headless
+Inventory schema version 12 persists network observations. Version 13 adds
+target-neutral VM migration configuration (firmware, Secure Boot, CPU topology,
+resource controls, and managed-by metadata) plus normalized vTPM, passthrough,
+and floppy evidence; special-device payloads deliberately exclude sensitive
+TPM certificate material. The headless
 `internal/topology` graph joins those observations with VM, host, datastore,
 distributed-switch, and resource-pool evidence for offline dependency queries.
 Run labels, notes, pinning, and the renewable fenced lease from schema version 2

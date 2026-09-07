@@ -15,6 +15,12 @@ import (
 // evaluator all use the same IDs and ordering.
 var rules = []Rule{
 	{
+		ID: "bios-firmware", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
+		Recommendation: "Confirm the destination supports the VM firmware mode and boot configuration.", NeedsCollections: []string{"vm"},
+		Summary: "VM uses legacy BIOS firmware", Needs: "VM firmware configuration",
+		Eval: evaluateBIOSFirmware, Resolve: resolveFirmware,
+	},
+	{
 		ID: "cdrom-connected", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 6,
 		Recommendation: "Disconnect the virtual CD-ROM or remove its ISO backing before migration.", NeedsCollections: []string{"vm"},
 		Summary: "a virtual CD-ROM is currently connected", Needs: "VM CD-ROM connection inventory",
@@ -27,6 +33,18 @@ var rules = []Rule{
 		Recommendation: "Align the standard vSwitch MTU and uplink configuration across hosts in the cluster.", NeedsCollections: []string{"host"},
 		Summary: "hosts in a cluster disagree on standard vSwitch configuration", Needs: "host virtual-switch inventory",
 		Eval: evaluateClusterNetworkInconsistent,
+	},
+	{
+		ID: "custom-cpu-topology", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
+		Recommendation: "Confirm the destination preserves the VM's virtual socket and core topology.", NeedsCollections: []string{"vm"},
+		Summary: "VM uses an explicit or automatic CPU topology", Needs: "VM CPU topology configuration",
+		Eval: evaluateCustomCPUTopology, Resolve: resolveCPUTopology,
+	},
+	{
+		ID: "custom-resource-allocation", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
+		Recommendation: "Review VM CPU and memory reservations or limits before migration.", NeedsCollections: []string{"vm"},
+		Summary: "VM has non-default CPU or memory allocation controls", Needs: "VM CPU and memory allocation configuration",
+		Eval: evaluateCustomResourceAllocation, Resolve: resolveResourceAllocation,
 	},
 	{
 		ID: "datastore-inaccessible", Category: CategoryCapacity, Severity: SeverityCritical,
@@ -134,12 +152,30 @@ var rules = []Rule{
 		Eval: evaluateDVSwitchHostCoverage,
 	},
 	{
+		ID: "extension-managed-vm", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
+		Recommendation: "Confirm the managing extension and its destination integration before migration.", NeedsCollections: []string{"vm"},
+		Summary: "VM lifecycle is managed by a vCenter extension", Needs: "VM managed-by metadata",
+		Eval: evaluateExtensionManagedVM, Resolve: resolveVMConfiguration,
+	},
+	{
+		ID: "floppy-present", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
+		Recommendation: "Remove unused floppy devices or document their destination dependency before migration.", NeedsCollections: []string{"vm"},
+		Summary: "VM has a virtual floppy device", Needs: "VM floppy-device inventory",
+		Eval: evaluateFloppyPresent, Resolve: resolveVMConfiguration,
+	},
+	{
 		ID: "guest-disk-space-low", Category: CategoryCapacity, Severity: SeverityWarning, MinSchema: 4,
 		Recommendation: "Free space in the guest filesystem or expand its virtual disk before migration.", NeedsCollections: []string{"vm"},
 		Summary: "guest filesystem free space is below the configured floor", Needs: "guest partition inventory",
 		Eval: func(in Input, emit func(Finding)) {
 			evaluateRule("guest-disk-space-low", in, Options{Thresholds: in.Thresholds}, emit)
 		},
+	},
+	{
+		ID: "host-device-passthrough", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
+		Recommendation: "Remove or explicitly account for host-device passthrough before migration.", NeedsCollections: []string{"vm"},
+		Summary: "VM depends on a host PCI or direct-path device", Needs: "VM host-device passthrough inventory",
+		Eval: evaluateHostDevicePassthrough, Resolve: resolveVMConfiguration,
 	},
 	{
 		ID: "host-disconnected", Category: CategoryAvailability, Severity: SeverityCritical,
@@ -186,10 +222,34 @@ var rules = []Rule{
 		Eval: evaluateHostPathRedundancy,
 	},
 	{
+		ID: "manual-mac-address", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
+		Recommendation: "Confirm manually assigned MAC addresses are preserved or re-registered at the destination.", NeedsCollections: []string{"vm"},
+		Summary: "VM has a manually assigned MAC address", Needs: "VM NIC MAC assignment metadata",
+		Eval: evaluateManualMACAddress, Resolve: resolveVMConfiguration,
+	},
+	{
 		ID: "portgroup-promiscuous", Category: CategorySecurity, Severity: SeverityWarning, MinSchema: 9,
 		Recommendation: "Disable promiscuous mode, forged transmits, and MAC changes unless explicitly required.", NeedsCollections: []string{"host"},
 		Summary: "a standard port group or vSwitch permits insecure frame policies", Needs: "host virtual-switch and port-group security inventory",
 		Eval: evaluatePortGroupPromiscuous,
+	},
+	{
+		ID: "rdm-present", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
+		Recommendation: "Plan the RDM migration explicitly and confirm destination support for its compatibility mode.", NeedsCollections: []string{"vm"},
+		Summary: "VM has a raw device mapping", Needs: "VM disk backing and RDM compatibility inventory",
+		Eval: evaluateRDMPresent, Resolve: resolveVMConfiguration,
+	},
+	{
+		ID: "secure-boot-enabled", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
+		Recommendation: "Confirm the destination supports the VM's Secure Boot state and boot keys.", NeedsCollections: []string{"vm"},
+		Summary: "VM has Secure Boot enabled", Needs: "VM Secure Boot configuration",
+		Eval: evaluateSecureBoot, Resolve: resolveSecureBoot,
+	},
+	{
+		ID: "shared-disk", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
+		Recommendation: "Identify every VM sharing this disk or SCSI bus and plan the destination relationship.", NeedsCollections: []string{"vm"},
+		Summary: "VM uses a shared SCSI bus or multi-writer disk", Needs: "VM disk sharing and SCSI controller inventory",
+		Eval: evaluateSharedDisk, Resolve: resolveVMConfiguration,
 	},
 	{
 		ID: "snapshot-age", Category: CategoryHygiene, Severity: SeverityWarning,
@@ -268,6 +328,12 @@ var rules = []Rule{
 			}
 		},
 	},
+	{
+		ID: "vtpm-present", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
+		Recommendation: "Confirm destination vTPM, key-provider, and encryption support before migration.", NeedsCollections: []string{"vm"},
+		Summary: "VM has a virtual TPM", Needs: "VM virtual TPM inventory",
+		Eval: evaluateVTPMPresent, Resolve: resolveVMConfiguration,
+	},
 }
 
 var inaccessibleVMStates = map[string]bool{
@@ -275,6 +341,320 @@ var inaccessibleVMStates = map[string]bool{
 	"invalid":       true,
 	"disconnected":  true,
 	"notResponding": true,
+}
+
+func resolveVMConfiguration(in Input) (string, string, []string) {
+	blind := make(map[string]bool)
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if !vm.IsTemplate && !vm.ConfigurationAvailable {
+			blind[contextName(item.Observation)] = true
+		}
+	}
+	return unknownVMConfiguration(blind)
+}
+
+func resolveFirmware(in Input) (string, string, []string) {
+	result, reason, blind := resolveVMConfiguration(in)
+	if result != "" {
+		return result, reason, blind
+	}
+	missing := make(map[string]bool)
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if !vm.IsTemplate && !validFirmware(vm.Firmware) {
+			missing[contextName(item.Observation)] = true
+		}
+	}
+	return unknownVMConfiguration(missing)
+}
+
+func validFirmware(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), "bios") || strings.EqualFold(strings.TrimSpace(value), "efi")
+}
+
+func resolveResourceAllocation(in Input) (string, string, []string) {
+	result, reason, blind := resolveVMConfiguration(in)
+	if result != "" {
+		return result, reason, blind
+	}
+	missing := make(map[string]bool)
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if !vm.IsTemplate && (vm.CPUAllocation == nil || vm.MemoryAllocation == nil) {
+			missing[contextName(item.Observation)] = true
+		}
+	}
+	return unknownVMConfiguration(missing)
+}
+
+func resolveCPUTopology(in Input) (string, string, []string) {
+	result, reason, blind := resolveVMConfiguration(in)
+	if result != "" {
+		return result, reason, blind
+	}
+	missing := make(map[string]bool)
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if !vm.IsTemplate && (vm.CPU <= 0 || vm.CoresPerSocket <= 0) {
+			missing[contextName(item.Observation)] = true
+		}
+	}
+	return unknownVMConfiguration(missing)
+}
+
+func resolveSecureBoot(in Input) (string, string, []string) {
+	result, reason, blind := resolveFirmware(in)
+	if result != "" {
+		return result, reason, blind
+	}
+	missing := make(map[string]bool)
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		if strings.EqualFold(vm.Firmware, "efi") && vm.SecureBootEnabled == nil {
+			missing[contextName(item.Observation)] = true
+		}
+	}
+	return unknownVMConfiguration(missing)
+}
+
+func unknownVMConfiguration(contexts map[string]bool) (string, string, []string) {
+	if len(contexts) == 0 {
+		return "", "", nil
+	}
+	blind := make([]string, 0, len(contexts))
+	for context := range contexts {
+		blind = append(blind, context)
+	}
+	sort.Strings(blind)
+	return "unknown", "VM migration configuration evidence is incomplete", blind
+}
+
+func evaluateBIOSFirmware(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate || !strings.EqualFold(vm.Firmware, "bios") {
+			continue
+		}
+		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM uses legacy BIOS firmware", Evidence: []Evidence{{Field: "firmware", Observed: vm.Firmware, Expected: "efi"}}})
+	}
+}
+
+func evaluateSecureBoot(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate || vm.SecureBootEnabled == nil || !*vm.SecureBootEnabled {
+			continue
+		}
+		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has Secure Boot enabled", Evidence: []Evidence{{Field: "firmware", Observed: nonempty(vm.Firmware, "unknown")}, {Field: "secure_boot_enabled", Observed: "true"}}})
+	}
+}
+
+func evaluateCustomCPUTopology(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate || (vm.CoresPerSocket <= 1 && (vm.AutoCoresPerSocket == nil || !*vm.AutoCoresPerSocket)) {
+			continue
+		}
+		auto := "false"
+		if vm.AutoCoresPerSocket != nil {
+			auto = fmt.Sprintf("%t", *vm.AutoCoresPerSocket)
+		}
+		sockets := vm.CPUSockets
+		if sockets == 0 && vm.CoresPerSocket > 0 {
+			sockets = (vm.CPU + vm.CoresPerSocket - 1) / vm.CoresPerSocket
+		}
+		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM CPU topology uses %d socket(s) with %d cores per socket", sockets, vm.CoresPerSocket), Evidence: []Evidence{{Field: "cpu", Observed: fmt.Sprintf("%d", vm.CPU)}, {Field: "cpu_sockets", Observed: fmt.Sprintf("%d", sockets)}, {Field: "cores_per_socket", Observed: fmt.Sprintf("%d", vm.CoresPerSocket)}, {Field: "auto_cores_per_socket", Observed: auto}}})
+	}
+}
+
+func evaluateCustomResourceAllocation(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		evidence := make([]Evidence, 0, 5)
+		if vm.CPUAllocation != nil {
+			appendAllocationEvidence(&evidence, "cpu", vm.CPUAllocation)
+		}
+		if vm.MemoryAllocation != nil {
+			appendAllocationEvidence(&evidence, "memory", vm.MemoryAllocation)
+		}
+		if vm.MemoryReservationLockedToMax != nil && *vm.MemoryReservationLockedToMax {
+			evidence = append(evidence, Evidence{Field: "memory_reservation_locked_to_max", Observed: "true"})
+		}
+		if len(evidence) == 0 {
+			continue
+		}
+		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has non-default CPU or memory allocation controls", Evidence: evidence})
+	}
+}
+
+func appendAllocationEvidence(out *[]Evidence, prefix string, allocation *vsphere.VMResourceAllocation) {
+	unit := "_mb"
+	if prefix == "cpu" {
+		unit = "_mhz"
+	}
+	if allocation.Reservation != nil && *allocation.Reservation > 0 {
+		*out = append(*out, Evidence{Field: prefix + "_reservation" + unit, Observed: fmt.Sprintf("%d", *allocation.Reservation), Expected: "0"})
+	}
+	if allocation.Limit != nil && *allocation.Limit != -1 {
+		*out = append(*out, Evidence{Field: prefix + "_limit" + unit, Observed: fmt.Sprintf("%d", *allocation.Limit), Expected: "-1 (unlimited)"})
+	}
+}
+
+func evaluateRDMPresent(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		for _, disk := range vm.Disks {
+			if !disk.Raw && !strings.EqualFold(disk.BackingType, "rdm") && disk.RawLUNID == "" {
+				continue
+			}
+			evidence := []Evidence{{Field: "disk", Observed: nonempty(disk.Label, fmt.Sprintf("key %d", disk.Key))}, {Field: "backing_type", Observed: nonempty(disk.BackingType, "rdm")}}
+			if disk.RawCompatibilityMode != "" {
+				evidence = append(evidence, Evidence{Field: "compatibility_mode", Observed: disk.RawCompatibilityMode})
+			}
+			if disk.RawLUNID != "" {
+				evidence = append(evidence, Evidence{Field: "lun_id", Observed: disk.RawLUNID})
+			}
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM disk %q uses a raw device mapping", nonempty(disk.Label, "unnamed disk")), Evidence: evidence})
+		}
+	}
+}
+
+func evaluateSharedDisk(in Input, emit func(Finding)) {
+	owners := make(map[string][]string)
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		for _, disk := range vm.Disks {
+			if key := sharedDiskKey(disk); key != "" {
+				owners[key] = append(owners[key], vm.Name+" @ "+contextName(item.Observation))
+			}
+		}
+	}
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		for _, disk := range vm.Disks {
+			sharedBus := disk.SharedBus != "" && !strings.EqualFold(disk.SharedBus, "noSharing")
+			multiWriter := strings.EqualFold(disk.Sharing, "sharingMultiWriter") || strings.EqualFold(disk.Sharing, "multiWriter")
+			if !sharedBus && !multiWriter {
+				continue
+			}
+			evidence := []Evidence{{Field: "disk", Observed: nonempty(disk.Label, fmt.Sprintf("key %d", disk.Key))}}
+			if sharedBus {
+				evidence = append(evidence, Evidence{Field: "shared_bus", Observed: disk.SharedBus})
+			}
+			if multiWriter {
+				evidence = append(evidence, Evidence{Field: "sharing", Observed: disk.Sharing})
+			}
+			peers := owners[sharedDiskKey(disk)]
+			if len(peers) > 1 {
+				evidence = append(evidence, Evidence{Field: "related_vms", Observed: strings.Join(peers, ", ")})
+			}
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM disk %q uses shared storage semantics", nonempty(disk.Label, "unnamed disk")), Evidence: evidence})
+		}
+	}
+}
+
+func sharedDiskKey(disk vsphere.VMDisk) string {
+	for _, value := range []string{disk.RawLUNID, disk.UUID, disk.BackingPath} {
+		if strings.TrimSpace(value) != "" {
+			return strings.ToLower(strings.TrimSpace(value))
+		}
+	}
+	return ""
+}
+
+func evaluateManualMACAddress(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		for _, nic := range vm.NICs {
+			if !strings.EqualFold(strings.TrimSpace(nic.MACAddressType), "manual") {
+				continue
+			}
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("NIC %q has a manually assigned MAC address", nonempty(nic.Label, "unnamed NIC")), Evidence: []Evidence{{Field: "mac_address", Observed: nic.MACAddress}, {Field: "mac_address_type", Observed: nic.MACAddressType, Expected: "generated"}}})
+		}
+	}
+}
+
+func evaluateHostDevicePassthrough(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		for _, device := range vm.PCIDevices {
+			evidence := []Evidence{{Field: "device", Observed: nonempty(device.Label, fmt.Sprintf("key %d", device.Key))}, {Field: "backing_type", Observed: nonempty(device.BackingType, "unknown")}}
+			if device.VGPU != "" {
+				evidence = append(evidence, Evidence{Field: "vgpu", Observed: device.VGPU})
+			}
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has a PCI or vGPU passthrough device", Evidence: evidence})
+		}
+		for _, nic := range vm.NICs {
+			if !strings.EqualFold(nic.Adapter, "SR-IOV") && (nic.DirectPathIO == nil || !*nic.DirectPathIO) {
+				continue
+			}
+			evidence := []Evidence{{Field: "adapter", Observed: nonempty(nic.Adapter, "network adapter")}}
+			if nic.DirectPathIO != nil {
+				evidence = append(evidence, Evidence{Field: "direct_path_io", Observed: fmt.Sprintf("%t", *nic.DirectPathIO)})
+			}
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has a host-backed network adapter", Evidence: evidence})
+		}
+	}
+}
+
+func evaluateFloppyPresent(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		for _, floppy := range vm.Floppies {
+			evidence := []Evidence{{Field: "backing", Observed: attachedDeviceDetails(floppy.BackingType, floppy.BackingPath, floppy.BackingDevice, floppy.BackingHost)}}
+			if floppy.Connected != nil {
+				evidence = append(evidence, Evidence{Field: "connected", Observed: fmt.Sprintf("%t", *floppy.Connected)})
+			}
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM has a virtual floppy device %q", nonempty(floppy.Label, "unnamed floppy")), Evidence: evidence})
+		}
+	}
+}
+
+func evaluateExtensionManagedVM(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate || vm.ManagedBy == nil || (vm.ManagedBy.ExtensionKey == "" && vm.ManagedBy.Type == "") {
+			continue
+		}
+		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM lifecycle is managed by a vCenter extension", Evidence: []Evidence{{Field: "extension_key", Observed: nonempty(vm.ManagedBy.ExtensionKey, "unknown")}, {Field: "managed_type", Observed: nonempty(vm.ManagedBy.Type, "unknown")}}})
+	}
+}
+
+func evaluateVTPMPresent(in Input, emit func(Finding)) {
+	for _, item := range in.Data.VMs {
+		vm := item.Observation.VM
+		if vm.IsTemplate {
+			continue
+		}
+		for _, tpm := range vm.TPMs {
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM has a virtual TPM %q", nonempty(tpm.Label, "unnamed vTPM")), Evidence: []Evidence{{Field: "device", Observed: nonempty(tpm.Label, fmt.Sprintf("key %d", tpm.Key))}}})
+		}
+	}
 }
 
 func nonempty(value, fallback string) string {

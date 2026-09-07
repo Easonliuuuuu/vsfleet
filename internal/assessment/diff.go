@@ -3,6 +3,7 @@ package assessment
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -275,6 +276,7 @@ func changedFields(a, b vsphere.VM, runtime bool) []FieldChange {
 	add("memory", strconv.FormatInt(a.MemoryMB, 10), strconv.FormatInt(b.MemoryMB, 10))
 	add("guest_os", a.GuestOS, b.GuestOS)
 	add("annotation", a.Annotation, b.Annotation)
+	add("migration_configuration", migrationFingerprint(a), migrationFingerprint(b))
 	if runtime {
 		add("power_state", a.PowerState, b.PowerState)
 		add("guest_state", a.GuestState, b.GuestState)
@@ -283,6 +285,65 @@ func changedFields(a, b vsphere.VM, runtime bool) []FieldChange {
 		add("storage_gb", fmt.Sprintf("%.3f", a.StorageGB), fmt.Sprintf("%.3f", b.StorageGB))
 	}
 	return out
+}
+
+func migrationFingerprint(vm vsphere.VM) string {
+	value := struct {
+		ConfigurationAvailable       bool                        `json:"configuration_available"`
+		GuestID                      string                      `json:"guest_id"`
+		Firmware                     string                      `json:"firmware"`
+		SecureBootEnabled            *bool                       `json:"secure_boot_enabled"`
+		CoresPerSocket               int32                       `json:"cores_per_socket"`
+		CPUSockets                   int32                       `json:"cpu_sockets"`
+		AutoCoresPerSocket           *bool                       `json:"auto_cores_per_socket"`
+		CPUAllocation                *vmResourceAllocationCompat `json:"cpu_allocation"`
+		MemoryAllocation             *vmResourceAllocationCompat `json:"memory_allocation"`
+		MemoryReservationLockedToMax *bool                       `json:"memory_reservation_locked_to_max"`
+		ManagedBy                    *vsphere.VMManagedBy        `json:"managed_by"`
+		Disks                        []vsphere.VMDisk            `json:"disks"`
+		NICs                         []migrationNIC              `json:"nics"`
+		TPMs                         []vsphere.VMTPM             `json:"tpms"`
+		PCIDevices                   []vsphere.VMPCIDevice       `json:"pci_devices"`
+		Floppies                     []vsphere.VMFloppy          `json:"floppies"`
+	}{
+		ConfigurationAvailable: vm.ConfigurationAvailable, GuestID: vm.GuestID, Firmware: vm.Firmware,
+		SecureBootEnabled: vm.SecureBootEnabled, CoresPerSocket: vm.CoresPerSocket, CPUSockets: vm.CPUSockets,
+		AutoCoresPerSocket: vm.AutoCoresPerSocket, CPUAllocation: allocationCompat(vm.CPUAllocation), MemoryAllocation: allocationCompat(vm.MemoryAllocation),
+		MemoryReservationLockedToMax: vm.MemoryReservationLockedToMax, ManagedBy: vm.ManagedBy, Disks: vm.Disks, NICs: migrationNICs(vm.NICs), TPMs: vm.TPMs, PCIDevices: vm.PCIDevices, Floppies: vm.Floppies,
+	}
+	raw, _ := json.Marshal(value)
+	return string(raw)
+}
+
+type migrationNIC struct {
+	Key            int32  `json:"key"`
+	Adapter        string `json:"adapter,omitempty"`
+	MACAddress     string `json:"mac_address,omitempty"`
+	MACAddressType string `json:"mac_address_type,omitempty"`
+	DirectPathIO   *bool  `json:"direct_path_io,omitempty"`
+}
+
+func migrationNICs(values []vsphere.VMNIC) []migrationNIC {
+	out := make([]migrationNIC, 0, len(values))
+	for _, value := range values {
+		out = append(out, migrationNIC{Key: value.Key, Adapter: value.Adapter, MACAddress: value.MACAddress, MACAddressType: value.MACAddressType, DirectPathIO: value.DirectPathIO})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Key < out[j].Key })
+	return out
+}
+
+// vmResourceAllocationCompat keeps the diff package independent of the
+// pointer-bearing implementation details while preserving nil/default state.
+type vmResourceAllocationCompat struct {
+	Reservation *int64 `json:"reservation,omitempty"`
+	Limit       *int64 `json:"limit,omitempty"`
+}
+
+func allocationCompat(value *vsphere.VMResourceAllocation) *vmResourceAllocationCompat {
+	if value == nil {
+		return nil
+	}
+	return &vmResourceAllocationCompat{Reservation: value.Reservation, Limit: value.Limit}
 }
 
 func compareSnapshots(a, b storedVM) []SnapshotChange {

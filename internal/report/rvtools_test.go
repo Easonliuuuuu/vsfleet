@@ -17,7 +17,7 @@ import (
 
 // rvtoolsTabOrder is the tab order both WriteRVTools and RVToolsCSV must
 // produce.
-var rvtoolsTabOrder = []string{"vInfo", "vCPU", "vMemory", "vDisk", "vPartition", "vNetwork", "vTools", "vHost", "vHBA", "vNIC", "vSwitch", "vPort", "vSC+VMK", "vMultiPath", "vCluster", "vRP", "vDatastore", "vSnapshot", "vHealth", "vsfleetCoverage"}
+var rvtoolsTabOrder = []string{"vInfo", "vCPU", "vMemory", "vDisk", "vPartition", "vNetwork", "vTools", "vHost", "vHBA", "vNIC", "vSwitch", "vPort", "dvSwitch", "dvPort", "vSC+VMK", "vMultiPath", "vCluster", "vRP", "vDatastore", "vSnapshot", "vHealth", "vsfleetCoverage"}
 
 func healthReport(data assessment.ExportData) health.Report {
 	return health.Evaluate(data, health.Options{Thresholds: health.DefaultThresholds()})
@@ -38,13 +38,14 @@ func sampleExportData(when time.Time) assessment.ExportData {
 	})
 	datastorePayload, _ := json.Marshal(vsphere.Datastore{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "ds-1", Name: "datastore-1", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, Accessible: true})
 	poolPayload, _ := json.Marshal(vsphere.ResourcePool{Location: vsphere.Location{Datacenter: "dc-a", Path: "/dc-a/host/cluster-1/Resources/app-pool"}, ID: "pool-1", Name: "app-pool", Status: "green", VMRefs: []string{"vm-1"}, CPULimitMHz: int64Ptr(12000), CPUReservationMHz: int64Ptr(1000), MemConfiguredMB: 4096})
+	dvSwitchPayload, _ := json.Marshal(vsphere.DVSwitch{Location: vsphere.Location{Datacenter: "dc-a", Path: "/dc-a/network/dvs-1"}, ID: "dvs-1", Name: "DVS-1", UUID: "dvs-uuid", Vendor: "VMware", Version: "8.0.3", NumPorts: 128, MaxPorts: 4096, MaxMTU: 9000, Hosts: []string{"esx-1"}, PortGroups: []vsphere.DVPortGroup{{ID: "dvpg-1", Key: "dvportgroup-1", Name: "frontend", Switch: "DVS-1", Type: "earlyBinding", NumPorts: 64, VLAN: "120", Promiscuous: &enabled, MACChanges: &duplex, ForgedTransmits: &duplex}}})
 	thin := true
 	connected := true
 	return assessment.ExportData{
 		Run:       assessment.Run{ID: 7, Label: "nightly", StartedAt: when, FinishedAt: when.Add(time.Minute), Status: assessment.RunComplete, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion},
-		Contexts:  []assessment.ContextRun{{Name: "prod", Endpoint: "https://vc.example", Datacenter: "dc-a", VCenterID: "vc-uuid", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "host", Status: "success", ItemCount: 1}, {Kind: "cluster", Status: "empty"}, {Kind: "resourcepool", Status: "success", ItemCount: 1}, {Kind: "datastore", Status: "success", ItemCount: 1}}}},
+		Contexts:  []assessment.ContextRun{{Name: "prod", Endpoint: "https://vc.example", Datacenter: "dc-a", VCenterID: "vc-uuid", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "host", Status: "success", ItemCount: 1}, {Kind: "cluster", Status: "empty"}, {Kind: "resourcepool", Status: "success", ItemCount: 1}, {Kind: "dvswitch", Status: "success", ItemCount: 1}, {Kind: "datastore", Status: "success", ItemCount: 1}}}},
 		VMs:       []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "vm-1", Name: "app", PowerState: "poweredOn", CPU: 2, MemoryMB: 4096, StorageGB: 10, GuestOS: "Ubuntu", InstanceUUID: "instance", BIOSUUID: "bios", Host: "esx-1", ToolsState: "guestToolsRunning", ToolsVersion: "12352", ToolsVersionStatus: "guestToolsCurrent", Disks: []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 8 << 30, UUID: "disk-uuid", ThinProvisioned: &thin, BackingPath: "[ds] app/app.vmdk"}}, NICs: []vsphere.VMNIC{{Key: 201, Label: "Network adapter 1", Network: "VM Network", Connected: &connected, IPv4: []string{"192.0.2.20"}}}, Partitions: []vsphere.VMPartition{{Path: "/", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}}}}, Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when, PowerState: "poweredOn", Quiesced: true}}}},
-		Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-uuid", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "resourcepool", ID: "pool-1", Name: "app-pool", Payload: poolPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "datastore", ID: "ds-1", Name: "datastore-1", Payload: datastorePayload}},
+		Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-uuid", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "resourcepool", ID: "pool-1", Name: "app-pool", Payload: poolPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "dvswitch", ID: "dvs-1", Name: "DVS-1", Payload: dvSwitchPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "datastore", ID: "ds-1", Name: "datastore-1", Payload: datastorePayload}},
 	}
 }
 
@@ -85,6 +86,12 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	}
 	if got, _ := f.GetCellValue("vMemory", "D2"); got != "4096" {
 		t.Fatalf("vMemory size=%q", got)
+	}
+	if got, _ := f.GetCellValue("dvSwitch", "A2"); got != "DVS-1" {
+		t.Fatalf("dvSwitch name=%q", got)
+	}
+	if got, _ := f.GetCellValue("dvPort", "A2"); got != "frontend" {
+		t.Fatalf("dvPort name=%q", got)
 	}
 	if got, _ := f.GetCellValue("vDisk", "A2"); got != "app" {
 		t.Fatalf("vDisk A2=%q", got)
@@ -217,13 +224,13 @@ func TestRVToolsPreservesTemplateRowsAndHealthCoverageGaps(t *testing.T) {
 	if got, _ := f.GetCellValue("vInfo", "C2"); !strings.EqualFold(got, "true") {
 		t.Fatalf("template vInfo flag=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "J20"); got != "vHealth" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "J22"); got != "vHealth" {
 		t.Fatalf("health coverage sheet=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "K20"); got != "partial" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "K22"); got != "partial" {
 		t.Fatalf("health coverage status=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "M20"); !strings.Contains(got, "datastore-zombie-vmdk") {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "M22"); !strings.Contains(got, "datastore-zombie-vmdk") {
 		t.Fatalf("health coverage message=%q", got)
 	}
 }
@@ -254,8 +261,8 @@ func TestWriteRVToolsMarksDeviceTabsNotRecordedForOldRuns(t *testing.T) {
 	defer f.Close()
 	// Tab order is vInfo(2), vCPU(3), vMemory(4), vDisk(5), vPartition(6),
 	// vNetwork(7), vTools(8), vHost(9), vHBA(10), vNIC(11), vSwitch(12),
-	// vPort(13), vSC+VMK(14), vMultiPath(15), vCluster(16), vRP(17),
-	// vDatastore(18), vSnapshot(19), vHealth(20).
+	// vPort(13), dvSwitch(14), dvPort(15), vSC+VMK(16), vMultiPath(17),
+	// vCluster(18), vRP(19), vDatastore(20), vSnapshot(21), vHealth(22).
 	for row, sheet := range map[string]string{"5": "vDisk", "7": "vNetwork"} {
 		if got, _ := f.GetCellValue("vsfleetCoverage", "J"+row); got != sheet {
 			t.Fatalf("coverage sheet row %s=%q, want %q", row, got, sheet)
@@ -283,16 +290,16 @@ func TestWriteRVToolsMarksDeviceTabsNotRecordedForOldRuns(t *testing.T) {
 	if got, _ := f.GetCellValue("vsfleetCoverage", "M8"); got != "capture predates VMware Tools version inventory" {
 		t.Fatalf("vTools coverage message=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "J17"); got != "vRP" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "J19"); got != "vRP" {
 		t.Fatalf("coverage sheet row 17=%q, want vRP", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "K17"); got != "not recorded" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "K19"); got != "not recorded" {
 		t.Fatalf("vRP coverage status=%q", got)
 	}
-	if got, _ := f.GetCellValue("vsfleetCoverage", "M17"); got != "capture predates resource pool inventory" {
+	if got, _ := f.GetCellValue("vsfleetCoverage", "M19"); got != "capture predates resource pool inventory" {
 		t.Fatalf("vRP coverage message=%q", got)
 	}
-	for row, sheet := range map[string]string{"10": "vHBA", "11": "vNIC", "12": "vSwitch", "13": "vPort", "14": "vSC+VMK", "15": "vMultiPath"} {
+	for row, sheet := range map[string]string{"10": "vHBA", "11": "vNIC", "12": "vSwitch", "13": "vPort", "16": "vSC+VMK", "17": "vMultiPath"} {
 		if got, _ := f.GetCellValue("vsfleetCoverage", "J"+row); got != sheet {
 			t.Fatalf("coverage sheet row %s=%q, want %q", row, got, sheet)
 		}
@@ -577,13 +584,13 @@ func TestWriteRVToolsHealthCoverageStates(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer f.Close()
-			if got, _ := f.GetCellValue("vsfleetCoverage", "J20"); got != "vHealth" {
+			if got, _ := f.GetCellValue("vsfleetCoverage", "J22"); got != "vHealth" {
 				t.Fatalf("health coverage sheet=%q", got)
 			}
-			if got, _ := f.GetCellValue("vsfleetCoverage", "K20"); got != tc.wantStatus {
+			if got, _ := f.GetCellValue("vsfleetCoverage", "K22"); got != tc.wantStatus {
 				t.Fatalf("health coverage status=%q, want %q", got, tc.wantStatus)
 			}
-			if got, _ := f.GetCellValue("vsfleetCoverage", "M20"); !strings.Contains(got, tc.wantMessage) {
+			if got, _ := f.GetCellValue("vsfleetCoverage", "M22"); !strings.Contains(got, tc.wantMessage) {
 				t.Fatalf("health coverage message=%q, want substring %q", got, tc.wantMessage)
 			}
 		})

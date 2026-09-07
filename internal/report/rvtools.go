@@ -46,6 +46,9 @@ var (
 	nicHeaders          = append([]string{"Device", "PCI", "Driver", "Mac Address", "Link speed Mb", "Duplex", "Wake on LAN", "Switch"}, hostTailHeaders...)
 	switchHeaders       = append([]string{"Switch", "# Ports", "Free ports", "MTU", "Uplinks", "Promiscuous mode", "MAC changes", "Forged transmits", "Traffic shaping"}, hostTailHeaders...)
 	portHeaders         = append([]string{"Port group", "Switch", "VLAN", "Promiscuous mode", "MAC changes", "Forged transmits"}, hostTailHeaders...)
+	dvsTailHeaders      = []string{"Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	dvSwitchHeaders     = append([]string{"DVS", "# Ports", "# Max ports", "MTU", "Vendor", "Version", "UUID", "Description", "Contact", "Contact detail", "Hosts", "Uplink ports", "Link discovery protocol", "Link discovery operation", "LACP version"}, dvsTailHeaders...)
+	dvPortHeaders       = append([]string{"Port group", "DVS", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Promiscuous mode", "MAC changes", "Forged transmits", "Teaming policy", "Notify switches", "Failback", "Ingress shaping", "Egress shaping", "Blocked", "Auto expand", "Active uplinks", "Standby uplinks", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
 	vmkHeaders          = append([]string{"Device", "Port group", "Mac Address", "MTU", "TSO", "Netstack", "DHCP", "IP Address", "Subnet mask", "Service console"}, hostTailHeaders...)
 	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
 	clusterHeaders      = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -89,6 +92,8 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 		{name: "vNIC", headers: nicHeaders, rows: nicRows(data)},
 		{name: "vSwitch", headers: switchHeaders, rows: switchRows(data)},
 		{name: "vPort", headers: portHeaders, rows: portRows(data)},
+		{name: "dvSwitch", headers: dvSwitchHeaders, rows: dvSwitchRows(data)},
+		{name: "dvPort", headers: dvPortHeaders, rows: dvPortRows(data)},
 		{name: "vSC+VMK", headers: vmkHeaders, rows: vmkRows(data)},
 		{name: "vMultiPath", headers: multipathHeaders, rows: multipathRows(data)},
 		{name: "vCluster", headers: clusterHeaders, rows: clusterRows(data)},
@@ -100,7 +105,7 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 	}, nil
 }
 
-// WriteRVTools writes the nineteen RVTools-compatible sheets plus the
+// WriteRVTools writes the twenty-one RVTools-compatible sheets plus the
 // vsfleetCoverage extension sheet. vHealth is derived from the supplied
 // report; callers evaluate it before entering the renderer. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
@@ -561,6 +566,60 @@ func portRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
+func dvsTail(data assessment.ExportData, resource assessment.ResourceObservation, sw vsphere.DVSwitch) []any {
+	return []any{sw.Datacenter, nonempty(sw.ID, resource.ID), contextEndpoint(data, resource.Context), resource.VCenterID, resource.Context}
+}
+
+func dvPortTail(data assessment.ExportData, resource assessment.ResourceObservation, sw vsphere.DVSwitch, port vsphere.DVPortGroup) []any {
+	return []any{sw.Datacenter, nonempty(port.ID, resource.ID), contextEndpoint(data, resource.Context), resource.VCenterID, resource.Context}
+}
+
+func dvSwitchRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, resource := range data.Resources {
+		if resource.Kind != "dvswitch" {
+			continue
+		}
+		var sw vsphere.DVSwitch
+		if err := json.Unmarshal(resource.Payload, &sw); err != nil {
+			continue
+		}
+		row := []any{
+			nonempty(sw.Name, resource.Name), sw.NumPorts, sw.MaxPorts, sw.MaxMTU, sw.Vendor, sw.Version, sw.UUID,
+			optionalString(sw.Description), optionalString(sw.Contact), optionalString(sw.ContactDetail),
+			strings.Join(sw.Hosts, ", "), strings.Join(sw.UplinkPorts, ", "), optionalString(sw.LinkDiscoveryProtocol),
+			optionalString(sw.LinkDiscoveryOperation), optionalString(sw.LACPVersion),
+		}
+		rows = append(rows, append(row, dvsTail(data, resource, sw)...))
+	}
+	return rows
+}
+
+func dvPortRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, resource := range data.Resources {
+		if resource.Kind != "dvswitch" {
+			continue
+		}
+		var sw vsphere.DVSwitch
+		if err := json.Unmarshal(resource.Payload, &sw); err != nil {
+			continue
+		}
+		for _, port := range sw.PortGroups {
+			row := []any{
+				port.Name, nonempty(sw.Name, resource.Name), port.Key, port.Type, port.BackingType, port.NumPorts,
+				optionalString(port.VLAN), port.Uplink, optionalBool(port.Promiscuous), optionalBool(port.MACChanges),
+				optionalBool(port.ForgedTransmits), optionalString(port.TeamingPolicy), optionalBool(port.NotifySwitches),
+				optionalBool(port.Failback), optionalBool(port.IngressShaping), optionalBool(port.EgressShaping),
+				optionalBool(port.Blocked), optionalBool(port.AutoExpand), strings.Join(port.ActiveUplinks, ", "),
+				strings.Join(port.StandbyUplinks, ", "), optionalString(port.LogicalSwitchUUID), optionalString(port.SegmentID),
+			}
+			rows = append(rows, append(row, dvPortTail(data, resource, sw, port)...))
+		}
+	}
+	return rows
+}
+
 func vmkRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, item := range hostConfigResources(data) {
@@ -703,6 +762,7 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 	}
 	resources := make(map[string]map[string]int)
 	hostConfigCounts := make(map[string]map[string]int)
+	dvsCounts := make(map[string]map[string]int)
 	for _, r := range data.Resources {
 		if resources[r.Context] == nil {
 			resources[r.Context] = make(map[string]int)
@@ -724,13 +784,26 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 				counts["vMultiPath"] += len(host.Multipaths)
 			}
 		}
+		if r.Kind == "dvswitch" {
+			var sw vsphere.DVSwitch
+			if err := json.Unmarshal(r.Payload, &sw); err == nil {
+				counts := dvsCounts[r.Context]
+				if counts == nil {
+					counts = make(map[string]int)
+					dvsCounts[r.Context] = counts
+				}
+				counts["dvSwitch"]++
+				counts["dvPort"] += len(sw.PortGroups)
+			}
+		}
 	}
-	rows := make([][]any, 0, len(data.Contexts)*19)
+	rows := make([][]any, 0, len(data.Contexts)*21)
 	devicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 2)
 	toolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 3)
 	partitionsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 4)
 	poolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 8)
 	hostConfigRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 9)
+	dvsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 10)
 	if !devicesRecorded {
 		diskCounts = make(map[string]int)
 		networkCounts = make(map[string]int)
@@ -764,6 +837,8 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			{kind: "host", sheet: "vNIC", count: hostConfigCounts[c.Name]["vNIC"], hostConfig: true},
 			{kind: "host", sheet: "vSwitch", count: hostConfigCounts[c.Name]["vSwitch"], hostConfig: true},
 			{kind: "host", sheet: "vPort", count: hostConfigCounts[c.Name]["vPort"], hostConfig: true},
+			{kind: "dvswitch", sheet: "dvSwitch", count: dvsCounts[c.Name]["dvSwitch"]},
+			{kind: "dvswitch", sheet: "dvPort", count: dvsCounts[c.Name]["dvPort"]},
 			{kind: "host", sheet: "vSC+VMK", count: hostConfigCounts[c.Name]["vSC+VMK"], hostConfig: true},
 			{kind: "host", sheet: "vMultiPath", count: hostConfigCounts[c.Name]["vMultiPath"], hostConfig: true},
 			{kind: "cluster", sheet: "vCluster", count: resources[c.Name]["cluster"]},
@@ -791,6 +866,9 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			case spec.kind == "resourcepool" && !poolsRecorded:
 				status = "not recorded"
 				message = "capture predates resource pool inventory"
+			case spec.kind == "dvswitch" && !dvsRecorded:
+				status = "not recorded"
+				message = "capture predates distributed switch inventory"
 			// Partitions are reported by VMware Tools rather than by vCenter,
 			// so a successful VM capture can still leave this tab partial —
 			// a powered-off VM, or one without Tools running, contributes
@@ -978,16 +1056,25 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 		return less(a.Context, resourceDC(a), a.Name, a.ID, b.Context, resourceDC(b), b.Name, b.ID)
 	})
 	for i := range data.Resources {
-		if data.Resources[i].Kind != "host" {
-			continue
-		}
-		var host vsphere.Host
-		if err := json.Unmarshal(data.Resources[i].Payload, &host); err != nil {
-			continue
-		}
-		canonicalHost(&host)
-		if payload, err := json.Marshal(host); err == nil {
-			data.Resources[i].Payload = payload
+		switch data.Resources[i].Kind {
+		case "host":
+			var host vsphere.Host
+			if err := json.Unmarshal(data.Resources[i].Payload, &host); err != nil {
+				continue
+			}
+			canonicalHost(&host)
+			if payload, err := json.Marshal(host); err == nil {
+				data.Resources[i].Payload = payload
+			}
+		case "dvswitch":
+			var sw vsphere.DVSwitch
+			if err := json.Unmarshal(data.Resources[i].Payload, &sw); err != nil {
+				continue
+			}
+			canonicalDVSwitch(&sw)
+			if payload, err := json.Marshal(sw); err == nil {
+				data.Resources[i].Payload = payload
+			}
 		}
 	}
 	return data
@@ -1036,6 +1123,24 @@ func canonicalHost(host *vsphere.Host) {
 		}
 		return host.Multipaths[i].Key < host.Multipaths[j].Key
 	})
+}
+
+func canonicalDVSwitch(sw *vsphere.DVSwitch) {
+	if sw == nil {
+		return
+	}
+	sort.Strings(sw.Hosts)
+	sort.Strings(sw.UplinkPorts)
+	sort.SliceStable(sw.PortGroups, func(i, j int) bool {
+		if sw.PortGroups[i].Name != sw.PortGroups[j].Name {
+			return sw.PortGroups[i].Name < sw.PortGroups[j].Name
+		}
+		return sw.PortGroups[i].Key < sw.PortGroups[j].Key
+	})
+	for i := range sw.PortGroups {
+		sort.Strings(sw.PortGroups[i].ActiveUplinks)
+		sort.Strings(sw.PortGroups[i].StandbyUplinks)
+	}
 }
 
 func less(ac, ad, an, ai, bc, bd, bn, bi string) bool {
@@ -1102,6 +1207,8 @@ func validateResources(resources []assessment.ResourceObservation) error {
 			value = &vsphere.Datastore{}
 		case "resourcepool":
 			value = &vsphere.ResourcePool{}
+		case "dvswitch":
+			value = &vsphere.DVSwitch{}
 		default:
 			return fmt.Errorf("unsupported persisted resource kind %q", resource.Kind)
 		}

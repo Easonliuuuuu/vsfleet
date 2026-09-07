@@ -420,14 +420,14 @@ func newNetworkListCommand(a *App) *cobra.Command {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), nets)
 		}
-		headers := []string{"NAME", "TYPE", "DATACENTER", "ACCESSIBLE"}
+		headers := []string{"NAME", "TYPE", "SWITCH", "VLAN", "DATACENTER", "ACCESSIBLE"}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
 		}
 		t := newTable(a.out(), headers...)
 		for _, n := range nets {
-			row := []string{n.Name, n.Type, dash(n.Datacenter), yesNo(n.Accessible)}
+			row := []string{n.Name, n.Type, dash(n.Switch), dash(n.VLAN), dash(n.Datacenter), yesNo(n.Accessible)}
 			if multi {
 				row = append([]string{n.Context}, row...)
 			}

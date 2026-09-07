@@ -19,12 +19,13 @@ type RunStatus string
 // adds normalized CD-ROM and USB devices (including connection and backing
 // identity); version 7 adds VM connection state; version 8 adds resource-pool
 // observations; version 9 adds host storage adapter, multipath, physical NIC,
-// virtual switch, port group and VMkernel adapter inventory. All keep the payload
+// virtual switch, port group and VMkernel adapter inventory; version 10 adds
+// distributed virtual switch and port group inventory. All keep the payload
 // backward-compatible with older ledger rows:
 // a reader of an older run sees the field absent, which is what it is. Health
 // rules that need the version-6 evidence must therefore remain not-evaluated
 // for runs captured before this schema.
-const CurrentInventorySchemaVersion = "9"
+const CurrentInventorySchemaVersion = "10"
 
 const (
 	RunRunning  RunStatus = "running"
@@ -76,7 +77,7 @@ type CollectionRun struct {
 }
 
 // ResourceObservation is the durable, versioned representation used for
-// hosts, clusters, datastores, and resource pools. Payload contains the original typed object
+// hosts, clusters, datastores, resource pools, and distributed switches. Payload contains the original typed object
 // so new fields can be added without another ledger migration; the indexed
 // identity columns keep diffs and trend queries inexpensive.
 type ResourceObservation struct {

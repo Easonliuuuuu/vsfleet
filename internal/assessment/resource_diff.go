@@ -75,7 +75,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 	if err != nil {
 		return err
 	}
-	for _, kind := range []string{"host", "cluster", "resourcepool", "datastore"} {
+	for _, kind := range []string{"host", "cluster", "resourcepool", "datastore", "dvswitch"} {
 		baseByVC, targetByVC := make(map[string][]storedResource), make(map[string][]storedResource)
 		// vcNames resolves a VCenterID back to its context name for the "not
 		// comparable" messages below, the same way Diff does for VMs.
@@ -231,6 +231,7 @@ var resourceStableFields = map[string][]string{
 	"cluster":      {"name", "datacenter", "path", "standalone", "cpu_cores", "total_cpu_mhz", "total_memory_mb", "drs_enabled", "ha_enabled"},
 	"resourcepool": {"name", "datacenter", "path", "owner", "root", "cpu_reservation_mhz", "cpu_limit_mhz", "cpu_overhead_limit_mhz", "cpu_expandable", "cpu_shares", "cpu_level", "mem_configured_mb", "mem_reservation_mb", "mem_limit_mb", "mem_overhead_limit_mb", "mem_expandable", "mem_shares", "mem_level"},
 	"datastore":    {"name", "datacenter", "path", "type"},
+	"dvswitch":     {"name", "datacenter", "path", "uuid", "version", "max_mtu", "num_ports", "max_ports", "link_discovery_protocol", "lacp_version", "hosts", "port_groups"},
 }
 
 var resourceRuntimeFields = map[string][]string{
@@ -238,6 +239,7 @@ var resourceRuntimeFields = map[string][]string{
 	"cluster":      {"hosts", "effective_hosts"},
 	"resourcepool": {},
 	"datastore":    {"accessible", "maintenance", "capacity_bytes", "free_bytes"},
+	"dvswitch":     {},
 }
 
 func changedResourceFields(kind string, before, after json.RawMessage, includeRuntime bool) []FieldChange {

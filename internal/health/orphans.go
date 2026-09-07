@@ -512,19 +512,6 @@ func anyStringIntersection(a, b []string) bool {
 	return false
 }
 
-func uniqueStrings(values []string) []string {
-	seen := make(map[string]bool, len(values))
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		if !seen[value] {
-			seen[value] = true
-			out = append(out, value)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
 func appendUnique(values []string, value string) []string {
 	for _, existing := range values {
 		if existing == value {

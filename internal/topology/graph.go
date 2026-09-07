@@ -800,7 +800,7 @@ func (g *Graph) namedCandidates(kind Kind, contextName, name, vlan string) []int
 	key := weakKey(kind, contextName, name, vlan)
 	var out []int
 	for i, r := range g.records {
-		if !r.eligible || r.kind != kind || !strings.EqualFold(r.node.Context, contextName) || strings.ToLower(r.weak) != strings.ToLower(key) {
+		if !r.eligible || r.kind != kind || !strings.EqualFold(r.node.Context, contextName) || !strings.EqualFold(r.weak, key) {
 			continue
 		}
 		out = append(out, i)
@@ -978,10 +978,6 @@ func edgeSortKey(edge graphEdge, records []nodeRecord) string {
 
 func (g Graph) edgeValue(edge graphEdge) Edge {
 	return Edge{From: g.records[edge.from].node, To: g.records[edge.to].node, Relation: edge.relation, Basis: edge.basis, Confidence: edge.confidence, Detail: edge.detail}
-}
-
-func (g Graph) subjectResultSubject(index int) SubjectResult {
-	return SubjectResult{Subject: g.subjects[index].subject}
 }
 
 func (g Graph) checkedContexts(subject subjectRecord) []string {

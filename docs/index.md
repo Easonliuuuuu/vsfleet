@@ -37,7 +37,7 @@ vsfleet assessment export --format rvtools --file estate.xlsx
 The `rvtools` format renders a documented subset of worksheet layouts used by
 RVTools exports: `vInfo`, `vCPU`, `vMemory`, `vDisk`, `vPartition`, `vNetwork`,
 `vTools`, `vHost`, `vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, `vMultiPath`,
-`vCluster`, `vRP`, `vDatastore`, `vSnapshot`, and `vHealth`.
+`vCluster`, `vRP`, `vDatastore`, `dvSwitch`, `dvPort`, `vSnapshot`, and `vHealth`.
 This is an interoperability profile, not RVTools or a replacement for it — see
 [Assessments](assessments.md) for the full tab reference and the
 `vsfleetCoverage` sheet.

@@ -167,6 +167,7 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		{Kind: "cluster", Status: "success", ItemCount: len(inv.Clusters), Resources: demoResources(cc.Name, "demo-prod-vc", "cluster", inv.Clusters)},
 		{Kind: "resourcepool", Status: "success", ItemCount: len(inv.ResourcePools), Resources: demoResources(cc.Name, "demo-prod-vc", "resourcepool", inv.ResourcePools)},
 		{Kind: "datastore", Status: "success", ItemCount: len(inv.Datastores), Resources: demoResources(cc.Name, "demo-prod-vc", "datastore", inv.Datastores)},
+		{Kind: "dvswitch", Status: "success", ItemCount: len(inv.DVSwitches), Resources: demoResources(cc.Name, "demo-prod-vc", "dvswitch", inv.DVSwitches)},
 	}
 	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: cc.Name, VCenterID: "demo-prod-vc", Status: "success", VMs: observations, Collections: collections}, now.Add(time.Minute)); err != nil {
 		closeStore()
@@ -195,6 +196,10 @@ func demoResources(contextName, vcenterID, kind string, values any) []assessment
 			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
 		}
 	case []vsphere.Datastore:
+		for _, value := range typed {
+			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
+		}
+	case []vsphere.DVSwitch:
 		for _, value := range typed {
 			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
 		}
@@ -304,9 +309,15 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 			{Location: loc("datastore", "nvme-01"), ID: name + "-ds-1", Name: "nvme-01", Type: "VMFS", Accessible: true, CapacityBytes: 8 << 40, FreeBytes: 3 << 40},
 			{Location: loc("datastore", "san-01"), ID: name + "-ds-2", Name: "san-01", Type: "VMFS", Accessible: true, CapacityBytes: 24 << 40, FreeBytes: 9 << 40},
 		},
+		DVSwitches: []vsphere.DVSwitch{
+			{Location: loc("network", "DVS-Production"), ID: name + "-dvs-1", Name: "DVS-Production", UUID: name + "-dvs-uuid", Vendor: "VMware", Version: "8.0.3", NumPorts: 256, MaxPorts: 4096, MaxMTU: 9000, Hosts: []string{"esxi-01", "esxi-02"}, UplinkPorts: []string{"DVS-Production-DVUplinks"}, LinkDiscoveryProtocol: "lldp", LinkDiscoveryOperation: "both", LACPVersion: "multipleLag", PortGroups: []vsphere.DVPortGroup{
+				{ID: name + "-dvpg-1", Key: "dvportgroup-1", Name: "frontend-vlan-120", Switch: "DVS-Production", Type: "earlyBinding", BackingType: "standard", NumPorts: 128, VLAN: "120", Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true), TeamingPolicy: "loadbalance_loadbased", NotifySwitches: boolValue(true), Failback: boolValue(true), IngressShaping: boolValue(false), EgressShaping: boolValue(false), Blocked: boolValue(false), AutoExpand: boolValue(true), ActiveUplinks: []string{"dvUplink1"}},
+				{ID: name + "-dvpg-2", Key: "dvportgroup-2", Name: "backend-vlan-240", Switch: "DVS-Production", Type: "earlyBinding", BackingType: "standard", NumPorts: 128, VLAN: "240", Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true), TeamingPolicy: "loadbalance_loadbased", NotifySwitches: boolValue(true), Failback: boolValue(true), ActiveUplinks: []string{"dvUplink1"}},
+			}},
+		},
 		Networks: []vsphere.Network{
-			{Location: loc("network", "frontend-vlan-120"), ID: name + "-net-1", Name: "frontend-vlan-120", Type: "DistributedVirtualPortgroup", Accessible: true},
-			{Location: loc("network", "backend-vlan-240"), ID: name + "-net-2", Name: "backend-vlan-240", Type: "DistributedVirtualPortgroup", Accessible: true},
+			{Location: loc("network", "frontend-vlan-120"), ID: name + "-net-1", Name: "frontend-vlan-120", Type: "DistributedVirtualPortgroup", Switch: "DVS-Production", VLAN: "120", Accessible: true},
+			{Location: loc("network", "backend-vlan-240"), ID: name + "-net-2", Name: "backend-vlan-240", Type: "DistributedVirtualPortgroup", Switch: "DVS-Production", VLAN: "240", Accessible: true},
 		},
 	}
 }

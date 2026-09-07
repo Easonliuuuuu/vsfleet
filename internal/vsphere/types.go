@@ -24,6 +24,9 @@ const (
 	// KindResourcePool is capture-only: resource pools are persisted for
 	// assessment exports, but are not a browsable inventory kind yet.
 	KindResourcePool Kind = "resourcepool"
+	// KindDVSwitch is capture-only: distributed switches are persisted for
+	// assessment exports, but are not a browsable inventory kind yet.
+	KindDVSwitch Kind = "dvswitch"
 )
 
 // AllKinds lists every browsable kind the inventory API can enumerate.
@@ -290,7 +293,7 @@ type HostNIC struct {
 }
 
 // HostVSwitch is one standard virtual switch and its effective security
-// policy. Distributed switches are intentionally outside this model.
+// policy. Distributed switches are represented by the sibling DVSwitch type.
 type HostVSwitch struct {
 	Key             string   `json:"key,omitempty"`
 	Name            string   `json:"name"`
@@ -313,6 +316,59 @@ type HostPortGroup struct {
 	Promiscuous     *bool  `json:"promiscuous,omitempty"`
 	MACChanges      *bool  `json:"mac_changes,omitempty"`
 	ForgedTransmits *bool  `json:"forged_transmits,omitempty"`
+}
+
+// DVSwitch is a distributed virtual switch and its configuration-derived
+// port-group inventory. Runtime per-port state is intentionally not included:
+// collecting it requires a mutating-capable govmomi package and is outside
+// this read-only profile.
+type DVSwitch struct {
+	Location
+	ID                     string        `json:"id"`
+	Name                   string        `json:"name"`
+	UUID                   string        `json:"uuid,omitempty"`
+	Vendor                 string        `json:"vendor,omitempty"`
+	Version                string        `json:"version,omitempty"`
+	Description            string        `json:"description,omitempty"`
+	Contact                string        `json:"contact,omitempty"`
+	ContactDetail          string        `json:"contact_detail,omitempty"`
+	NumPorts               int32         `json:"num_ports"`
+	MaxPorts               int32         `json:"max_ports"`
+	MaxMTU                 int32         `json:"max_mtu"`
+	Hosts                  []string      `json:"hosts,omitempty"`
+	UplinkPorts            []string      `json:"uplink_ports,omitempty"`
+	LinkDiscoveryProtocol  string        `json:"link_discovery_protocol,omitempty"`
+	LinkDiscoveryOperation string        `json:"link_discovery_operation,omitempty"`
+	LACPVersion            string        `json:"lacp_version,omitempty"`
+	PortGroups             []DVPortGroup `json:"port_groups,omitempty"`
+}
+
+// DVPortGroup is one distributed port group and its effective default port
+// policy. It is not one runtime distributed port.
+type DVPortGroup struct {
+	ID                string   `json:"id"`
+	Key               string   `json:"key"`
+	Name              string   `json:"name"`
+	Switch            string   `json:"switch"`
+	Type              string   `json:"type,omitempty"`
+	BackingType       string   `json:"backing_type,omitempty"`
+	NumPorts          int32    `json:"num_ports"`
+	VLAN              string   `json:"vlan,omitempty"`
+	Uplink            bool     `json:"uplink"`
+	Promiscuous       *bool    `json:"promiscuous,omitempty"`
+	MACChanges        *bool    `json:"mac_changes,omitempty"`
+	ForgedTransmits   *bool    `json:"forged_transmits,omitempty"`
+	TeamingPolicy     string   `json:"teaming_policy,omitempty"`
+	NotifySwitches    *bool    `json:"notify_switches,omitempty"`
+	Failback          *bool    `json:"failback,omitempty"`
+	IngressShaping    *bool    `json:"ingress_shaping,omitempty"`
+	EgressShaping     *bool    `json:"egress_shaping,omitempty"`
+	Blocked           *bool    `json:"blocked,omitempty"`
+	AutoExpand        *bool    `json:"auto_expand,omitempty"`
+	ActiveUplinks     []string `json:"active_uplinks,omitempty"`
+	StandbyUplinks    []string `json:"standby_uplinks,omitempty"`
+	LogicalSwitchUUID string   `json:"logical_switch_uuid,omitempty"`
+	SegmentID         string   `json:"segment_id,omitempty"`
 }
 
 // HostVMKernel is one host VMkernel adapter, including whether it came from
@@ -459,6 +515,8 @@ type Network struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	Type       string `json:"type"`
+	Switch     string `json:"switch,omitempty"`
+	VLAN       string `json:"vlan,omitempty"`
 	Accessible bool   `json:"accessible"`
 }
 
@@ -476,6 +534,7 @@ type Inventory struct {
 	Hosts         []Host           `json:"hosts"`
 	Clusters      []Cluster        `json:"clusters"`
 	ResourcePools []ResourcePool   `json:"resource_pools"`
+	DVSwitches    []DVSwitch       `json:"dv_switches"`
 	VApps         []VApp           `json:"vapps"`
 	Datastores    []Datastore      `json:"datastores"`
 	Networks      []Network        `json:"networks"`
@@ -514,6 +573,8 @@ func (i *Inventory) Slice(group FetchGroup) *Inventory {
 		part.Clusters = i.Clusters
 	case GroupResourcePools:
 		part.ResourcePools = i.ResourcePools
+	case GroupDVSwitches:
+		part.DVSwitches = i.DVSwitches
 	case GroupVApps:
 		part.VApps = i.VApps
 	case GroupDatastores:
@@ -563,6 +624,8 @@ func (i *Inventory) ApplyGroup(group FetchGroup, part *Inventory) {
 		i.Clusters = part.Clusters
 	case GroupResourcePools:
 		i.ResourcePools = part.ResourcePools
+	case GroupDVSwitches:
+		i.DVSwitches = part.DVSwitches
 	case GroupVApps:
 		i.VApps = part.VApps
 	case GroupDatastores:
@@ -594,6 +657,8 @@ func (i *Inventory) MergeGroup(group FetchGroup, part *Inventory) {
 		i.Clusters = sortByName(append(i.Clusters, part.Clusters...), func(c Cluster) string { return c.Name })
 	case GroupResourcePools:
 		i.ResourcePools = sortByName(append(i.ResourcePools, part.ResourcePools...), func(r ResourcePool) string { return r.Name })
+	case GroupDVSwitches:
+		i.DVSwitches = sortByName(append(i.DVSwitches, part.DVSwitches...), func(d DVSwitch) string { return d.Name })
 	case GroupVApps:
 		i.VApps = sortByName(append(i.VApps, part.VApps...), func(v VApp) string { return v.Name })
 	case GroupDatastores:

@@ -68,8 +68,9 @@ runs are intentionally part of the analysis.
 Exports read one persisted run and do not contact vCenter or open a live
 session. The `rvtools` format is an XLSX workbook containing `vInfo`, `vCPU`,
 `vMemory`, per-VM `vDisk`, `vPartition` and `vNetwork`, `vTools`, `vHost`,
-`vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, `vMultiPath`, `vCluster`,
-`vRP`, `vDatastore`, `vSnapshot`, `vHealth`, and `vsfleetCoverage` sheets.
+`vHBA`, `vNIC`, `vSwitch`, `vPort`, `dvSwitch`, `dvPort`, `vSC+VMK`,
+`vMultiPath`, `vCluster`, `vRP`, `vDatastore`, `vSnapshot`, `vHealth`, and
+`vsfleetCoverage` sheets.
 
 ```sh
 vsfleet assessment export latest --format rvtools --file ./estate.xlsx
@@ -116,13 +117,14 @@ devices remain a named follow-up.
 
 ### RVTools file interoperability
 
-The `rvtools` export profile renders nineteen worksheet layouts used by RVTools
+The `rvtools` export profile renders twenty-one worksheet layouts used by RVTools
 exports, so a downstream tool that reads those worksheet names and columns can
 consume the corresponding parts of a vsfleet export:
 
 `vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
-`vHost` · `vHBA` · `vNIC` · `vSwitch` · `vPort` · `vSC+VMK` · `vMultiPath` ·
-`vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
+`vHost` · `vHBA` · `vNIC` · `vSwitch` · `vPort` · `dvSwitch` · `dvPort` ·
+`vSC+VMK` · `vMultiPath` · `vCluster` · `vRP` · `vDatastore` · `vSnapshot` ·
+`vHealth`
 
 Compatibility is limited to the listed worksheet names and columns. Other
 worksheets are outside this export profile, so a downstream pipeline that
@@ -192,10 +194,20 @@ from `HostSystem.config.storageDevice` and `HostSystem.config.network` during
 assessment capture. Search, host listing, and the TUI keep their summary fetch;
 the host configuration properties are deliberately not added to those paths.
 
-Distributed switches and ports are not included: they are vCenter-managed
-entities requiring a separate collection pass. The TUI also has no nested
-host-configuration pane yet; both are outside this change. Captures before
-inventory schema 9 mark all six sheets `not recorded` in `vsfleetCoverage`.
+### Distributed switch inventory
+
+Assessment capture records distributed virtual switches and their distributed
+port groups from the vSphere `config` and `summary` properties. The `dvSwitch`
+sheet includes switch identity, MTU, host membership, uplinks, link discovery,
+LACP and product information. The `dvPort` sheet has one row per distributed
+port group and its default VLAN, teaming, security and shaping policy; it is
+not one row per runtime distributed port. Per-port runtime state is outside
+this read-only profile. Captures before inventory schema 10 mark both sheets
+`not recorded` in `vsfleetCoverage`.
+
+The network browsing path also enriches distributed port groups with their
+parent switch and VLAN, so `vsfleet network list` answers that common join
+without requiring an assessment capture.
 
 The `vsfleetCoverage` sheet records every tab and vCenter in the run with its
 collection status, item count, and any error. A partial estate is reported as

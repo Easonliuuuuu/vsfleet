@@ -31,7 +31,7 @@ func TestAssessmentCaptureExportsHostStorageAndNetworkSheets(t *testing.T) {
 	secondDir := filepath.Join(t.TempDir(), "csv-2")
 	r.mustRun("", "--history-db", historyDB, "assessment", "export", "latest", "--format", "csv", "--file", secondDir)
 
-	for _, name := range []string{"vHBA.csv", "vSwitch.csv"} {
+	for _, name := range []string{"vHBA.csv", "vSwitch.csv", "dvSwitch.csv", "dvPort.csv"} {
 		first, err := os.ReadFile(filepath.Join(firstDir, name))
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
@@ -60,7 +60,7 @@ func TestAssessmentCaptureExportsHostStorageAndNetworkSheets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse coverage: %v", err)
 	}
-	for _, wantSheet := range []string{"vHBA", "vSwitch"} {
+	for _, wantSheet := range []string{"vHBA", "vSwitch", "dvSwitch", "dvPort"} {
 		found := false
 		for _, row := range coverage[1:] {
 			if len(row) >= 13 && row[9] == wantSheet {

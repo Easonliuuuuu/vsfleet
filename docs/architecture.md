@@ -135,12 +135,15 @@ the VMware Tools version and version status to VM payloads, backing the
 `vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, and `vMultiPath` tabs. Older rows still populate the `vTools` running-status column,
 with the version columns left blank and the gap noted on `vsfleetCoverage`; runs
 before version 8 mark `vRP` as not recorded, and runs before version 9 mark the
-six host configuration tabs as not recorded. A shared
+six host configuration tabs as not recorded. Version 10 adds persisted
+distributed virtual switch and port-group observations for `dvSwitch` and
+`dvPort`; runs before version 10 mark those tabs as not recorded. A shared
 `rvtoolsSheets` compatibility-sheet builder canonicalizes and validates the run
 once and returns every supported worksheet (`vInfo`, `vCPU`, `vMemory`,
 per-VM `vDisk`/`vNetwork`,
 `vTools`, `vHost`, `vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, `vMultiPath`,
-`vRP`, `vDatastore`, `vSnapshot`, `vHealth`, `vsfleetCoverage`) in
+`dvSwitch`, `dvPort`, `vRP`, `vDatastore`, `vSnapshot`, `vHealth`,
+`vsfleetCoverage`) in
 tab order; the XLSX writer normalizes ZIP entry order and timestamps on top of
 it, and the CSV writer renders the same tabs as one file per sheet, so both
 formats are byte-identical across repeated exports of unchanged stored

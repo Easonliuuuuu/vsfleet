@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 var networkKinds = []string{"Network", "DistributedVirtualPortgroup", "OpaqueNetwork"}
@@ -25,6 +26,27 @@ func (c *Client) listNetworks(ctx context.Context, idx *index) ([]Network, error
 	if err := retrieve(ctx, c, idx.root, networkKinds, []string{"Network"}, networkProps, &raw); err != nil {
 		return nil, err
 	}
+	var distributed []mo.DistributedVirtualPortgroup
+	if err := retrieve(ctx, c, idx.root, []string{"DistributedVirtualPortgroup"}, []string{"DistributedVirtualPortgroup"}, []string{"config.distributedVirtualSwitch", "config.defaultPortConfig"}, &distributed); err != nil {
+		return nil, err
+	}
+	type distributedNetwork struct {
+		switchName string
+		vlan       string
+	}
+	distributedByRef := make(map[string]distributedNetwork, len(distributed))
+	for i := range distributed {
+		m := &distributed[i]
+		parent := m.Config.DistributedVirtualSwitch
+		if parent == nil {
+			continue
+		}
+		entry := distributedNetwork{switchName: idx.name(parent)}
+		if setting, ok := m.Config.DefaultPortConfig.(*types.VMwareDVSPortSetting); ok {
+			entry.vlan = dvsVLAN(setting.Vlan)
+		}
+		distributedByRef[m.Self.Value] = entry
+	}
 	out := make([]Network, 0, len(raw))
 	for i := range raw {
 		m := &raw[i]
@@ -41,6 +63,10 @@ func (c *Client) listNetworks(ctx context.Context, idx *index) ([]Network, error
 					n.Name = b.Name
 				}
 			}
+		}
+		if enrichment, ok := distributedByRef[m.Self.Value]; ok {
+			n.Switch = enrichment.switchName
+			n.VLAN = enrichment.vlan
 		}
 		n.Location = idx.locate(c, m.Self, n.Name)
 		out = append(out, n)

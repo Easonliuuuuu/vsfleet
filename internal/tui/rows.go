@@ -226,7 +226,9 @@ func columnsFor(kind vsphere.Kind, withContext bool) []column {
 	case vsphere.KindNetwork:
 		cols = append(cols,
 			column{title: "NAME"},
-			column{title: "TYPE", width: 26},
+			column{title: "TYPE", width: 10},
+			column{title: "SWITCH", width: 16},
+			column{title: "VLAN", width: 10},
 			column{title: "ACCESSIBLE", width: 12},
 			column{title: "DATACENTER", width: 14},
 		)
@@ -750,12 +752,16 @@ func networkRow(n vsphere.Network, withContext bool) row {
 		cells: lead(withContext, n.Context,
 			n.Name,
 			humanize.Dash(n.Type),
+			humanize.Dash(n.Switch),
+			humanize.Dash(n.VLAN),
 			yesNo(n.Accessible),
 			humanize.Dash(n.Datacenter),
 		),
 		detail: []field{
 			{"vCenter", n.Context},
 			{"Type", humanize.Dash(n.Type)},
+			{"Switch", humanize.Dash(n.Switch)},
+			{"VLAN", humanize.Dash(n.VLAN)},
 			{"Accessible", yesNo(n.Accessible)},
 			{"Datacenter", humanize.Dash(n.Datacenter)},
 			{"Inventory path", humanize.Dash(n.Path)},

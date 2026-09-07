@@ -18,9 +18,12 @@ const (
 	// GroupResourcePools is capture-only and deliberately absent from
 	// AllGroups because the browsable inventory never requests it.
 	GroupResourcePools FetchGroup = "resourcepools"
-	GroupVApps         FetchGroup = "vapps"
-	GroupDatastores    FetchGroup = "datastores"
-	GroupNetworks      FetchGroup = "networks"
+	// GroupDVSwitches is capture-only and deliberately absent from AllGroups
+	// because the browsable inventory never requests it.
+	GroupDVSwitches FetchGroup = "dvswitches"
+	GroupVApps      FetchGroup = "vapps"
+	GroupDatastores FetchGroup = "datastores"
+	GroupNetworks   FetchGroup = "networks"
 )
 
 // AllGroups lists every fetch group ListInventory enumerates.
@@ -104,6 +107,8 @@ func GroupFor(k Kind) FetchGroup {
 		return GroupClusters
 	case KindResourcePool:
 		return GroupResourcePools
+	case KindDVSwitch:
+		return GroupDVSwitches
 	case KindVApp:
 		return GroupVApps
 	case KindDatastore:
@@ -210,6 +215,13 @@ func (c *Client) FetchGroupWith(ctx context.Context, idx *Index, group FetchGrou
 			fail(err, KindResourcePool)
 		} else {
 			inv.ResourcePools = resourcePools
+			opts.partial(inv.Slice(group))
+		}
+	case GroupDVSwitches:
+		if switches, err := c.listDVSwitches(ctx, idx.idx); err != nil {
+			fail(err, KindDVSwitch)
+		} else {
+			inv.DVSwitches = switches
 			opts.partial(inv.Slice(group))
 		}
 	case GroupVApps:

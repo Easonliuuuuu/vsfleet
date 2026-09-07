@@ -284,50 +284,6 @@ func nonempty(value, fallback string) string {
 	return fallback
 }
 
-func referencedDiskPaths(data assessment.ExportData) map[string]struct{} {
-	referenced := make(map[string]struct{})
-	for _, item := range data.VMs {
-		for _, disk := range item.Observation.VM.Disks {
-			if path := normalizeDatastorePath(disk.BackingPath); path != "" {
-				referenced[path] = struct{}{}
-			}
-		}
-	}
-	return referenced
-}
-
-func referencedDatastoreFile(path string, referenced map[string]struct{}) bool {
-	if _, ok := referenced[path]; ok {
-		return true
-	}
-	base, ok := snapshotDeltaBase(path)
-	if !ok {
-		return false
-	}
-	_, ok = referenced[base]
-	return ok
-}
-
-func snapshotDeltaBase(path string) (string, bool) {
-	close := strings.IndexByte(path, ']')
-	if close < 0 {
-		return "", false
-	}
-	relative := strings.TrimSpace(path[close+1:])
-	slash := strings.LastIndexByte(relative, '/')
-	directory, name := relative[:slash+1], relative[slash+1:]
-	if slash < 0 {
-		directory, name = "", relative
-	}
-	name = strings.TrimSuffix(name, ".vmdk")
-	hyphen := strings.LastIndexByte(name, '-')
-	if hyphen < 0 || len(name)-hyphen-1 != 6 || !allDigits(name[hyphen+1:]) {
-		return "", false
-	}
-	base := path[:close+1] + " " + directory + name[:hyphen] + ".vmdk"
-	return normalizeDatastorePath(base), true
-}
-
 func allDigits(value string) bool {
 	if value == "" {
 		return false
@@ -338,26 +294,6 @@ func allDigits(value string) bool {
 		}
 	}
 	return true
-}
-
-func normalizeDatastorePath(value string) string {
-	value = strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
-	open, close := strings.IndexByte(value, '['), strings.IndexByte(value, ']')
-	if open != 0 || close <= open {
-		return ""
-	}
-	datastore := strings.ToLower(strings.TrimSpace(value[open+1 : close]))
-	relative := strings.Trim(strings.TrimSpace(value[close+1:]), "/")
-	for strings.Contains(relative, "//") {
-		relative = strings.ReplaceAll(relative, "//", "/")
-	}
-	if datastore == "" {
-		return ""
-	}
-	if relative == "" {
-		return "[" + datastore + "]"
-	}
-	return "[" + datastore + "] " + strings.Join(strings.Fields(relative), " ")
 }
 
 func attachedDeviceDetails(kind, path, device, host string) string {

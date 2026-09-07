@@ -72,6 +72,7 @@ func newHostWithConfig(c *Client, idx *index, m *mo.HostSystem, withConfig bool)
 		h.CPUCores = int32(hw.NumCpuCores)
 		h.CPUThreads = int32(hw.NumCpuThreads)
 		h.CPUMHz = hw.CpuMhz
+		h.TotalCPUMHz = int64(hw.NumCpuCores) * int64(hw.CpuMhz)
 		h.MemoryMB = hw.MemorySize / (1 << 20)
 	}
 	if p := m.Summary.Config.Product; p != nil {

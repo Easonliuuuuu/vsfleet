@@ -164,14 +164,20 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("read history schema version: %w", err)
 	}
-	if version > 3 {
+	if version > 4 {
 		return fmt.Errorf("history schema version %d is newer than this build understands", version)
 	}
-	if version == 3 {
+	if version == 4 {
 		return nil
 	}
+	if version == 3 {
+		return s.migrateV4(ctx)
+	}
 	if version == 2 {
-		return s.migrateV3(ctx)
+		if err := s.migrateV3(ctx); err != nil {
+			return err
+		}
+		return s.migrateV4(ctx)
 	}
 	if version == 1 {
 		stmts := []string{
@@ -198,7 +204,10 @@ func (s *Store) migrate(ctx context.Context) error {
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit history migration: %w", err)
 		}
-		return s.migrateV3(ctx)
+		if err := s.migrateV3(ctx); err != nil {
+			return err
+		}
+		return s.migrateV4(ctx)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -272,7 +281,10 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit history migration: %w", err)
 	}
-	return s.migrateV3(ctx)
+	if err := s.migrateV3(ctx); err != nil {
+		return err
+	}
+	return s.migrateV4(ctx)
 }
 
 // migrateV3 adds per-resource collection status and durable infrastructure
@@ -345,6 +357,67 @@ func (s *Store) migrateV3(ctx context.Context) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit history v3 migration: %w", err)
+	}
+	return nil
+}
+
+// migrateV4 recomputes host cpu_capacity projections from stored lossless
+// payloads (Issue #111: host CPU capacity was previously projected as per-core
+// MHz instead of total host CPU capacity).
+func (s *Store) migrateV4(ctx context.Context) error {
+	var version int
+	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return fmt.Errorf("read history schema version: %w", err)
+	}
+	if version >= 4 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin history v4 migration: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT id, payload FROM resource_observations WHERE kind = 'host'`)
+	if err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("query host observations for v4 migration: %w", err)
+	}
+	type hostCapUpdate struct {
+		id  int64
+		cap float64
+	}
+	var updates []hostCapUpdate
+	for rows.Next() {
+		var id int64
+		var payload []byte
+		if err := rows.Scan(&id, &payload); err != nil {
+			rows.Close()
+			_ = tx.Rollback()
+			return fmt.Errorf("scan host observation for v4 migration: %w", err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(payload, &m); err == nil {
+			if c, ok := hostCPUCapacity(m); ok {
+				updates = append(updates, hostCapUpdate{id: id, cap: c})
+			}
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("iterate host observations for v4 migration: %w", err)
+	}
+	for _, u := range updates {
+		if _, err := tx.ExecContext(ctx, `UPDATE resource_observations SET cpu_capacity = ? WHERE id = ?`, u.cap, u.id); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("update host cpu_capacity for v4 migration: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `PRAGMA user_version = 4`); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("set history schema version to 4: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit history v4 migration: %w", err)
 	}
 	return nil
 }

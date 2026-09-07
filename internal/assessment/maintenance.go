@@ -175,7 +175,7 @@ func verifySQLiteFile(path string) error {
 	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 		return err
 	}
-	if version < 1 || version > 3 {
+	if version < 1 || version > 4 {
 		return fmt.Errorf("unsupported history schema version %d", version)
 	}
 	var tables int

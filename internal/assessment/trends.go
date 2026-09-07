@@ -481,28 +481,40 @@ func capacityForResources(kind string, resources []storedResource, _ string, _ s
 	var cpuCap, cpuUsed, memCap, memUsed, storageCap, storageFree float64
 	var cpuCapOK, cpuUsedOK, memCapOK, memUsedOK, storageCapOK, storageFreeOK bool
 	for _, resource := range resources {
+		resCPUCapOK := false
 		if resource.observation.CPUCapacity != nil {
 			cpuCap += *resource.observation.CPUCapacity
+			resCPUCapOK = true
 			cpuCapOK = true
 		}
+		resCPUUsedOK := false
 		if resource.observation.CPUUsed != nil {
 			cpuUsed += *resource.observation.CPUUsed
+			resCPUUsedOK = true
 			cpuUsedOK = true
 		}
+		resMemCapOK := false
 		if resource.observation.MemoryCapacity != nil {
 			memCap += *resource.observation.MemoryCapacity
+			resMemCapOK = true
 			memCapOK = true
 		}
+		resMemUsedOK := false
 		if resource.observation.MemoryUsed != nil {
 			memUsed += *resource.observation.MemoryUsed
+			resMemUsedOK = true
 			memUsedOK = true
 		}
+		resStorageCapOK := false
 		if resource.observation.StorageCapacity != nil {
 			storageCap += *resource.observation.StorageCapacity
+			resStorageCapOK = true
 			storageCapOK = true
 		}
+		resStorageFreeOK := false
 		if resource.observation.StorageFree != nil {
 			storageFree += *resource.observation.StorageFree
+			resStorageFreeOK = true
 			storageFreeOK = true
 		}
 		var m map[string]any
@@ -510,19 +522,20 @@ func capacityForResources(kind string, resources []storedResource, _ string, _ s
 			continue
 		}
 		if kind == "host" || kind == "cluster" {
-			cpuKey := "cpu_cores"
-			if kind == "host" {
-				cpuKey = "cpu_mhz"
-			} else {
-				cpuKey = "total_cpu_mhz"
-			}
-			if !cpuCapOK {
-				if n, ok := numberField(m, cpuKey); ok {
-					cpuCap += n
-					cpuCapOK = true
+			if !resCPUCapOK {
+				if kind == "host" {
+					if n, ok := hostCPUCapacity(m); ok {
+						cpuCap += n
+						cpuCapOK = true
+					}
+				} else {
+					if n, ok := numberField(m, "total_cpu_mhz"); ok {
+						cpuCap += n
+						cpuCapOK = true
+					}
 				}
 			}
-			if !cpuUsedOK {
+			if !resCPUUsedOK {
 				if n, ok := numberField(m, "cpu_usage_mhz"); ok {
 					cpuUsed += n
 					cpuUsedOK = true
@@ -532,13 +545,13 @@ func capacityForResources(kind string, resources []storedResource, _ string, _ s
 			if kind == "cluster" {
 				memKey = "total_memory_mb"
 			}
-			if !memCapOK {
+			if !resMemCapOK {
 				if n, ok := numberField(m, memKey); ok {
 					memCap += n
 					memCapOK = true
 				}
 			}
-			if !memUsedOK {
+			if !resMemUsedOK {
 				if n, ok := numberField(m, "memory_usage_mb"); ok {
 					memUsed += n
 					memUsedOK = true
@@ -546,13 +559,13 @@ func capacityForResources(kind string, resources []storedResource, _ string, _ s
 			}
 		}
 		if kind == "datastore" {
-			if !storageCapOK {
+			if !resStorageCapOK {
 				if n, ok := numberField(m, "capacity_bytes"); ok {
 					storageCap += n
 					storageCapOK = true
 				}
 			}
-			if !storageFreeOK {
+			if !resStorageFreeOK {
 				if n, ok := numberField(m, "free_bytes"); ok {
 					storageFree += n
 					storageFreeOK = true
@@ -594,6 +607,21 @@ func capacityForResources(kind string, resources []storedResource, _ string, _ s
 	return point
 }
 
+func hostCPUCapacity(m map[string]any) (float64, bool) {
+	if total, ok := numberField(m, "total_cpu_mhz"); ok && total > 0 {
+		return total, true
+	}
+	cores, okCores := numberField(m, "cpu_cores")
+	mhz, okMhz := numberField(m, "cpu_mhz")
+	if okCores && okMhz && cores > 0 && mhz > 0 {
+		return cores * mhz, true
+	}
+	if okMhz && mhz > 0 {
+		return mhz, true
+	}
+	return 0, false
+}
+
 func resourceMetrics(kind string, payload json.RawMessage) [6]any {
 	var m map[string]any
 	if json.Unmarshal(payload, &m) != nil {
@@ -601,7 +629,10 @@ func resourceMetrics(kind string, payload json.RawMessage) [6]any {
 	}
 	var metrics [6]any
 	if kind == "host" {
-		metrics[0], metrics[1] = m["cpu_mhz"], m["cpu_usage_mhz"]
+		if cap, ok := hostCPUCapacity(m); ok {
+			metrics[0] = cap
+		}
+		metrics[1] = m["cpu_usage_mhz"]
 		metrics[2], metrics[3] = m["memory_mb"], m["memory_usage_mb"]
 	} else if kind == "cluster" {
 		metrics[0], metrics[2] = m["total_cpu_mhz"], m["total_memory_mb"]

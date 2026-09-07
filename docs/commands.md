@@ -19,6 +19,9 @@ configuration, history database, and output options shown below.
 | `vsfleet status` | Check selected contexts |
 | `vsfleet doctor [context...]` | Diagnose the connection stage by stage |
 | `vsfleet health [run]` | Assess the estate described by a stored assessment |
+| `vsfleet topology <kind> <name> [run]` | Show containment and attachments for a stored subject |
+| `vsfleet dependencies <kind> <name> [run]` | Show what a stored subject depends on |
+| `vsfleet blast-radius <kind> <name> [run]` | Show stored subjects affected by a dependency |
 | `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
 | `vsfleet assessment orphans [run]` | Explain estate-wide browsed VMDK orphan evidence |
 | `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
@@ -44,6 +47,29 @@ vsfleet search nvme --kind datastore --limit 20
 
 Results from healthy contexts remain available when another context fails. The
 failure is reported separately with its context and diagnostic information.
+
+## Topology and dependencies
+
+Topology queries use the immutable assessment ledger and never contact a
+vCenter. They join managed-object references, UUIDs, datastore backing
+identity, distributed port-group keys, and context-scoped names across the
+estate:
+
+```sh
+vsfleet topology vm app01 latest
+vsfleet dependencies vm app01 --depth 2
+vsfleet dependencies network prod-vlan-210 -o json | jq
+vsfleet blast-radius datastore ds-prod-01 --all-contexts
+```
+
+`topology` shows containment and direct attachments. `dependencies` follows
+objects a subject uses; `blast-radius` follows that relationship backwards.
+Use `--context` when a name is ambiguous. Each result reports `complete`,
+`partial`, or `unknown`, the checked contexts, the evidence basis for every
+edge, unresolved references, and any collection that was blind. Strong joins
+are confirmed; context-scoped display-name joins are inferred. Network
+relationships reconstructed from runs captured before inventory schema 12 are
+always partial.
 
 `vsfleet doctor` diagnoses whether vsfleet can reach a vCenter, while
 `vsfleet assessment doctor` checks the local history database. `vsfleet health`

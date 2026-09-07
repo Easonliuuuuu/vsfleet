@@ -106,10 +106,10 @@ func Orphans(data assessment.ExportData) OrphanReport {
 			continue
 		}
 		var datastore vsphere.Datastore
-		if !decodeResource(resource, &datastore) {
+		if !assessment.DecodeResource(resource, &datastore) {
 			continue
 		}
-		store := orphanDatastore{resource: resource, ds: datastore, keys: datastoreKeys(datastore), local: datastore.Backing.Local}
+		store := orphanDatastore{resource: resource, ds: datastore, keys: datastore.IdentityKeys(), local: datastore.Backing.Local}
 		store.weakKey = weakDatastoreKey(resource.Context, datastore.Name)
 		stores = append(stores, store)
 		byContextName[contextNameKey(resource.Context, datastore.Name)] = append(byContextName[contextNameKey(resource.Context, datastore.Name)], store)
@@ -119,7 +119,7 @@ func Orphans(data assessment.ExportData) OrphanReport {
 	for _, item := range data.VMs {
 		vm := item.Observation.VM
 		for _, disk := range vm.Disks {
-			name, relative, ok := splitDatastorePath(disk.BackingPath)
+			name, relative, ok := vsphere.SplitDatastorePath(disk.BackingPath)
 			if !ok || relative == "" {
 				continue
 			}
@@ -136,7 +136,7 @@ func Orphans(data assessment.ExportData) OrphanReport {
 			}
 			candidate := orphanReference{
 				context: refContext,
-				path:    normalizeRelativePath(relative),
+				path:    vsphere.NormalizeRelativePath(relative),
 				stem:    snapshotStem(relative),
 				weakKey: weakDatastoreKey(refContext, name),
 				ref: OrphanReference{
@@ -144,7 +144,7 @@ func Orphans(data assessment.ExportData) OrphanReport {
 					VCenterID: item.Observation.VCenterID,
 					VM:        vm.Name,
 					Template:  vm.IsTemplate,
-					Path:      normalizeRelativePath(relative),
+					Path:      vsphere.NormalizeRelativePath(relative),
 				},
 			}
 			if len(matching) == 0 {
@@ -175,7 +175,7 @@ func Orphans(data assessment.ExportData) OrphanReport {
 			continue
 		}
 		for _, file := range store.ds.Files {
-			name, relative, ok := splitDatastorePath(file.Path)
+			name, relative, ok := vsphere.SplitDatastorePath(file.Path)
 			if !ok || !strings.HasSuffix(strings.ToLower(relative), ".vmdk") || sidecarVMDK(relative) {
 				continue
 			}
@@ -269,60 +269,8 @@ func storesNamed(byContextName map[string][]orphanDatastore, name string) []orph
 	return out
 }
 
-func datastoreKeys(datastore vsphere.Datastore) []string {
-	if datastore.Backing.Local {
-		return nil
-	}
-	keys := make([]string, 0, 2+len(datastore.Backing.Extents))
-	if value := strings.TrimSpace(datastore.Backing.VMFSUUID); value != "" {
-		keys = append(keys, "vmfs:"+strings.ToLower(value))
-	}
-	for _, extent := range datastore.Backing.Extents {
-		if value := strings.TrimSpace(extent); value != "" {
-			keys = append(keys, "extent:"+strings.ToLower(value))
-		}
-	}
-	if value := strings.TrimSpace(datastore.Backing.NASRemote); value != "" {
-		keys = append(keys, "nas:"+strings.ToLower(value))
-	}
-	if value := strings.TrimSpace(datastore.Backing.VVolID); value != "" {
-		keys = append(keys, "vvol:"+strings.ToLower(value))
-	}
-	if value := normalizeBackingURL(datastore.Backing.URL); value != "" {
-		keys = append(keys, "url:"+value)
-	}
-	return uniqueStrings(keys)
-}
-
-func normalizeBackingURL(value string) string {
-	value = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "\\", "/")))
-	return strings.TrimRight(value, "/")
-}
-
-func splitDatastorePath(value string) (string, string, bool) {
-	normalized := strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
-	if !strings.HasPrefix(normalized, "[") {
-		return "", "", false
-	}
-	close := strings.IndexByte(normalized, ']')
-	if close <= 1 {
-		return "", "", false
-	}
-	name := strings.ToLower(strings.TrimSpace(normalized[1:close]))
-	relative := normalizeRelativePath(normalized[close+1:])
-	return name, relative, true
-}
-
-func normalizeRelativePath(value string) string {
-	value = strings.Trim(strings.TrimSpace(strings.ReplaceAll(value, "\\", "/")), "/")
-	for strings.Contains(value, "//") {
-		value = strings.ReplaceAll(value, "//", "/")
-	}
-	return strings.ToLower(value)
-}
-
 func snapshotStem(value string) string {
-	value = normalizeRelativePath(value)
+	value = vsphere.NormalizeRelativePath(value)
 	directory, filename := path.Split(value)
 	ext := strings.TrimSuffix(filename, ".vmdk")
 	if len(ext) > 7 {
@@ -335,7 +283,7 @@ func snapshotStem(value string) string {
 }
 
 func sidecarVMDK(value string) bool {
-	name := strings.ToLower(path.Base(normalizeRelativePath(value)))
+	name := strings.ToLower(path.Base(vsphere.NormalizeRelativePath(value)))
 	for _, suffix := range []string{"-flat.vmdk", "-delta.vmdk", "-sesparse.vmdk", "-ctk.vmdk", "-rdm.vmdk", "-rdmp.vmdk", "-digest.vmdk"} {
 		if strings.HasSuffix(name, suffix) {
 			return true
@@ -353,7 +301,7 @@ func contextNameKey(context, name string) string {
 }
 
 func matchingReferences(index orphanIndex, store orphanDatastore, relative string) []orphanReference {
-	pathValue := normalizeRelativePath(relative)
+	pathValue := vsphere.NormalizeRelativePath(relative)
 	stem := snapshotStem(relative)
 	var candidates []orphanReference
 	if len(store.keys) > 0 {
@@ -434,7 +382,7 @@ func blindnessFor(data assessment.ExportData, store orphanDatastore, byContextNa
 		blind = append(blind, OrphanBlindness{Context: store.resource.Context, Reason: "datastore backing identity is unavailable"})
 	}
 	for _, ref := range index.byWeak[store.weakKey] {
-		if ref.blind && ref.context == store.resource.Context && ref.path == normalizeRelativePath(relative) {
+		if ref.blind && ref.context == store.resource.Context && ref.path == vsphere.NormalizeRelativePath(relative) {
 			blind = append(blind, OrphanBlindness{Context: ref.context, Reason: "VM references a datastore name without an observed datastore identity"})
 		}
 	}
@@ -504,7 +452,7 @@ func contextCoverageFailure(context assessment.ContextRun) (string, bool) {
 }
 
 func folderHasReference(index orphanIndex, store orphanDatastore, relative string) bool {
-	directory := path.Dir(normalizeRelativePath(relative))
+	directory := path.Dir(vsphere.NormalizeRelativePath(relative))
 	for _, ref := range uniqueReferences(referencesForStore(index, store)) {
 		if path.Dir(ref.Path) == directory {
 			return true

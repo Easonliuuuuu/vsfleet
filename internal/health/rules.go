@@ -38,7 +38,7 @@ var rules = []Rule{
 					continue
 				}
 				var datastore vsphere.Datastore
-				if !decodeResource(resource, &datastore) || datastore.Accessible {
+				if !assessment.DecodeResource(resource, &datastore) || datastore.Accessible {
 					continue
 				}
 				obj := resourceObject(in.Data, resource, "datastore", datastore.Name, datastore.ID, datastore.Datacenter)
@@ -65,7 +65,7 @@ var rules = []Rule{
 					continue
 				}
 				var datastore vsphere.Datastore
-				if decodeResource(resource, &datastore) && datastore.BrowseStatus == "success" {
+				if assessment.DecodeResource(resource, &datastore) && datastore.BrowseStatus == "success" {
 					return false, ""
 				}
 			}
@@ -151,7 +151,7 @@ var rules = []Rule{
 					continue
 				}
 				var host vsphere.Host
-				if !decodeResource(resource, &host) || host.ConnectionState == "connected" {
+				if !assessment.DecodeResource(resource, &host) || host.ConnectionState == "connected" {
 					continue
 				}
 				obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
@@ -170,7 +170,7 @@ var rules = []Rule{
 					continue
 				}
 				var host vsphere.Host
-				if !decodeResource(resource, &host) || !host.InMaintenance {
+				if !assessment.DecodeResource(resource, &host) || !host.InMaintenance {
 					continue
 				}
 				obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
@@ -329,7 +329,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 				continue
 			}
 			var datastore vsphere.Datastore
-			if !decodeResource(resource, &datastore) {
+			if !assessment.DecodeResource(resource, &datastore) {
 				continue
 			}
 			free, ok := freePct(datastore.CapacityBytes, datastore.FreeBytes)
@@ -449,7 +449,7 @@ func evaluateClusterNetworkInconsistent(in Input, emit func(Finding)) {
 			continue
 		}
 		var host vsphere.Host
-		if !decodeResource(resource, &host) || host.Cluster == "" {
+		if !assessment.DecodeResource(resource, &host) || host.Cluster == "" {
 			continue
 		}
 		for _, sw := range host.VSwitches {
@@ -501,7 +501,7 @@ func evaluateDVSwitchHostCoverage(in Input, emit func(Finding)) {
 			continue
 		}
 		var host vsphere.Host
-		if decodeResource(resource, &host) && host.Cluster != "" {
+		if assessment.DecodeResource(resource, &host) && host.Cluster != "" {
 			hosts[resource.Context] = append(hosts[resource.Context], hostRecord{resource: resource, host: host})
 		}
 	}
@@ -510,7 +510,7 @@ func evaluateDVSwitchHostCoverage(in Input, emit func(Finding)) {
 			continue
 		}
 		var sw vsphere.DVSwitch
-		if !decodeResource(resource, &sw) {
+		if !assessment.DecodeResource(resource, &sw) {
 			continue
 		}
 		members := make(map[string]bool, len(sw.Hosts))
@@ -545,7 +545,7 @@ func evaluateDVSwitchHostCoverage(in Input, emit func(Finding)) {
 					continue
 				}
 				var c vsphere.Cluster
-				if decodeResource(candidate, &c) {
+				if assessment.DecodeResource(candidate, &c) {
 					obj = resourceObject(in.Data, candidate, "cluster", c.Name, c.ID, c.Datacenter)
 				}
 				break
@@ -565,7 +565,7 @@ func evaluateHostPathRedundancy(in Input, emit func(Finding)) {
 			continue
 		}
 		var host vsphere.Host
-		if !decodeResource(resource, &host) {
+		if !assessment.DecodeResource(resource, &host) {
 			continue
 		}
 		for _, path := range host.Multipaths {
@@ -585,7 +585,7 @@ func evaluatePortGroupPromiscuous(in Input, emit func(Finding)) {
 			continue
 		}
 		var host vsphere.Host
-		if !decodeResource(resource, &host) {
+		if !assessment.DecodeResource(resource, &host) {
 			continue
 		}
 		obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
@@ -612,7 +612,7 @@ func evaluateDVPortGroupPromiscuous(in Input, emit func(Finding)) {
 			continue
 		}
 		var sw vsphere.DVSwitch
-		if !decodeResource(resource, &sw) {
+		if !assessment.DecodeResource(resource, &sw) {
 			continue
 		}
 		obj := resourceObject(in.Data, resource, "dvswitch", sw.Name, sw.ID, sw.Datacenter)

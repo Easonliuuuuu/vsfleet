@@ -186,6 +186,7 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		{Kind: "resourcepool", Status: "success", ItemCount: len(inv.ResourcePools), Resources: demoResources(cc.Name, "demo-prod-vc", "resourcepool", inv.ResourcePools)},
 		{Kind: "datastore", Status: "success", ItemCount: len(inv.Datastores), Resources: demoResources(cc.Name, "demo-prod-vc", "datastore", inv.Datastores)},
 		{Kind: "dvswitch", Status: "success", ItemCount: len(inv.DVSwitches), Resources: demoResources(cc.Name, "demo-prod-vc", "dvswitch", inv.DVSwitches)},
+		{Kind: "network", Status: "success", ItemCount: len(inv.Networks), Resources: demoResources(cc.Name, "demo-prod-vc", "network", inv.Networks)},
 	}
 	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: cc.Name, VCenterID: "demo-prod-vc", Status: "success", VMs: observations, Collections: collections}, now.Add(time.Minute)); err != nil {
 		closeStore()
@@ -204,13 +205,14 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		{Kind: "resourcepool", Status: "success", ItemCount: len(edgeInv.ResourcePools), Resources: demoResources(edge.Name, "demo-edge-vc", "resourcepool", edgeInv.ResourcePools)},
 		{Kind: "datastore", Status: "success", ItemCount: len(edgeInv.Datastores), Resources: demoResources(edge.Name, "demo-edge-vc", "datastore", edgeInv.Datastores)},
 		{Kind: "dvswitch", Status: "success", ItemCount: len(edgeInv.DVSwitches), Resources: demoResources(edge.Name, "demo-edge-vc", "dvswitch", edgeInv.DVSwitches)},
+		{Kind: "network", Status: "success", ItemCount: len(edgeInv.Networks), Resources: demoResources(edge.Name, "demo-edge-vc", "network", edgeInv.Networks)},
 	}
 	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: edge.Name, VCenterID: "demo-edge-vc", Status: "success", VMs: edgeObservations, Collections: edgeCollections}, now.Add(time.Minute)); err != nil {
 		closeStore()
 		return nil, nil, err
 	}
 	dr := b.contexts[2]
-	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: dr.Name, VCenterID: "demo-dr-site", Status: "failed", Error: "proxy 10.24.0.8:3128: connection refused", Collections: []assessment.CollectionResult{{Kind: "vm", Status: "failed", Error: "proxy connection refused"}, {Kind: "host", Status: "failed"}, {Kind: "cluster", Status: "failed"}, {Kind: "resourcepool", Status: "failed"}, {Kind: "dvswitch", Status: "failed"}, {Kind: "datastore", Status: "failed"}}}, now.Add(time.Minute)); err != nil {
+	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: dr.Name, VCenterID: "demo-dr-site", Status: "failed", Error: "proxy 10.24.0.8:3128: connection refused", Collections: []assessment.CollectionResult{{Kind: "vm", Status: "failed", Error: "proxy connection refused"}, {Kind: "host", Status: "failed"}, {Kind: "cluster", Status: "failed"}, {Kind: "resourcepool", Status: "failed"}, {Kind: "dvswitch", Status: "failed"}, {Kind: "datastore", Status: "failed"}, {Kind: "network", Status: "failed"}}}, now.Add(time.Minute)); err != nil {
 		closeStore()
 		return nil, nil, err
 	}
@@ -241,6 +243,10 @@ func demoResources(contextName, vcenterID, kind string, values any) []assessment
 			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
 		}
 	case []vsphere.DVSwitch:
+		for _, value := range typed {
+			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
+		}
+	case []vsphere.Network:
 		for _, value := range typed {
 			resources = append(resources, makeDemoResource(contextName, vcenterID, kind, value.ID, value.Name, value))
 		}

@@ -61,12 +61,51 @@ func TestEvaluateInitialRules(t *testing.T) {
 	}
 }
 
+func TestEvaluateMarksFailedCollectionUnknown(t *testing.T) {
+	data := assessment.ExportData{
+		Run:      assessment.Run{ID: 50, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion},
+		Contexts: []assessment.ContextRun{{Name: "unreachable", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "datastore", Status: "failed", Error: "permission denied"}}}},
+	}
+	report := Evaluate(data, Options{Thresholds: DefaultThresholds()})
+	for _, status := range report.Rules {
+		if status.Rule == "datastore-space-low" {
+			if status.Result != "unknown" || len(status.Blind) != 1 || status.Blind[0] != "unreachable" {
+				t.Fatalf("datastore coverage status=%+v", status)
+			}
+			return
+		}
+	}
+	t.Fatal("datastore-space-low status was not reported")
+}
+
+func TestEvaluateMigrationReadinessRules(t *testing.T) {
+	trueValue := true
+	hostOne, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-1", Name: "esx-1", Cluster: "cluster-a", VSwitches: []vsphere.HostVSwitch{{Name: "vSwitch0", MTU: 1500, Uplinks: []string{"vmnic0"}}}, Multipaths: []vsphere.HostMultipath{{LUN: "naa.1", PathCount: 1, Active: 1}}})
+	hostTwo, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-2", Name: "esx-2", Cluster: "cluster-a", VSwitches: []vsphere.HostVSwitch{{Name: "vSwitch0", MTU: 9000, Uplinks: []string{"vmnic0", "vmnic1"}}}, PortGroups: []vsphere.HostPortGroup{{Name: "migration", Switch: "vSwitch0", Promiscuous: &trueValue}}})
+	dvs, _ := json.Marshal(vsphere.DVSwitch{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "dvs-1", Name: "dvSwitch0", Hosts: []string{"esx-1"}, PortGroups: []vsphere.DVPortGroup{{Name: "migration", Promiscuous: &trueValue}}})
+	data := assessment.ExportData{Run: assessment.Run{ID: 51, InventorySchemaVersion: "10"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "empty", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "empty"}, {Kind: "host", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostOne}, {Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-2", Name: "esx-2", Payload: hostTwo}, {Context: "prod", VCenterID: "vc-1", Kind: "dvswitch", ID: "dvs-1", Name: "dvSwitch0", Payload: dvs}}}
+	report := Evaluate(data, Options{})
+	want := map[string]bool{"cluster-network-inconsistent": false, "dvswitch-host-coverage": false, "host-path-redundancy": false, "portgroup-promiscuous": false, "dvportgroup-promiscuous": false}
+	for _, finding := range report.Findings {
+		if _, ok := want[finding.Rule]; ok {
+			want[finding.Rule] = true
+			if finding.Recommendation == "" || len(finding.Evidence) == 0 {
+				t.Errorf("%s missing recommendation/evidence: %+v", finding.Rule, finding)
+			}
+		}
+	}
+	for rule, found := range want {
+		if !found {
+			t.Errorf("%s did not fire", rule)
+		}
+	}
+}
+
 func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
 	want := []string{
-		"cdrom-connected", "datastore-inaccessible", "datastore-space-low", "datastore-zombie-vmdk",
-		"guest-disk-space-low", "host-disconnected", "host-in-maintenance",
-		"snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected",
-		"vm-inaccessible", "vm-orphaned",
+		"cdrom-connected", "cluster-network-inconsistent", "datastore-inaccessible", "datastore-space-low", "datastore-zombie-vmdk",
+		"dvportgroup-promiscuous", "dvswitch-host-coverage", "guest-disk-space-low", "host-disconnected", "host-in-maintenance", "host-path-redundancy", "portgroup-promiscuous",
+		"snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected", "vm-inaccessible", "vm-orphaned",
 	}
 	rules := Rules()
 	if len(rules) != len(want) {

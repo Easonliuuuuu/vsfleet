@@ -25,6 +25,7 @@ func (m *Model) enterChanges() tea.Cmd {
 	m.filtering = false
 	m.filter.Blur()
 	m.changeCursor, m.changeOffset = 0, 0
+	m.offset = 0
 	m.historyHealth = nil
 	m.historyHealthErr = nil
 	if m.assessment == nil {
@@ -276,6 +277,12 @@ func countSegment(t theme, n int, label string, style lipgloss.Style) string {
 func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	if m.historyPane != historyPaneChanges {
 		switch {
+		case m.historyPane == historyPaneHealth && key.Matches(msg, m.keys.Up):
+			m.offset = max(0, m.offset-1)
+			return nil
+		case m.historyPane == historyPaneHealth && key.Matches(msg, m.keys.Down):
+			m.offset++
+			return nil
 		case key.Matches(msg, m.keys.PrevPane):
 			m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
 			return nil
@@ -631,14 +638,15 @@ func (m *Model) viewHistoryHealth() []string {
 		return append(lines, t.dim.Render("  loading health findings…"))
 	}
 	r := m.historyHealth
-	lines = append(lines, fmt.Sprintf("  assessment %-5s  %d finding(s) · %d info · %d warning · %d critical", historyRunLabel(r.RunID), r.Counts.Total, r.Counts.Info, r.Counts.Warning, r.Counts.Critical), "")
+	readiness := health.Readiness(*r)
+	lines = append(lines, fmt.Sprintf("  assessment %-5s  %s · %d finding(s) · %d info · %d warning · %d critical", historyRunLabel(r.RunID), strings.ToUpper(readiness.Verdict), r.Counts.Total, r.Counts.Info, r.Counts.Warning, r.Counts.Critical), "")
 	if len(r.Findings) == 0 {
 		lines = append(lines, t.ok.Render("  no findings"))
 	} else {
-		lines = append(lines, t.header.Render("  SEVERITY   RULE                         OBJECT                         MESSAGE"))
+		lines = append(lines, t.header.Render("  SEVERITY   CATEGORY       RULE                         OBJECT                         MESSAGE"))
 		for _, finding := range r.Findings {
 			object := finding.Object.Kind + "/" + finding.Object.Name
-			line := fmt.Sprintf("  %-10s %-28s %-30s %s", finding.Severity, finding.Rule, object, finding.Message)
+			line := fmt.Sprintf("  %-10s %-14s %-28s %-30s %s", finding.Severity, finding.Category, finding.Rule, object, finding.Message)
 			style := t.warn
 			if finding.Severity == health.SeverityCritical {
 				style = t.bad
@@ -649,11 +657,15 @@ func (m *Model) viewHistoryHealth() []string {
 		}
 	}
 	for _, rule := range r.Rules {
-		if rule.Status == "not-evaluated" {
-			lines = append(lines, t.dim.Render("  not evaluated: "+rule.Rule+" — "+rule.Reason))
+		if rule.Status == "not-evaluated" || rule.Result == "unknown" {
+			reason := rule.Reason
+			if len(rule.Blind) > 0 {
+				reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
+			}
+			lines = append(lines, t.dim.Render("  not evaluated: "+rule.Rule+" — "+reason))
 		}
 	}
-	return scrollLines(lines, 0, m.bodyHeight())
+	return scrollLines(lines, m.offset, m.bodyHeight())
 }
 
 // changesListHeight is how many rows renderChangeList can draw — its own

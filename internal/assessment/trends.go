@@ -168,7 +168,7 @@ func (s *Store) ChurnTrend(ctx context.Context, opts TrendOptions) (ChurnTrend, 
 		}
 		count := 0
 		for id, c := range contexts {
-			if !successful(c.VMStatus) || !trendContextAllowed(c.Name, opts.Contexts) {
+			if !Successful(c.VMStatus) || !trendContextAllowed(c.Name, opts.Contexts) {
 				continue
 			}
 			count += len(vms[id])
@@ -406,7 +406,7 @@ func (s *Store) Report(ctx context.Context, runID int64, olderThan time.Duration
 		return report, err
 	}
 	for id, c := range contexts {
-		if successful(c.VMStatus) {
+		if Successful(c.VMStatus) {
 			report.VMCount += len(vms[id])
 		}
 	}

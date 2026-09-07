@@ -89,31 +89,48 @@ on `vsfleetCoverage`.
 ### Health findings
 
 `vsfleet health [RUN]` evaluates the evidence in a stored assessment without
-contacting vCenter. The first rule set reports inaccessible or low-space
-datastores, disconnected or maintenance-mode hosts, orphaned or inaccessible
-VMs, unreferenced VMDKs, old snapshots, low-space guest filesystems, VMware
-Tools that are missing, stopped, or outdated, and currently connected CD-ROM/
-ISO and USB devices.
+contacting vCenter. Each finding includes a stable rule ID, category, severity,
+object and vCenter context, measured evidence, and a recommendation. Categories
+are `migration`, `availability`, `security`, `capacity`, and `hygiene`.
 
 The defaults are a 30-day maximum snapshot age and 10% minimum free space for
 datastores and guest filesystems. Use `--max-snapshot-age`,
 `--min-datastore-free`, `--min-guest-disk-free`, `--disable-rule`, and
-`--severity` to tune a run. `--fail-on-findings` returns exit code 2 when a
-finding at or above the selected severity exists; invalid selectors and other
-command errors return 1. `--list-rules` prints the rule registry.
+`--severity` and `--category` to tune a run. `--wide` adds recommendations and
+evidence to the table; JSON always includes them. `--fail-on-findings` returns
+exit code 2 when a finding at or above the selected severity exists; invalid
+selectors and other command errors return 1. `--list-rules` prints the rule
+registry, including categories.
 
 Snapshot age is measured from the assessment's own context finish time (falling
 back to the run finish time), never from the current wall clock. Findings are
 recomputed when read, but the thresholds are stamped into the `vHealth`
 coverage message, so exporting unchanged evidence with the same options stays
 reproducible. Rules that need inventory fields introduced after an older run
-are marked `not-evaluated`, rather than making an empty tab look healthy.
+are marked `not-evaluated`, rather than making an empty tab look healthy. A
+collector that failed, or a collection that was not recorded, makes the
+affected rule `unknown`; a partially answered rule keeps real findings but
+names its blind contexts. Incomplete evidence is never represented as a clean
+pass.
 
 Zombie-VMDK evidence is opt-in because it requires the vSphere
 `Datastore.Browse` privilege and adds a bounded directory listing per
 accessible datastore. Use `vsfleet assessment run --browse-datastores`; runs
 without a successful browse mark the rule `not-evaluated`. Connected floppy
 devices remain a named follow-up.
+
+### Migration readiness
+
+`vsfleet assessment findings [RUN]` is the assessment-prefixed equivalent of
+`vsfleet health`. `vsfleet assessment readiness [RUN]` evaluates the same
+stored evidence and returns `ready`, `blocked`, or `unknown`. Migration
+findings at warning or critical severity are blockers; informational migration
+findings are advisories. `--fail-on-blockers` returns exit code 2 when blockers
+exist.
+
+Readiness is deliberately conservative: a failed or missing collector yields
+`unknown`, and a blind vCenter is named in the `Not evaluated` section. The
+verdict can never say `ready` over evidence that was not collected.
 
 ### RVTools file interoperability
 

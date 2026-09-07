@@ -55,7 +55,7 @@ var (
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overhead limit", "CPU reservation", "CPU level", "CPU shares", "CPU expandable reservation", "Mem configured", "Mem limit", "Mem overhead limit", "Mem reservation", "Mem level", "Mem shares", "Mem expandable reservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	healthHeaders       = []string{"Name", "Message", "Message type", "vsfleet Rule", "Object type", "Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	healthHeaders       = []string{"Name", "Message", "Message type", "Category", "vsfleet Rule", "Recommendation", "Evidence", "Object type", "Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	coverageHeaders     = []string{"Run ID", "Run label", "Run started", "Run finished", "Run status", "Context", "Endpoint", "Datacenter", "vCenter ID", "Sheet", "Collection status", "Item count", "Error"}
 )
 
@@ -728,11 +728,23 @@ func healthRows(data assessment.ExportData, healthReport health.Report) [][]any 
 	for _, finding := range healthReport.Findings {
 		object := finding.Object
 		rows = append(rows, []any{
-			object.Name, finding.Message, string(finding.Severity), finding.Rule, object.Kind,
+			object.Name, finding.Message, string(finding.Severity), string(finding.Category), finding.Rule, finding.Recommendation, healthEvidence(finding.Evidence), object.Kind,
 			object.Datacenter, object.ID, contextEndpoint(data, object.Context), object.VCenterID, object.Context,
 		})
 	}
 	return rows
+}
+
+func healthEvidence(evidence []health.Evidence) string {
+	parts := make([]string, 0, len(evidence))
+	for _, item := range evidence {
+		value := item.Field + "=" + item.Observed
+		if item.Expected != "" {
+			value += " (expected " + item.Expected + ")"
+		}
+		parts = append(parts, value)
+	}
+	return strings.Join(parts, "; ")
 }
 
 func coverageRows(data assessment.ExportData, healthReport health.Report) [][]any {
@@ -936,6 +948,7 @@ func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthR
 
 	allRules := health.Rules()
 	evaluated, notEvaluated := 0, make([]health.RuleStatus, 0)
+	unknown := make([]health.RuleStatus, 0)
 	disabled := make([]string, 0)
 	for _, rule := range healthReport.Rules {
 		switch rule.Status {
@@ -945,6 +958,12 @@ func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthR
 			notEvaluated = append(notEvaluated, rule)
 		case "disabled":
 			disabled = append(disabled, rule.Rule)
+		}
+		for _, blind := range rule.Blind {
+			if blind == c.Name {
+				unknown = append(unknown, rule)
+				break
+			}
 		}
 	}
 	if len(healthReport.Rules) == 0 {
@@ -964,6 +983,26 @@ func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthR
 			}
 		}
 		message := fmt.Sprintf("evaluated %d of %d rules; %s need a capture with %s", evaluated, len(allRules), strings.Join(ids, ", "), strings.Join(needs, " and "))
+		if len(unknown) > 0 {
+			message += fmt.Sprintf("; %d rule(s) also have blind coverage", len(unknown))
+		}
+		if len(disabled) > 0 {
+			message += "; disabled rules: " + strings.Join(disabled, ", ")
+		}
+		return "partial", healthFindingsForContext(healthReport, c.Name), message
+	}
+	if len(unknown) > 0 || healthReport.Coverage.RulesUnknown > 0 {
+		ids := make([]string, 0, len(unknown))
+		for _, rule := range unknown {
+			ids = append(ids, rule.Rule)
+		}
+		if len(ids) == 0 {
+			ids = append(ids, "unknown rules")
+		}
+		message := fmt.Sprintf("%d of %d rules evaluated; %s; coverage is incomplete", evaluated, len(allRules), strings.Join(ids, ", "))
+		if len(healthReport.Coverage.BlindContexts) > 0 {
+			message += "; blind contexts: " + strings.Join(healthReport.Coverage.BlindContexts, ", ")
+		}
 		if len(disabled) > 0 {
 			message += "; disabled rules: " + strings.Join(disabled, ", ")
 		}

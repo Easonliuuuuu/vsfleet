@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
 )
 
@@ -113,20 +114,28 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, args []string, flags heal
 	if len(args) == 1 {
 		selector = args[0]
 	}
-	s, err := a.History()
-	if err != nil {
-		return health.Report{}, err
-	}
-	runID, err := s.ResolveRun(cmd.Context(), selector)
-	if err != nil {
-		return health.Report{}, err
-	}
-	data, err := s.LoadExportData(cmd.Context(), runID)
+	data, err := loadRunExportData(cmd, a, []string{selector})
 	if err != nil {
 		return health.Report{}, err
 	}
 	report := health.Evaluate(data, health.Options{Thresholds: health.Thresholds{SnapshotAge: age, DatastoreFreePct: flags.minDatastoreFree, GuestDiskFreePct: flags.minGuestDiskFree}, Disabled: disabledIDs})
 	return filterHealthReport(report, severity, category), nil
+}
+
+func loadRunExportData(cmd *cobra.Command, a *App, args []string) (assessment.ExportData, error) {
+	selector := "latest"
+	if len(args) == 1 && strings.TrimSpace(args[0]) != "" {
+		selector = args[0]
+	}
+	s, err := a.History()
+	if err != nil {
+		return assessment.ExportData{}, err
+	}
+	runID, err := s.ResolveRun(cmd.Context(), selector)
+	if err != nil {
+		return assessment.ExportData{}, err
+	}
+	return s.LoadExportData(cmd.Context(), runID)
 }
 
 func printHealthRules(a *App) error {

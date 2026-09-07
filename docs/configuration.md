@@ -169,5 +169,7 @@ Use a read-only vSphere account. Inventory and assessment collection do not
 need write privileges. The optional `vsfleet assessment run
 --browse-datastores` path additionally needs `Datastore.Browse` on the
 datastores to inspect VM disk-file metadata; it still performs no inventory
-mutation. Without that privilege or without the flag, zombie-VMDK health is
-reported as not evaluated.
+mutation. The datastore backing identity properties are part of the same
+read-only datastore inventory and require no additional privilege. Without
+`Datastore.Browse` or without the flag, zombie-VMDK health is reported as not
+evaluated.

@@ -189,6 +189,7 @@ Assessments are stored locally in an immutable SQLite database, giving your esta
 ```sh
 vsfleet assessment diff q3-audit latest   # What changed between two captures
 vsfleet assessment trends capacity        # Compute and storage trends over time
+vsfleet assessment capacity latest        # Attribute datastore growth and project free space
 vsfleet assessment trends churn           # VMs created and destroyed
 vsfleet assessment snapshots              # Snapshot ages, oldest first
 vsfleet health latest                     # Health findings on stored evidence

@@ -89,9 +89,10 @@ type Rule struct {
 }
 
 type Thresholds struct {
-	SnapshotAge      time.Duration `json:"max_snapshot_age"`
-	DatastoreFreePct float64       `json:"min_datastore_free_pct"`
-	GuestDiskFreePct float64       `json:"min_guest_disk_free_pct"`
+	SnapshotAge        time.Duration `json:"max_snapshot_age"`
+	DatastoreFreePct   float64       `json:"min_datastore_free_pct"`
+	DatastoreFreeBytes float64       `json:"min_datastore_free_bytes"`
+	GuestDiskFreePct   float64       `json:"min_guest_disk_free_pct"`
 }
 
 // DefaultThresholds are the policy defaults used by the CLI, exports, and

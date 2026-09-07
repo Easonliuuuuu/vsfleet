@@ -63,6 +63,32 @@ Trends aggregate estate totals before context and resource drill-downs. By
 default they use complete assessments; use `--include-partial` when partial
 runs are intentionally part of the analysis.
 
+### Capacity attribution and projection
+
+```sh
+vsfleet assessment capacity latest --since 30d --top 5
+vsfleet assessment capacity --min-free 10 --min-free-bytes 500Gi -o json
+```
+
+Capacity growth is measured on used bytes (`capacity - free`), so a datastore
+resize is recorded separately instead of being mistaken for VM growth. The
+drill-down layers evidence by strength: `exact` uses complete datastore browse
+file-size deltas mapped through VM disk backing paths; `inferred` uses a
+single-datastore VM's committed-storage delta; and `split` uses per-disk
+provisioned-capacity deltas when a VM spans datastores. Files that cannot be
+resolved to a VM remain visible as file contributors. The synthetic
+`unattributed` contributor is the residual needed to make the table sum to the
+reported datastore growth.
+
+The projection is a linear least-squares fit of used bytes over usable history.
+It is `unknown` when fewer than three points, less than a day of span,
+non-shrinking free space, or incomplete coverage prevents a defensible result.
+It is `low-confidence` when history is sparse, the fit is weak, partial runs
+are included, a datastore was resized, or pruning-like gaps are present.
+Shared backing identities merge the same datastore across vCenters; local
+datastores remain context-scoped. Blindness is retained in JSON and stderr
+notes rather than being treated as zero growth.
+
 ## Deterministic exports
 
 Exports read one persisted run and do not contact vCenter or open a live
@@ -95,7 +121,7 @@ are `migration`, `availability`, `security`, `capacity`, and `hygiene`.
 
 The defaults are a 30-day maximum snapshot age and 10% minimum free space for
 datastores and guest filesystems. Use `--max-snapshot-age`,
-`--min-datastore-free`, `--min-guest-disk-free`, `--disable-rule`, and
+`--min-datastore-free`, `--min-datastore-free-bytes`, `--min-guest-disk-free`, `--disable-rule`, and
 `--severity` and `--category` to tune a run. `--wide` adds recommendations and
 evidence to the table; JSON always includes them. `--fail-on-findings` returns
 exit code 2 when a finding at or above the selected severity exists; invalid

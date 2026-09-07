@@ -92,6 +92,28 @@ esac
 Without the flag a partial capture exits 0, so an existing job keeps its
 behavior. See [the exit-code table](commands.md#exit-codes) for the contract.
 
+### Capacity projection gate
+
+A scheduled capacity check can keep the normal percentage floor and add an
+absolute floor for large datastores. It emits JSON for the job log and returns
+exit code `2` when a datastore is projected to cross either floor within the
+next 30 days:
+
+```sh
+vsfleet assessment capacity latest --since 90d \
+  --min-free 10 --min-free-bytes 500Gi \
+  --fail-on-projection 30d -o json > capacity.json
+case $? in
+  0) echo "capacity floors are not projected within 30 days" ;;
+  2) echo "capacity action is required"; exit 2 ;;
+  *) echo "capacity assessment failed"; exit 1 ;;
+esac
+```
+
+Use `--include-partial` only when the job wants to include incomplete captures;
+the report retains affected contexts as blind evidence and downgrades the
+projection confidence.
+
 ## Customer enclave through SOCKS5
 
 Resolve a hostname inside an isolated network through a bastion:

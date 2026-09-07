@@ -29,6 +29,7 @@ func (e *readinessExitError) ExitCode() int { return 2 }
 type healthFlags struct {
 	maxSnapshotAge                     string
 	minDatastoreFree, minGuestDiskFree float64
+	minDatastoreFreeBytes              string
 	disabled                           []string
 	minimumSeverity, category          string
 	failOnFindings, listRules, wide    bool
@@ -37,6 +38,7 @@ type healthFlags struct {
 func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
 	cmd.Flags().StringVar(&f.maxSnapshotAge, "max-snapshot-age", "30d", "report snapshots at least this old (e.g. 30d, 2w)")
 	cmd.Flags().Float64Var(&f.minDatastoreFree, "min-datastore-free", 10, "report datastores with less than this percent free space")
+	cmd.Flags().StringVar(&f.minDatastoreFreeBytes, "min-datastore-free-bytes", "", "report datastores with less than this many free bytes")
 	cmd.Flags().Float64Var(&f.minGuestDiskFree, "min-guest-disk-free", 10, "report guest filesystems with less than this percent free space")
 	cmd.Flags().StringSliceVar(&f.disabled, "disable-rule", nil, "disable a health rule (repeat or comma-separate)")
 	cmd.Flags().StringVar(&f.minimumSeverity, "severity", "info", "minimum severity to report: info, warning, or critical")
@@ -98,6 +100,13 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, args []string, flags heal
 	if flags.minGuestDiskFree < 0 || flags.minGuestDiskFree > 100 {
 		return health.Report{}, fmt.Errorf("--min-guest-disk-free must be between 0 and 100")
 	}
+	minDatastoreFreeBytes, err := parseHumanBytes(flags.minDatastoreFreeBytes)
+	if err != nil {
+		return health.Report{}, fmt.Errorf("--min-datastore-free-bytes: %w", err)
+	}
+	if minDatastoreFreeBytes < 0 {
+		return health.Report{}, fmt.Errorf("--min-datastore-free-bytes must be zero or greater")
+	}
 	severity, err := parseHealthSeverity(flags.minimumSeverity)
 	if err != nil {
 		return health.Report{}, err
@@ -118,7 +127,7 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, args []string, flags heal
 	if err != nil {
 		return health.Report{}, err
 	}
-	report := health.Evaluate(data, health.Options{Thresholds: health.Thresholds{SnapshotAge: age, DatastoreFreePct: flags.minDatastoreFree, GuestDiskFreePct: flags.minGuestDiskFree}, Disabled: disabledIDs})
+	report := health.Evaluate(data, health.Options{Thresholds: health.Thresholds{SnapshotAge: age, DatastoreFreePct: flags.minDatastoreFree, DatastoreFreeBytes: minDatastoreFreeBytes, GuestDiskFreePct: flags.minGuestDiskFree}, Disabled: disabledIDs})
 	return filterHealthReport(report, severity, category), nil
 }
 

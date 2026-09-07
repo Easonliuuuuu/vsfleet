@@ -903,11 +903,24 @@ func (m *Model) viewHistoryTrends() []string {
 			point := series.Points[len(series.Points)-1]
 			value := "—"
 			if point.StorageCapacity != nil {
-				value = fmt.Sprintf("storage %.0f", *point.StorageCapacity)
+				value = "storage " + tuiBytes(*point.StorageCapacity)
 			} else if point.CPUCapacity != nil {
-				value = fmt.Sprintf("cpu %.0f", *point.CPUCapacity)
+				value = "cpu " + humanize.MHz(int64(*point.CPUCapacity))
 			}
 			lines = append(lines, fmt.Sprintf("  %-8s %s", series.Kind, value))
+		}
+	}
+	if m.historyCapacityReport != nil {
+		for _, datastore := range m.historyCapacityReport.Datastores {
+			growth := "—"
+			if datastore.UsedGrowthBytes != nil {
+				growth = tuiBytes(*datastore.UsedGrowthBytes)
+			}
+			eta := "unknown"
+			if datastore.Projection != nil && datastore.Projection.DaysRemaining != nil {
+				eta = fmt.Sprintf("%.0fd", *datastore.Projection.DaysRemaining)
+			}
+			lines = append(lines, fmt.Sprintf("  %-18s growth %-10s projected %-8s", datastore.Object.Name, growth, eta))
 		}
 	}
 	for i, p := range m.historyChurn.Points {
@@ -918,6 +931,13 @@ func (m *Model) viewHistoryTrends() []string {
 		lines = append(lines, fmt.Sprintf("  %-10s  %-4d %2d %2d %2d %2d      %-4d      %-4d", p.Run.StartedAt.Local().Format("2006-01-02"), p.VMCount, p.Appeared, p.Vanished, p.Moved, p.Modified, sp.Total, sp.Stale))
 	}
 	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func tuiBytes(value float64) string {
+	if value < 0 {
+		return "-" + humanize.Bytes(int64(-value))
+	}
+	return humanize.Bytes(int64(value))
 }
 
 func tuiSparkline(values []float64) string {

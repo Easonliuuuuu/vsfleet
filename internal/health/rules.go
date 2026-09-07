@@ -701,7 +701,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 	thresholds := opts.Thresholds
 	switch ruleID {
 	case "datastore-space-low":
-		if thresholds.DatastoreFreePct <= 0 {
+		if thresholds.DatastoreFreePct <= 0 && thresholds.DatastoreFreeBytes <= 0 {
 			return
 		}
 		for _, resource := range in.Data.Resources {
@@ -713,12 +713,27 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 				continue
 			}
 			free, ok := freePct(datastore.CapacityBytes, datastore.FreeBytes)
-			if !ok || free >= thresholds.DatastoreFreePct {
+			percentBreached := thresholds.DatastoreFreePct > 0 && ok && free < thresholds.DatastoreFreePct
+			bytesBreached := thresholds.DatastoreFreeBytes > 0 && float64(datastore.FreeBytes) < thresholds.DatastoreFreeBytes
+			if (!percentBreached && !bytesBreached) || (!ok && !bytesBreached) {
 				continue
 			}
 			obj := resourceObject(in.Data, resource, "datastore", datastore.Name, datastore.ID, datastore.Datacenter)
+			evidence := make([]Evidence, 0, 2)
+			if percentBreached {
+				evidence = append(evidence, Evidence{Field: "free_percent", Observed: percent(free), Expected: percent(thresholds.DatastoreFreePct)})
+			}
+			if bytesBreached {
+				evidence = append(evidence, Evidence{Field: "free_bytes", Observed: humanize.Bytes(datastore.FreeBytes), Expected: humanize.Bytes(int64(thresholds.DatastoreFreeBytes))})
+			}
+			message := fmt.Sprintf("Datastore has %s%% free space (%s of %s)", percent(free), humanize.Bytes(datastore.FreeBytes), humanize.Bytes(datastore.CapacityBytes))
+			if bytesBreached && !percentBreached {
+				message = fmt.Sprintf("Datastore has %s free space, below the %s floor", humanize.Bytes(datastore.FreeBytes), humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
+			} else if bytesBreached {
+				message += fmt.Sprintf(" and below the %s floor", humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
+			}
 			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: obj,
-				Message: fmt.Sprintf("Datastore has %s%% free space (%s of %s)", percent(free), humanize.Bytes(datastore.FreeBytes), humanize.Bytes(datastore.CapacityBytes)), Evidence: []Evidence{{Field: "free_percent", Observed: percent(free), Expected: percent(thresholds.DatastoreFreePct)}}})
+				Message: message, Evidence: evidence})
 		}
 	case "guest-disk-space-low":
 		if thresholds.GuestDiskFreePct <= 0 {

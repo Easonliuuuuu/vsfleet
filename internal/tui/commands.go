@@ -110,10 +110,11 @@ type historyRunUpdatedMsg struct {
 }
 
 type historyTrendsMsg struct {
-	churn     assessment.ChurnTrend
-	snapshots assessment.SnapshotTrend
-	capacity  assessment.CapacityTrend
-	err       error
+	churn          assessment.ChurnTrend
+	snapshots      assessment.SnapshotTrend
+	capacity       assessment.CapacityTrend
+	capacityReport assessment.CapacityReport
+	err            error
 }
 
 type historyHealthMsg struct {
@@ -158,7 +159,11 @@ func loadHistoryTrendsCmd(ctx context.Context, service *assessment.Service) tea.
 			return historyTrendsMsg{err: err}
 		}
 		capacity, err := service.CapacityTrend(ctx, opts, []string{"host", "cluster", "datastore"})
-		return historyTrendsMsg{churn: churn, snapshots: snapshots, capacity: capacity, err: err}
+		if err != nil {
+			return historyTrendsMsg{err: err}
+		}
+		capacityReport, err := service.CapacityReport(ctx, opts, assessment.CapacityThresholds{FreePercent: 10})
+		return historyTrendsMsg{churn: churn, snapshots: snapshots, capacity: capacity, capacityReport: capacityReport, err: err}
 	}
 }
 

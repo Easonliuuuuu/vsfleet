@@ -1218,7 +1218,7 @@ func storageMiB(gb float64) any {
 }
 
 func hostCPUPercent(h vsphere.Host) any {
-	denom := float64(h.CPUCores) * float64(h.CPUMHz)
+	denom := float64(h.TotalCPU())
 	if denom <= 0 {
 		return nil
 	}

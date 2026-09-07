@@ -322,6 +322,7 @@ type Host struct {
 	CPUCores        int32           `json:"cpu_cores"`
 	CPUThreads      int32           `json:"cpu_threads"`
 	CPUMHz          int32           `json:"cpu_mhz"`
+	TotalCPUMHz     int64           `json:"total_cpu_mhz"`
 	MemoryMB        int64           `json:"memory_mb"`
 	CPUUsageMHz     int64           `json:"cpu_usage_mhz"`
 	MemoryUsageMB   int64           `json:"memory_usage_mb"`
@@ -332,6 +333,17 @@ type Host struct {
 	PortGroups      []HostPortGroup `json:"port_groups,omitempty"`
 	VMKs            []HostVMKernel  `json:"vmks,omitempty"`
 	Multipaths      []HostMultipath `json:"multipaths,omitempty"`
+}
+
+// TotalCPU returns the host's total CPU capacity in MHz.
+func (h Host) TotalCPU() int64 {
+	if h.TotalCPUMHz > 0 {
+		return h.TotalCPUMHz
+	}
+	if h.CPUCores > 0 && h.CPUMHz > 0 {
+		return int64(h.CPUCores) * int64(h.CPUMHz)
+	}
+	return int64(h.CPUMHz)
 }
 
 // HostHBA is a normalized host bus adapter. WWNs are pointers because a

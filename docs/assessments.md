@@ -151,6 +151,18 @@ firmware, Secure Boot, topology, resource controls, manual MACs, floppies, and
 extension ownership are informational advisories. Missing VM configuration
 evidence remains `unknown`, including when no special device is present.
 
+### VM decommission review
+
+`vsfleet vm decommission-check NAME_OR_UUID [RUN]` combines the VM-level
+strict-safety gates with the stored topology graph. It is an advisory report
+only: it never performs a decommissioning action. Powered-on or suspended VMs,
+snapshots, connected CD-ROM/USB devices, and inaccessible, orphaned,
+disconnected, or invalid connection states produce blockers. Missing evidence
+or unresolved dependencies produce `unknown`, while ownership and backup
+policy fields remain `not_assessed` advisories until those metadata sources are
+collected. Use `--fail-on-blockers` for an automation gate; the command returns
+exit code 2 only for a blocked verdict.
+
 ### Topology and dependency queries
 
 The `topology`, `dependencies`, and `blast-radius` commands query the same

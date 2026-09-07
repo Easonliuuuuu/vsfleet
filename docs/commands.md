@@ -25,6 +25,8 @@ configuration, history database, and output options shown below.
 | `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
 | `vsfleet assessment orphans [run]` | Explain estate-wide browsed VMDK orphan evidence |
 | `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
+| `vsfleet network compare <source-cluster> <target-cluster> [run]` | Compare stored network reachability and policy between clusters |
+| `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
@@ -60,6 +62,8 @@ vsfleet topology vm app01 latest
 vsfleet dependencies vm app01 --depth 2
 vsfleet dependencies network prod-vlan-210 -o json | jq
 vsfleet blast-radius datastore ds-prod-01 --all-contexts
+vsfleet network compare cluster-prod cluster-dr -o json | jq '.differences, .mapping_gaps'
+vsfleet assessment network-readiness --source cluster-prod --target cluster-dr --fail-on-blockers
 ```
 
 `topology` shows containment and direct attachments. `dependencies` follows
@@ -76,6 +80,16 @@ always partial.
 and `vsfleet assessment findings` assess the estate described by stored
 evidence. `assessment readiness` reports `unknown`, never `ready`, when a
 required collection is blind.
+
+`network compare` and `assessment network-readiness` compare the networks
+reachable from two clusters using the same stored assessment ledger. Networks
+match by VLAN first and by name when VLAN evidence is unavailable. The result
+separates matched networks, source-only mapping gaps (including attached VMs),
+target-only networks, and field-level VLAN, MTU, teaming, security, uplink, and
+host-coverage differences. `network-readiness` reports `ready`, `blocked`, or
+`unknown`; a missing network used by a VM or a hard policy/coverage mismatch is
+a blocker. Blind collection evidence always produces `unknown`, and older or
+partially reconstructable network evidence is marked with reduced confidence.
 
 ## Export compatibility
 

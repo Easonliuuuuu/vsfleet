@@ -49,7 +49,7 @@ func (e *partialExitError) ExitCode() int { return 3 }
 
 func newAssessmentCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare historical assessments"}
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
+	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentNetworkReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
 	return cmd
 }
 

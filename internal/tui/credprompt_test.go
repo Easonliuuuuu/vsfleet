@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/credentials"
@@ -381,5 +382,100 @@ func TestBackgroundRefreshDoesNotRepeatCredentialPrompt(t *testing.T) {
 	}
 	if st.credentialPrompted {
 		t.Fatal("a successful explicit retry left the credential gate armed")
+	}
+}
+
+// openCredOverlay returns a model with the credential overlay showing, the
+// way an explicit reload answering a "prompt" credential does.
+func openCredOverlay(t *testing.T, w, h int) *Model {
+	t.Helper()
+	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
+	m := New(context.Background(), b, Options{Credentials: NewPromptCoordinator()})
+	m.width, m.height = w, h
+	st := m.byName["lab"]
+	if m.beginLoad(st, false, false, true) == nil {
+		t.Fatal("expected the selected context to begin loading")
+	}
+	request := credRequest{label: "lab", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: request})
+	if m.credPrompt == nil {
+		t.Fatal("expected the credential overlay to be showing")
+	}
+	m.credPrompt.input.Cursor.SetMode(cursor.CursorStatic)
+	return m
+}
+
+// TestCredPromptWrapsAtNarrowWidth covers issue #124: the overlay's guidance
+// was emitted as unwrapped single lines, so at 80 columns the explanatory
+// sentence clipped mid-sentence ("...nothing else responds until i") while
+// the overlay owned every keystroke.
+func TestCredPromptWrapsAtNarrowWidth(t *testing.T) {
+	for _, w := range []int{minTermWidth, 80, 140} {
+		m := openCredOverlay(t, w, 24)
+		lines := m.viewCredPrompt()
+		for _, line := range lines {
+			if got := ansi.StringWidth(line); got > w {
+				t.Errorf("%d columns: overlay line is %d columns wide: %q", w, got, line)
+			}
+		}
+		// Joining with spaces reconstructs the prose across wrapped lines;
+		// every word of the guidance must still be present, not clipped.
+		flat := strings.Join(func() []string {
+			out := make([]string, 0, len(lines))
+			for _, line := range lines {
+				out = append(out, strings.TrimSpace(ansi.Strip(line)))
+			}
+			return out
+		}(), " ")
+		for _, want := range []string{
+			"nothing else responds until it is answered",
+			"continue", "cancel this load", "quit",
+		} {
+			if !strings.Contains(flat, want) {
+				t.Errorf("%d columns: overlay is missing %q:\n%s", w, want, flat)
+			}
+		}
+	}
+
+	// At 80 columns the prose no longer fits on one line, so it must wrap
+	// rather than clip.
+	m := openCredOverlay(t, 80, 24)
+	var prose int
+	for _, line := range m.viewCredPrompt() {
+		if s := strings.TrimSpace(ansi.Strip(line)); strings.Contains(s, "background load") ||
+			strings.Contains(s, "nothing else responds") ||
+			strings.Contains(s, "is answered") {
+			prose++
+		}
+	}
+	if prose < 2 {
+		t.Errorf("at 80 columns the explanatory prose should wrap across at least 2 lines, got %d", prose)
+	}
+
+	// At the minimum width even the key hints do not fit inline, so each
+	// action gets its own line instead of being clipped.
+	m = openCredOverlay(t, minTermWidth, 24)
+	for _, line := range m.viewCredPrompt() {
+		if s := ansi.Strip(line); strings.Contains(s, "enter") && strings.Contains(s, "ctrl+c") {
+			t.Errorf("at %d columns the key hints should stack, not share one line: %q", minTermWidth, s)
+		}
+	}
+
+	// At a wide viewport the compact single-line layout is kept.
+	m = openCredOverlay(t, 140, 24)
+	var proseSingle, keysSingle bool
+	for _, line := range m.viewCredPrompt() {
+		if s := ansi.Strip(line); strings.Contains(s, "nothing else responds until it is answered") {
+			proseSingle = true
+		}
+		if s := ansi.Strip(line); strings.Contains(s, "enter") && strings.Contains(s, "ctrl+c") {
+			keysSingle = true
+		}
+	}
+	if !proseSingle {
+		t.Error("at 140 columns the explanatory prose should stay on one line")
+	}
+	if !keysSingle {
+		t.Error("at 140 columns the key hints should stay on one line")
 	}
 }

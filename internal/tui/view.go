@@ -874,18 +874,51 @@ func (m *Model) viewCredPrompt() []string {
 	if cp.label != "" {
 		title = "Password for " + cp.label
 	}
+	// Shrink the password field to fit a narrow terminal rather than pushing
+	// the overlay past the frame at the minimum supported width.
+	cp.input.Width = clamp(m.width-2, 10, 40)
 	lines := []string{
 		t.title.Render(title),
 		"",
 		"  " + cp.input.View(),
 		"",
-		"  " + t.dim.Render("A background load is waiting on this credential; nothing else responds until it is answered."),
-		"",
-		"  " + t.accent.Render("enter") + t.dim.Render(" continue    ") +
-			t.accent.Render("esc") + t.dim.Render(" cancel this load    ") +
-			t.accent.Render("ctrl+c") + t.dim.Render(" quit"),
 	}
+	// The overlay owns every keystroke while it is up, so its guidance must
+	// stay readable at the minimum supported width. Wrap the prose at word
+	// boundaries rather than letting the terminal clip it mid-sentence.
+	for _, l := range wrap("A background load is waiting on this credential; nothing else responds until it is answered.", m.width-2) {
+		lines = append(lines, "  "+t.dim.Render(l))
+	}
+	lines = append(lines, "")
+	lines = append(lines, m.credPromptKeys()...)
 	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+// credPromptKeys renders the overlay's key hints inline when they fit and
+// stacked one action per line when they do not, so no action is silently
+// clipped at 80 columns.
+func (m *Model) credPromptKeys() []string {
+	t := m.theme
+	hints := [][2]string{
+		{"enter", "continue"},
+		{"esc", "cancel this load"},
+		{"ctrl+c", "quit"},
+	}
+	single := "  "
+	for i, h := range hints {
+		if i > 0 {
+			single += t.dim.Render("    ")
+		}
+		single += t.accent.Render(h[0]) + t.dim.Render(" "+h[1])
+	}
+	if ansi.StringWidth(single) <= m.width {
+		return []string{single}
+	}
+	out := make([]string, 0, len(hints))
+	for _, h := range hints {
+		out = append(out, "  "+t.accent.Render(h[0])+t.dim.Render(" "+h[1]))
+	}
+	return out
 }
 
 // helpLines is the whole key reference. It is laid out in two columns when

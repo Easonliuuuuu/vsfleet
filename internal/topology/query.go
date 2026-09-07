@@ -32,6 +32,14 @@ func subjectMatches(subject Subject, query string) bool {
 	if strings.EqualFold(subject.Name, query) {
 		return true
 	}
+	for _, identity := range subject.Identity {
+		if strings.EqualFold(identity, query) {
+			return true
+		}
+		if colon := strings.IndexByte(identity, ':'); colon >= 0 && strings.EqualFold(identity[colon+1:], query) {
+			return true
+		}
+	}
 	for _, member := range subject.Members {
 		if strings.EqualFold(member.Name, query) || (member.ID != "" && strings.EqualFold(member.ID, query)) {
 			return true

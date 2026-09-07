@@ -30,6 +30,7 @@ configuration, history database, and output options shown below.
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
+| `vsfleet vm decommission-check <name-or-uuid> [run]` | Review stored evidence before decommissioning a VM |
 | `vsfleet assessment ...` | Capture and compare historical observations |
 | `vsfleet compatibility report` | Describe every worksheet and column the export writes |
 
@@ -90,6 +91,33 @@ host-coverage differences. `network-readiness` reports `ready`, `blocked`, or
 `unknown`; a missing network used by a VM or a hard policy/coverage mismatch is
 a blocker. Blind collection evidence always produces `unknown`, and older or
 partially reconstructable network evidence is marked with reduced confidence.
+
+### VM decommission checks
+
+`vsfleet vm decommission-check NAME_OR_UUID [RUN]` is an offline, read-only
+review of one VM's stored assessment evidence. It never powers off, deletes,
+unregisters, or otherwise changes a VM. The command searches every selected
+context, joins observations by VM UUID when available, and returns every
+distinct match when a name is ambiguous; use `--context` to narrow it.
+
+The strict safety verdict is `ready`, `blocked`, or `unknown`. Powered-on or
+suspended VMs, snapshots, connected CD-ROM/USB devices, and inaccessible,
+orphaned, disconnected, or invalid connection states are blockers. Missing
+power, connection, hardware, dependency, or collection evidence is unknown.
+Disk backing paths, datastore dependencies, network relationships, unresolved
+references, and blind contexts are included as evidence. Ownership and backup
+policy metadata are reported as `not_assessed` advisories because those fields
+are not part of the stored inventory yet.
+
+The default run is `latest`; pass an explicit run ID or label for a reproducible
+offline result. JSON is intended for automation, and `--fail-on-blockers`
+returns exit code `2` only when a blocker is present:
+
+```sh
+vsfleet vm decommission-check legacy-db01 latest
+vsfleet vm decommission-check legacy-db01 --context prod -o json
+vsfleet vm decommission-check legacy-db01 --fail-on-blockers
+```
 
 ## Export compatibility
 

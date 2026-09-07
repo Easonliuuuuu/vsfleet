@@ -119,6 +119,7 @@ func (f *listFlags) matches(name string) bool {
 func newInventoryCommands(a *App) []*cobra.Command {
 	vm := group("vm", []string{"vms", "virtualmachine"}, "Virtual machines", newVMListCommand(a))
 	vm.AddCommand(newVMHistoryCommand(a))
+	vm.AddCommand(newVMDecommissionCheckCommand(a))
 	netw := group("network", []string{"networks", "portgroup"}, "Networks and port groups", newNetworkListCommand(a))
 	netw.AddCommand(newNetworkCompareCommand(a))
 	return []*cobra.Command{

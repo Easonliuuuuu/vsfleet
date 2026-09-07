@@ -33,3 +33,15 @@ func TestCompareVMsRejectsAmbiguousIdentity(t *testing.T) {
 		t.Fatalf("ambiguous target was paired: %+v", changes)
 	}
 }
+
+func TestCompareVMsDetectsMigrationConfigurationChange(t *testing.T) {
+	base := stored("app", "vc-a", "vm-1", "instance-1")
+	base.observation.VM.ConfigurationAvailable = true
+	base.observation.VM.Firmware = "efi"
+	target := base
+	target.observation.VM.Firmware = "bios"
+	changes, _ := compareVMs([]storedVM{base}, []storedVM{target}, false)
+	if len(changes) != 1 || len(changes[0].Fields) != 1 || changes[0].Fields[0].Field != "migration_configuration" {
+		t.Fatalf("migration configuration change=%+v", changes)
+	}
+}

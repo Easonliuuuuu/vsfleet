@@ -71,33 +71,106 @@ type Location struct {
 // template views filter on IsTemplate rather than using a parallel type.
 type VM struct {
 	Location
-	ID                 string        `json:"id"`
-	InstanceUUID       string        `json:"instance_uuid,omitempty"`
-	BIOSUUID           string        `json:"bios_uuid,omitempty"`
-	Name               string        `json:"name"`
-	PowerState         string        `json:"power_state"`
-	ConnectionState    string        `json:"connection_state"`
-	IsTemplate         bool          `json:"is_template"`
-	CPU                int32         `json:"cpu"`
-	MemoryMB           int64         `json:"memory_mb"`
-	GuestOS            string        `json:"guest_os"`
-	GuestState         string        `json:"guest_state"`
-	ToolsState         string        `json:"tools_state"`
-	ToolsVersion       string        `json:"tools_version,omitempty"`
-	ToolsVersionStatus string        `json:"tools_version_status,omitempty"`
-	IPAddress          string        `json:"ip_address"`
-	Host               string        `json:"host"`
-	Cluster            string        `json:"cluster"`
-	Folder             string        `json:"folder"`
-	Datastores         []string      `json:"datastores"`
-	StorageGB          float64       `json:"storage_gb"`
-	Annotation         string        `json:"annotation"`
-	Disks              []VMDisk      `json:"disks,omitempty"`
-	NICs               []VMNIC       `json:"nics,omitempty"`
-	CDROMs             []VMCDROM     `json:"cdroms,omitempty"`
-	USBs               []VMUSB       `json:"usbs,omitempty"`
-	Snapshots          []VMSnapshot  `json:"snapshots,omitempty"`
-	Partitions         []VMPartition `json:"partitions,omitempty"`
+	ID                 string   `json:"id"`
+	InstanceUUID       string   `json:"instance_uuid,omitempty"`
+	BIOSUUID           string   `json:"bios_uuid,omitempty"`
+	GuestID            string   `json:"guest_id,omitempty"`
+	Name               string   `json:"name"`
+	PowerState         string   `json:"power_state"`
+	ConnectionState    string   `json:"connection_state"`
+	IsTemplate         bool     `json:"is_template"`
+	CPU                int32    `json:"cpu"`
+	MemoryMB           int64    `json:"memory_mb"`
+	GuestOS            string   `json:"guest_os"`
+	GuestState         string   `json:"guest_state"`
+	ToolsState         string   `json:"tools_state"`
+	ToolsVersion       string   `json:"tools_version,omitempty"`
+	ToolsVersionStatus string   `json:"tools_version_status,omitempty"`
+	IPAddress          string   `json:"ip_address"`
+	Host               string   `json:"host"`
+	Cluster            string   `json:"cluster"`
+	Folder             string   `json:"folder"`
+	Datastores         []string `json:"datastores"`
+	StorageGB          float64  `json:"storage_gb"`
+	Annotation         string   `json:"annotation"`
+	// ConfigurationAvailable distinguishes a VM whose full configuration was
+	// collected from one for which vSphere returned only summary properties.
+	// Migration rules must treat false as missing evidence, not as an empty
+	// configuration.
+	ConfigurationAvailable       bool                  `json:"configuration_available,omitempty"`
+	Firmware                     string                `json:"firmware,omitempty"`
+	SecureBootEnabled            *bool                 `json:"secure_boot_enabled,omitempty"`
+	CoresPerSocket               int32                 `json:"cores_per_socket,omitempty"`
+	CPUSockets                   int32                 `json:"cpu_sockets,omitempty"`
+	AutoCoresPerSocket           *bool                 `json:"auto_cores_per_socket,omitempty"`
+	CPUAllocation                *VMResourceAllocation `json:"cpu_allocation,omitempty"`
+	MemoryAllocation             *VMResourceAllocation `json:"memory_allocation,omitempty"`
+	MemoryReservationLockedToMax *bool                 `json:"memory_reservation_locked_to_max,omitempty"`
+	ManagedBy                    *VMManagedBy          `json:"managed_by,omitempty"`
+	Disks                        []VMDisk              `json:"disks,omitempty"`
+	NICs                         []VMNIC               `json:"nics,omitempty"`
+	CDROMs                       []VMCDROM             `json:"cdroms,omitempty"`
+	USBs                         []VMUSB               `json:"usbs,omitempty"`
+	TPMs                         []VMTPM               `json:"tpms,omitempty"`
+	PCIDevices                   []VMPCIDevice         `json:"pci_devices,omitempty"`
+	Floppies                     []VMFloppy            `json:"floppies,omitempty"`
+	Snapshots                    []VMSnapshot          `json:"snapshots,omitempty"`
+	Partitions                   []VMPartition         `json:"partitions,omitempty"`
+}
+
+// VMResourceAllocation records the VM-level CPU or memory reservation and
+// limit. vSphere uses -1 for an unlimited limit; pointers preserve the
+// distinction between a default that was returned and unavailable evidence.
+type VMResourceAllocation struct {
+	Reservation *int64 `json:"reservation,omitempty"`
+	Limit       *int64 `json:"limit,omitempty"`
+}
+
+// VMManagedBy identifies the vCenter extension that owns a VM lifecycle. It
+// is deliberately metadata only; vsfleet does not infer vendor support.
+type VMManagedBy struct {
+	ExtensionKey string `json:"extension_key,omitempty"`
+	Type         string `json:"type,omitempty"`
+}
+
+// VMTPM identifies a virtual TPM without persisting endorsement certificates.
+type VMTPM struct {
+	Key   int32  `json:"key"`
+	Label string `json:"label,omitempty"`
+}
+
+// VMPCIDevice is a normalized host-device passthrough or vGPU attachment.
+type VMPCIDevice struct {
+	Key              int32  `json:"key"`
+	Label            string `json:"label,omitempty"`
+	BackingType      string `json:"backing_type,omitempty"`
+	Address          string `json:"address,omitempty"`
+	DeviceID         string `json:"device_id,omitempty"`
+	SystemID         string `json:"system_id,omitempty"`
+	VendorID         int32  `json:"vendor_id,omitempty"`
+	AssignedID       string `json:"assigned_id,omitempty"`
+	VGPU             string `json:"vgpu,omitempty"`
+	MigrateSupported *bool  `json:"migrate_supported,omitempty"`
+}
+
+// VMFloppy is a normalized virtual floppy attachment. Its backing fields
+// match CD-ROM/USB evidence so operators can see whether a legacy image or
+// host device remains attached.
+type VMFloppy struct {
+	Key              int32  `json:"key"`
+	Label            string `json:"label,omitempty"`
+	Connected        *bool  `json:"connected,omitempty"`
+	StartsConnected  *bool  `json:"starts_connected,omitempty"`
+	BackingType      string `json:"backing_type,omitempty"`
+	BackingPath      string `json:"backing_path,omitempty"`
+	BackingDevice    string `json:"backing_device,omitempty"`
+	BackingHost      string `json:"backing_host,omitempty"`
+	BackingDatastore string `json:"backing_datastore,omitempty"`
+	BackingObjectID  string `json:"backing_object_id,omitempty"`
+	UseAutoDetect    *bool  `json:"use_auto_detect,omitempty"`
+	Controller       string `json:"controller,omitempty"`
+	ControllerLabel  string `json:"controller_label,omitempty"`
+	UnitNumber       *int32 `json:"unit_number,omitempty"`
 }
 
 // VMPartition is one guest filesystem as VMware Tools reports it, which is

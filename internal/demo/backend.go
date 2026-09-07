@@ -45,8 +45,10 @@ func NewBackend() *Backend {
 	}
 
 	prodInventory := sampleInventory("prod-vc", "Taipei", "10.20.0")
+	seedMigrationDefaults(prodInventory)
 	addDemoHealthEvidence(prodInventory)
 	edgeInventory := sampleInventory("edge-vc", "Hsinchu", "10.42.0")
+	seedMigrationDefaults(edgeInventory)
 	addDemoSharedDatastoreEvidence(edgeInventory)
 	return &Backend{
 		contexts: contexts,
@@ -262,6 +264,36 @@ func makeDemoResource(contextName, vcenterID, kind, id, name string, value any) 
 func int64Value(value int64) *int64 { return &value }
 func int32Value(value int32) *int32 { return &value }
 func boolValue(value bool) *bool    { return &value }
+
+func seedMigrationDefaults(inv *vsphere.Inventory) {
+	if inv == nil {
+		return
+	}
+	for i := range inv.VMs {
+		seedMigrationVM(&inv.VMs[i])
+	}
+	for i := range inv.Templates {
+		seedMigrationVM(&inv.Templates[i])
+	}
+}
+
+func seedMigrationVM(vm *vsphere.VM) {
+	if vm == nil {
+		return
+	}
+	zero := int64(0)
+	unlimited := int64(-1)
+	secureBoot, autoCores, locked := false, false, false
+	vm.ConfigurationAvailable = true
+	vm.Firmware = "efi"
+	vm.SecureBootEnabled = &secureBoot
+	vm.CoresPerSocket = 1
+	vm.CPUSockets = vm.CPU
+	vm.AutoCoresPerSocket = &autoCores
+	vm.CPUAllocation = &vsphere.VMResourceAllocation{Reservation: &zero, Limit: &unlimited}
+	vm.MemoryAllocation = &vsphere.VMResourceAllocation{Reservation: &zero, Limit: &unlimited}
+	vm.MemoryReservationLockedToMax = &locked
+}
 
 // The remaining methods satisfy the TUI backend contract. The presentation is
 // deliberately read-only so a recording cannot imply that sample contexts can

@@ -127,8 +127,7 @@ and a truncated browse, failed relevant collection, or missing backing identity
 prevents a verified verdict. `health --fail-on-findings --severity warning`
 therefore fails only on verified orphans; low-confidence guesses are
 informational. `assessment orphans -o json` exposes the paths, sizes,
-timestamps, identity keys, references, and coverage reasons. Connected floppy
-devices remain a named follow-up.
+timestamps, identity keys, references, and coverage reasons.
 
 ### Migration readiness
 
@@ -142,6 +141,15 @@ exist.
 Readiness is deliberately conservative: a failed or missing collector yields
 `unknown`, and a blind vCenter is named in the `Not evaluated` section. The
 verdict can never say `ready` over evidence that was not collected.
+
+Schema version 13 adds migration evidence for firmware and Secure Boot,
+vTPM, CPU socket/core topology, VM CPU/memory reservations and limits, RDM and
+shared-disk relationships, manually assigned MAC addresses, PCI/SR-IOV/vGPU
+passthrough, legacy floppy devices, and vCenter extension ownership. RDM,
+shared-disk, vTPM, and host-device passthrough findings are blocking warnings;
+firmware, Secure Boot, topology, resource controls, manual MACs, floppies, and
+extension ownership are informational advisories. Missing VM configuration
+evidence remains `unknown`, including when no special device is present.
 
 ### Topology and dependency queries
 

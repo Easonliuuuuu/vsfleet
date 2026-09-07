@@ -96,8 +96,54 @@ func TestWalkDevicesNormalizesCDROMAndUSBAndExcludesControllers(t *testing.T) {
 	}
 }
 
+func TestWalkMigrationDevicesNormalizesSpecialHardware(t *testing.T) {
+	connected := true
+	tpm := &types.VirtualTPM{VirtualDevice: types.VirtualDevice{Key: 601, DeviceInfo: &types.Description{Label: "TPM"}}}
+	pci := &types.VirtualPCIPassthrough{VirtualDevice: types.VirtualDevice{
+		Key: 602, DeviceInfo: &types.Description{Label: "GPU"},
+		Backing: &types.VirtualPCIPassthroughDeviceBackingInfo{
+			VirtualDeviceDeviceBackingInfo: types.VirtualDeviceDeviceBackingInfo{DeviceName: "0000:65:00.0"},
+			Id:                             "65:00.0", DeviceId: "1db6", SystemId: "host-1", VendorId: 0x10de,
+		},
+	}}
+	floppy := &types.VirtualFloppy{VirtualDevice: types.VirtualDevice{
+		Key: 603, DeviceInfo: &types.Description{Label: "Floppy"},
+		Connectable: &types.VirtualDeviceConnectInfo{Connected: connected, StartConnected: connected},
+		Backing:     &types.VirtualFloppyImageBackingInfo{VirtualDeviceFileBackingInfo: types.VirtualDeviceFileBackingInfo{FileName: "[ds] app/boot.img"}},
+	}}
+	tpms, pciDevices, floppies := walkMigrationDevices([]types.BaseVirtualDevice{floppy, pci, tpm})
+	if len(tpms) != 1 || tpms[0].Key != 601 || tpms[0].Label != "TPM" {
+		t.Fatalf("TPM evidence = %+v", tpms)
+	}
+	if len(pciDevices) != 1 || pciDevices[0].BackingType != "device" || pciDevices[0].Address != "65:00.0" || pciDevices[0].DeviceID != "1db6" || pciDevices[0].VendorID != 0x10de {
+		t.Fatalf("PCI evidence = %+v", pciDevices)
+	}
+	if len(floppies) != 1 || floppies[0].BackingType != "image" || floppies[0].BackingPath != "[ds] app/boot.img" || floppies[0].Connected == nil || !*floppies[0].Connected {
+		t.Fatalf("floppy evidence = %+v", floppies)
+	}
+}
+
+func TestNewVMCopiesMigrationConfiguration(t *testing.T) {
+	secure, auto, locked := true, false, true
+	cores := int32(2)
+	cpuReservation, cpuLimit := int64(100), int64(500)
+	memReservation, memLimit := int64(256), int64(-1)
+	m := &mo.VirtualMachine{Config: &types.VirtualMachineConfigInfo{
+		GuestId: "ubuntu64Guest", Firmware: "efi", ManagedBy: &types.ManagedByInfo{ExtensionKey: "com.example", Type: "appliance"},
+		Hardware:                     types.VirtualHardware{NumCPU: 4, NumCoresPerSocket: &cores, AutoCoresPerSocket: &auto, Device: []types.BaseVirtualDevice{}},
+		BootOptions:                  &types.VirtualMachineBootOptions{EfiSecureBootEnabled: &secure},
+		CpuAllocation:                &types.ResourceAllocationInfo{Reservation: &cpuReservation, Limit: &cpuLimit},
+		MemoryAllocation:             &types.ResourceAllocationInfo{Reservation: &memReservation, Limit: &memLimit},
+		MemoryReservationLockedToMax: &locked,
+	}}
+	vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, m)
+	if !vm.ConfigurationAvailable || vm.GuestID != "ubuntu64Guest" || vm.Firmware != "efi" || vm.SecureBootEnabled == nil || !*vm.SecureBootEnabled || vm.CoresPerSocket != 2 || vm.CPUSockets != 2 || vm.AutoCoresPerSocket == nil || vm.CPUAllocation == nil || *vm.CPUAllocation.Reservation != 100 || vm.MemoryAllocation == nil || *vm.MemoryAllocation.Limit != -1 || vm.ManagedBy == nil || vm.ManagedBy.ExtensionKey != "com.example" || vm.MemoryReservationLockedToMax == nil || !*vm.MemoryReservationLockedToMax {
+		t.Fatalf("VM migration configuration = %+v", vm)
+	}
+}
+
 func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
-	for _, property := range []string{"config.hardware.device", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
+	for _, property := range []string{"config.guestId", "config.hardware.device", "config.hardware.numCoresPerSocket", "config.hardware.autoCoresPerSocket", "config.cpuAllocation", "config.memoryAllocation", "config.bootOptions", "config.firmware", "config.managedBy", "config.memoryReservationLockedToMax", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
 		found := false
 		for _, candidate := range vmProps {
 			if candidate == property {

@@ -19,6 +19,7 @@ var vmSummaryProps = []string{
 	"config.template",
 	"config.uuid",
 	"config.instanceUuid",
+	"config.guestId",
 	"config.guestFullName",
 	"config.annotation",
 	"config.hardware.numCPU",
@@ -45,6 +46,14 @@ var vmSummaryProps = []string{
 // and a power state.
 var vmDetailProps = []string{
 	"config.hardware.device",
+	"config.hardware.numCoresPerSocket",
+	"config.hardware.autoCoresPerSocket",
+	"config.cpuAllocation",
+	"config.memoryAllocation",
+	"config.bootOptions",
+	"config.firmware",
+	"config.managedBy",
+	"config.memoryReservationLockedToMax",
 	"guest.net",
 	"guest.disk",
 	"snapshot",
@@ -161,14 +170,33 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		Datastores:      idx.names(m.Datastore),
 	}
 	if cfg := m.Config; cfg != nil {
+		vm.ConfigurationAvailable = true
 		vm.IsTemplate = cfg.Template
 		vm.BIOSUUID = cfg.Uuid
 		vm.InstanceUUID = cfg.InstanceUuid
+		vm.GuestID = cfg.GuestId
 		vm.GuestOS = cfg.GuestFullName
 		vm.Annotation = strings.TrimSpace(cfg.Annotation)
 		vm.CPU = cfg.Hardware.NumCPU
 		vm.MemoryMB = int64(cfg.Hardware.MemoryMB)
 		vm.Disks, vm.NICs, vm.CDROMs, vm.USBs = walkDevices(cfg.Hardware.Device, m.Guest, idx)
+		vm.CoresPerSocket = 1
+		if cfg.Hardware.NumCoresPerSocket != nil && *cfg.Hardware.NumCoresPerSocket > 0 {
+			vm.CoresPerSocket = *cfg.Hardware.NumCoresPerSocket
+		}
+		vm.CPUSockets = (vm.CPU + vm.CoresPerSocket - 1) / vm.CoresPerSocket
+		vm.AutoCoresPerSocket = clonePtr(cfg.Hardware.AutoCoresPerSocket)
+		vm.Firmware = strings.TrimSpace(cfg.Firmware)
+		if cfg.BootOptions != nil {
+			vm.SecureBootEnabled = clonePtr(cfg.BootOptions.EfiSecureBootEnabled)
+		}
+		vm.CPUAllocation = resourceAllocation(cfg.CpuAllocation)
+		vm.MemoryAllocation = resourceAllocation(cfg.MemoryAllocation)
+		vm.MemoryReservationLockedToMax = clonePtr(cfg.MemoryReservationLockedToMax)
+		if cfg.ManagedBy != nil {
+			vm.ManagedBy = &VMManagedBy{ExtensionKey: strings.TrimSpace(cfg.ManagedBy.ExtensionKey), Type: strings.TrimSpace(cfg.ManagedBy.Type)}
+		}
+		vm.TPMs, vm.PCIDevices, vm.Floppies = walkMigrationDevices(cfg.Hardware.Device)
 	}
 	if snap := m.Snapshot; snap != nil {
 		vm.Snapshots = flattenSnapshots(snap.RootSnapshotList, "", snap.CurrentSnapshot)
@@ -188,6 +216,13 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.StorageGB = float64(s.Committed) / (1 << 30)
 	}
 	return vm
+}
+
+func resourceAllocation(in *types.ResourceAllocationInfo) *VMResourceAllocation {
+	if in == nil {
+		return nil
+	}
+	return &VMResourceAllocation{Reservation: clonePtr(in.Reservation), Limit: clonePtr(in.Limit)}
 }
 
 // guestPartitions converts what VMware Tools reports about the guest's
@@ -292,6 +327,62 @@ func walkDevices(devices []types.BaseVirtualDevice, guest *types.GuestInfo, idx 
 	return disks, nics, cdroms, usbs
 }
 
+// walkMigrationDevices extracts special devices whose presence can constrain
+// a migration. It intentionally omits TPM certificate material and keeps the
+// result stable for assessment diffs and exports.
+func walkMigrationDevices(devices []types.BaseVirtualDevice) ([]VMTPM, []VMPCIDevice, []VMFloppy) {
+	var tpms []VMTPM
+	var pci []VMPCIDevice
+	var floppies []VMFloppy
+	for _, device := range devices {
+		if device == nil {
+			continue
+		}
+		switch d := device.(type) {
+		case *types.VirtualTPM:
+			tpms = append(tpms, VMTPM{Key: d.Key, Label: deviceLabel(d.DeviceInfo)})
+		case *types.VirtualPCIPassthrough:
+			pci = append(pci, newVMPCIDevice(d))
+		case *types.VirtualFloppy:
+			floppies = append(floppies, newVMFloppy(d))
+		}
+	}
+	sort.Slice(tpms, func(i, j int) bool { return tpms[i].Key < tpms[j].Key })
+	sort.Slice(pci, func(i, j int) bool { return pci[i].Key < pci[j].Key })
+	sort.Slice(floppies, func(i, j int) bool { return floppies[i].Key < floppies[j].Key })
+	return tpms, pci, floppies
+}
+
+func newVMPCIDevice(device *types.VirtualPCIPassthrough) VMPCIDevice {
+	out := VMPCIDevice{Key: device.Key, Label: deviceLabel(device.DeviceInfo)}
+	switch b := device.Backing.(type) {
+	case *types.VirtualPCIPassthroughDeviceBackingInfo:
+		out.BackingType, out.Address, out.DeviceID, out.SystemID, out.VendorID = "device", b.Id, b.DeviceId, b.SystemId, int32(b.VendorId)
+	case *types.VirtualPCIPassthroughDynamicBackingInfo:
+		out.BackingType, out.AssignedID = "dynamic", b.AssignedId
+	case *types.VirtualPCIPassthroughVmiopBackingInfo:
+		out.BackingType, out.VGPU, out.MigrateSupported = "vmiop", b.Vgpu, clonePtr(b.MigrateSupported)
+	case *types.VirtualPCIPassthroughDvxBackingInfo:
+		out.BackingType = "dvx"
+	case *types.VirtualPCIPassthroughPluginBackingInfo:
+		out.BackingType = "plugin"
+	default:
+		out.BackingType = "unknown"
+	}
+	return out
+}
+
+func newVMFloppy(device *types.VirtualFloppy) VMFloppy {
+	out := VMFloppy{Key: device.Key, Label: deviceLabel(device.DeviceInfo), UnitNumber: clonePtr(device.UnitNumber)}
+	if device.Connectable != nil {
+		out.Connected, out.StartsConnected = clonePtr(&device.Connectable.Connected), clonePtr(&device.Connectable.StartConnected)
+	}
+	b := normalizeBacking(device.Backing)
+	out.BackingType, out.BackingPath, out.BackingDevice = b.typeName, b.path, b.device
+	out.BackingHost, out.BackingDatastore, out.BackingObjectID, out.UseAutoDetect = b.host, b.datastore, b.objectID, b.useAutoDetect
+	return out
+}
+
 type deviceController struct {
 	typeName, label, sharedBus string
 	unitNumber                 *int32
@@ -358,6 +449,13 @@ func normalizeBacking(backing types.BaseVirtualDeviceBackingInfo) normalizedBack
 		out.typeName, out.device, out.host, out.useAutoDetect = "remoteClient", b.DeviceName, b.Hostname, clonePtr(b.UseAutoDetect)
 	case *types.VirtualUSBRemoteHostBackingInfo:
 		out.typeName, out.device, out.host, out.useAutoDetect = "remoteHost", b.DeviceName, b.Hostname, clonePtr(b.UseAutoDetect)
+	case *types.VirtualFloppyDeviceBackingInfo:
+		out.typeName, out.device, out.useAutoDetect = "device", b.DeviceName, clonePtr(b.UseAutoDetect)
+	case *types.VirtualFloppyImageBackingInfo:
+		out.typeName = "image"
+		out.file(b.VirtualDeviceFileBackingInfo)
+	case *types.VirtualFloppyRemoteDeviceBackingInfo:
+		out.typeName, out.device, out.useAutoDetect = "remoteDevice", b.DeviceName, clonePtr(b.UseAutoDetect)
 	}
 	// Preserve useful backing fields even for newer or unknown subclasses.
 	if out.path == "" {

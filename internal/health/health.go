@@ -352,8 +352,13 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 			data.VMs[i].Snapshots = append([]vsphere.VMSnapshot(nil), data.VMs[i].Observation.VM.Snapshots...)
 		}
 		data.VMs[i].Observation.VM.Partitions = append([]vsphere.VMPartition(nil), data.VMs[i].Observation.VM.Partitions...)
+		data.VMs[i].Observation.VM.Disks = append([]vsphere.VMDisk(nil), data.VMs[i].Observation.VM.Disks...)
+		data.VMs[i].Observation.VM.NICs = append([]vsphere.VMNIC(nil), data.VMs[i].Observation.VM.NICs...)
 		data.VMs[i].Observation.VM.CDROMs = append([]vsphere.VMCDROM(nil), data.VMs[i].Observation.VM.CDROMs...)
 		data.VMs[i].Observation.VM.USBs = append([]vsphere.VMUSB(nil), data.VMs[i].Observation.VM.USBs...)
+		data.VMs[i].Observation.VM.TPMs = append([]vsphere.VMTPM(nil), data.VMs[i].Observation.VM.TPMs...)
+		data.VMs[i].Observation.VM.PCIDevices = append([]vsphere.VMPCIDevice(nil), data.VMs[i].Observation.VM.PCIDevices...)
+		data.VMs[i].Observation.VM.Floppies = append([]vsphere.VMFloppy(nil), data.VMs[i].Observation.VM.Floppies...)
 		for n := range data.VMs[i].Observation.VM.USBs {
 			data.VMs[i].Observation.VM.USBs[n].Family = append([]string(nil), data.VMs[i].Observation.VM.USBs[n].Family...)
 			data.VMs[i].Observation.VM.USBs[n].Speed = append([]string(nil), data.VMs[i].Observation.VM.USBs[n].Speed...)
@@ -380,6 +385,47 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 				return strings.ToLower(x.Path) < strings.ToLower(y.Path)
 			}
 			return x.Path < y.Path
+		})
+		sort.SliceStable(data.VMs[i].Observation.VM.Disks, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.Disks[a], data.VMs[i].Observation.VM.Disks[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			return x.Label < y.Label
+		})
+		sort.SliceStable(data.VMs[i].Observation.VM.NICs, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.NICs[a], data.VMs[i].Observation.VM.NICs[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			return x.Label < y.Label
+		})
+		for n := range data.VMs[i].Observation.VM.NICs {
+			data.VMs[i].Observation.VM.NICs[n].IPv4 = append([]string(nil), data.VMs[i].Observation.VM.NICs[n].IPv4...)
+			data.VMs[i].Observation.VM.NICs[n].IPv6 = append([]string(nil), data.VMs[i].Observation.VM.NICs[n].IPv6...)
+			sort.Strings(data.VMs[i].Observation.VM.NICs[n].IPv4)
+			sort.Strings(data.VMs[i].Observation.VM.NICs[n].IPv6)
+		}
+		sort.SliceStable(data.VMs[i].Observation.VM.TPMs, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.TPMs[a], data.VMs[i].Observation.VM.TPMs[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			return x.Label < y.Label
+		})
+		sort.SliceStable(data.VMs[i].Observation.VM.PCIDevices, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.PCIDevices[a], data.VMs[i].Observation.VM.PCIDevices[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			return x.Label < y.Label
+		})
+		sort.SliceStable(data.VMs[i].Observation.VM.Floppies, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.Floppies[a], data.VMs[i].Observation.VM.Floppies[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			return x.Label < y.Label
 		})
 		sort.SliceStable(data.VMs[i].Snapshots, func(a, b int) bool {
 			x, y := data.VMs[i].Snapshots[a], data.VMs[i].Snapshots[b]

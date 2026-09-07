@@ -29,11 +29,11 @@ type searchDatastoreSubFoldersTaskBody struct {
 
 func (b *searchDatastoreSubFoldersTaskBody) Fault() *soap.Fault { return b.Fault_ }
 
-func (c *Client) browseDatastoreFiles(parent context.Context, datastore string, browser types.ManagedObjectReference) ([]DatastoreFile, string, string) {
+func (c *Client) browseDatastoreFiles(parent context.Context, datastore string, browser types.ManagedObjectReference) ([]DatastoreFile, string, string, bool) {
 	ctx, cancel := context.WithTimeout(parent, datastoreBrowseTimeout)
 	defer cancel()
 	if browser.Type == "" || browser.Value == "" {
-		return nil, "failed", "datastore browser reference is unavailable"
+		return nil, "failed", "datastore browser reference is unavailable", false
 	}
 
 	spec := &types.HostDatastoreBrowserSearchSpec{
@@ -52,15 +52,15 @@ func (c *Client) browseDatastoreFiles(parent context.Context, datastore string, 
 	}}
 	var resBody searchDatastoreSubFoldersTaskBody
 	if err := c.VIM().RoundTrip(ctx, &reqBody, &resBody); err != nil {
-		return nil, "failed", err.Error()
+		return nil, "failed", err.Error(), false
 	}
 	if resBody.Res == nil || resBody.Res.Returnval.Value == "" {
-		return nil, "failed", "datastore browser returned no task"
+		return nil, "failed", "datastore browser returned no task", false
 	}
 
 	collector, err := property.DefaultCollector(c.VIM()).Create(ctx)
 	if err != nil {
-		return nil, "failed", fmt.Sprintf("create datastore browser property collector: %v", err)
+		return nil, "failed", fmt.Sprintf("create datastore browser property collector: %v", err), false
 	}
 	defer func() { _ = collector.Destroy(context.WithoutCancel(ctx)) }()
 	taskRef := resBody.Res.Returnval
@@ -72,7 +72,7 @@ func (c *Client) browseDatastoreFiles(parent context.Context, datastore string, 
 		PropSet: []types.PropertySpec{{Type: "Task", PathSet: []string{"info"}}},
 	}
 	if _, err := collector.CreateFilter(ctx, types.CreateFilter{Spec: filterSpec}); err != nil {
-		return nil, "failed", fmt.Sprintf("create datastore browser task filter: %v", err)
+		return nil, "failed", fmt.Sprintf("create datastore browser task filter: %v", err), false
 	}
 
 	var state types.TaskInfoState
@@ -112,16 +112,16 @@ func (c *Client) browseDatastoreFiles(parent context.Context, datastore string, 
 		return state == types.TaskInfoStateSuccess || state == types.TaskInfoStateError
 	})
 	if err != nil {
-		return nil, "failed", fmt.Sprintf("wait for datastore browser task: %v", err)
+		return nil, "failed", fmt.Sprintf("wait for datastore browser task: %v", err), false
 	}
 	if state == types.TaskInfoStateError {
 		if taskErr != nil && taskErr.LocalizedMessage != "" {
-			return nil, "failed", taskErr.LocalizedMessage
+			return nil, "failed", taskErr.LocalizedMessage, false
 		}
-		return nil, "failed", "datastore browser task failed"
+		return nil, "failed", "datastore browser task failed", false
 	}
 
-	files := datastoreFiles(datastore, result)
+	files, truncated := datastoreFiles(datastore, result)
 	sort.SliceStable(files, func(i, j int) bool {
 		if !strings.EqualFold(files[i].Path, files[j].Path) {
 			return strings.ToLower(files[i].Path) < strings.ToLower(files[j].Path)
@@ -131,7 +131,7 @@ func (c *Client) browseDatastoreFiles(parent context.Context, datastore string, 
 		}
 		return files[i].SizeBytes < files[j].SizeBytes
 	})
-	return files, "success", ""
+	return files, "success", "", truncated
 }
 
 func taskInfoState(value any) types.TaskInfoState {
@@ -146,7 +146,7 @@ func taskInfoState(value any) types.TaskInfoState {
 	return ""
 }
 
-func datastoreFiles(datastore string, result types.AnyType) []DatastoreFile {
+func datastoreFiles(datastore string, result types.AnyType) ([]DatastoreFile, bool) {
 	var results []types.HostDatastoreBrowserSearchResults
 	switch value := result.(type) {
 	case types.ArrayOfHostDatastoreBrowserSearchResults:
@@ -167,7 +167,7 @@ func datastoreFiles(datastore string, result types.AnyType) []DatastoreFile {
 	for _, search := range results {
 		for _, file := range search.File {
 			if len(files) >= datastoreBrowseFileCap {
-				return files
+				return files, true
 			}
 			info := file.GetFileInfo()
 			if info == nil {
@@ -184,7 +184,7 @@ func datastoreFiles(datastore string, result types.AnyType) []DatastoreFile {
 			})
 		}
 	}
-	return files
+	return files, false
 }
 
 func datastoreFilePath(datastore, folder, file string) string {

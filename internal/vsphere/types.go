@@ -472,16 +472,33 @@ type VApp struct {
 // Datastore is a backing store for VM files.
 type Datastore struct {
 	Location
-	ID            string          `json:"id"`
-	Name          string          `json:"name"`
-	Type          string          `json:"type"`
-	Accessible    bool            `json:"accessible"`
-	CapacityBytes int64           `json:"capacity_bytes"`
-	FreeBytes     int64           `json:"free_bytes"`
-	Maintenance   string          `json:"maintenance"`
-	Files         []DatastoreFile `json:"files,omitempty"`
-	BrowseStatus  string          `json:"browse_status,omitempty"`
-	BrowseError   string          `json:"browse_error,omitempty"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Type            string           `json:"type"`
+	Accessible      bool             `json:"accessible"`
+	CapacityBytes   int64            `json:"capacity_bytes"`
+	FreeBytes       int64            `json:"free_bytes"`
+	Maintenance     string           `json:"maintenance"`
+	Files           []DatastoreFile  `json:"files,omitempty"`
+	BrowseStatus    string           `json:"browse_status,omitempty"`
+	BrowseError     string           `json:"browse_error,omitempty"`
+	Backing         DatastoreBacking `json:"backing,omitempty"`
+	BrowseTruncated bool             `json:"browse_truncated,omitempty"`
+}
+
+// DatastoreBacking identifies the storage a datastore is presented from, so
+// the same LUN or NFS export reached through two vCenters under two display
+// names can be recognized as one thing. Every field is optional: a vCenter
+// that will not answer leaves it empty, which is evidence of blindness, not
+// of difference. Local is deliberate — a local datastore is never shared, so
+// it must never join two contexts together.
+type DatastoreBacking struct {
+	URL       string   `json:"url,omitempty"`
+	VMFSUUID  string   `json:"vmfs_uuid,omitempty"`
+	Extents   []string `json:"extents,omitempty"`
+	NASRemote string   `json:"nas_remote,omitempty"`
+	VVolID    string   `json:"vvol_id,omitempty"`
+	Local     bool     `json:"local,omitempty"`
 }
 
 // DatastoreFile is read-only metadata returned by an opt-in datastore browser

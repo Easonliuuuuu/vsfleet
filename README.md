@@ -22,128 +22,32 @@
 
 <p align="center"><sub>Healthy inventory stays usable even when another vCenter is offline.</sub></p>
 
+<p align="center">
+  <a href="#why-vsfleet">Why vsfleet?</a> &bull;
+  <a href="#installation">Installation</a> &bull;
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#core-capabilities">Core Capabilities</a> &bull;
+  <a href="#security--safety-guarantees">Safety Guarantees</a> &bull;
+  <a href="#documentation">Documentation</a>
+</p>
+
 ---
-
-## Try it without a vCenter
-
-```sh
-brew install --cask easonliuuuuu/tap/vsfleet
-vsfleet demo
-```
-
-`vsfleet demo` opens the interface on a synthetic three-vCenter estate: two
-healthy sites on different routes and one whose proxy refuses the connection,
-because staying useful when a site is down is the point. It reads no
-configuration, opens no keyring, dials nothing, and writes nothing back. Every
-screen is marked `DEMO · SAMPLE DATA`.
-
-> [!IMPORTANT]
-> **Strict read-only safety guarantee:** vsfleet is an inspection and diagnostic
-> tool. It does not power on/off VMs, create or revert snapshots, modify
-> networks, provision resources, or delete inventory objects. That guarantee is
-> about the vSphere API specifically: the TUI's detail-pane handoff actions
-> (SSH to a VM or host, open a resource in the vSphere/Host Client, copy an
-> identifier) launch real processes on your own workstation, never a vSphere
-> API call — see [the TUI guide](docs/tui.md#detail-pane-actions).
-
-> [!NOTE]
-> vsfleet is a personal open-source project, not an official Dell Technologies
-> product, and is not sponsored, endorsed, or supported by Dell Technologies.
-> Its export interoperability was independently implemented without RVTools
-> source code or non-public documentation. RVTools is a Dell Technologies
-> product; references to RVTools describe export-file interoperability only.
-
-## Migration and sizing exports
-
-vsfleet exports a stored assessment for migration planning, sizing, audit, and
-other downstream workflows. The XLSX export uses the existing `rvtools` format
-name for interoperability with tools that consume selected worksheet layouts:
-
-```sh
-vsfleet assessment run --all-contexts --label q3-audit
-vsfleet assessment export --format rvtools --file estate.xlsx
-```
-
-`--format csv` writes one file per tab instead, for pipelines that would rather
-have text than a workbook. Exporting the same stored assessment twice is
-byte-identical, and every export prints a SHA256 receipt.
-
-### Supported tabs
-
-The compatibility export renders **nineteen** worksheet layouts:
-
-`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
-`vHost` · `vHBA` · `vNIC` · `vSwitch` · `vPort` · `vSC+VMK` · `vMultiPath` ·
-`vCluster` · `vRP` · `vDatastore` · `vSnapshot` · `vHealth`
-
-Compatibility is limited to the listed worksheet names and columns. A pipeline
-that requires other worksheets is not supported by this export profile. This is
-an interoperability export, not RVTools and not a replacement for it.
-
-To see exactly what you get — every column, its type and unit, and when a cell
-is left empty — without a vCenter or any configuration:
-
-```sh
-vsfleet compatibility report --sheet vPartition
-```
-
-The report is generated from the same definitions the exporter writes from, so
-it cannot drift from the workbook. It describes what vsfleet emits and makes no
-claim about any other tool's schema.
-
-`vPartition` reports guest filesystem usage, which only VMware Tools inside
-the guest can measure. VMs with no running Tools contribute no rows, and
-`vsfleetCoverage` says how many of them answered rather than leaving a short
-tab to look like a small estate.
-
-The host-scoped sheets report HBAs, multipath LUN aggregates, physical NICs,
-standard virtual switches, standard port groups, and VMkernel/service-console
-adapters. They come from host configuration properties, so captures do not
-query separate storage or network manager endpoints. Distributed switches and
-ports, and a TUI surface for this nested data, remain deliberate follow-ups.
-
-Every export also carries a `vsfleetCoverage` sheet naming what collected, what
-failed, and why, per vCenter and per tab. A partial estate is reported as
-partial rather than handed over as if it were whole.
-
-## What changed since the last audit
-
-Assessments are immutable local SQLite captures, so the estate has a history
-rather than a series of disconnected spreadsheets:
-
-```sh
-vsfleet assessment diff q3-audit latest   # what changed between two captures
-vsfleet assessment trends capacity        # compute and storage over time
-vsfleet assessment trends churn           # VMs created and destroyed
-vsfleet assessment snapshots              # snapshot ages, oldest first
-```
-
-## About
-
-**vsfleet** is an open-source Go CLI and interactive terminal UI (TUI) for
-VMware vSphere operators and site reliability engineers.
-
-It organizes each vCenter into a named **context**—similar to a `kubectl`
-context—keeping endpoints, credentials, network routes, and certificate policies
-strictly separated. Query inventory across one vCenter or an entire estate
-without juggling browser tabs or writing brittle scripts.
 
 ## Why vsfleet?
 
-- Query every configured vCenter with one command using `--all-contexts`.
-- Search VMs, templates, hosts, clusters, vApps, datastores, and networks across
-  the estate.
-- Keep healthy results usable when another vCenter is offline or timing out.
-- Route each context independently through direct TCP, SOCKS5, HTTP, or HTTPS
-  CONNECT proxies.
-- Keep passwords in the native OS keyring, an interactive prompt, or an
-  unattended source for cron, systemd, containers and CI; never write
-  them to `config.toml`.
-- Pin TLS thumbprints for private or self-signed certificates.
-- Capture immutable local SQLite assessments and explain drift over time.
-- Use a responsive Bubble Tea TUI or stable JSON output for automation.
+Managing multiple VMware vCenters traditionally requires juggling browser tabs, coping with slow web interfaces, or maintaining brittle scripts that fail completely when a single endpoint is unreachable.
 
-## Feature comparison
+**vsfleet** organizes each vCenter into a named **context**—similar to a `kubectl` context—keeping endpoints, credentials, network routes, and certificate policies strictly separated:
+
+- 🌐 **Estate-Wide Multi-vCenter Queries**: Query every configured vCenter in parallel with a single command using `--all-contexts`.
+- 🛡️ **Partial Failure Resilience**: Unreachable or timing-out sites do not block results; healthy vCenters remain responsive and usable.
+- 🔒 **Strict Read-Only Safety**: Guaranteed zero mutation. Never powers VMs on or off, reverts snapshots, modifies networks, or alters inventory.
+- 🔀 **Independent Proxy Routing**: Route each context independently through direct TCP, SOCKS5, HTTP, or HTTPS CONNECT proxies.
+- 🔑 **Secure Credential Handling**: Zero plaintext passwords in `config.toml`. Resolves credentials dynamically via native OS keyrings, interactive prompts, or unattended sources.
+- 📊 **Historical Drift & RVTools-Compatible Exports**: Capture immutable local SQLite snapshots, track drift over time, and export 19-sheet Excel workbooks for migration sizing.
+- 🖥️ **Interactive TUI + Scriptable JSON**: Fast Bubble Tea terminal UI with local workstation handoffs (SSH, web browser, clipboard) alongside stable JSON for automation.
+
+### Feature comparison
 
 | Capability | `vsfleet` | `govc` | PowerCLI | vSphere Web Client |
 |---|:---:|:---:|:---:|:---:|
@@ -154,13 +58,11 @@ without juggling browser tabs or writing brittle scripts.
 | Read-only safety guarantee | **Yes** | No | No | No |
 | Historical drift and snapshot age | **Yes** | Export only | Custom script | Point-in-time |
 
-PowerCLI connects to several vCenters at once and fans most cmdlets out across
-them; what it does not give you is one query spanning every resource kind, or
-partial results by default when a site is unreachable. `govc` and PowerCLI are
-both full read-write toolkits — that is a capability vsfleet deliberately does
-not have, not a gap in theirs.
+> PowerCLI connects to several vCenters at once and fans most cmdlets out across them; what it does not give you is one query spanning every resource kind, or partial results by default when a site is unreachable. `govc` and PowerCLI are both full read-write toolkits — that is a capability vsfleet deliberately does not have, not a gap in theirs.
 
-## Install
+---
+
+## Installation
 
 ### Homebrew (macOS and Linux)
 
@@ -168,76 +70,198 @@ not have, not a gap in theirs.
 brew install --cask easonliuuuuu/tap/vsfleet
 ```
 
-### Pre-built binary
+### Pre-built binary (Linux, macOS, Windows)
 
-Download an archive for your operating system and CPU architecture from
-[GitHub Releases](https://github.com/Easonliuuuuu/vsfleet/releases), or install
-with Go 1.25 or newer:
+Download an archive for your operating system and CPU architecture from [GitHub Releases](https://github.com/Easonliuuuuu/vsfleet/releases):
+
+```sh
+# Example for Linux x86_64
+curl -sSL https://github.com/Easonliuuuuu/vsfleet/releases/latest/download/vsfleet_linux_amd64.tar.gz | tar -xz vsfleet
+sudo install -m 0755 vsfleet /usr/local/bin/
+```
+
+Archives are available for Linux, macOS (Apple Silicon and Intel), and Windows (amd64 and arm64).
+
+### Go install
+
+Requires Go 1.25 or newer:
 
 ```sh
 go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest
 ```
 
-### Container (automation)
+### Container (Automation & CI)
 
-The official image is published for Linux amd64 and arm64 at
-`ghcr.io/easonliuuuuu/vsfleet`. It is intended for unattended commands and
-stable JSON, CSV, or XLSX exports; use a native install for the interactive
-terminal UI:
+The official image is published on GitHub Container Registry for Linux `amd64` and `arm64`:
 
 ```sh
 docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest compatibility report --sheet vInfo -o json
 ```
 
-See the [Containers guide](https://easonliuuuuu.github.io/vsfleet/containers/)
-for mounted configuration, secrets, history, private CAs, and signature
-verification.
+*Note: The container runs as an unprivileged user and is designed for unattended commands, assessments, and exports. For the interactive terminal UI, install the native binary. See the [Containers guide](https://easonliuuuuu.github.io/vsfleet/containers/) for mounted configuration, secrets, and private CAs.*
 
-See [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/)
-for build-from-source instructions and shell completion.
+---
 
-## Quick start
+## Quick Start
+
+### 1. Test drive without a vCenter
+
+Explore the full terminal UI immediately with zero configuration and zero credentials:
 
 ```sh
-# Look around first: sample data, no vCenter, nothing written
 vsfleet demo
+```
 
-# Add your first vCenter, then confirm the path to it
+`vsfleet demo` opens the interface on a synthetic three-vCenter estate: two healthy sites on different routes and one whose proxy refuses the connection. It reads no configuration, opens no keyring, dials nothing, and writes nothing back. Every screen is marked `DEMO · SAMPLE DATA`.
+
+### 2. Connect your first vCenter
+
+Running `vsfleet` with no contexts configured opens the interactive setup wizard:
+
+```sh
+# Launch the setup wizard
 vsfleet context add
+
+# Test connectivity, routes, and authentication
 vsfleet context test prod
+```
 
-# Inspect inventory, and search across every configured vCenter
+### 3. Search and inspect inventory
+
+Launch the interactive terminal UI or run direct CLI queries:
+
+```sh
+# Open the interactive Bubble Tea terminal UI
+vsfleet
+
+# List specific resources
 vsfleet vm list
-vsfleet search ubuntu --all-contexts
+vsfleet host list --context prod
 
-# Capture the estate and export it for migration planning or sizing
-vsfleet assessment run --all-contexts
+# Search across every configured vCenter at once
+vsfleet search ubuntu --all-contexts
+```
+
+### 4. Capture and export an assessment
+
+Capture an immutable local SQLite assessment and export an Excel workbook for migration planning or audit:
+
+```sh
+# Capture state across all contexts
+vsfleet assessment run --all-contexts --label q3-audit
+
+# Export RVTools-compatible workbook
 vsfleet assessment export --format rvtools --file estate.xlsx
 ```
 
-A bare `vsfleet` opens the terminal interface, or the setup form when no
-contexts exist yet.
+---
+
+## Core Capabilities
+
+### Interactive Terminal UI (TUI)
+
+Run `vsfleet` to open an interactive dashboard built with Bubble Tea:
+- **Fast Fuzzy Filtering**: Press `/` to filter the active view or `Tab` to widen to an estate-wide search.
+- **Estate Diagnostics**: Press `d` to run immediate diagnostics on any selected vCenter.
+- **Local Workstation Handoffs**: Detail-pane actions (SSH to a VM or host, open a resource in your workstation browser, copy an identifier) launch real local processes without issuing modifying vSphere API calls — see [the TUI guide](docs/tui.md#detail-pane-actions).
+
+### Estate-Wide Search & Inventory
+
+Supported resource kinds include `vm`, `template`, `host`, `cluster`, `vapp`, `datastore`, and `network`. All commands accept `--filter` / `-f` and work across single contexts or the entire estate:
+
+```sh
+vsfleet host list --context prod --filter esxi-07
+vsfleet datastore list --all-contexts -f nvme
+vsfleet search nvme --kind datastore --limit 20
+```
+
+Use `-o json` for automation with `jq` or custom tooling:
+
+```sh
+vsfleet vm list --all-contexts -o json | jq
+```
+
+### Historical Audits & Drift Tracking
+
+Assessments are stored locally in an immutable SQLite database, giving your estate an auditable history rather than a series of disconnected spreadsheets:
+
+```sh
+vsfleet assessment diff q3-audit latest   # What changed between two captures
+vsfleet assessment trends capacity        # Compute and storage trends over time
+vsfleet assessment trends churn           # VMs created and destroyed
+vsfleet assessment snapshots              # Snapshot ages, oldest first
+vsfleet health latest                     # Health findings on stored evidence
+```
+
+### Migration & Sizing Exports (RVTools Interoperability)
+
+vsfleet exports stored assessments for migration planning, sizing, audit, and downstream workflows. The XLSX export uses the `rvtools` format name for interoperability with tools that consume selected worksheet layouts:
+
+```sh
+vsfleet assessment export --format rvtools --file estate.xlsx
+vsfleet assessment export --format csv --dir ./audit-csv/
+```
+
+- **Byte-Identical Consistency**: Exporting the same stored assessment twice produces byte-identical files accompanied by a SHA256 receipt.
+- **Audit Coverage Sheet**: Every export includes a `vsfleetCoverage` sheet detailing what collected, what failed, and why per vCenter. A partial estate is reported as partial rather than handed over as whole.
+- **Schema Transparency**: Inspect every column, type, unit, and nullability without needing a vCenter or configuration:
+  ```sh
+  vsfleet compatibility report --sheet vPartition
+  ```
+
+<details>
+<summary><strong>Supported Worksheet Layouts (19 sheets)</strong></summary>
+
+vsfleet renders the following 19 worksheet layouts:
+
+`vInfo` &bull; `vCPU` &bull; `vMemory` &bull; `vDisk` &bull; `vPartition` &bull; `vNetwork` &bull; `vTools` &bull; `vHost` &bull; `vHBA` &bull; `vNIC` &bull; `vSwitch` &bull; `vPort` &bull; `vSC+VMK` &bull; `vMultiPath` &bull; `vCluster` &bull; `vRP` &bull; `vDatastore` &bull; `vSnapshot` &bull; `vHealth`
+
+- **Guest Filesystem Usage (`vPartition`)**: Measures guest usage via VMware Tools. VMs with no running Tools contribute no rows, and `vsfleetCoverage` reports answering status.
+- **Host Configuration Sheets**: HBAs, multipath LUN aggregates, physical NICs, standard virtual switches, standard port groups, and VMkernel adapters are pulled directly from host properties without querying separate manager endpoints.
+
+*Compatibility is limited to the listed worksheet names and columns. This is an interoperability export, not RVTools and not a replacement for it.*
+
+</details>
+
+> [!NOTE]
+> vsfleet is a personal open-source project, not an official Dell Technologies product, and is not sponsored, endorsed, or supported by Dell Technologies. Its export interoperability was independently implemented without RVTools source code or non-public documentation. RVTools is a Dell Technologies product; references to RVTools describe export-file interoperability only.
+
+---
+
+## Security & Safety Guarantees
+
+> [!IMPORTANT]
+> **Strict read-only safety guarantee:** vsfleet is an inspection and diagnostic tool. It does not power on/off VMs, create or revert snapshots, modify networks, provision resources, or delete inventory objects. That guarantee is about the vSphere API specifically: the TUI's detail-pane handoff actions (SSH to a VM or host, open a resource in the vSphere/Host Client, copy an identifier) launch real processes on your own workstation, never a vSphere API call — see [the TUI guide](docs/tui.md#detail-pane-actions).
+
+- **Zero Plaintext Passwords on Disk**: Passwords are never written to `config.toml`. Credentials resolve dynamically via the native OS keyring (Secret Service, macOS Keychain, Windows Credential Manager), an interactive prompt, or unattended sources (`env:<VAR>`, `file:<path>`, `exec:<program>`).
+- **Per-Context Proxy Isolation**: Route each vCenter independently via direct TCP, SOCKS5, HTTP, or HTTPS CONNECT proxies.
+- **TLS Thumbprint Pinning**: Explicitly pin SHA256 or SHA1 thumbprints for private or self-signed certificates.
+
+---
 
 ## Documentation
 
-The full operator guide is published at
-[easonliuuuuu.github.io/vsfleet](https://easonliuuuuu.github.io/vsfleet/):
+The full operator guide is published at **[easonliuuuuu.github.io/vsfleet](https://easonliuuuuu.github.io/vsfleet/)**:
 
-- [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/)
-- [Containers](https://easonliuuuuu.github.io/vsfleet/containers/)
-- [CLI Guide](https://easonliuuuuu.github.io/vsfleet/commands/)
-- [Assessments and History](https://easonliuuuuu.github.io/vsfleet/assessments/)
-- [Terminal UI](https://easonliuuuuu.github.io/vsfleet/tui/)
-- [Configuration](https://easonliuuuuu.github.io/vsfleet/configuration/)
-- [Operator Recipes](https://easonliuuuuu.github.io/vsfleet/recipes/)
-- [Troubleshooting](https://easonliuuuuu.github.io/vsfleet/troubleshooting/)
-- [Architecture](https://easonliuuuuu.github.io/vsfleet/architecture/)
+| Guide | Description |
+|---|---|
+| 🚀 **[Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/)** | First-time configuration, prerequisites, and shell completion |
+| 💻 **[CLI Guide](https://easonliuuuuu.github.io/vsfleet/commands/)** | Exhaustive reference for commands, flags, filters, and JSON output |
+| 🖥️ **[Terminal UI](https://easonliuuuuu.github.io/vsfleet/tui/)** | Keybindings, navigation, filtering, and workstation actions |
+| 📦 **[Containers](https://easonliuuuuu.github.io/vsfleet/containers/)** | Docker and Kubernetes deployment, volume mounts, and CI automation |
+| 📊 **[Assessments & History](https://easonliuuuuu.github.io/vsfleet/assessments/)** | Capturing state, diffing runs, trends, and export formats |
+| ⚙️ **[Configuration](https://easonliuuuuu.github.io/vsfleet/configuration/)** | TOML configuration, proxy settings, TLS thumbprints, and credential sources |
+| 📖 **[Operator Recipes](https://easonliuuuuu.github.io/vsfleet/recipes/)** | Real-world workflows, audit recipes, and pipeline integrations |
+| 🔧 **[Troubleshooting](https://easonliuuuuu.github.io/vsfleet/troubleshooting/)** | Connectivity diagnostics (`vsfleet doctor`), common issues, and fixes |
+| 🏛️ **[Architecture](https://easonliuuuuu.github.io/vsfleet/architecture/)** | Concurrency engine, session caching, and security invariants |
+
+---
 
 ## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development, testing, and synthetic
-testbed instructions. See [SECURITY.md](SECURITY.md) for credential handling,
-read-only guarantees, and vulnerability reporting.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development, testing, and synthetic testbed instructions. See [SECURITY.md](SECURITY.md) for credential handling, read-only guarantees, and vulnerability reporting.
+
+---
 
 ## License
 

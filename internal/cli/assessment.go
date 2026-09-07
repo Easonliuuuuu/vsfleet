@@ -49,7 +49,63 @@ func (e *partialExitError) ExitCode() int { return 3 }
 
 func newAssessmentCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare historical assessments"}
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
+	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
+	return cmd
+}
+
+func newAssessmentFindingsCommand(a *App) *cobra.Command {
+	return newFindingsCommand(a, "findings [RUN]", "Show health findings for a stored assessment")
+}
+
+func newAssessmentReadinessCommand(a *App) *cobra.Command {
+	var flags healthFlags
+	var failOnBlockers bool
+	cmd := &cobra.Command{Use: "readiness [RUN]", Short: "Assess migration readiness from a stored assessment", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		// Readiness always considers every category and severity. The tuning and
+		// disable flags still apply because they change the evaluated report.
+		flags.minimumSeverity = "info"
+		flags.category = ""
+		report, err := evaluateHealthCommand(cmd, a, args, flags)
+		if err != nil {
+			return err
+		}
+		readiness := health.Readiness(report)
+		if a.json() {
+			if err := writeJSON(a.out(), readiness); err != nil {
+				return err
+			}
+		} else {
+			fmt.Fprintf(a.out(), "Migration readiness: %s\n", strings.ToUpper(readiness.Verdict))
+			if len(readiness.Blockers) > 0 {
+				fmt.Fprintln(a.out(), "Blockers:")
+				for _, finding := range readiness.Blockers {
+					fmt.Fprintf(a.out(), "  %s [%s] %s — %s\n", finding.Rule, finding.Object.Kind+"/"+finding.Object.Name, finding.Message, finding.Recommendation)
+				}
+			}
+			if len(readiness.Advisories) > 0 {
+				fmt.Fprintln(a.out(), "Advisories:")
+				for _, finding := range readiness.Advisories {
+					fmt.Fprintf(a.out(), "  %s [%s] %s — %s\n", finding.Rule, finding.Object.Kind+"/"+finding.Object.Name, finding.Message, finding.Recommendation)
+				}
+			}
+			if len(readiness.Unresolved) > 0 {
+				fmt.Fprintln(a.out(), "Not evaluated:")
+				for _, rule := range readiness.Unresolved {
+					reason := rule.Reason
+					if len(rule.Blind) > 0 {
+						reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind vCenters: " + strings.Join(rule.Blind, ", "))
+					}
+					fmt.Fprintf(a.out(), "  %s — %s\n", rule.Rule, reason)
+				}
+			}
+		}
+		if failOnBlockers && len(readiness.Blockers) > 0 {
+			return &readinessExitError{blockers: len(readiness.Blockers)}
+		}
+		return nil
+	}}
+	flags.add(cmd, false)
+	cmd.Flags().BoolVar(&failOnBlockers, "fail-on-blockers", false, "exit 2 when migration blockers are present")
 	return cmd
 }
 

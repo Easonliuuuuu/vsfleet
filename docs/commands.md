@@ -19,6 +19,8 @@ configuration, history database, and output options shown below.
 | `vsfleet status` | Check selected contexts |
 | `vsfleet doctor [context...]` | Diagnose the connection stage by stage |
 | `vsfleet health [run]` | Assess the estate described by a stored assessment |
+| `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
+| `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
@@ -44,7 +46,9 @@ failure is reported separately with its context and diagnostic information.
 
 `vsfleet doctor` diagnoses whether vsfleet can reach a vCenter, while
 `vsfleet assessment doctor` checks the local history database. `vsfleet health`
-assesses the estate described by the stored evidence.
+and `vsfleet assessment findings` assess the estate described by stored
+evidence. `assessment readiness` reports `unknown`, never `ready`, when a
+required collection is blind.
 
 ## Export compatibility
 
@@ -90,7 +94,7 @@ an implementation detail:
 |---|---|
 | `0` | The command did what was asked |
 | `1` | vsfleet could not do its job: bad configuration, an unreachable estate, an unreadable database |
-| `2` | The tool worked and the estate did not pass: `assessment diff` policy violations, or `health --fail-on-findings` |
+| `2` | The tool worked and the estate did not pass: `assessment diff` policy violations, `health --fail-on-findings`, or `assessment readiness --fail-on-blockers` |
 | `3` | A capture stored evidence from some contexts but not all — only with `assessment run --fail-on-partial` |
 
 A partial capture exits `0` unless `--fail-on-partial` is passed, so upgrading

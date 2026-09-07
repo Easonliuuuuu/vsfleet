@@ -61,6 +61,17 @@ func runHealth(t *testing.T, dbPath string, args ...string) (string, string, err
 	return out.String(), errOut.String(), err
 }
 
+func runAssessmentReadiness(t *testing.T, dbPath string, args ...string) (string, string, error) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
+	root := NewRootCommand(a)
+	root.SetArgs(append([]string{"--history-db", dbPath, "assessment", "readiness"}, args...))
+	defer func() { _ = a.Close(context.Background()) }()
+	err := root.ExecuteContext(context.Background())
+	return out.String(), errOut.String(), err
+}
+
 func TestHealthCommandExitCodes(t *testing.T) {
 	findingsDB := newHealthTestHistoryDB(t, true)
 	stdout, _, err := runHealth(t, findingsDB, "latest", "--fail-on-findings")
@@ -104,6 +115,41 @@ func TestHealthCommandJSONAndRuleListing(t *testing.T) {
 	stdout, _, err = runHealth(t, db, "--list-rules")
 	if err != nil || !strings.Contains(stdout, "datastore-inaccessible") || !strings.Contains(stdout, "datastore-zombie-vmdk") || !strings.Contains(stdout, "vm-orphaned") || !strings.Contains(stdout, "tools-outdated") {
 		t.Fatalf("rule listing err=%v output=%s", err, stdout)
+	}
+}
+
+func TestAssessmentReadinessBlocksAndHasExitCode(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+	s, err := assessment.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	run, err := s.StartRunWithMetadata(context.Background(), "test", []*config.Context{{Name: "prod", Endpoint: "https://vc.example"}}, when, assessment.RunMetadata{InventorySchemaVersion: assessment.CurrentInventorySchemaVersion})
+	if err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	connected := true
+	vm := vsphere.VM{ID: "vm-1", Name: "app", PowerState: "poweredOn", CDROMs: []vsphere.VMCDROM{{Label: "installer", Connected: &connected}}}
+	if err := s.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-uuid", Status: "success", VMs: []assessment.Observation{{Context: "prod", VCenterID: "vc-uuid", VM: vm}}, Collections: []assessment.CollectionResult{{Kind: "vm", Status: "success", ItemCount: 1}}}, when.Add(time.Minute)); err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	if _, err := s.FinishRun(context.Background(), run.ID, when.Add(time.Minute)); err != nil {
+		s.Close()
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, err := runAssessmentReadiness(t, dbPath, "latest", "--fail-on-blockers")
+	var coded interface{ ExitCode() int }
+	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
+		t.Fatalf("readiness error=%v, code=%v, output=%s", err, coded, stdout)
+	}
+	if !strings.Contains(stdout, "BLOCKED") || !strings.Contains(stdout, "cdrom-connected") {
+		t.Fatalf("readiness output=%s", stdout)
 	}
 }
 

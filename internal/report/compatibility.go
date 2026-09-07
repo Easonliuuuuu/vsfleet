@@ -271,10 +271,13 @@ var sharedColumns = map[string]ColumnSpec{
 	"State":    {Kind: KindText, Note: "VM power state when the snapshot was taken."},
 
 	// vHealth.
-	"Message":      {Kind: KindText, Note: "What the rule found, in the operator's terms."},
-	"Message type": {Kind: KindText, Note: "Finding severity: info, warning or critical."},
-	"vsfleet Rule": {Kind: KindText, Note: "A vsfleet addition: the rule identifier that produced the finding, so a finding can be traced to its threshold. List them with `vsfleet health --list-rules`."},
-	"Object type":  {Kind: KindText, Note: "What the finding is about: vm, host, datastore or snapshot."},
+	"Message":        {Kind: KindText, Note: "What the rule found, in the operator's terms."},
+	"Message type":   {Kind: KindText, Note: "Finding severity: info, warning or critical."},
+	"Category":       {Kind: KindText, Note: "Finding category: migration, availability, security, capacity or hygiene."},
+	"vsfleet Rule":   {Kind: KindText, Note: "A vsfleet addition: the rule identifier that produced the finding, so a finding can be traced to its threshold. List them with `vsfleet health --list-rules`."},
+	"Recommendation": {Kind: KindText, Empty: "when the rule has no remediation guidance", Note: "The recommended operator action for this rule."},
+	"Evidence":       {Kind: KindText, Empty: "when the finding has no structured evidence", Note: "Measured facts rendered as field=observed (expected value), joined with semicolons."},
+	"Object type":    {Kind: KindText, Note: "What the finding is about: vm, host, datastore, cluster, dvswitch or another captured resource."},
 
 	// vsfleetCoverage.
 	"Run ID":      {Kind: KindInteger, Note: "The stored assessment this export was rendered from."},

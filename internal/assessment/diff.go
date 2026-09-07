@@ -40,9 +40,9 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 	// still resolves by name rather than falling back to its raw ID.
 	vcNames := make(map[string]string)
 	for id, c := range bc {
-		if c.VCenterID != "" && successful(c.VMStatus) {
+		if c.VCenterID != "" && Successful(c.VMStatus) {
 			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], bv[id]...)
-		} else if c.VMStatus != "" && !successful(c.VMStatus) {
+		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
 			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: c.Name, Message: msg})
@@ -52,9 +52,9 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 		}
 	}
 	for id, c := range tc {
-		if c.VCenterID != "" && successful(c.VMStatus) {
+		if c.VCenterID != "" && Successful(c.VMStatus) {
 			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], tv[id]...)
-		} else if c.VMStatus != "" && !successful(c.VMStatus) {
+		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
 			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: c.Name, Message: msg})
@@ -114,7 +114,9 @@ func vcLabel(names map[string]string, vc string) string {
 	return vc
 }
 
-func successful(s string) bool { return s == "success" || s == "empty" }
+// Successful reports whether a collection answered the question, including
+// the valid empty-estate answer.
+func Successful(s string) bool { return s == "success" || s == "empty" }
 func nonempty(a, b string) string {
 	if a != "" {
 		return a
@@ -313,7 +315,7 @@ func (s *Store) snapshotAges(ctx context.Context, runID int64, olderThan time.Du
 	type key struct{ vc, vm, snap string }
 	wanted := make(map[key]SnapshotAge)
 	for id, c := range targetContexts {
-		if !successful(c.VMStatus) {
+		if !Successful(c.VMStatus) {
 			continue
 		}
 		for _, v := range targetVMs[id] {

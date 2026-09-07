@@ -16,7 +16,7 @@ import (
 )
 
 // ReportSchemaVersion versions the machine-readable finding envelope.
-const ReportSchemaVersion = 1
+const ReportSchemaVersion = 2
 
 type Severity string
 
@@ -24,6 +24,16 @@ const (
 	SeverityInfo     Severity = "info"
 	SeverityWarning  Severity = "warning"
 	SeverityCritical Severity = "critical"
+)
+
+type Category string
+
+const (
+	CategoryMigration    Category = "migration"
+	CategoryAvailability Category = "availability"
+	CategorySecurity     Category = "security"
+	CategoryCapacity     Category = "capacity"
+	CategoryHygiene      Category = "hygiene"
 )
 
 // Object is what a finding is about. Kind is vm, host, or datastore.
@@ -36,11 +46,22 @@ type Object struct {
 	Datacenter string `json:"datacenter"`
 }
 
+// Evidence is one measured fact behind a finding. Values are strings so all
+// renderers agree exactly on how a fact is represented.
+type Evidence struct {
+	Field    string `json:"field"`
+	Observed string `json:"observed"`
+	Expected string `json:"expected,omitempty"`
+}
+
 type Finding struct {
-	Rule     string   `json:"rule"`
-	Severity Severity `json:"severity"`
-	Object   Object   `json:"object"`
-	Message  string   `json:"message"`
+	Rule           string     `json:"rule"`
+	Category       Category   `json:"category"`
+	Severity       Severity   `json:"severity"`
+	Object         Object     `json:"object"`
+	Message        string     `json:"message"`
+	Evidence       []Evidence `json:"evidence,omitempty"`
+	Recommendation string     `json:"recommendation,omitempty"`
 }
 
 // Input is the evidence made available to a rule. Rules receive a value
@@ -53,13 +74,16 @@ type Input struct {
 // Rule is one check. MinSchema is the inventory schema version its evidence
 // first appeared in; zero means any capture can answer it.
 type Rule struct {
-	ID        string
-	Severity  Severity
-	Summary   string
-	MinSchema int
-	Needs     string
-	Skip      func(Input) (bool, string)
-	Eval      func(in Input, emit func(Finding))
+	ID               string
+	Category         Category
+	Severity         Severity
+	Summary          string
+	Recommendation   string
+	MinSchema        int
+	Needs            string
+	NeedsCollections []string
+	Skip             func(Input) (bool, string)
+	Eval             func(in Input, emit func(Finding))
 }
 
 type Thresholds struct {
@@ -87,26 +111,41 @@ type Options struct {
 // vHealth tab from being mistaken for a healthy estate when evidence was not
 // collected or a rule was deliberately disabled.
 type RuleStatus struct {
-	Rule     string `json:"rule"`
-	Status   string `json:"status"`
-	Reason   string `json:"reason,omitempty"`
-	Findings int    `json:"findings"`
+	Rule     string   `json:"rule"`
+	Status   string   `json:"status"`
+	Result   string   `json:"result"`
+	Reason   string   `json:"reason,omitempty"`
+	Findings int      `json:"findings"`
+	Blind    []string `json:"blind_contexts,omitempty"`
+}
+
+type Coverage struct {
+	Contexts         int      `json:"contexts"`
+	CompleteContexts int      `json:"complete_contexts"`
+	BlindContexts    []string `json:"blind_contexts,omitempty"`
+	RulesPassed      int      `json:"rules_passed"`
+	RulesFailed      int      `json:"rules_failed"`
+	RulesUnknown     int      `json:"rules_unknown"`
+	RulesSkipped     int      `json:"rules_skipped"`
 }
 
 type Counts struct {
 	Info     int `json:"info"`
 	Warning  int `json:"warning"`
 	Critical int `json:"critical"`
+	Unknown  int `json:"unknown"`
 	Total    int `json:"total"`
 }
 
 type Report struct {
-	SchemaVersion int          `json:"schema_version"`
-	RunID         int64        `json:"run_id"`
-	Thresholds    Thresholds   `json:"thresholds"`
-	Rules         []RuleStatus `json:"rules"`
-	Findings      []Finding    `json:"findings"`
-	Counts        Counts       `json:"counts"`
+	SchemaVersion  int                        `json:"schema_version"`
+	RunID          int64                      `json:"run_id"`
+	Thresholds     Thresholds                 `json:"thresholds"`
+	Rules          []RuleStatus               `json:"rules"`
+	Findings       []Finding                  `json:"findings"`
+	Counts         Counts                     `json:"counts"`
+	Coverage       Coverage                   `json:"coverage"`
+	CoverageIssues []assessment.CoverageIssue `json:"coverage_issues,omitempty"`
 }
 
 // Evaluate is the whole health API. It is a pure function of data and opts;
@@ -119,6 +158,7 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 		Thresholds:    opts.Thresholds,
 		Rules:         make([]RuleStatus, 0, len(rules)),
 		Findings:      make([]Finding, 0),
+		Coverage:      Coverage{Contexts: len(data.Contexts)},
 	}
 	disabled := make(map[string]bool, len(opts.Disabled))
 	for _, id := range opts.Disabled {
@@ -131,19 +171,26 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 		switch {
 		case disabled[rule.ID]:
 			status.Status = "disabled"
+			status.Result = "skip"
 			status.Reason = "disabled by option"
 		case rule.MinSchema > 0 && schema < rule.MinSchema:
 			status.Status = "not-evaluated"
+			status.Result = "unknown"
 			status.Reason = rule.Needs
 		default:
 			if rule.Skip != nil {
 				skip, reason := rule.Skip(in)
 				if skip {
 					status.Status = "not-evaluated"
+					status.Result = "unknown"
 					status.Reason = reason
 					report.Rules = append(report.Rules, status)
 					continue
 				}
+			}
+			status.Blind = blindContexts(data.Contexts, rule.NeedsCollections)
+			for _, context := range status.Blind {
+				report.CoverageIssues = append(report.CoverageIssues, assessment.CoverageIssue{Scope: "health", Context: context, Message: fmt.Sprintf("%s rule is blind: %s", rule.ID, coverageReason(data.Contexts, context, rule.NeedsCollections))})
 			}
 			status.Status = "evaluated"
 			before := len(report.Findings)
@@ -154,12 +201,56 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 				if f.Severity == "" {
 					f.Severity = rule.Severity
 				}
+				if f.Category == "" {
+					f.Category = rule.Category
+				}
+				if f.Recommendation == "" {
+					f.Recommendation = rule.Recommendation
+				}
 				report.Findings = append(report.Findings, f)
 			})
 			status.Findings = len(report.Findings) - before
+			status.Result = "pass"
+			if status.Findings > 0 {
+				status.Result = "fail"
+			}
+			if len(rule.NeedsCollections) > 0 && len(status.Blind) >= len(data.Contexts) {
+				status.Result = "unknown"
+			}
 		}
 		report.Rules = append(report.Rules, status)
 	}
+	for _, context := range data.Contexts {
+		if contextComplete(context) {
+			report.Coverage.CompleteContexts++
+		}
+	}
+	blindSet := make(map[string]bool)
+	for _, status := range report.Rules {
+		switch status.Result {
+		case "pass":
+			report.Coverage.RulesPassed++
+		case "fail":
+			report.Coverage.RulesFailed++
+		case "unknown":
+			report.Coverage.RulesUnknown++
+		case "skip":
+			report.Coverage.RulesSkipped++
+		}
+		for _, context := range status.Blind {
+			blindSet[context] = true
+		}
+	}
+	for context := range blindSet {
+		report.Coverage.BlindContexts = append(report.Coverage.BlindContexts, context)
+	}
+	sort.Strings(report.Coverage.BlindContexts)
+	sort.SliceStable(report.CoverageIssues, func(i, j int) bool {
+		if report.CoverageIssues[i].Context != report.CoverageIssues[j].Context {
+			return report.CoverageIssues[i].Context < report.CoverageIssues[j].Context
+		}
+		return report.CoverageIssues[i].Message < report.CoverageIssues[j].Message
+	})
 	sort.SliceStable(report.Findings, func(i, j int) bool {
 		a, b := report.Findings[i], report.Findings[j]
 		for _, pair := range [][2]string{
@@ -193,6 +284,82 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 // Rules returns a copy of the registry in stable ID order.
 func Rules() []Rule {
 	return append([]Rule(nil), rules...)
+}
+
+var completeCollections = []string{"vm", "host", "cluster", "resourcepool", "dvswitch", "datastore"}
+
+func blindContexts(contexts []assessment.ContextRun, needs []string) []string {
+	if len(needs) == 0 {
+		return nil
+	}
+	out := make([]string, 0)
+	for _, context := range contexts {
+		statuses := make(map[string]string, len(context.Collections))
+		for _, collection := range context.Collections {
+			statuses[collection.Kind] = collection.Status
+		}
+		blind := false
+		for _, kind := range needs {
+			status := statuses[kind]
+			if kind == "vm" && context.VMStatus != "" {
+				status = context.VMStatus
+			}
+			if !assessment.Successful(status) {
+				blind = true
+				break
+			}
+		}
+		if blind {
+			out = append(out, context.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func coverageReason(contexts []assessment.ContextRun, name string, needs []string) string {
+	for _, context := range contexts {
+		if context.Name != name {
+			continue
+		}
+		statuses := make(map[string]assessment.CollectionRun, len(context.Collections))
+		for _, collection := range context.Collections {
+			statuses[collection.Kind] = collection
+		}
+		for _, kind := range needs {
+			status, ok := statuses[kind]
+			value := status.Status
+			errorText := status.Error
+			if kind == "vm" && context.VMStatus != "" {
+				value, errorText = context.VMStatus, context.Error
+				ok = true
+			}
+			if !ok || !assessment.Successful(value) {
+				if !ok {
+					return kind + " collection was not recorded"
+				}
+				return kind + " collection: " + nonempty(errorText, value)
+			}
+		}
+	}
+	return "required collection was not recorded"
+}
+
+func contextComplete(context assessment.ContextRun) bool {
+	statuses := make(map[string]string, len(context.Collections))
+	for _, collection := range context.Collections {
+		statuses[collection.Kind] = collection.Status
+	}
+	for _, kind := range completeCollections {
+		status := statuses[kind]
+		if kind == "vm" && context.VMStatus != "" {
+			status = context.VMStatus
+		}
+		if !assessment.Successful(status) {
+			return false
+		}
+	}
+	return true
 }
 
 func inventorySchema(value string) int {

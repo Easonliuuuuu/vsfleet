@@ -283,6 +283,35 @@ func TestEvaluateThresholdBoundaries(t *testing.T) {
 	}
 }
 
+func TestEvaluateDatastoreAbsoluteFreeFloor(t *testing.T) {
+	data := healthFixture("13", time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
+	findingsFor := func(thresholds Thresholds) []Finding {
+		report := Evaluate(data, Options{Thresholds: thresholds})
+		var findings []Finding
+		for _, finding := range report.Findings {
+			if finding.Rule == "datastore-space-low" {
+				findings = append(findings, finding)
+			}
+		}
+		return findings
+	}
+	absolute := findingsFor(Thresholds{DatastoreFreeBytes: 10})
+	if len(absolute) != 1 || len(absolute[0].Evidence) != 1 || absolute[0].Evidence[0].Field != "free_bytes" {
+		t.Fatalf("absolute findings=%+v", absolute)
+	}
+	percentOnly := findingsFor(Thresholds{DatastoreFreePct: 10})
+	if len(percentOnly) != 1 || len(percentOnly[0].Evidence) != 1 || percentOnly[0].Evidence[0].Field != "free_percent" {
+		t.Fatalf("percent findings=%+v", percentOnly)
+	}
+	both := findingsFor(Thresholds{DatastoreFreePct: 10, DatastoreFreeBytes: 10})
+	if len(both) != 1 || len(both[0].Evidence) != 2 {
+		t.Fatalf("combined findings=%+v", both)
+	}
+	if findings := findingsFor(Thresholds{}); len(findings) != 0 {
+		t.Fatalf("disabled findings=%+v", findings)
+	}
+}
+
 func TestEvaluateIsDeterministicAndRunRelative(t *testing.T) {
 	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	data := healthFixture("5", finish)

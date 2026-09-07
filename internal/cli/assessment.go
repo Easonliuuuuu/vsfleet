@@ -49,7 +49,7 @@ func (e *partialExitError) ExitCode() int { return 3 }
 
 func newAssessmentCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare historical assessments"}
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentNetworkReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
+	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentCapacityCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentNetworkReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
 	return cmd
 }
 
@@ -1013,6 +1013,8 @@ func runSelector(v string, runs []assessment.Run) (int64, error) {
 
 var durationToken = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)([smhdw])`)
 
+var byteToken = regexp.MustCompile(`(?i)^([0-9]+(?:\.[0-9]+)?)\s*(b|k|kb|ki|kib|m|mb|mi|mib|g|gb|gi|gib|t|tb|ti|tib|p|pb|pi|pib)?$`)
+
 func parseHumanDuration(value string) (time.Duration, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -1040,6 +1042,40 @@ func parseHumanDuration(value string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid duration %q", value)
 	}
 	return total, nil
+}
+
+func parseHumanBytes(value string) (float64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, nil
+	}
+	matches := byteToken.FindStringSubmatch(value)
+	if len(matches) == 0 {
+		return 0, fmt.Errorf("invalid byte size %q", value)
+	}
+	n, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0, err
+	}
+	power := 0
+	switch strings.ToLower(matches[2]) {
+	case "", "b":
+		power = 0
+	case "k", "kb", "ki", "kib":
+		power = 1
+	case "m", "mb", "mi", "mib":
+		power = 2
+	case "g", "gb", "gi", "gib":
+		power = 3
+	case "t", "tb", "ti", "tib":
+		power = 4
+	case "p", "pb", "pi", "pib":
+		power = 5
+	}
+	for i := 0; i < power; i++ {
+		n *= 1024
+	}
+	return n, nil
 }
 
 func validPolicyRule(rule string) bool {

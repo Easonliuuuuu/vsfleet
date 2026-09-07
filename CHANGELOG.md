@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Features
+
+* **assessment:** attribute datastore growth and project free-space thresholds
+* **health:** add an absolute datastore free-space floor
+
 ## [0.5.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.4.0...v0.5.0) (2026-09-05)
 
 

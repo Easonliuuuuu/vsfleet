@@ -24,6 +24,7 @@ configuration, history database, and output options shown below.
 | `vsfleet blast-radius <kind> <name> [run]` | Show stored subjects affected by a dependency |
 | `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
 | `vsfleet assessment orphans [run]` | Explain estate-wide browsed VMDK orphan evidence |
+| `vsfleet assessment capacity [run]` | Attribute datastore growth and project free-space thresholds |
 | `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
 | `vsfleet network compare <source-cluster> <target-cluster> [run]` | Compare stored network reachability and policy between clusters |
 | `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
@@ -150,6 +151,7 @@ large estates and is disabled by default.
 vsfleet assessment run --all-contexts --browse-datastores
 vsfleet health latest
 vsfleet assessment orphans latest
+vsfleet assessment capacity latest
 ```
 
 Without the flag, `datastore-zombie-vmdk` is reported as `not-evaluated`, not as
@@ -158,6 +160,18 @@ a clean result. Orphan confidence is estate-aware: `--fail-on-findings
 cross-context evidence is informational, while incomplete coverage is unknown.
 Use `assessment orphans [RUN]` for the evidence drill-down, with
 `--confidence` and `--min-size` filters or `-o json` for automation.
+
+`vsfleet assessment capacity [RUN]` is an offline growth drill-down. It joins
+the first and last usable datastore observations in the selected window, names
+VM, template, and file contributors, and projects when the configured free-space
+floor will be crossed. `--min-free-bytes` adds an absolute floor to the default
+percentage floor; the larger floor binds. Use `--since 30d`, `--datastore`, and
+`--top` to narrow the report. Exact attribution requires complete datastore
+browse listings in both endpoint runs; inferred attribution uses a
+single-datastore VM's committed-storage change, and split attribution uses
+per-disk provisioned capacity for VMs spanning datastores. A synthetic
+`unattributed` contributor keeps the reported contributors equal to used-byte
+growth. Projections are `unknown` when coverage or history is insufficient.
 
 ## Exit codes
 

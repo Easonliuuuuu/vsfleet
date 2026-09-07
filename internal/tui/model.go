@@ -543,33 +543,34 @@ type Model struct {
 	returnTo mode
 	// search holds the last estate-wide result set, and searchDirty marks it
 	// stale after an inventory arrives or the context list changes.
-	search           *searchState
-	searchDirty      bool
-	assessment       *assessment.Service
-	runs             []assessment.Run
-	changeDiff       *assessment.Diff
-	historyErr       error
-	changeCursor     int
-	changeOffset     int
-	runCursor        int
-	capturing        bool
-	baseRun          int64
-	targetRun        int64
-	pickerRole       string
-	historyPane      int
-	historyChurn     *assessment.ChurnTrend
-	historySnapshots *assessment.SnapshotTrend
-	historyCapacity  *assessment.CapacityTrend
-	historyHealth    *health.Report
-	historyHealthErr error
-	runEditInput     textinput.Model
-	runEditKind      string
-	runEditRunID     int64
-	timeline         []assessment.VMHistoryEvent
-	timelineCursor   int
-	timelineOffset   int
-	timelineAll      bool
-	timelineQuery    string
+	search                *searchState
+	searchDirty           bool
+	assessment            *assessment.Service
+	runs                  []assessment.Run
+	changeDiff            *assessment.Diff
+	historyErr            error
+	changeCursor          int
+	changeOffset          int
+	runCursor             int
+	capturing             bool
+	baseRun               int64
+	targetRun             int64
+	pickerRole            string
+	historyPane           int
+	historyChurn          *assessment.ChurnTrend
+	historySnapshots      *assessment.SnapshotTrend
+	historyCapacity       *assessment.CapacityTrend
+	historyCapacityReport *assessment.CapacityReport
+	historyHealth         *health.Report
+	historyHealthErr      error
+	runEditInput          textinput.Model
+	runEditKind           string
+	runEditRunID          int64
+	timeline              []assessment.VMHistoryEvent
+	timelineCursor        int
+	timelineOffset        int
+	timelineAll           bool
+	timelineQuery         string
 	// detailFrom is the screen the detail pane was opened from, so esc goes
 	// back to the search results rather than always to the table.
 	detailFrom mode
@@ -1409,6 +1410,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.historyChurn = &msg.churn
 			m.historySnapshots = &msg.snapshots
 			m.historyCapacity = &msg.capacity
+			m.historyCapacityReport = &msg.capacityReport
 		}
 		return m, nil
 	case historyHealthMsg:

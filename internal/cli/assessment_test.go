@@ -13,3 +13,15 @@ func TestParseHumanDuration(t *testing.T) {
 		}
 	}
 }
+
+func TestParseHumanBytes(t *testing.T) {
+	for input, want := range map[string]float64{"500Gi": 500 * (1 << 30), "500G": 500 * (1 << 30), "2T": 2 * (1 << 40), "4096": 4096} {
+		got, err := parseHumanBytes(input)
+		if err != nil || got != want {
+			t.Fatalf("%s: got %v err=%v want %v", input, got, err, want)
+		}
+	}
+	if _, err := parseHumanBytes("five GiB"); err == nil {
+		t.Fatal("invalid byte size unexpectedly parsed")
+	}
+}

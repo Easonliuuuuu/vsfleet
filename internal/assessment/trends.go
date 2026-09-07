@@ -14,6 +14,7 @@ import (
 type TrendOptions struct {
 	FromID         int64
 	ToID           int64
+	Since          time.Time
 	Limit          int
 	IncludePartial bool
 	Contexts       []string
@@ -142,15 +143,18 @@ func (s *Store) trendRuns(ctx context.Context, opts TrendOptions) ([]Run, error)
 		if opts.ToID != 0 && run.ID > opts.ToID {
 			continue
 		}
+		if !opts.Since.IsZero() && run.StartedAt.Before(opts.Since) {
+			continue
+		}
 		filtered = append(filtered, run)
-	}
-	if opts.Limit > 0 && len(filtered) > opts.Limit {
-		filtered = filtered[:opts.Limit]
 	}
 	if opts.FromID != 0 && opts.ToID != 0 && opts.FromID > opts.ToID {
 		return nil, fmt.Errorf("trend window --from must not be after --to")
 	}
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].StartedAt.Before(filtered[j].StartedAt) })
+	if opts.Limit > 0 && len(filtered) > opts.Limit {
+		filtered = filtered[len(filtered)-opts.Limit:]
+	}
 	return filtered, nil
 }
 

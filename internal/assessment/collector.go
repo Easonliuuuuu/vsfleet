@@ -53,6 +53,10 @@ func (s *Service) SnapshotTrend(ctx context.Context, opts TrendOptions, olderTha
 func (s *Service) CapacityTrend(ctx context.Context, opts TrendOptions, kinds []string) (CapacityTrend, error) {
 	return s.Store.CapacityTrend(ctx, opts, kinds)
 }
+
+func (s *Service) CapacityReport(ctx context.Context, opts TrendOptions, thresholds CapacityThresholds) (CapacityReport, error) {
+	return s.Store.CapacityReport(ctx, opts, thresholds)
+}
 func (s *Service) Report(ctx context.Context, runID int64, olderThan time.Duration) (AssessmentReport, error) {
 	return s.Store.Report(ctx, runID, olderThan)
 }

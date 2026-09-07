@@ -109,7 +109,7 @@ func Orphans(data assessment.ExportData) OrphanReport {
 		if !assessment.DecodeResource(resource, &datastore) {
 			continue
 		}
-		store := orphanDatastore{resource: resource, ds: datastore, keys: datastore.IdentityKeys(), local: datastore.Backing.Local}
+		store := orphanDatastore{resource: resource, ds: datastore, keys: assessment.DatastoreIdentity(datastore), local: datastore.Backing.Local}
 		store.weakKey = weakDatastoreKey(resource.Context, datastore.Name)
 		stores = append(stores, store)
 		byContextName[contextNameKey(resource.Context, datastore.Name)] = append(byContextName[contextNameKey(resource.Context, datastore.Name)], store)

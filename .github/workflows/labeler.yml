@@ -7,6 +7,10 @@ on:
     types: [opened, edited, reopened, synchronize, ready_for_review]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.event.issue.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   issues: write
@@ -58,7 +62,9 @@ jobs:
               }
             };
 
-            for (const [name, spec] of Object.entries(managedLabels)) {
+            async function ensureLabelExists(name) {
+              const spec = managedLabels[name];
+              if (!spec) return;
               try {
                 await github.rest.issues.getLabel({ owner, repo, name });
               } catch (error) {
@@ -73,9 +79,12 @@ jobs:
               }
             }
 
-            // workflow_dispatch is useful for creating/synchronizing managed labels.
+            // workflow_dispatch synchronizes all managed labels.
             if (context.eventName === "workflow_dispatch") {
-              core.info("Managed labels are present.");
+              for (const name of Object.keys(managedLabels)) {
+                await ensureLabelExists(name);
+              }
+              core.info("Managed labels are synchronized.");
               return;
             }
 
@@ -85,70 +94,21 @@ jobs:
               return;
             }
 
-            const text = `${item.title ?? ""}\n${item.body ?? ""}`.toLowerCase();
             const labels = new Set();
+            const title = (item.title ?? "").trim();
+            const scopeMatch = title.match(/^[a-z]+(?:\(([a-z0-9_/-]+)\))?!?:/i);
+            if (scopeMatch) {
+              const type = title.split("(")[0].split(":")[0].toLowerCase();
+              const scope = (scopeMatch[1] ?? "").toLowerCase();
 
-            const textRules = {
-              tui: [
-                /\btui\b/,
-                /terminal ui/,
-                /bubble tea/,
-                /\bkeybind(?:ing)?s?\b/,
-                /\bpane\b/,
-                /\bcursor\b/
-              ],
-              assessment: [
-                /\bassessment\b/,
-                /\bfindings?\b/,
-                /\bhealth\b/,
-                /\bdrift\b/,
-                /\btrends?\b/,
-                /\bhistory\b/,
-                /\breadiness\b/,
-                /\bpolicy\b/
-              ],
-              compatibility: [
-                /\brvtools\b/,
-                /\bcompatibility\b/,
-                /\binteroperability\b/,
-                /\bworksheet\b/,
-                /\bxlsx\b/
-              ],
-              vsphere: [
-                /\bvsphere api\b/,
-                /\bvcenter api\b/,
-                /\bgovmomi\b/
-              ],
-              docs: [
-                /\bdocumentation\b/,
-                /\breadme\b/,
-                /\bdocs?\b/
-              ],
-              ci: [
-                /\bgithub actions?\b/,
-                /\bworkflow\b/,
-                /\bdependabot\b/,
-                /\bcontinuous integration\b/
-              ],
-              release: [
-                /\brelease please\b/,
-                /\brelease-please\b/,
-                /\bgoreleaser\b/,
-                /\bversioning\b/
-              ],
-              config: [
-                /\bconfiguration\b/,
-                /\bconfig\.toml\b/,
-                /\bcontexts?\b/,
-                /\bkeyring\b/,
-                /\bcredentials?\b/
-              ]
-            };
-
-            for (const [label, patterns] of Object.entries(textRules)) {
-              if (patterns.some((pattern) => pattern.test(text))) {
-                labels.add(label);
-              }
+              if (["tui", "ui"].includes(scope)) labels.add("tui");
+              if (["health", "assessment", "readiness"].includes(scope)) labels.add("assessment");
+              if (["compatibility", "report", "rvtools"].includes(scope)) labels.add("compatibility");
+              if (["vsphere", "vcenter"].includes(scope)) labels.add("vsphere");
+              if (["docs", "documentation"].includes(scope) || type === "docs") labels.add("docs");
+              if (["ci", "workflow"].includes(scope) || type === "ci") labels.add("ci");
+              if (["release", "goreleaser"].includes(scope)) labels.add("release");
+              if (["config", "credentials", "context"].includes(scope)) labels.add("config");
             }
 
             if (context.payload.pull_request) {
@@ -170,11 +130,13 @@ jobs:
 
               if (anyPath((path) =>
                 startsWithAny(path, ["internal/tui/", "internal/uistate/"]) ||
+                path.startsWith("internal/cli/tui") ||
                 path === "docs/tui.md"
               )) labels.add("tui");
 
               if (anyPath((path) =>
                 startsWithAny(path, ["internal/assessment/", "internal/health/"]) ||
+                startsWithAny(path, ["internal/cli/assessment", "internal/cli/health"]) ||
                 path === "docs/assessments.md"
               )) labels.add("assessment");
 
@@ -210,6 +172,77 @@ jobs:
                 startsWithAny(path, ["internal/config/", "internal/contextops/"]) ||
                 path === "docs/configuration.md"
               )) labels.add("config");
+            } else {
+              // Strip code blocks, inline code, and blockquotes to avoid false-positive keyword matches
+              const rawBody = item.body ?? "";
+              const sanitizedBody = rawBody
+                .replace(/```[\s\S]*?```/g, "")
+                .replace(/`[^`]+`/g, "")
+                .replace(/^>.*$/gm, "");
+
+              const text = `${title}\n${sanitizedBody}`.toLowerCase();
+
+              const issueTextRules = {
+                tui: [
+                  /\btui\b/,
+                  /terminal ui/,
+                  /bubble tea/,
+                  /\bkeybind(?:ing)?s?\b/,
+                  /\bcursor\b/
+                ],
+                assessment: [
+                  /\bassessment\b/,
+                  /\bfindings?\b/,
+                  /\bhealth evaluation\b/,
+                  /\bdrift\b/,
+                  /\btrends?\b/,
+                  /\breadiness\b/
+                ],
+                compatibility: [
+                  /\brvtools\b/,
+                  /\binteroperability\b/,
+                  /\bworksheet\b/,
+                  /\bxlsx\b/
+                ],
+                vsphere: [
+                  /\bvsphere\b/,
+                  /\bvcenter\b/,
+                  /\besxi\b/,
+                  /\bgovmomi\b/,
+                  /\bvapp\b/,
+                  /\bdvswitch\b/,
+                  /\bdvport\b/
+                ],
+                docs: [
+                  /\bdocumentation\b/,
+                  /\breadme\b/,
+                  /\bdoc(?:s|umentation) update\b/
+                ],
+                ci: [
+                  /\bgithub actions?\b/,
+                  /\bcontinuous integration\b/,
+                  /\bci\/cd\b/
+                ],
+                release: [
+                  /\brelease please\b/,
+                  /\bgoreleaser\b/,
+                  /\bversion bump\b/
+                ],
+                config: [
+                  /\bconfig\.toml\b/,
+                  /\bkeyring\b/,
+                  /\bcredentials?\b/,
+                  /\bcontext configuration\b/,
+                  /\bconnection context\b/,
+                  /\boperator settings\b/
+                ]
+              };
+
+              for (const [label, patterns] of Object.entries(issueTextRules)) {
+                if (patterns.some((pattern) => pattern.test(text))) {
+                  labels.add(label);
+                }
+              }
             }
 
             if (labels.size === 0) {
@@ -217,11 +250,26 @@ jobs:
               return;
             }
 
-            await github.rest.issues.addLabels({
-              owner,
-              repo,
-              issue_number: item.number,
-              labels: [...labels].sort()
-            });
+            try {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: item.number,
+                labels: [...labels].sort()
+              });
+            } catch (error) {
+              // If any managed label is missing, create it on-demand and retry
+              for (const label of labels) {
+                if (managedLabels[label]) {
+                  await ensureLabelExists(label);
+                }
+              }
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: item.number,
+                labels: [...labels].sort()
+              });
+            }
 
             core.info(`Applied labels: ${[...labels].sort().join(", ")}`);

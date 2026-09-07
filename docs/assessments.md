@@ -173,6 +173,27 @@ can still reconstruct network nodes from distributed switches, host port
 groups, and VM NIC references, but those answers carry the schema reason and
 are capped at `partial`.
 
+### Cross-cluster network readiness
+
+`vsfleet network compare SOURCE TARGET [RUN]` compares the networks reachable
+from two named clusters without contacting vCenter. It uses distributed switch
+port groups and standard host port groups from the stored assessment, including
+VLAN, parent switch, MTU, teaming, security policy, uplinks, and host coverage.
+Networks match by VLAN first and then by name. The JSON result separates
+matched pairs, source-only mapping gaps, target-only networks, and field-level
+differences. A source-only network is also resolved through the topology graph
+so the VMs that would lose connectivity are listed with the attachment
+evidence basis and confidence.
+
+`vsfleet assessment network-readiness --source SOURCE --target TARGET [RUN]`
+derives the migration verdict from that comparison. `ready` means no attached
+VM would lose a source network and no hard mismatch was observed; `blocked`
+means an attached mapping gap or VLAN, MTU, security, or host-coverage mismatch
+was found; `unknown` means a cluster is unresolved or relevant collection
+evidence is blind. Confidence is explicit (`complete`, `partial`, or `unknown`):
+pre-schema-12 or reconstructed evidence is partial, while blind contexts always
+force unknown. `--fail-on-blockers` returns exit code 2 for a blocked result.
+
 ### RVTools file interoperability
 
 The `rvtools` export profile renders twenty-one worksheet layouts used by RVTools

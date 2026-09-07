@@ -115,8 +115,19 @@ pass.
 
 Zombie-VMDK evidence is opt-in because it requires the vSphere
 `Datastore.Browse` privilege and adds a bounded directory listing per
-accessible datastore. Use `vsfleet assessment run --browse-datastores`; runs
-without a successful browse mark the rule `not-evaluated`. Connected floppy
+accessible datastore. Use `vsfleet assessment run --browse-datastores` and
+then inspect `vsfleet assessment orphans [RUN]`. Orphan candidates are
+estate-wide rather than name-matched within one vCenter: VMFS UUIDs, extents,
+NFS exports, vVol IDs, and datastore URLs join observations where available.
+
+Each candidate is classified as `verified-unreferenced`,
+`suspected-unreferenced`, `referenced-other-context`, or
+`unknown-incomplete-coverage`. Snapshot chains are matched in both directions,
+and a truncated browse, failed relevant collection, or missing backing identity
+prevents a verified verdict. `health --fail-on-findings --severity warning`
+therefore fails only on verified orphans; low-confidence guesses are
+informational. `assessment orphans -o json` exposes the paths, sizes,
+timestamps, identity keys, references, and coverage reasons. Connected floppy
 devices remain a named follow-up.
 
 ### Migration readiness

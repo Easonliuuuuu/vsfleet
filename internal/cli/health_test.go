@@ -12,6 +12,7 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -70,6 +71,58 @@ func runAssessmentReadiness(t *testing.T, dbPath string, args ...string) (string
 	defer func() { _ = a.Close(context.Background()) }()
 	err := root.ExecuteContext(context.Background())
 	return out.String(), errOut.String(), err
+}
+
+func runAssessmentOrphans(t *testing.T, dbPath string, args ...string) (string, string, error) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
+	root := NewRootCommand(a)
+	root.SetArgs(append([]string{"--history-db", dbPath, "assessment", "orphans"}, args...))
+	defer func() { _ = a.Close(context.Background()) }()
+	err := root.ExecuteContext(context.Background())
+	return out.String(), errOut.String(), err
+}
+
+func newOrphanTestHistoryDB(t *testing.T, schema string) string {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+	s, err := assessment.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	ctx := &config.Context{Name: "prod", Endpoint: "https://vc.example"}
+	run, err := s.StartRunWithMetadata(context.Background(), "test", []*config.Context{ctx}, when, assessment.RunMetadata{InventorySchemaVersion: schema})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Accessible: true, BrowseStatus: "success", Files: []vsphere.DatastoreFile{{Path: "[datastore1] lost/orphan.vmdk", SizeBytes: 8 << 30}}})
+	if err := s.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", Collections: []assessment.CollectionResult{{Kind: "vm", Status: "success"}, {Kind: "datastore", Status: "success", Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-1", Kind: "datastore", ID: "ds-1", Name: "datastore1", Payload: payload}}}}}, when.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FinishRun(context.Background(), run.ID, when.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return dbPath
+}
+
+func TestAssessmentOrphansCommandAndConfidenceFiltering(t *testing.T) {
+	db := newOrphanTestHistoryDB(t, "10")
+	stdout, _, err := runAssessmentOrphans(t, db, "latest")
+	if err != nil || !strings.Contains(stdout, "SUSPECTED") || !strings.Contains(stdout, "orphan.vmdk") {
+		t.Fatalf("orphans output err=%v output=%s", err, stdout)
+	}
+	stdout, _, err = runAssessmentOrphans(t, db, "latest", "-o", "json", "--confidence", string(health.ConfidenceSuspected))
+	if err != nil || !strings.Contains(stdout, `"confidence": "suspected-unreferenced"`) {
+		t.Fatalf("orphans JSON err=%v output=%s", err, stdout)
+	}
+	if healthOut, healthErr, gateErr := runHealth(t, db, "latest", "--severity", "warning", "--fail-on-findings"); gateErr != nil {
+		t.Fatalf("suspected-only estate failed warning gate: %v stdout=%s stderr=%s", gateErr, healthOut, healthErr)
+	}
 }
 
 func TestHealthCommandExitCodes(t *testing.T) {

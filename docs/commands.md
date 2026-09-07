@@ -20,6 +20,7 @@ configuration, history database, and output options shown below.
 | `vsfleet doctor [context...]` | Diagnose the connection stage by stage |
 | `vsfleet health [run]` | Assess the estate described by a stored assessment |
 | `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
+| `vsfleet assessment orphans [run]` | Explain estate-wide browsed VMDK orphan evidence |
 | `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
@@ -80,10 +81,15 @@ large estates and is disabled by default.
 ```sh
 vsfleet assessment run --all-contexts --browse-datastores
 vsfleet health latest
+vsfleet assessment orphans latest
 ```
 
 Without the flag, `datastore-zombie-vmdk` is reported as `not-evaluated`, not as
-a clean result.
+a clean result. Orphan confidence is estate-aware: `--fail-on-findings
+--severity warning` fails only on verified-unreferenced VMDKs; suspected and
+cross-context evidence is informational, while incomplete coverage is unknown.
+Use `assessment orphans [RUN]` for the evidence drill-down, with
+`--confidence` and `--min-size` filters or `-o json` for automation.
 
 ## Exit codes
 

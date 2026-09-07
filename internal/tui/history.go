@@ -643,10 +643,10 @@ func (m *Model) viewHistoryHealth() []string {
 	if len(r.Findings) == 0 {
 		lines = append(lines, t.ok.Render("  no findings"))
 	} else {
-		lines = append(lines, t.header.Render("  SEVERITY   CATEGORY       RULE                         OBJECT                         MESSAGE"))
+		lines = append(lines, t.header.Render("  SEVERITY   CONFIDENCE                 CATEGORY       RULE                         OBJECT                         MESSAGE"))
 		for _, finding := range r.Findings {
 			object := finding.Object.Kind + "/" + finding.Object.Name
-			line := fmt.Sprintf("  %-10s %-14s %-28s %-30s %s", finding.Severity, finding.Category, finding.Rule, object, finding.Message)
+			line := fmt.Sprintf("  %-10s %-26s %-14s %-28s %-30s %s", finding.Severity, finding.Confidence, finding.Category, finding.Rule, object, finding.Message)
 			style := t.warn
 			if finding.Severity == health.SeverityCritical {
 				style = t.bad

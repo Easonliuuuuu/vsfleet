@@ -80,6 +80,9 @@ func TestBrowseDatastoresAgainstSimulator(t *testing.T) {
 		t.Fatal("simulator returned no datastores")
 	}
 	for _, datastore := range inv.Datastores {
+		if datastore.Backing.URL == "" {
+			t.Fatalf("datastore %q has no backing URL", datastore.Name)
+		}
 		if datastore.BrowseStatus != "success" {
 			t.Fatalf("datastore browse status=%q error=%q", datastore.BrowseStatus, datastore.BrowseError)
 		}
@@ -120,8 +123,11 @@ func TestDatastoreFilesCapIsHonored(t *testing.T) {
 	for i := 0; i < datastoreBrowseFileCap+1; i++ {
 		files = append(files, &types.VmDiskFileInfo{FileInfo: types.FileInfo{Path: "disk.vmdk"}})
 	}
-	got := datastoreFiles("ds", types.ArrayOfHostDatastoreBrowserSearchResults{HostDatastoreBrowserSearchResults: []types.HostDatastoreBrowserSearchResults{{FolderPath: "[ds]", File: files}}})
+	got, truncated := datastoreFiles("ds", types.ArrayOfHostDatastoreBrowserSearchResults{HostDatastoreBrowserSearchResults: []types.HostDatastoreBrowserSearchResults{{FolderPath: "[ds]", File: files}}})
 	if len(got) != datastoreBrowseFileCap {
 		t.Fatalf("datastore file count=%d, want cap %d", len(got), datastoreBrowseFileCap)
+	}
+	if !truncated {
+		t.Fatal("datastore file cap was reached without truncation provenance")
 	}
 }

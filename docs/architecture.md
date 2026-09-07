@@ -116,7 +116,9 @@ completed collection in both runs; failed or missing coverage produces a
 warning instead of false vanish/appear events.
 
 Schema version 3 adds per-kind collection coverage and immutable host, cluster,
-and datastore observations. Resource diffs use vCenter plus managed-object
+and datastore observations. Inventory schema version 11 adds datastore backing
+identity and browse-truncation provenance, allowing estate-wide orphan checks
+to distinguish shared storage from same-name independent datastores. Resource diffs use vCenter plus managed-object
 reference identity and keep volatile utilization/state fields behind
 `--include-runtime`. Trends aggregate estate totals before context/resource
 drill-downs, and every JSON trend/report envelope carries a schema version.
@@ -137,7 +139,9 @@ with the version columns left blank and the gap noted on `vsfleetCoverage`; runs
 before version 8 mark `vRP` as not recorded, and runs before version 9 mark the
 six host configuration tabs as not recorded. Version 10 adds persisted
 distributed virtual switch and port-group observations for `dvSwitch` and
-`dvPort`; runs before version 10 mark those tabs as not recorded. A shared
+`dvPort`; runs before version 10 mark those tabs as not recorded. Inventory
+schema version 11 keeps the new datastore backing fields in the payload
+without changing RVTools worksheet columns. A shared
 `rvtoolsSheets` compatibility-sheet builder canonicalizes and validates the run
 once and returns every supported worksheet (`vInfo`, `vCPU`, `vMemory`,
 per-VM `vDisk`/`vNetwork`,

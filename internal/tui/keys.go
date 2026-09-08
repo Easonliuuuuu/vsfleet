@@ -156,7 +156,11 @@ func defaultKeys() keyMap {
 }
 
 // helpSections groups the bindings for the help panel.
-func (k keyMap) helpSections() []helpSection {
+func (k keyMap) helpSections(demo bool) []helpSection {
+	ctxBindings := []key.Binding{k.UseContext, k.NewContext, k.EditContext, k.DeleteContext}
+	if demo {
+		ctxBindings = []key.Binding{k.UseContext}
+	}
 	return []helpSection{
 		{"Move", []key.Binding{k.Up, k.Down, k.PageUp, k.PageDown, k.Home, k.End}},
 		{"Resource kinds", []key.Binding{k.Kind, k.NextTab, k.PrevTab, k.Open, k.Back}},
@@ -167,7 +171,7 @@ func (k keyMap) helpSections() []helpSection {
 		// overlay at the minimum supported terminal height.
 		{"History", []key.Binding{k.History}},
 		{"Table", []key.Binding{k.Sort}},
-		{"Contexts screen (c)", []key.Binding{k.UseContext, k.NewContext, k.EditContext, k.DeleteContext}},
+		{"Contexts screen (c)", ctxBindings},
 		{"Other", []key.Binding{k.Help, k.Quit}},
 	}
 }
@@ -202,6 +206,9 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeConfirmDelete:
 		return []key.Binding{k.Confirm, k.ToggleKeep, k.Back}
 	case modeContexts:
+		if m.demo {
+			return []key.Binding{k.UseContext, k.AllScope, k.Doctor, k.Back}
+		}
 		return []key.Binding{k.UseContext, k.AllScope, k.NewContext, k.EditContext, k.DeleteContext, k.Doctor, k.Back}
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}

@@ -437,7 +437,11 @@ func (m *Model) viewContexts() []string {
 	}
 	lines := []string{joinEnds(t.title.Render("Contexts"), t.faint.Render(scope), m.width), ""}
 	if len(m.states) == 0 {
-		lines = append(lines, "  "+t.dim.Render("No vCenters configured yet — n adds the first one."))
+		msg := "No vCenters configured yet — n adds the first one."
+		if m.demo {
+			msg = "No vCenters configured."
+		}
+		lines = append(lines, "  "+t.dim.Render(msg))
 		return scrollLines(lines, 0, m.bodyHeight())
 	}
 
@@ -926,8 +930,8 @@ func (m *Model) credPromptKeys() []string {
 // a reference you look up somewhere else instead.
 func (m *Model) helpLines() []string {
 	t := m.theme
-	blocks := make([][]string, 0, len(m.keys.helpSections()))
-	for _, sec := range m.keys.helpSections() {
+	blocks := make([][]string, 0, len(m.keys.helpSections(m.demo)))
+	for _, sec := range m.keys.helpSections(m.demo) {
 		block := []string{t.header.Render(sec.title)}
 		for _, b := range sec.bindings {
 			h := b.Help()

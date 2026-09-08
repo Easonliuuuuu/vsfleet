@@ -383,15 +383,41 @@ func TestAddAsContextSwitchesToItsExistingContext(t *testing.T) {
 	}
 }
 
-func TestAddAsContextRemainsEnabledInDemo(t *testing.T) {
+func TestAddAsContextDisabledInDemo(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Demo: true})
 	r := findRow(t, m, vsphere.KindVM, "app-01")
 	a, ok := findAction(m.actionsFor(r, 0), `Add "app-01" as a vCenter context`)
 	if !ok {
 		t.Fatalf("demo VM did not offer context promotion: %+v", m.actionsFor(r, 0))
 	}
+	if a.disabled != demoReadOnlyReason {
+		t.Fatalf("expected context promotion disabled with %q in demo, got disabled=%q", demoReadOnlyReason, a.disabled)
+	}
+	if a.run != nil {
+		t.Error("disabled action must not have a run func")
+	}
+}
+
+func TestSwitchToExistingContextEnabledInDemo(t *testing.T) {
+	b := twoHealthy()
+	nested := ctx("nested-app", "https://10.20.0.11")
+	nested.Via, nested.ViaMoRef = "prod", "prod-vm-1"
+	b.contexts = append(b.contexts, nested)
+	m := newTestModel(t, b, Options{Current: "prod", Demo: true})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	a, ok := findAction(m.actionsFor(r, 0), `Switch to context "nested-app"`)
+	if !ok {
+		t.Fatalf("existing nested context was not recognized in demo: %+v", m.actionsFor(r, 0))
+	}
 	if a.disabled != "" {
-		t.Fatalf("context promotion should remain enabled in demo, got disabled=%q", a.disabled)
+		t.Fatalf("switch action should be enabled in demo, got disabled=%q", a.disabled)
+	}
+	if a.run == nil {
+		t.Fatal("switch action must have a run func")
+	}
+	a.run(m)
+	if m.mode != modeBrowse || m.current() == nil || m.current().cc.Name != "nested-app" || m.allScope {
+		t.Fatalf("switch action did not select the nested context in demo: mode=%v current=%v all=%v", m.mode, m.current(), m.allScope)
 	}
 }
 

@@ -41,6 +41,10 @@ type actionList struct {
 // implementation.
 const demoDisabledReason = "demo — no external commands"
 
+// demoReadOnlyReason is why actions that mutate contexts or persistent
+// configuration are disabled in demo mode. The presentation is read-only.
+const demoReadOnlyReason = "demo — read-only"
+
 // actionsFor builds the actions available on one line of an open detail
 // pane. Line 0 is the object's own header; every other line is
 // r.detail[cursor-2] — see detailFocusable, whose indexing this matches
@@ -211,10 +215,9 @@ func (m *Model) nestedContextFor(parentContext, moref, address string) *contextS
 	return nil
 }
 
-// addContextAction promotes a VM with an address to a context form. It is not
-// disabled in demo mode: this launches no process and opens no browser. The
-// demo backend refuses the save itself, which is where the presentation's
-// read-only promise is enforced.
+// addContextAction promotes a VM with an address to a context form. In demo
+// mode it is disabled because the presentation is read-only and does not
+// persist context mutations. Existing nested contexts remain switchable.
 func (m *Model) addContextAction(r row, address string) action {
 	if nested := m.nestedContextFor(r.context, r.target.moref, address); nested != nil {
 		name := nested.cc.Name
@@ -235,6 +238,9 @@ func (m *Model) addContextAction(r row, address string) action {
 	label := fmt.Sprintf("Add %q as a vCenter context", slug)
 	if address == "" {
 		return action{label: label, disabled: "no address available"}
+	}
+	if m.demo {
+		return action{label: label, disabled: demoReadOnlyReason}
 	}
 	transport := config.TransportConfig{Type: config.TransportDirect}
 	if parent := m.byName[r.context]; parent != nil {

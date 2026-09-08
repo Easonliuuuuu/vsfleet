@@ -84,6 +84,8 @@ const (
 	modeHistoryTimeline
 	modeHistoryTimelineDetail
 	modeHistoryRunEdit
+	modeDatastoreFiles
+	modeDatastoreFind
 )
 
 const (
@@ -586,6 +588,11 @@ type Model struct {
 	// here lets the regular detail renderer and timeline operate on the member
 	// while Esc can return to the exact member selection.
 	vappVM *row
+	// ds holds the read-only datastore file browser while it is open. Like
+	// vapp it is kept apart from the browse cursor, and unlike everything
+	// else on this struct it is the one view whose contents come from a live
+	// query made on demand rather than from the inventory already in memory.
+	ds *dsWorkspace
 	// doctor is the context the diagnosis panel is reporting on. It is not
 	// always the one in scope: in all-vCenters view "d" asks about the
 	// vCenter the selected row came from.
@@ -1347,6 +1354,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stageMsg:
 		return m, m.applyStage(msg)
 
+	case dsListingMsg:
+		return m, m.applyDSListing(msg)
+
+	case dsFindMsg:
+		return m, m.applyDSFind(msg)
+
 	case handoffResultMsg:
 		if msg.err != nil {
 			m.setMessage(msg.verb+" failed: "+msg.err.Error(), true)
@@ -1636,6 +1649,12 @@ func (m *Model) busy() bool {
 	// the tick chain ended on the first frame of a capture and the interface
 	// showed a spinner that never moved.
 	if m.capturing {
+		return true
+	}
+	// A directory listing or a datastore search is work the operator is
+	// watching too. Leaving it out is how the spinner beside "capturing…"
+	// once froze on its first frame; see TestCaptureKeepsTheSpinnerTurning.
+	if m.ds != nil && (m.ds.loading || m.ds.finding) {
 		return true
 	}
 	for _, st := range m.states {
@@ -1995,6 +2014,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.handleHistoryRunEditKey(msg)
 	case modeHistoryTimeline:
 		return m.handleHistoryTimelineKey(msg)
+	case modeDatastoreFiles:
+		return m.handleDatastoreFilesKey(msg)
+	case modeDatastoreFind:
+		return m.handleDatastoreFindKey(msg)
 	case modeHistoryTimelineDetail:
 		if key.Matches(msg, m.keys.Back) {
 			m.mode = modeHistoryTimeline
@@ -2125,6 +2148,29 @@ func (m *Model) handleConfirmDeleteKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
+	// In the datastore browser the filter narrows one directory that has
+	// already been read. Widening it into an estate-wide inventory search
+	// would answer a different question entirely, and finishing simply stops
+	// typing — the list underneath is already filtered.
+	if m.mode == modeDatastoreFiles {
+		switch msg.Type {
+		case tea.KeyTab, tea.KeyEnter:
+			m.filtering = false
+			m.filter.Blur()
+			return nil
+		case tea.KeyEsc:
+			m.filtering = false
+			m.filter.Blur()
+			m.filter.SetValue("")
+			return nil
+		}
+		var cmd tea.Cmd
+		m.filter, cmd = m.filter.Update(msg)
+		if m.ds != nil {
+			m.ds.cursor, m.ds.offset = 0, 0
+		}
+		return cmd
+	}
 	switch msg.Type {
 	case tea.KeyTab:
 		// Widening is offered exactly where the narrow filter runs out: the

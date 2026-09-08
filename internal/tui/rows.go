@@ -116,6 +116,10 @@ type actionTarget struct {
 	// path is a datastore-style path ("[datastore1]") for the one kind that
 	// has one; empty otherwise.
 	path string
+	// inaccessible marks a datastore no host can currently reach. It is
+	// carried here so the file browser can refuse with that reason rather
+	// than opening onto a directory that would look merely empty.
+	inaccessible bool
 }
 
 // actionJoins names the other objects a row points at, read by a
@@ -733,7 +737,7 @@ func datastoreRow(d vsphere.Datastore, withContext bool) row {
 			{"Inventory path", humanize.Dash(d.Path)},
 			{"Managed object", d.ID},
 		},
-		target: actionTarget{moref: d.ID, morefKind: "Datastore", path: "[" + d.Name + "]"},
+		target: actionTarget{moref: d.ID, morefKind: "Datastore", path: "[" + d.Name + "]", inaccessible: !d.Accessible},
 	}
 }
 

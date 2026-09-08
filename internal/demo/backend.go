@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -110,6 +112,113 @@ func newContext(name, endpoint string, route config.TransportConfig) *config.Con
 	}
 	cc.Normalize()
 	return cc
+}
+
+// ListDatastoreDirectory implements the TUI's datastore browser extension
+// from the demo estate's own file fixtures. The presentation promises it
+// dials nothing, so the browser is answered by splitting the sample file
+// paths into directories rather than by connecting anywhere.
+func (b *Backend) ListDatastoreDirectory(_ context.Context, cc *config.Context, _, datastore, relative string) (vsphere.DatastoreListing, error) {
+	files, err := b.demoFiles(cc, datastore)
+	if err != nil {
+		return vsphere.DatastoreListing{}, err
+	}
+	relative = strings.Trim(relative, "/")
+	seen := map[string]bool{}
+	var out vsphere.DatastoreListing
+	for _, file := range files {
+		_, path, ok := vsphere.SplitBrowsePath(file.Path)
+		if !ok {
+			continue
+		}
+		rest, inside := demoUnder(path, relative)
+		if !inside {
+			continue
+		}
+		name, _, isDir := strings.Cut(rest, "/")
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		entry := vsphere.DatastoreEntry{
+			Name: name,
+			Path: "[" + datastore + "] " + strings.Trim(relative+"/"+name, "/"),
+			Type: vsphere.DatastoreEntryFile,
+		}
+		if isDir {
+			entry.Type = vsphere.DatastoreEntryFolder
+		} else {
+			entry.SizeBytes, entry.Modified = file.SizeBytes, file.Modified
+		}
+		out.Entries = append(out.Entries, entry)
+	}
+	sort.SliceStable(out.Entries, func(i, j int) bool {
+		if (out.Entries[i].Type == vsphere.DatastoreEntryFolder) != (out.Entries[j].Type == vsphere.DatastoreEntryFolder) {
+			return out.Entries[i].Type == vsphere.DatastoreEntryFolder
+		}
+		return out.Entries[i].Name < out.Entries[j].Name
+	})
+	return out, nil
+}
+
+// FindInDatastore implements the recursive half of the same extension. The
+// pattern is matched as a glob against the leaf name, which is close enough
+// to what a vCenter does for a demonstration.
+func (b *Backend) FindInDatastore(_ context.Context, cc *config.Context, _, datastore, pattern string) (vsphere.DatastoreListing, error) {
+	files, err := b.demoFiles(cc, datastore)
+	if err != nil {
+		return vsphere.DatastoreListing{}, err
+	}
+	var out vsphere.DatastoreListing
+	for _, file := range files {
+		_, path, ok := vsphere.SplitBrowsePath(file.Path)
+		if !ok {
+			continue
+		}
+		name := path
+		if i := strings.LastIndexByte(path, '/'); i >= 0 {
+			name = path[i+1:]
+		}
+		if matched, _ := filepath.Match(strings.ToLower(pattern), strings.ToLower(name)); !matched {
+			continue
+		}
+		out.Entries = append(out.Entries, vsphere.DatastoreEntry{
+			Name:      name,
+			Path:      file.Path,
+			Type:      vsphere.DatastoreEntryFile,
+			SizeBytes: file.SizeBytes,
+			Modified:  file.Modified,
+		})
+	}
+	return out, nil
+}
+
+// demoUnder reports the part of path inside dir, and whether it is there at
+// all.
+func demoUnder(path, dir string) (string, bool) {
+	if dir == "" {
+		return path, true
+	}
+	if !strings.HasPrefix(path, dir+"/") {
+		return "", false
+	}
+	return strings.TrimPrefix(path, dir+"/"), true
+}
+
+func (b *Backend) demoFiles(cc *config.Context, datastore string) ([]vsphere.DatastoreFile, error) {
+	if cc == nil {
+		return nil, errors.New("no context selected")
+	}
+	inv, ok := b.inventories[cc.Name]
+	if !ok || inv == nil {
+		return nil, fmt.Errorf("demo inventory for %q not found", cc.Name)
+	}
+	for _, ds := range inv.Datastores {
+		if strings.EqualFold(ds.Name, datastore) {
+			return ds.Files, nil
+		}
+	}
+	return nil, fmt.Errorf("demo datastore %q not found", datastore)
 }
 
 // Contexts implements tui.Backend.

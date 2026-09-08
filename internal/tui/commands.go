@@ -435,6 +435,43 @@ func discoverThumbprint(ctx context.Context, b Backend, cc *config.Context) tea.
 // say so the same way any other one-shot action does. verb names what was
 // attempted ("copied", "opened in the browser", "ssh session ended") rather
 // than which action ran, since that is what the message line actually says.
+// dsListingMsg is one answered directory query, and dsFindMsg one answered
+// recursive search. Both carry the generation they were issued under so the
+// model can drop a reply for a directory the operator has already left; see
+// dsWorkspace.generation.
+type dsListingMsg struct {
+	context    string
+	path       string
+	generation uint64
+	listing    vsphere.DatastoreListing
+	err        error
+}
+
+type dsFindMsg struct {
+	context    string
+	query      string
+	generation uint64
+	listing    vsphere.DatastoreListing
+	err        error
+}
+
+// listDatastoreDirCmd reads exactly one directory, off the update loop, so a
+// slow or hanging datastore browser cannot make the interface stop responding
+// — cancelling is then only a matter of dropping the reply.
+func listDatastoreDirCmd(ctx context.Context, b datastoreBrowserBackend, cc *config.Context, w dsWorkspace) tea.Cmd {
+	return func() tea.Msg {
+		listing, err := b.ListDatastoreDirectory(ctx, cc, w.datastoreID, w.datastore, w.path)
+		return dsListingMsg{context: w.context, path: w.path, generation: w.generation, listing: listing, err: err}
+	}
+}
+
+func findInDatastoreCmd(ctx context.Context, b datastoreBrowserBackend, cc *config.Context, w dsWorkspace, pattern string) tea.Cmd {
+	return func() tea.Msg {
+		listing, err := b.FindInDatastore(ctx, cc, w.datastoreID, w.datastore, pattern)
+		return dsFindMsg{context: w.context, query: pattern, generation: w.generation, listing: listing, err: err}
+	}
+}
+
 type handoffResultMsg struct {
 	verb string
 	err  error

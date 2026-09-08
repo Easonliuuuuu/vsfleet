@@ -92,6 +92,7 @@ var readOnlyMethods = map[string]string{
 	"WaitForUpdatesEx":               "read: reports those property values, a page at a time",
 	"DestroyPropertyCollector":       "cleanup of that same cursor and its filter; never touches inventory",
 	"SearchDatastoreSubFolders_Task": "read: creates a task only as a handle for directory listing and returns file metadata; cannot modify inventory",
+	"SearchDatastore_Task":           "read: the same bargain for one directory rather than a whole tree — the interactive datastore file browser; returns file metadata and cannot modify inventory",
 }
 
 // soapRecorder collects the operation name of every SOAP request that
@@ -286,8 +287,18 @@ func TestOnlyDatastoreBrowserSOAPShimDefinesFault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("walk: %v", err)
 	}
-	if len(faultMethods) != 1 || !strings.HasSuffix(faultMethods[0], filepath.Join("internal", "vsphere", "datastore_browse.go")) {
-		t.Fatalf("hand-rolled SOAP Fault implementations=%v, want only internal/vsphere/datastore_browse.go", faultMethods)
+	// The count is not pinned; the location is. Each hand-rolled operation
+	// needs its own body type and so its own Fault method, and what this test
+	// protects is that all of them stay in the one file a reviewer reads
+	// before approving a new call to a vCenter — not that there is exactly
+	// one of them.
+	if len(faultMethods) == 0 {
+		t.Fatal("no hand-rolled SOAP Fault implementation found; this test has stopped watching anything")
+	}
+	for _, path := range faultMethods {
+		if !strings.HasSuffix(path, filepath.Join("internal", "vsphere", "datastore_browse.go")) {
+			t.Fatalf("hand-rolled SOAP Fault implementations=%v, want all of them in internal/vsphere/datastore_browse.go", faultMethods)
+		}
 	}
 
 	path := filepath.Join(root, "internal", "vsphere", "datastore_browse.go")
@@ -300,8 +311,26 @@ func TestOnlyDatastoreBrowserSOAPShimDefinesFault(t *testing.T) {
 	for _, name := range operationNames {
 		seen[name] = true
 	}
-	if !seen["SearchDatastoreSubFolders_Task"] || len(seen) != 1 {
-		t.Fatalf("datastore browser SOAP shim names operations %v, want only SearchDatastoreSubFolders_Task", seen)
+	// The allowed set is exhaustive on purpose: adding a third operation here
+	// has to be an edit to this list, which is the point at which somebody
+	// asks whether a new call to a vCenter is really read-only.
+	//
+	// SearchDatastore_Task lists exactly one directory and descends nowhere;
+	// SearchDatastoreSubFolders_Task is the recursive form. Both create a
+	// task only as a handle for returning file metadata.
+	allowed := map[string]bool{
+		"SearchDatastoreSubFolders_Task": true,
+		"SearchDatastore_Task":           true,
+	}
+	for name := range seen {
+		if !allowed[name] {
+			t.Fatalf("datastore browser SOAP shim names operation %q, which is not an approved read", name)
+		}
+	}
+	for name := range allowed {
+		if !seen[name] {
+			t.Fatalf("datastore browser SOAP shim no longer names %q; prune this list rather than leaving it stale", name)
+		}
 	}
 }
 

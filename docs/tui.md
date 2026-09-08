@@ -35,6 +35,7 @@ with several opens a short list to choose from.
 | A VM with an IP address | Add it as a vCenter context, or switch to its existing context |
 | A VM's IP address | SSH to it, copy an `ssh user@ip` command, copy the value |
 | A host, datastore, network, or cluster's own header | "Show VMs on this …" — narrows the VM table to exactly what belongs to it |
+| A datastore's own header | "Browse files" and "Find in datastore" — see below |
 | A VM's Host or Cluster field | Jump straight to that host's or cluster's own row |
 | Any other field | Copy the value |
 
@@ -52,6 +53,39 @@ sessions retain the final diagnostic line from OpenSSH in the footer, rather
 than reducing the cause to exit status 255. A jump
 ("Show VMs on this host") stays on the table until `Esc` clears it, which it
 does before clearing anything else.
+
+## Datastore file browser
+
+"Browse files" on a datastore's header opens a read-only file browser. It is
+inspection only: there is no delete, rename, move, upload, mkdir, or download,
+and normal datastore inventory still makes no filesystem queries at all.
+
+Navigation is lazy. Opening the browser reads the datastore's root directory
+and nothing else; entering a folder reads that folder and nothing else. The
+whole tree is never enumerated and never held in memory.
+
+| Key | Action |
+|---|---|
+| `Enter` | Open the highlighted folder, or list a file's actions |
+| `Esc` | Go up one directory, close the browser at the root, or stop a request still running |
+| `/` | Filter the current directory by name |
+| `f` | Find in datastore — a recursive search |
+| `y` | Copy the selected entry's `[datastore] path` |
+
+`f` (or "Find in datastore" from the header) is the one recursive operation,
+and it only ever runs because you asked for it. Type a name or a glob such as
+`*.iso`. Progress is visible while it runs, `Esc` cancels it, and results are
+capped — a search that hit the cap says so beside its results rather than
+presenting a partial answer as a complete one. `Enter` on a result opens the
+directory containing it.
+
+Failures are shown as failures. A datastore no host can reach disables the
+action with that reason, and a directory that cannot be read reports the
+vCenter's own message rather than appearing to be empty. Browsing needs
+`Datastore.Browse` (see
+[Configuration](configuration.md#vsphere-permissions)); it is the same
+read-only privilege `vsfleet assessment run --browse-datastores` uses, and the
+two workflows are otherwise independent.
 
 ## Contexts and vApps
 

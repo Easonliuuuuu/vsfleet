@@ -61,6 +61,12 @@ type keyMap struct {
 	PrevPane key.Binding
 	NextPane key.Binding
 
+	// FindFiles and CopyPath belong to the datastore file browser. Both keys
+	// are free everywhere else, so neither has to be relabelled per screen
+	// the way AllScopeBrief is.
+	FindFiles key.Binding
+	CopyPath  key.Binding
+
 	Sort key.Binding
 	Help key.Binding
 	Quit key.Binding
@@ -128,6 +134,9 @@ func defaultKeys() keyMap {
 		PrevPane:    key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "prev pane")),
 		NextPane:    key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "next pane")),
 
+		FindFiles: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "find in datastore")),
+		CopyPath:  key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy datastore path")),
+
 		Sort: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
 		Help: key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Quit: key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
@@ -163,7 +172,11 @@ func (k keyMap) helpSections(demo bool) []helpSection {
 	}
 	return []helpSection{
 		{"Move", []key.Binding{k.Up, k.Down, k.PageUp, k.PageDown, k.Home, k.End}},
-		{"Resource kinds", []key.Binding{k.Kind, k.NextTab, k.PrevTab, k.Open, k.Back}},
+		// The datastore file browser's two extra keys sit here rather than in
+		// a section of their own: enter, esc and "/" already mean the same
+		// thing there as everywhere else, and a fourth block would push the
+		// second column past the minimum supported terminal height.
+		{"Resource kinds", []key.Binding{k.Kind, k.NextTab, k.PrevTab, k.Open, k.Back, k.FindFiles, k.CopyPath}},
 		{"Scope", []key.Binding{k.Contexts, k.AllScope, k.Filter, k.Search}},
 		{"Connection", []key.Binding{k.Reload, k.ReloadAll, k.Doctor}},
 		// The changes screen puts its run-picker and capture bindings in the
@@ -227,6 +240,13 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		return []key.Binding{k.Up, k.Down, k.Open, k.TimelineAll, k.Back, k.Help, k.Quit}
 	case modeHistoryTimelineDetail:
 		return []key.Binding{k.Back, k.Help, k.Quit}
+	case modeDatastoreFiles:
+		if m.actions != nil {
+			return []key.Binding{k.Up, k.Down, k.RunAction, k.CancelAction}
+		}
+		return []key.Binding{k.Up, k.Down, k.Open, k.Filter, k.FindFiles, k.CopyPath, k.Back, k.Quit}
+	case modeDatastoreFind:
+		return []key.Binding{k.Up, k.Down, k.Open, k.FindFiles, k.CopyPath, k.Back, k.Quit}
 	default:
 		// History comes before lower-priority browse hints so it remains
 		// discoverable even when a narrow terminal truncates the footer. Enter

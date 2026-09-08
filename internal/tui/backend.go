@@ -74,6 +74,27 @@ type InventoryHandle interface {
 	FetchGroup(group vsphere.FetchGroup, partial func(*vsphere.Inventory)) *vsphere.Inventory
 }
 
+// datastoreBrowserBackend is the live-query extension the datastore file
+// browser needs. It is deliberately not part of Backend: browsing is the only
+// thing in the interface that asks a vCenter a question outside an inventory
+// load, and putting it on the interface would force every fake and the demo
+// estate to answer it. Callers type-assert for it — the same bargain
+// inventoryProgressBackend already makes — and a backend that does not
+// implement it gets the action offered but disabled, with a reason, rather
+// than silently missing.
+//
+// Both methods are read-only and bounded by the client; neither has any way to
+// change anything on a datastore. datastoreID is vsphere.Datastore.ID, the
+// managed object reference's value.
+type datastoreBrowserBackend interface {
+	// ListDatastoreDirectory lists exactly one directory. relative is the
+	// path inside the datastore, empty for its root.
+	ListDatastoreDirectory(ctx context.Context, cc *config.Context, datastoreID, datastore, relative string) (vsphere.DatastoreListing, error)
+	// FindInDatastore searches the whole datastore recursively. It is only
+	// ever called because an operator asked for it by name.
+	FindInDatastore(ctx context.Context, cc *config.Context, datastoreID, datastore, pattern string) (vsphere.DatastoreListing, error)
+}
+
 // sessionBackend is the production Backend, over the same session manager,
 // configuration and credential resolver the command line uses.
 type sessionBackend struct {
@@ -183,6 +204,41 @@ func (h *sessionInventoryHandle) FetchGroup(group vsphere.FetchGroup, partial fu
 		h.cancel()
 	}
 	return inv
+}
+
+// ListDatastoreDirectory implements datastoreBrowserBackend.
+func (b *sessionBackend) ListDatastoreDirectory(ctx context.Context, cc *config.Context, datastoreID, datastore, relative string) (vsphere.DatastoreListing, error) {
+	return browse(ctx, b, cc, func(client *vsphere.Client, opCtx context.Context) (vsphere.DatastoreListing, error) {
+		return client.ListDatastoreDirectory(opCtx, datastoreID, datastore, relative)
+	})
+}
+
+// FindInDatastore implements datastoreBrowserBackend.
+func (b *sessionBackend) FindInDatastore(ctx context.Context, cc *config.Context, datastoreID, datastore, pattern string) (vsphere.DatastoreListing, error) {
+	return browse(ctx, b, cc, func(client *vsphere.Client, opCtx context.Context) (vsphere.DatastoreListing, error) {
+		return client.FindInDatastore(opCtx, datastoreID, datastore, pattern)
+	})
+}
+
+// browse runs one datastore browser query on a connected session.
+//
+// It takes its own operation context rather than reusing an inventory
+// handle's: sessionInventoryHandle cancels its context as soon as the last
+// fetch group lands, so a browse borrowing it would fail on a context that was
+// cancelled minutes ago. The connection itself is shared — Manager.Connect
+// reuses the live session — so this costs a query, not a login.
+func browse(ctx context.Context, b *sessionBackend, cc *config.Context, query func(*vsphere.Client, context.Context) (vsphere.DatastoreListing, error)) (vsphere.DatastoreListing, error) {
+	opCtx, cancel, tracker := b.mgr.Operation(ctx)
+	defer cancel()
+	s, err := b.mgr.Connect(opCtx, cc)
+	if err != nil {
+		return vsphere.DatastoreListing{}, b.mgr.TimeoutError(err, tracker)
+	}
+	client := s.Client()
+	if client == nil {
+		return vsphere.DatastoreListing{}, fmt.Errorf("context %q is not connected", cc.Name)
+	}
+	return query(client, opCtx)
 }
 
 func (b *sessionBackend) Status(name string) (session.Status, bool) { return b.mgr.Status(name) }

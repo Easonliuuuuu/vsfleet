@@ -1079,8 +1079,57 @@ func (s *Store) SnapshotAges(ctx context.Context, runID int64, olderThan time.Du
 	return s.snapshotAges(ctx, runID, olderThan)
 }
 
+// SnapshotAgesForContexts limits snapshot evidence to context rows recorded
+// in the selected run.
+func (s *Store) SnapshotAgesForContexts(ctx context.Context, runID int64, olderThan time.Duration, selectors []string) ([]SnapshotAge, error) {
+	ages, err := s.snapshotAges(ctx, runID, olderThan)
+	if err != nil {
+		return nil, err
+	}
+	contexts, err := s.ContextRuns(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	selected, err := ValidateStoredContexts(selectors, contexts)
+	if err != nil {
+		return nil, err
+	}
+	if len(selected) == 0 {
+		return ages, nil
+	}
+	out := ages[:0]
+	for _, age := range ages {
+		if contextSelected(age.Context, selected) {
+			out = append(out, age)
+		}
+	}
+	return out, nil
+}
+
 func (s *Store) History(ctx context.Context, query, contextName string) ([]VMHistoryEntry, error) {
+	selectors := []string(nil)
+	if strings.TrimSpace(contextName) != "" {
+		selectors = []string{contextName}
+	}
+	return s.HistoryForContexts(ctx, query, selectors)
+}
+
+// HistoryForContexts searches stored VM history across the selected ledger
+// contexts. Selectors are validated against all recorded runs.
+func (s *Store) HistoryForContexts(ctx context.Context, query string, selectors []string) ([]VMHistoryEntry, error) {
 	runs, err := s.Runs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var allContexts []ContextRun
+	for _, run := range runs {
+		contexts, err := s.ContextRuns(ctx, run.ID)
+		if err != nil {
+			return nil, err
+		}
+		allContexts = append(allContexts, contexts...)
+	}
+	selected, err := ValidateStoredContexts(selectors, allContexts)
 	if err != nil {
 		return nil, err
 	}
@@ -1092,7 +1141,7 @@ func (s *Store) History(ctx context.Context, query, contextName string) ([]VMHis
 			return nil, err
 		}
 		for id, c := range contexts {
-			if contextName != "" && c.Name != contextName {
+			if !contextSelected(c.Name, selected) {
 				continue
 			}
 			for _, v := range byContext[id] {

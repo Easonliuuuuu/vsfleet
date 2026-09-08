@@ -7,7 +7,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/topology"
 )
 
@@ -70,15 +69,6 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if err != nil {
 		return err
 	}
-	// Scope inventory rows before building the graph. Keep the run's context
-	// coverage metadata so a scoped subject can still report that another
-	// context was blind; metadata is not an inventory node and cannot create a
-	// cross-context edge.
-	scopedData := assessment.ScopeExportData(data, a.ContextNames)
-	if len(a.ContextNames) > 0 {
-		scopedData.Contexts = data.Contexts
-	}
-	data = scopedData
 	graph := topology.Build(data)
 	subjects := graph.Resolve(kind, args[1], a.ContextNames)
 	result := topology.Result{

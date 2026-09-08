@@ -633,6 +633,105 @@ func (s *Store) Report(ctx context.Context, runID int64, olderThan time.Duration
 	return report, nil
 }
 
+// ReportForContexts returns the point-in-time report restricted to selected
+// contexts. The run metadata remains the original immutable run metadata.
+func (s *Store) ReportForContexts(ctx context.Context, runID int64, olderThan time.Duration, selectors []string) (AssessmentReport, error) {
+	report, err := s.Report(ctx, runID, olderThan)
+	if err != nil {
+		return AssessmentReport{}, err
+	}
+	contexts, err := s.ContextRuns(ctx, runID)
+	if err != nil {
+		return AssessmentReport{}, err
+	}
+	selected, err := ValidateStoredContexts(selectors, contexts)
+	if err != nil {
+		return AssessmentReport{}, err
+	}
+	if len(selected) == 0 {
+		return report, nil
+	}
+	vms, contextRuns, err := s.loadVMs(ctx, runID)
+	if err != nil {
+		return AssessmentReport{}, err
+	}
+	report.VMCount = 0
+	for id, contextRun := range contextRuns {
+		if contextSelected(contextRun.Name, selected) && Successful(contextRun.VMStatus) {
+			report.VMCount += len(vms[id])
+		}
+	}
+	resources, err := s.loadResources(ctx, runID)
+	if err != nil {
+		return AssessmentReport{}, err
+	}
+	filterResourceRunData(resources, selected)
+	report.HostCount, report.ClusterCount, report.DatastoreCount = 0, 0, 0
+	for kind, values := range resources.ByKind {
+		switch kind {
+		case "host":
+			report.HostCount = len(values)
+			report.HostCapacity = capacityForResources(kind, values, "estate", "")
+		case "cluster":
+			report.ClusterCount = len(values)
+			report.ClusterCapacity = capacityForResources(kind, values, "estate", "")
+		case "datastore":
+			report.DatastoreCount = len(values)
+			report.DatastoreCapacity = capacityForResources(kind, values, "estate", "")
+		}
+	}
+	report.Coverage = report.Coverage[:0]
+	for _, contextRun := range contexts {
+		if !contextSelected(contextRun.Name, selected) {
+			continue
+		}
+		vmRecorded := false
+		for _, collection := range contextRun.Collections {
+			if collection.Kind == "vm" {
+				vmRecorded = true
+			}
+			report.Coverage = append(report.Coverage, ReportCoverage{Context: contextRun.Name, Kind: collection.Kind, Status: collection.Status, ItemCount: collection.ItemCount, Error: collection.Error})
+		}
+		if !vmRecorded && !Successful(contextRun.VMStatus) {
+			report.Coverage = append(report.Coverage, ReportCoverage{Context: contextRun.Name, Kind: "vm", Status: contextRun.VMStatus, Error: contextRun.Error})
+		}
+	}
+	sort.Slice(report.Coverage, func(i, j int) bool {
+		if report.Coverage[i].Context != report.Coverage[j].Context {
+			return report.Coverage[i].Context < report.Coverage[j].Context
+		}
+		return report.Coverage[i].Kind < report.Coverage[j].Kind
+	})
+	ages, err := s.SnapshotAgesForContexts(ctx, runID, 0, selected)
+	if err != nil {
+		return AssessmentReport{}, err
+	}
+	if olderThan <= 0 {
+		olderThan = 30 * 24 * time.Hour
+	}
+	report.SnapshotTotal, report.SnapshotStale = len(ages), 0
+	for _, age := range ages {
+		if age.Age >= olderThan {
+			report.SnapshotStale++
+		}
+	}
+	filteredWarnings := report.Warnings[:0]
+	for _, warning := range report.Warnings {
+		keep := true
+		for _, contextRun := range contexts {
+			if !contextSelected(contextRun.Name, selected) && strings.HasPrefix(warning, contextRun.Name+" ") {
+				keep = false
+				break
+			}
+		}
+		if keep {
+			filteredWarnings = append(filteredWarnings, warning)
+		}
+	}
+	report.Warnings = filteredWarnings
+	return report, nil
+}
+
 func appendCapacityPoint(series map[string]*CapacitySeries, kind, scope, name string, run Run, point CapacityPoint) {
 	key := scope + "\x00" + name
 	if series[key] == nil {

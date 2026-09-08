@@ -17,6 +17,13 @@ import (
 // both runs participate in lifecycle claims; this is the guard that prevents
 // an outage from looking like mass deletion.
 func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime bool) (Diff, error) {
+	return s.DiffForContexts(ctx, baseID, targetID, includeRuntime, nil)
+}
+
+// DiffForContexts compares only evidence belonging to the requested stored
+// contexts. A context present on one side but not the other remains a
+// coverage warning, never an inferred lifecycle change.
+func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, includeRuntime bool, selectors []string) (Diff, error) {
 	base, err := s.GetRun(ctx, baseID)
 	if err != nil {
 		return Diff{}, err
@@ -33,6 +40,14 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 	if err != nil {
 		return Diff{}, err
 	}
+	baseContexts := contextRunValues(bc)
+	targetContexts := contextRunValues(tc)
+	selected, err := ValidateStoredContexts(selectors, baseContexts, targetContexts)
+	if err != nil {
+		return Diff{}, err
+	}
+	filterContextVMs(bv, bc, selected)
+	filterContextVMs(tv, tc, selected)
 	d := Diff{SchemaVersion: 1, Base: base, Target: target}
 	baseByVC := make(map[string][]storedVM)
 	targetByVC := make(map[string][]storedVM)
@@ -91,18 +106,38 @@ func (s *Store) Diff(ctx context.Context, baseID, targetID int64, includeRuntime
 		}
 	}
 	d.Counts = countChanges(d.VMs, d.Snapshots)
-	if err := s.infrastructureDiff(ctx, baseID, targetID, includeRuntime, &d); err != nil {
+	if err := s.infrastructureDiff(ctx, baseID, targetID, includeRuntime, selected, &d); err != nil {
 		return Diff{}, err
 	}
 	sort.Slice(d.VMs, func(i, j int) bool { return strings.ToLower(d.VMs[i].Name) < strings.ToLower(d.VMs[j].Name) })
 	sort.Slice(d.Snapshots, func(i, j int) bool {
 		return strings.ToLower(d.Snapshots[i].VMName) < strings.ToLower(d.Snapshots[j].VMName)
 	})
-	d.SnapshotAges, err = s.snapshotAges(ctx, targetID, 0)
+	d.SnapshotAges, err = s.SnapshotAgesForContexts(ctx, targetID, 0, selected)
 	if err != nil {
 		return Diff{}, err
 	}
 	return d, nil
+}
+
+func contextRunValues(values map[int64]ContextRun) []ContextRun {
+	out := make([]ContextRun, 0, len(values))
+	for _, value := range values {
+		out = append(out, value)
+	}
+	return out
+}
+
+func filterContextVMs(vms map[int64][]storedVM, contexts map[int64]ContextRun, selected []string) {
+	if len(selected) == 0 {
+		return
+	}
+	for id, contextRun := range contexts {
+		if !contextSelected(contextRun.Name, selected) {
+			delete(contexts, id)
+			delete(vms, id)
+		}
+	}
 }
 
 // vcLabel resolves a VCenterID to the context name an operator recognizes,

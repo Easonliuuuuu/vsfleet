@@ -152,7 +152,7 @@ func newAssessmentExportCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		data, err := s.LoadExportData(cmd.Context(), runID)
+		data, err := s.LoadExportDataForContexts(cmd.Context(), runID, a.ContextNames)
 		if err != nil {
 			return err
 		}
@@ -521,7 +521,7 @@ func newAssessmentReportCommand(a *App) *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("--older-than: %w", err)
 		}
-		report, err := s.Report(cmd.Context(), runID, age)
+		report, err := s.ReportForContexts(cmd.Context(), runID, age, a.ContextNames)
 		if err != nil {
 			return err
 		}
@@ -549,6 +549,9 @@ func newAssessmentPruneCommand(a *App) *cobra.Command {
 	var keepLast int
 	var execute bool
 	cmd := &cobra.Command{Use: "prune", Short: "Prune old assessment history", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := rejectStoredContextSelection(cmd, "prune"); err != nil {
+			return err
+		}
 		d, err := parseHumanDuration(older)
 		if err != nil || d <= 0 {
 			if err == nil {
@@ -589,6 +592,9 @@ func newAssessmentPruneCommand(a *App) *cobra.Command {
 func newAssessmentBackupCommand(a *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{Use: "backup FILE", Short: "Create a consistent SQLite history backup", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := rejectStoredContextSelection(cmd, "backup"); err != nil {
+			return err
+		}
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -609,6 +615,9 @@ func newAssessmentBackupCommand(a *App) *cobra.Command {
 func newAssessmentRestoreCommand(a *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{Use: "restore FILE", Short: "Restore SQLite history from a backup", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := rejectStoredContextSelection(cmd, "restore"); err != nil {
+			return err
+		}
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -629,6 +638,9 @@ func newAssessmentRestoreCommand(a *App) *cobra.Command {
 
 func newAssessmentDoctorCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "doctor", Short: "Check assessment database integrity", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := rejectStoredContextSelection(cmd, "doctor"); err != nil {
+			return err
+		}
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -742,6 +754,9 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 
 func newAssessmentListCommand(a *App) *cobra.Command {
 	return &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List stored assessments", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if err := rejectStoredContextSelection(cmd, "list"); err != nil {
+			return err
+		}
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -780,7 +795,7 @@ func newAssessmentDiffCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		d, err := s.Diff(cmd.Context(), base, target, runtime)
+		d, err := s.DiffForContexts(cmd.Context(), base, target, runtime, a.ContextNames)
 		if err != nil {
 			return err
 		}
@@ -859,7 +874,7 @@ func newAssessmentSnapshotsCommand(a *App) *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("--older-than: %w", err)
 		}
-		ages, err := s.SnapshotAges(cmd.Context(), at, olderDuration)
+		ages, err := s.SnapshotAgesForContexts(cmd.Context(), at, olderDuration, a.ContextNames)
 		if err != nil {
 			return err
 		}
@@ -881,6 +896,9 @@ func newAssessmentSnapshotsCommand(a *App) *cobra.Command {
 func newAssessmentDeleteCommand(a *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{Use: "delete RUN", Short: "Delete one stored assessment", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := rejectStoredContextSelection(cmd, "delete"); err != nil {
+			return err
+		}
 		if !force {
 			return fmt.Errorf("deleting assessment history requires --force")
 		}
@@ -902,6 +920,9 @@ func newAssessmentUpdateCommand(a *App) *cobra.Command {
 	var label, note string
 	var pin, unpin bool
 	cmd := &cobra.Command{Use: "update RUN", Short: "Update assessment label, note, or pin", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		if err := rejectStoredContextSelection(cmd, "update"); err != nil {
+			return err
+		}
 		if pin && unpin {
 			return fmt.Errorf("--pin and --unpin cannot be combined")
 		}

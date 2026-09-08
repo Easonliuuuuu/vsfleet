@@ -34,6 +34,12 @@ type ExportData struct {
 // transaction. The method never touches configuration, credentials, sessions,
 // or the collector, making it safe for completely offline exports.
 func (s *Store) LoadExportData(ctx context.Context, runID int64) (ExportData, error) {
+	return s.LoadExportDataForContexts(ctx, runID, nil)
+}
+
+// LoadExportDataForContexts loads one run and scopes its persisted evidence to
+// the requested stored contexts. An empty selector list keeps the full run.
+func (s *Store) LoadExportDataForContexts(ctx context.Context, runID int64, selectors []string) (ExportData, error) {
 	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return ExportData{}, err
@@ -67,7 +73,8 @@ func (s *Store) LoadExportData(ctx context.Context, runID int64) (ExportData, er
 		return ExportData{}, err
 	}
 	sortExportData(contexts, vms, resources)
-	return ExportData{Run: run, Contexts: contexts, VMs: vms, Resources: resources}, nil
+	data := ExportData{Run: run, Contexts: contexts, VMs: vms, Resources: resources}
+	return ScopeExportDataChecked(data, selectors)
 }
 
 // ScopeExportData returns an independent view containing only the requested
@@ -76,12 +83,25 @@ func (s *Store) LoadExportData(ctx context.Context, runID int64) (ExportData, er
 // An empty context list means all contexts, matching the history query
 // contract.
 func ScopeExportData(data ExportData, contexts []string) ExportData {
-	if len(contexts) == 0 {
-		return data
+	scoped, err := ScopeExportDataChecked(data, contexts)
+	if err != nil {
+		return ExportData{}
 	}
-	allowed := make(map[string]bool, len(contexts))
-	for _, contextName := range contexts {
-		allowed[strings.ToLower(strings.TrimSpace(contextName))] = true
+	return scoped
+}
+
+// ScopeExportDataChecked is the validating form used by CLI entry points.
+func ScopeExportDataChecked(data ExportData, contexts []string) (ExportData, error) {
+	selected, err := ValidateStoredContexts(contexts, data.Contexts)
+	if err != nil {
+		return ExportData{}, err
+	}
+	if len(selected) == 0 {
+		return data, nil
+	}
+	allowed := make(map[string]bool, len(selected))
+	for _, contextName := range selected {
+		allowed[contextName] = true
 	}
 	scoped := data
 	scoped.Contexts = make([]ContextRun, 0, len(data.Contexts))
@@ -102,7 +122,7 @@ func ScopeExportData(data ExportData, contexts []string) ExportData {
 			scoped.Resources = append(scoped.Resources, resource)
 		}
 	}
-	return scoped
+	return scoped, nil
 }
 
 func getRunTx(ctx context.Context, tx *sql.Tx, id int64) (Run, error) {

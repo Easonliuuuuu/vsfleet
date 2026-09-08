@@ -75,7 +75,15 @@ type Report struct {
 // present in the selected run.
 func Evaluate(data assessment.ExportData, query string, contexts []string) Report {
 	query = strings.TrimSpace(query)
-	data = assessment.ScopeExportData(data, contexts)
+	if scoped, err := assessment.ScopeExportDataChecked(data, contexts); err == nil {
+		data = scoped
+	} else {
+		return Report{SchemaVersion: SchemaVersion, RunID: data.Run.ID, Query: query, Verdict: VerdictUnknown, Subjects: []SubjectReport{{
+			Subject: topology.Subject{Kind: string(topology.KindVM), Name: query, Basis: topology.BasisName},
+			Verdict: VerdictUnknown,
+			Checks:  []Check{{ID: "context", Status: StatusUnknown, Impact: ImpactUnknown, Message: err.Error()}},
+		}}}
+	}
 	graph := topology.Build(data)
 	subjects := graph.Resolve(topology.KindVM, query, contexts)
 	out := Report{SchemaVersion: SchemaVersion, RunID: data.Run.ID, Query: query, Verdict: VerdictUnknown, Subjects: make([]SubjectReport, 0, len(subjects))}

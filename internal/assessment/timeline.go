@@ -22,7 +22,16 @@ func (e *AmbiguousVMError) Error() string {
 // The default is change-only; includeUnchanged adds one observation event per
 // run, which is useful when exporting a complete audit trail.
 func (s *Store) Timeline(ctx context.Context, query, contextName string, includeUnchanged, includeRuntime bool) ([]VMHistoryEvent, error) {
-	seed, err := s.History(ctx, query, contextName)
+	selectors := []string(nil)
+	if strings.TrimSpace(contextName) != "" {
+		selectors = []string{contextName}
+	}
+	return s.TimelineForContexts(ctx, query, selectors, includeUnchanged, includeRuntime)
+}
+
+// TimelineForContexts is the multi-context form of Timeline.
+func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors []string, includeUnchanged, includeRuntime bool) ([]VMHistoryEvent, error) {
+	seed, err := s.HistoryForContexts(ctx, query, selectors)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +90,7 @@ func (s *Store) Timeline(ctx context.Context, query, contextName string, include
 		}
 		return ""
 	}()]
-	all, err := s.History(ctx, "", contextName)
+	all, err := s.HistoryForContexts(ctx, "", selectors)
 	if err != nil {
 		return nil, err
 	}

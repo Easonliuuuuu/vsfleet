@@ -226,6 +226,65 @@ func (c *Client) ListDatastoreDirectory(parent context.Context, datastoreID, dat
 	return datastoreListing(datastore, result, datastoreListEntryCap), nil
 }
 
+// ListDatastoreVMReferences returns the virtual disks configured on the VMs
+// attached to one datastore. It is intentionally separate from inventory
+// retrieval: the TUI calls it only after an operator opens a VMDK's detail.
+// A missing VM configuration is retained as partial coverage rather than
+// being interpreted as an unreferenced disk.
+func (c *Client) ListDatastoreVMReferences(parent context.Context, datastoreID string) (DatastoreReferenceListing, error) {
+	ctx, cancel := context.WithTimeout(parent, datastoreListTimeout)
+	defer cancel()
+	datastoreID = strings.TrimSpace(datastoreID)
+	if datastoreID == "" {
+		return DatastoreReferenceListing{}, errors.New("datastore reference is unavailable")
+	}
+	dsref := types.ManagedObjectReference{Type: "Datastore", Value: datastoreID}
+	var ds mo.Datastore
+	if err := property.DefaultCollector(c.VIM()).RetrieveOne(ctx, dsref, []string{"vm"}, &ds); err != nil {
+		return DatastoreReferenceListing{}, fmt.Errorf("read datastore VM references: %w", err)
+	}
+	out := DatastoreReferenceListing{TotalVMs: len(ds.Vm)}
+	if len(ds.Vm) == 0 {
+		return out, nil
+	}
+	var raw []mo.VirtualMachine
+	if err := property.DefaultCollector(c.VIM()).Retrieve(ctx, ds.Vm, []string{"name", "config.template", "config.hardware.device"}, &raw); err != nil {
+		out.Problems = append(out.Problems, err.Error())
+		return out, nil
+	}
+	out.CheckedVMs = len(raw)
+	if out.CheckedVMs < out.TotalVMs {
+		out.Problems = append(out.Problems, fmt.Sprintf("%d datastore VM configuration(s) were unavailable", out.TotalVMs-out.CheckedVMs))
+	}
+	for i := range raw {
+		vm := &raw[i]
+		if vm.Config == nil {
+			out.Problems = append(out.Problems, fmt.Sprintf("VM %s configuration was unavailable", vm.Name))
+			continue
+		}
+		for _, device := range vm.Config.Hardware.Device {
+			disk, ok := device.(*types.VirtualDisk)
+			if !ok || disk == nil {
+				continue
+			}
+			backing := normalizeBacking(disk.Backing)
+			if strings.TrimSpace(backing.path) == "" {
+				continue
+			}
+			label := ""
+			if disk.DeviceInfo != nil {
+				label = disk.DeviceInfo.GetDescription().Label
+			}
+			out.References = append(out.References, DatastoreVMReference{
+				Context: c.Context.Name,
+				VMID:    vm.Self.Value, VMName: vm.Name, Template: vm.Config.Template,
+				DiskLabel: label, BackingPath: backing.path,
+			})
+		}
+	}
+	return out, nil
+}
+
 // FindInDatastore searches a whole datastore for names matching pattern.
 //
 // This is the one recursive operation the browser offers, and it is never

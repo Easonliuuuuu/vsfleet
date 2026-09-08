@@ -66,7 +66,7 @@ whole tree is never enumerated and never held in memory.
 
 | Key | Action |
 |---|---|
-| `Enter` | Open the highlighted folder, or list a file's actions |
+| `Enter` | Open the highlighted folder, or inspect a file |
 | `Esc` | Go up one directory, close the browser at the root, or stop a request still running |
 | `/` | Filter the current directory by name |
 | `f` | Find in datastore — a recursive search |
@@ -79,6 +79,24 @@ capped — a search that hit the cap says so beside its results rather than
 presenting a partial answer as a complete one. `Enter` on a result opens the
 directory containing it.
 
+Press `Enter` on a file to open its detail inspector. For VMDKs, vsfleet
+checks the VMs and templates currently attached to the datastore on demand and
+shows the matching backing path, disk label, and an exact jump target. The
+lookup is cached only while that datastore workspace is open; ordinary
+inventory and directory browsing do not retrieve VM device configuration.
+
+When assessment history is available, the inspector also shows the newest
+finished assessment for the current vCenter, including its run number and
+timestamp. Referenced, verified-unreferenced, suspected, and
+referenced-other-context states come from that point-in-time evidence. Missing,
+stale, denied, or truncated evidence remains
+`unknown-incomplete-coverage` and is never presented as proof that a current
+file is orphaned. A live lookup with no match is likewise not an orphan verdict
+when the VM scan is partial.
+
+Enter on a listed reference jumps to the exact VM or template in its context;
+if that context or object is no longer present, the reason remains visible.
+
 Failures are shown as failures. A datastore no host can reach disables the
 action with that reason, and a directory that cannot be read reports the
 vCenter's own message rather than appearing to be empty. Browsing needs
@@ -86,6 +104,18 @@ vCenter's own message rather than appearing to be empty. Browsing needs
 [Configuration](configuration.md#vsphere-permissions)); it is the same
 read-only privilege `vsfleet assessment run --browse-datastores` uses, and the
 two workflows are otherwise independent.
+
+### Real-vSphere validation gate
+
+Before marking relationship-aware browsing complete, validate it against a
+real read-only vSphere account. Record the vCenter/ESXi versions and results
+in the release PR or issue for a nested VMFS or NFS datastore. Cover a base
+VMDK, snapshot-chain file, template disk, shared/multi-reference disk,
+unreferenced descriptor, missing `Datastore.Browse`, and partially unreadable
+VM configuration. Confirm path metadata, UNKNOWN/partial rendering,
+cancellation, exact VM/template jumps, and that no datastore or VM mutation is
+possible. Until this record exists, real-vSphere validation remains an open
+manual acceptance item.
 
 ## Contexts and vApps
 

@@ -60,6 +60,36 @@ func (s *Service) CapacityReport(ctx context.Context, opts TrendOptions, thresho
 func (s *Service) Report(ctx context.Context, runID int64, olderThan time.Duration) (AssessmentReport, error) {
 	return s.Store.Report(ctx, runID, olderThan)
 }
+
+// LatestExportDataForContext returns the newest finished assessment that
+// recorded the named context and, when supplied, the same vCenter identity.
+// The complete run is loaded because datastore ownership can be established
+// by a VM observed in another context sharing the same backing store.
+func (s *Service) LatestExportDataForContext(ctx context.Context, contextName, vcenterID string) (ExportData, error) {
+	if s == nil || s.Store == nil {
+		return ExportData{}, fmt.Errorf("historical assessments are unavailable")
+	}
+	runs, err := s.Store.Runs(ctx)
+	if err != nil {
+		return ExportData{}, err
+	}
+	for _, run := range runs {
+		contexts, err := s.Store.ContextRuns(ctx, run.ID)
+		if err != nil {
+			return ExportData{}, err
+		}
+		for _, recorded := range contexts {
+			if !strings.EqualFold(recorded.Name, strings.TrimSpace(contextName)) {
+				continue
+			}
+			if strings.TrimSpace(vcenterID) != "" && !strings.EqualFold(recorded.VCenterID, strings.TrimSpace(vcenterID)) {
+				continue
+			}
+			return s.Store.LoadExportData(ctx, run.ID)
+		}
+	}
+	return ExportData{}, fmt.Errorf("no stored assessment for context %q", contextName)
+}
 func (s *Service) Capture(ctx context.Context, opts CaptureOptions) (Run, error) {
 	if s == nil || s.Collector == nil {
 		return Run{}, fmt.Errorf("assessment collector is not configured")

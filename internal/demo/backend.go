@@ -193,6 +193,45 @@ func (b *Backend) FindInDatastore(_ context.Context, cc *config.Context, _, data
 	return out, nil
 }
 
+// ListDatastoreVMReferences implements the live relationship extension from
+// the same deterministic inventory used by the demo browser.
+func (b *Backend) ListDatastoreVMReferences(_ context.Context, cc *config.Context, datastoreID string) (vsphere.DatastoreReferenceListing, error) {
+	if cc == nil {
+		return vsphere.DatastoreReferenceListing{}, errors.New("no context selected")
+	}
+	inv, ok := b.inventories[cc.Name]
+	if !ok || inv == nil {
+		return vsphere.DatastoreReferenceListing{}, fmt.Errorf("demo inventory for %q not found", cc.Name)
+	}
+	var datastoreName string
+	for _, ds := range inv.Datastores {
+		if ds.ID == datastoreID {
+			datastoreName = ds.Name
+			break
+		}
+	}
+	if datastoreName == "" {
+		return vsphere.DatastoreReferenceListing{}, fmt.Errorf("demo datastore %q not found", datastoreID)
+	}
+	out := vsphere.DatastoreReferenceListing{}
+	vms := append(append([]vsphere.VM(nil), inv.VMs...), inv.Templates...)
+	out.TotalVMs = len(vms)
+	out.CheckedVMs = len(vms)
+	for _, vm := range vms {
+		for _, disk := range vm.Disks {
+			name, _, ok := vsphere.SplitDatastorePath(disk.BackingPath)
+			if !ok || !strings.EqualFold(name, datastoreName) {
+				continue
+			}
+			out.References = append(out.References, vsphere.DatastoreVMReference{
+				Context: cc.Name, VMID: vm.ID, VMName: vm.Name, Template: vm.IsTemplate,
+				DiskLabel: disk.Label, BackingPath: disk.BackingPath,
+			})
+		}
+	}
+	return out, nil
+}
+
 // demoUnder reports the part of path inside dir, and whether it is there at
 // all.
 func demoUnder(path, dir string) (string, bool) {

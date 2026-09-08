@@ -85,6 +85,7 @@ const (
 	modeHistoryTimelineDetail
 	modeHistoryRunEdit
 	modeDatastoreFiles
+	modeDatastoreEntry
 	modeDatastoreFind
 )
 
@@ -1213,6 +1214,8 @@ type jumpConstraint struct {
 // check membership rather than equality.
 func (j *jumpConstraint) matches(r row) bool {
 	switch j.matcher {
+	case "moref":
+		return r.target.moref == j.value
 	case "host":
 		return r.joins.host == j.value
 	case "cluster":
@@ -1359,6 +1362,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dsFindMsg:
 		return m, m.applyDSFind(msg)
+
+	case dsReferenceMsg:
+		return m, m.applyDSReferences(msg)
+
+	case dsAssessmentMsg:
+		return m, m.applyDSAssessment(msg)
 
 	case handoffResultMsg:
 		if msg.err != nil {
@@ -1654,7 +1663,7 @@ func (m *Model) busy() bool {
 	// A directory listing or a datastore search is work the operator is
 	// watching too. Leaving it out is how the spinner beside "capturing…"
 	// once froze on its first frame; see TestCaptureKeepsTheSpinnerTurning.
-	if m.ds != nil && (m.ds.loading || m.ds.finding) {
+	if m.ds != nil && (m.ds.loading || m.ds.finding || (m.ds.detail != nil && m.ds.detail.loading)) {
 		return true
 	}
 	for _, st := range m.states {
@@ -2016,6 +2025,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.handleHistoryTimelineKey(msg)
 	case modeDatastoreFiles:
 		return m.handleDatastoreFilesKey(msg)
+	case modeDatastoreEntry:
+		return m.handleDatastoreEntryKey(msg)
 	case modeDatastoreFind:
 		return m.handleDatastoreFindKey(msg)
 	case modeHistoryTimelineDetail:

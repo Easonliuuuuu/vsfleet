@@ -25,9 +25,16 @@ type browsingBackend struct {
 	findErr   error
 	results   []vsphere.DatastoreEntry
 	truncated bool
+	refs      vsphere.DatastoreReferenceListing
+	refCalls  int
 	// block, when non-nil, holds every query until it is closed — the way a
 	// slow datastore browser is simulated.
 	block chan struct{}
+}
+
+func (b *browsingBackend) ListDatastoreVMReferences(context.Context, *config.Context, string) (vsphere.DatastoreReferenceListing, error) {
+	b.refCalls++
+	return b.refs, nil
 }
 
 func (b *browsingBackend) ListDatastoreDirectory(ctx context.Context, _ *config.Context, _, datastore, relative string) (vsphere.DatastoreListing, error) {
@@ -87,7 +94,7 @@ func browsing() *browsingBackend {
 				dir("linux", "[nvme-01] ISO/linux"),
 			},
 			"ISO/linux": {
-				file("ubuntu.iso", "[nvme-01] ISO/linux/ubuntu.iso", 3<<30),
+				file("ubuntu.vmdk", "[nvme-01] ISO/linux/ubuntu.vmdk", 3<<30),
 			},
 		},
 	}
@@ -356,6 +363,33 @@ func TestFindIsNeverImplicit(t *testing.T) {
 	press(t, m, "enter", "enter", "esc", "esc")
 	if b.findCalls != 0 {
 		t.Fatalf("browsing triggered %d recursive searches", b.findCalls)
+	}
+}
+
+func TestDatastoreFileDetailShowsReferencesAndJumpsExactly(t *testing.T) {
+	b := browsing()
+	b.refs = vsphere.DatastoreReferenceListing{
+		TotalVMs: 2, CheckedVMs: 2,
+		References: []vsphere.DatastoreVMReference{{Context: "prod", VMID: "vm-1", VMName: "app-01", BackingPath: "[nvme-01] ISO/linux/ubuntu.vmdk"}},
+	}
+	m := newTestModel(t, b.fakeBackend, Options{Current: "prod"})
+	m.backend = b
+	openBrowser(t, m)
+	press(t, m, "enter", "enter") // ISO/linux
+	press(t, m, "enter")          // ubuntu.iso detail
+	if m.mode != modeDatastoreEntry || b.refCalls != 1 {
+		detailName := ""
+		if m.ds != nil && m.ds.detail != nil {
+			detailName = m.ds.detail.entry.Name
+		}
+		t.Fatalf("mode=%v refCalls=%d detail=%q path=%q, want file detail and one lazy lookup", m.mode, b.refCalls, detailName, m.ds.path)
+	}
+	if !strings.Contains(m.View(), "app-01 @ prod") {
+		t.Fatalf("file detail omitted the owning VM:\n%s", m.View())
+	}
+	press(t, m, "enter")
+	if m.mode != modeBrowse || m.kind != vsphere.KindVM || m.jump == nil || m.jump.value != "vm-1" {
+		t.Fatalf("jump=%+v mode=%v kind=%v", m.jump, m.mode, m.kind)
 	}
 }
 

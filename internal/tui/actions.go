@@ -269,6 +269,7 @@ func jumpAction(label string, kind vsphere.Kind, matcher, value string) action {
 		m.filter.SetValue("")
 		m.cursor, m.offset = 0, 0
 		m.clearVAppWorkspace()
+		m.clearDSWorkspace()
 		m.mode = m.detailFrom
 		return nil
 	}}
@@ -286,6 +287,7 @@ func jumpToNamed(label string, kind vsphere.Kind, name string) action {
 		m.filter.SetValue(name)
 		m.cursor, m.offset = 0, 0
 		m.clearVAppWorkspace()
+		m.clearDSWorkspace()
 		m.mode = m.detailFrom
 		return nil
 	}}
@@ -316,6 +318,10 @@ func (m *Model) objectActions(r row) []action {
 		out = append(out, jumpAction("Show VMs in cluster", vsphere.KindVM, "cluster", r.name))
 		out = append(out, copyNamed("Copy MoRef", r.target.moref))
 	case vsphere.KindDatastore:
+		// Browsing comes first: it is the thing an operator opened a
+		// datastore to do that they could not do here before.
+		out = append(out, m.browseFilesAction(r))
+		out = append(out, m.findFilesAction(r))
 		out = append(out, m.openAction(r))
 		out = append(out, jumpAction("Show VMs on this datastore", vsphere.KindVM, "datastore", r.name))
 		if r.target.path != "" {

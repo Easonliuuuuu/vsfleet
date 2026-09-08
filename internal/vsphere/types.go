@@ -598,6 +598,43 @@ type DatastoreFile struct {
 	Modified  time.Time `json:"modified,omitempty"`
 }
 
+// DatastoreEntryType distinguishes the two things a directory listing can
+// contain. It is a string rather than a bool so a listing renders the same way
+// it reads — "folder" and "file", never "isDir: true".
+type DatastoreEntryType string
+
+const (
+	DatastoreEntryFile   DatastoreEntryType = "file"
+	DatastoreEntryFolder DatastoreEntryType = "folder"
+)
+
+// DatastoreEntry is one row of an interactive directory listing.
+//
+// It is deliberately not DatastoreFile. That type is assessment evidence: it
+// exists to be persisted and joined to VM disk backing paths, so it carries
+// only what an orphan analysis needs and only ever describes a VMDK. This one
+// is a transient view of one directory as an operator is looking at it, so it
+// carries the leaf name and the file/folder distinction that a browser has to
+// render, and is never written to a capture.
+type DatastoreEntry struct {
+	Name      string
+	Path      string
+	Type      DatastoreEntryType
+	SizeBytes int64
+	Modified  time.Time
+}
+
+// DatastoreListing is one answered browser query together with its own
+// provenance. Truncated is a field rather than something folded into the
+// entries because a partial result that reads as a complete one is precisely
+// the failure this browser exists to avoid: "the file is not on this
+// datastore" and "the file is not in the first thousand results" are different
+// answers.
+type DatastoreListing struct {
+	Entries   []DatastoreEntry
+	Truncated bool
+}
+
 // UsedBytes is capacity minus free space.
 func (d Datastore) UsedBytes() int64 {
 	if d.CapacityBytes <= 0 {

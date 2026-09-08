@@ -370,6 +370,9 @@ func (f *contextForm) validate() string {
 // showForm opens the supplied add/edit form. Keeping the mode, focus and
 // cursor setup here means ordinary and VM-seeded forms behave identically.
 func (m *Model) showForm(f *contextForm) tea.Cmd {
+	if m.demo {
+		return nil
+	}
 	m.form = f
 	m.mode = modeForm
 	m.form.syncFocus()
@@ -378,10 +381,16 @@ func (m *Model) showForm(f *contextForm) tea.Cmd {
 
 // enterForm opens the add/edit form. edit is nil for a new context.
 func (m *Model) enterForm(edit *contextState) tea.Cmd {
+	if m.demo {
+		return nil
+	}
 	return m.showForm(newContextForm(edit))
 }
 
 func (m *Model) enterFormSeeded(seed contextSeed) tea.Cmd {
+	if m.demo {
+		return nil
+	}
 	return m.showForm(newSeededContextForm(seed))
 }
 

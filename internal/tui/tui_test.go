@@ -2281,3 +2281,73 @@ func TestFormStillChoosesBetweenKeyringAndPrompt(t *testing.T) {
 		t.Errorf("prompt choice produced %v", in.Credential)
 	}
 }
+
+func TestDemoModeContextsScreenDisablesMutations(t *testing.T) {
+	b := twoHealthy()
+	m := newTestModel(t, b, Options{Current: "prod", Demo: true})
+
+	press(t, m, "c")
+	if m.mode != modeContexts {
+		t.Fatalf("expected modeContexts, got %v", m.mode)
+	}
+
+	// Footer hints must not advertise runnable mutation keybinds in demo mode.
+	for _, hint := range m.keys.footerHints(m) {
+		switch hint.Help().Key {
+		case "n", "e", "x":
+			t.Errorf("footer hints advertised mutation key %q in demo mode", hint.Help().Key)
+		}
+	}
+
+	// Help panel must not advertise mutation keybinds in demo mode.
+	for _, sec := range m.keys.helpSections(m.demo) {
+		if sec.title == "Contexts screen (c)" {
+			for _, b := range sec.bindings {
+				switch b.Help().Key {
+				case "n", "e", "x":
+					t.Errorf("help section advertised mutation key %q in demo mode", b.Help().Key)
+				}
+			}
+		}
+	}
+
+	// Direct keypresses cannot enter context add/edit/delete in demo mode.
+	press(t, m, "n")
+	if m.mode != modeContexts || m.form != nil {
+		t.Fatalf("'n' in demo mode entered form or changed mode: mode=%v form=%v", m.mode, m.form)
+	}
+
+	press(t, m, "e")
+	if m.mode != modeContexts || m.form != nil {
+		t.Fatalf("'e' in demo mode entered form or changed mode: mode=%v form=%v", m.mode, m.form)
+	}
+
+	press(t, m, "x")
+	if m.mode != modeContexts || m.confirmDelete != nil {
+		t.Fatalf("'x' in demo mode entered delete confirmation or changed mode: mode=%v confirmDelete=%v", m.mode, m.confirmDelete)
+	}
+
+	// Defensive model methods also refuse mutation entry in demo mode.
+	if cmd := m.enterForm(nil); cmd != nil || m.mode != modeContexts || m.form != nil {
+		t.Errorf("enterForm(nil) should be a no-op in demo mode, got mode=%v form=%v", m.mode, m.form)
+	}
+	if cmd := m.enterFormSeeded(contextSeed{}); cmd != nil || m.mode != modeContexts || m.form != nil {
+		t.Errorf("enterFormSeeded should be a no-op in demo mode, got mode=%v form=%v", m.mode, m.form)
+	}
+}
+
+func TestDemoModeEmptyContextsViewDoesNotAdvertiseNewContext(t *testing.T) {
+	m := newTestModel(t, &fakeBackend{}, Options{Demo: true})
+	press(t, m, "c")
+	if m.mode != modeContexts {
+		t.Fatalf("expected modeContexts, got %v", m.mode)
+	}
+	view := m.View()
+	if strings.Contains(view, "n adds the first one") {
+		t.Errorf("empty demo contexts screen advertised 'n adds the first one':\n%s", view)
+	}
+	if !strings.Contains(view, "No vCenters configured.") {
+		t.Errorf("empty demo contexts screen did not display expected message:\n%s", view)
+	}
+}
+

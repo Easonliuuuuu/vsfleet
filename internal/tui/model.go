@@ -2273,14 +2273,23 @@ func (m *Model) handleContextsKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Doctor):
 		return m.diagnoseContext(m.contextAt(m.ctxCursor))
 	case key.Matches(msg, m.keys.NewContext):
+		if m.demo {
+			return nil
+		}
 		m.returnTo = modeContexts
 		return m.enterForm(nil)
 	case key.Matches(msg, m.keys.EditContext):
+		if m.demo {
+			return nil
+		}
 		if st := m.contextAt(m.ctxCursor); st != nil {
 			m.returnTo = modeContexts
 			return m.enterForm(st)
 		}
 	case key.Matches(msg, m.keys.DeleteContext):
+		if m.demo {
+			return nil
+		}
 		if st := m.contextAt(m.ctxCursor); st != nil {
 			m.confirmDelete = st
 			m.confirmAlsoCredential = true

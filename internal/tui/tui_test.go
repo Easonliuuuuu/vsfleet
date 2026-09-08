@@ -2350,4 +2350,3 @@ func TestDemoModeEmptyContextsViewDoesNotAdvertiseNewContext(t *testing.T) {
 		t.Errorf("empty demo contexts screen did not display expected message:\n%s", view)
 	}
 }
-

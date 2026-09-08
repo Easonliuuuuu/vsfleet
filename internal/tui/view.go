@@ -117,7 +117,13 @@ func (m *Model) viewHeader() string {
 	if m.mode == modeSearch {
 		return m.viewSearchHeader()
 	}
-	if m.mode == modeChanges || m.mode == modeChangeDetail || m.mode == modeHistoryRuns || m.mode == modeHistoryRunEdit || m.mode == modeHistoryTimeline || m.mode == modeHistoryTimelineDetail {
+	if m.mode == modeHistoryTimeline {
+		return m.viewHistoryTimelineHeader()
+	}
+	if m.mode == modeHistoryTimelineDetail {
+		return m.viewHistoryTimelineDetailHeader()
+	}
+	if m.mode == modeChanges || m.mode == modeChangeDetail || m.mode == modeHistoryRuns || m.mode == modeHistoryRunEdit {
 		return m.viewChangesHeader()
 	}
 	scope := t.accent.Render(m.scopeName())

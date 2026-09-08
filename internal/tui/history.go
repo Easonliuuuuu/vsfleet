@@ -111,6 +111,43 @@ func (m *Model) viewChangesHeader() string {
 	return t.title.Render("vsfleet") + "  " + t.accent.Render(label) + t.dim.Render("   ←/→ switch")
 }
 
+func (m *Model) viewHistoryTimelineHeader() string {
+	return m.viewTimelineHeader("history  ·  Timeline")
+}
+
+func (m *Model) viewHistoryTimelineDetailHeader() string {
+	return m.viewTimelineHeader("history  ·  Timeline  ·  Detail")
+}
+
+func (m *Model) viewTimelineHeader(label string) string {
+	t := m.theme
+	left := t.title.Render("vsfleet") + "  " + t.accent.Render(label)
+	if entity := m.timelineEntity(); entity != "" {
+		left += t.dim.Render("  ·  ") + t.value.Render(entity)
+	}
+	if m.width > 0 {
+		return truncate(left, m.width)
+	}
+	return left
+}
+
+func (m *Model) timelineEntity() string {
+	if q := strings.TrimSpace(m.timelineQuery); q != "" {
+		return q
+	}
+	if m.timelineCursor >= 0 && m.timelineCursor < len(m.timeline) {
+		if name := strings.TrimSpace(m.timeline[m.timelineCursor].Name); name != "" {
+			return name
+		}
+	}
+	if len(m.timeline) > 0 {
+		if name := strings.TrimSpace(m.timeline[0].Name); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
 // viewComparisonBar renders the baseline and target runs as a permanent,
 // legible object: label, pin, id, when, status, and vCenter coverage for
 // each, the gap between them, and — when the two runs did not cover the same

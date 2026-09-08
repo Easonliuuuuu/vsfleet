@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -365,6 +367,85 @@ func TestHistoryHeaderNamesTheSelectedPane(t *testing.T) {
 	m.historyPane = historyPaneHealth
 	if got := m.viewChangesHeader(); !strings.Contains(got, "history  ·  Health") {
 		t.Fatalf("health header was mislabeled: %q", got)
+	}
+	if got := m.viewHeader(); !strings.Contains(got, "history  ·  Health") {
+		t.Fatalf("viewHeader for health mode was mislabeled: %q", got)
+	}
+}
+
+func TestTimelineHeaderNamesTimelineAndEntity(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.mode = modeHistoryTimeline
+	m.timelineQuery = "billing"
+
+	// Timeline header should identify timeline and the entity being inspected
+	got := m.viewHeader()
+	if !strings.Contains(got, "history  ·  Timeline") {
+		t.Fatalf("timeline header does not identify timeline: %q", got)
+	}
+	if !strings.Contains(got, "billing") {
+		t.Fatalf("timeline header does not name the entity: %q", got)
+	}
+	if strings.Contains(got, "←/→ switch") {
+		t.Fatalf("timeline header unexpectedly contained pane switch hint: %q", got)
+	}
+
+	// In timeline detail mode, header should identify timeline detail and entity
+	m.mode = modeHistoryTimelineDetail
+	gotDetail := m.viewHeader()
+	if !strings.Contains(gotDetail, "history  ·  Timeline  ·  Detail") {
+		t.Fatalf("timeline detail header does not identify timeline detail: %q", gotDetail)
+	}
+	if !strings.Contains(gotDetail, "billing") {
+		t.Fatalf("timeline detail header does not name the entity: %q", gotDetail)
+	}
+	if strings.Contains(gotDetail, "←/→ switch") {
+		t.Fatalf("timeline detail header unexpectedly contained pane switch hint: %q", gotDetail)
+	}
+
+	// When timelineQuery is empty, falls back to event name if present
+	m.timelineQuery = ""
+	m.timeline = []assessment.VMHistoryEvent{
+		{Name: "web-frontend-01"},
+	}
+	m.timelineCursor = 0
+	gotFallback := m.viewHeader()
+	if !strings.Contains(gotFallback, "web-frontend-01") {
+		t.Fatalf("timeline detail header did not fall back to event name: %q", gotFallback)
+	}
+
+	// When no entity is known at all, header still identifies timeline without crashing or stray delimiters
+	m.timeline = nil
+	m.timelineCursor = 0
+	m.mode = modeHistoryTimeline
+	gotNoEntity := m.viewHeader()
+	if !strings.Contains(gotNoEntity, "history  ·  Timeline") {
+		t.Fatalf("timeline header missing timeline label when entity empty: %q", gotNoEntity)
+	}
+}
+
+func TestTimelineHeaderWidthSafeAtMinimumTerminalWidth(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.timelineQuery = "extremely-long-virtual-machine-name-that-would-exceed-the-terminal-width"
+
+	for _, mode := range []mode{modeHistoryTimeline, modeHistoryTimelineDetail} {
+		m.mode = mode
+		// At minimum terminal width (40 cols)
+		m.width = minTermWidth
+		got := m.viewHeader()
+		if width := ansi.StringWidth(got); width > minTermWidth {
+			t.Fatalf("header for mode %v exceeded minTermWidth %d: got width %d (content %q)", mode, minTermWidth, width, got)
+		}
+		if strings.Contains(got, "\n") {
+			t.Fatalf("header for mode %v contained newline: %q", mode, got)
+		}
+
+		// Even at a very narrow width (e.g. 20 cols)
+		m.width = 20
+		gotNarrow := m.viewHeader()
+		if width := ansi.StringWidth(gotNarrow); width > 20 {
+			t.Fatalf("header for mode %v exceeded width 20: got width %d (content %q)", mode, width, gotNarrow)
+		}
 	}
 }
 

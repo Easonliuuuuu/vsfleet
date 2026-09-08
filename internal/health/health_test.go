@@ -80,10 +80,11 @@ func TestEvaluateMarksFailedCollectionUnknown(t *testing.T) {
 
 func TestEvaluateMigrationReadinessRules(t *testing.T) {
 	trueValue := true
-	hostOne, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-1", Name: "esx-1", Cluster: "cluster-a", VSwitches: []vsphere.HostVSwitch{{Name: "vSwitch0", MTU: 1500, Uplinks: []string{"vmnic0"}}}, Multipaths: []vsphere.HostMultipath{{LUN: "naa.1", PathCount: 1, Active: 1}}})
+	sharedStorage := false
+	hostOne, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-1", Name: "esx-1", Cluster: "cluster-a", VSwitches: []vsphere.HostVSwitch{{Name: "vSwitch0", MTU: 1500, Uplinks: []string{"vmnic0"}}}, Multipaths: []vsphere.HostMultipath{{LUN: "naa.1", LocalDisk: &sharedStorage, PathCount: 1, Active: 1}}})
 	hostTwo, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-2", Name: "esx-2", Cluster: "cluster-a", VSwitches: []vsphere.HostVSwitch{{Name: "vSwitch0", MTU: 9000, Uplinks: []string{"vmnic0", "vmnic1"}}}, PortGroups: []vsphere.HostPortGroup{{Name: "migration", Switch: "vSwitch0", Promiscuous: &trueValue}}})
 	dvs, _ := json.Marshal(vsphere.DVSwitch{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "dvs-1", Name: "dvSwitch0", Hosts: []string{"esx-1"}, PortGroups: []vsphere.DVPortGroup{{Name: "migration", Promiscuous: &trueValue}}})
-	data := assessment.ExportData{Run: assessment.Run{ID: 51, InventorySchemaVersion: "10"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "empty", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "empty"}, {Kind: "host", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostOne}, {Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-2", Name: "esx-2", Payload: hostTwo}, {Context: "prod", VCenterID: "vc-1", Kind: "dvswitch", ID: "dvs-1", Name: "dvSwitch0", Payload: dvs}}}
+	data := assessment.ExportData{Run: assessment.Run{ID: 51, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "empty", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "empty"}, {Kind: "host", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostOne}, {Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-2", Name: "esx-2", Payload: hostTwo}, {Context: "prod", VCenterID: "vc-1", Kind: "dvswitch", ID: "dvs-1", Name: "dvSwitch0", Payload: dvs}}}
 	report := Evaluate(data, Options{})
 	want := map[string]bool{"cluster-network-inconsistent": false, "dvswitch-host-coverage": false, "host-path-redundancy": false, "portgroup-promiscuous": false, "dvportgroup-promiscuous": false}
 	for _, finding := range report.Findings {
@@ -99,6 +100,73 @@ func TestEvaluateMigrationReadinessRules(t *testing.T) {
 			t.Errorf("%s did not fire", rule)
 		}
 	}
+}
+
+func TestEvaluateHostPathRedundancyLocality(t *testing.T) {
+	local, shared := true, false
+	cases := []struct {
+		name                      string
+		localDisk                 *bool
+		pathCount, dead, disabled int
+		wantResult                string
+		findings                  int
+	}{
+		{name: "local single path", localDisk: &local, pathCount: 1, wantResult: "pass"},
+		{name: "shared single path", localDisk: &shared, pathCount: 1, wantResult: "fail", findings: 1},
+		{name: "healthy shared multipath", localDisk: &shared, pathCount: 2, wantResult: "pass"},
+		{name: "shared dead path", localDisk: &shared, pathCount: 2, dead: 1, wantResult: "fail", findings: 1},
+		{name: "shared disabled path", localDisk: &shared, pathCount: 2, disabled: 1, wantResult: "fail", findings: 1},
+		{name: "unknown locality", pathCount: 1, wantResult: "unknown"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hostPayload, _ := json.Marshal(vsphere.Host{ID: "host-1", Name: "esx-1", Multipaths: []vsphere.HostMultipath{{LUN: "naa.1", LocalDisk: tc.localDisk, PathCount: tc.pathCount, Dead: tc.dead, Disabled: tc.disabled}}})
+			data := assessment.ExportData{Run: assessment.Run{ID: 52, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion}, Contexts: []assessment.ContextRun{{Name: "prod", Collections: []assessment.CollectionRun{{Kind: "host", Status: "success"}}}}, Resources: []assessment.ResourceObservation{{Context: "prod", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}}}
+			report := Evaluate(data, Options{})
+			var status RuleStatus
+			for _, candidate := range report.Rules {
+				if candidate.Rule == "host-path-redundancy" {
+					status = candidate
+					break
+				}
+			}
+			if status.Result != tc.wantResult || status.Findings != tc.findings {
+				t.Fatalf("status=%+v, want result=%q findings=%d", status, tc.wantResult, tc.findings)
+			}
+		})
+	}
+}
+
+func TestEvaluateHostPathRedundancyUnknownDoesNotMaskSharedFailure(t *testing.T) {
+	shared := false
+	hostPayload, _ := json.Marshal(vsphere.Host{ID: "host-1", Name: "esx-1", Multipaths: []vsphere.HostMultipath{{LUN: "naa-unknown", PathCount: 1}, {LUN: "naa-shared", LocalDisk: &shared, PathCount: 1}}})
+	data := assessment.ExportData{Run: assessment.Run{ID: 53, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion}, Contexts: []assessment.ContextRun{{Name: "prod", Collections: []assessment.CollectionRun{{Kind: "host", Status: "success"}}}}, Resources: []assessment.ResourceObservation{{Context: "prod", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}}}
+	report := Evaluate(data, Options{})
+	for _, status := range report.Rules {
+		if status.Rule == "host-path-redundancy" {
+			if status.Result != "fail" || status.Findings != 1 {
+				t.Fatalf("status=%+v, want confirmed shared failure", status)
+			}
+			return
+		}
+	}
+	t.Fatal("host-path-redundancy status missing")
+}
+
+func TestEvaluateHostPathRedundancySchemaGate(t *testing.T) {
+	shared := false
+	hostPayload, _ := json.Marshal(vsphere.Host{ID: "host-1", Name: "esx-1", Multipaths: []vsphere.HostMultipath{{LUN: "naa.1", LocalDisk: &shared, PathCount: 1}}})
+	data := assessment.ExportData{Run: assessment.Run{ID: 54, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", Collections: []assessment.CollectionRun{{Kind: "host", Status: "success"}}}}, Resources: []assessment.ResourceObservation{{Context: "prod", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}}}
+	report := Evaluate(data, Options{})
+	for _, status := range report.Rules {
+		if status.Rule == "host-path-redundancy" {
+			if status.Status != "not-evaluated" || status.Result != "unknown" {
+				t.Fatalf("status=%+v, want schema-gated unknown", status)
+			}
+			return
+		}
+	}
+	t.Fatal("host-path-redundancy status missing")
 }
 
 func TestEvaluateExpandedMigrationReadiness(t *testing.T) {

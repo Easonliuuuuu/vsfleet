@@ -479,6 +479,7 @@ type HostMultipath struct {
 	LUN          string `json:"lun"`
 	DevicePath   string `json:"device_path,omitempty"`
 	Policy       string `json:"policy,omitempty"`
+	LocalDisk    *bool  `json:"local_disk,omitempty"`
 	PathCount    int    `json:"path_count"`
 	Active       int    `json:"active"`
 	Standby      int    `json:"standby"`

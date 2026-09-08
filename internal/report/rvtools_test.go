@@ -27,14 +27,14 @@ func healthReport(data assessment.ExportData) health.Report {
 // guest partition, and snapshot, plus a host, resource pool, and datastore resource observation. Shared by the
 // XLSX and CSV tests so both exercise identical evidence.
 func sampleExportData(when time.Time) assessment.ExportData {
-	linkSpeed, duplex, enabled := int32(10000), true, false
+	linkSpeed, duplex, enabled, localDisk := int32(10000), true, false, false
 	hostPayload, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-1", Name: "esx-1", CPUCores: 8, CPUMHz: 2400, CPUUsageMHz: 1200, MemoryMB: 32768, MemoryUsageMB: 8192, VMCount: 4,
 		HBAs:       []vsphere.HostHBA{{Key: "hba-1", Device: "vmhba0", Bus: 3, Status: "online", Model: "Fibre Channel", StorageProtocol: "fc", Type: "HostFibreChannelHba", WWNN: int64Ptr(10), WWPN: int64Ptr(11)}},
 		NICs:       []vsphere.HostNIC{{Key: "nic-1", Device: "vmnic0", PCI: "0000:01:00.0", Driver: "ixgben", MAC: "00:50:56:00:00:01", LinkSpeedMB: &linkSpeed, Duplex: &duplex, WakeOnLAN: true, Switch: "vSwitch0"}},
 		VSwitches:  []vsphere.HostVSwitch{{Key: "switch-1", Name: "vSwitch0", NumPorts: 128, FreePorts: 120, MTU: 1500, Uplinks: []string{"vmnic0"}, Promiscuous: &enabled, MACChanges: &duplex, ForgedTransmits: &duplex, TrafficShaping: &enabled}},
 		PortGroups: []vsphere.HostPortGroup{{Key: "port-1", Name: "Management Network", Switch: "vSwitch0", VLAN: 120, Promiscuous: &enabled, MACChanges: &duplex, ForgedTransmits: &duplex}},
 		VMKs:       []vsphere.HostVMKernel{{Key: "vmk-1", Device: "vmk0", PortGroup: "Management Network", MAC: "00:50:56:00:00:02", MTU: 1500, TSO: &duplex, Netstack: "defaultTcpipStack", DHCP: &enabled, IP: "192.0.2.10", SubnetMask: "255.255.255.0"}},
-		Multipaths: []vsphere.HostMultipath{{Key: "lun-1", LUN: "naa.123", DevicePath: "/vmfs/devices/disks/naa.123", Policy: "VMW_PSP_RR", PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 1}},
+		Multipaths: []vsphere.HostMultipath{{Key: "lun-1", LUN: "naa.123", DevicePath: "/vmfs/devices/disks/naa.123", Policy: "VMW_PSP_RR", LocalDisk: &localDisk, PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 1}},
 	})
 	datastorePayload, _ := json.Marshal(vsphere.Datastore{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "ds-1", Name: "datastore-1", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, Accessible: true})
 	poolPayload, _ := json.Marshal(vsphere.ResourcePool{Location: vsphere.Location{Datacenter: "dc-a", Path: "/dc-a/host/cluster-1/Resources/app-pool"}, ID: "pool-1", Name: "app-pool", Status: "green", VMRefs: []string{"vm-1"}, CPULimitMHz: int64Ptr(12000), CPUReservationMHz: int64Ptr(1000), MemConfiguredMB: 4096})
@@ -125,6 +125,9 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 		if got, _ := f.GetCellValue(sheet, cells[0]); got != cells[1] {
 			t.Fatalf("%s %s=%q", sheet, cells[0], got)
 		}
+	}
+	if got, _ := f.GetCellValue("vMultiPath", "D2"); got != "FALSE" {
+		t.Fatalf("vMultiPath local disk=%q, want FALSE", got)
 	}
 	if got, _ := f.GetCellValue("vSnapshot", "E2"); got != "2026/01/02 03:04:05" {
 		t.Fatalf("snapshot time=%q", got)

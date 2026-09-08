@@ -310,6 +310,9 @@ VMkernel or legacy service-console adapters (`vSC+VMK`). They are collected
 from `HostSystem.config.storageDevice` and `HostSystem.config.network` during
 assessment capture. Search, host listing, and the TUI keep their summary fetch;
 the host configuration properties are deliberately not added to those paths.
+Inventory schema version 14 adds tri-state local-storage evidence to each
+`vMultiPath` row. Local disks are excluded from redundancy findings; unknown
+locality remains unresolved rather than being treated as healthy shared storage.
 
 ### Distributed switch inventory
 

@@ -51,7 +51,7 @@ var (
 	dvSwitchHeaders     = append([]string{"DVS", "# Ports", "# Max ports", "MTU", "Vendor", "Version", "UUID", "Description", "Contact", "Contact detail", "Hosts", "Uplink ports", "Link discovery protocol", "Link discovery operation", "LACP version"}, dvsTailHeaders...)
 	dvPortHeaders       = append([]string{"Port group", "DVS", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Promiscuous mode", "MAC changes", "Forged transmits", "Teaming policy", "Notify switches", "Failback", "Ingress shaping", "Egress shaping", "Blocked", "Auto expand", "Active uplinks", "Standby uplinks", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
 	vmkHeaders          = append([]string{"Device", "Port group", "Mac Address", "MTU", "TSO", "Netstack", "DHCP", "IP Address", "Subnet mask", "Service console"}, hostTailHeaders...)
-	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
+	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Local disk", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
 	clusterHeaders      = []string{"Name", "NumHosts", "NumEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overhead limit", "CPU reservation", "CPU level", "CPU shares", "CPU expandable reservation", "Mem configured", "Mem limit", "Mem overhead limit", "Mem reservation", "Mem level", "Mem shares", "Mem expandable reservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -636,7 +636,7 @@ func multipathRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, item := range hostConfigResources(data) {
 		for _, multipath := range item.host.Multipaths {
-			row := []any{multipath.LUN, multipath.DevicePath, multipath.Policy, multipath.PathCount, multipath.Active, multipath.Standby, multipath.Dead, multipath.Disabled, multipath.WorkingPaths}
+			row := []any{multipath.LUN, multipath.DevicePath, multipath.Policy, optionalBool(multipath.LocalDisk), multipath.PathCount, multipath.Active, multipath.Standby, multipath.Dead, multipath.Disabled, multipath.WorkingPaths}
 			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
 		}
 	}

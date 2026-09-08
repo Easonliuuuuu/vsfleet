@@ -216,10 +216,10 @@ var rules = []Rule{
 		},
 	},
 	{
-		ID: "host-path-redundancy", Category: CategoryAvailability, Severity: SeverityWarning, MinSchema: 9,
+		ID: "host-path-redundancy", Category: CategoryAvailability, Severity: SeverityWarning, MinSchema: 14,
 		Recommendation: "Restore redundant active paths to the LUN and investigate dead paths before migration.", NeedsCollections: []string{"host"},
 		Summary: "a host LUN has insufficient or dead paths", Needs: "host multipath inventory",
-		Eval: evaluateHostPathRedundancy,
+		Eval: evaluateHostPathRedundancy, Resolve: resolveHostPathRedundancy,
 	},
 	{
 		ID: "manual-mac-address", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
@@ -964,14 +964,54 @@ func evaluateHostPathRedundancy(in Input, emit func(Finding)) {
 			continue
 		}
 		for _, path := range host.Multipaths {
-			if path.PathCount >= 2 && path.Dead == 0 {
+			if path.LocalDisk != nil && *path.LocalDisk {
+				continue
+			}
+			if path.LocalDisk == nil {
+				continue
+			}
+			if !hostPathRedundancyFailure(path) {
 				continue
 			}
 			obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
 			emit(Finding{Rule: "host-path-redundancy", Object: obj,
-				Message: fmt.Sprintf("LUN %q has insufficient storage-path redundancy", path.LUN), Evidence: []Evidence{{Field: "lun", Observed: path.LUN}, {Field: "path_count", Observed: fmt.Sprint(path.PathCount), Expected: ">= 2"}, {Field: "active", Observed: fmt.Sprint(path.Active)}, {Field: "dead", Observed: fmt.Sprint(path.Dead), Expected: "0"}}})
+				Message: fmt.Sprintf("LUN %q has insufficient storage-path redundancy", path.LUN), Evidence: []Evidence{{Field: "lun", Observed: path.LUN}, {Field: "local_disk", Observed: boolText(path.LocalDisk), Expected: "false"}, {Field: "path_count", Observed: fmt.Sprint(path.PathCount), Expected: ">= 2"}, {Field: "active", Observed: fmt.Sprint(path.Active)}, {Field: "dead", Observed: fmt.Sprint(path.Dead), Expected: "0"}, {Field: "disabled", Observed: fmt.Sprint(path.Disabled), Expected: "0"}}})
 		}
 	}
+}
+
+func resolveHostPathRedundancy(in Input) (string, string, []string) {
+	unknown := make(map[string]bool)
+	for _, resource := range in.Data.Resources {
+		if resource.Kind != "host" {
+			continue
+		}
+		var host vsphere.Host
+		if !assessment.DecodeResource(resource, &host) {
+			continue
+		}
+		for _, path := range host.Multipaths {
+			if path.LocalDisk != nil && !*path.LocalDisk && hostPathRedundancyFailure(path) {
+				return "", "", nil
+			}
+			if path.LocalDisk == nil {
+				unknown[resource.Context] = true
+			}
+		}
+	}
+	if len(unknown) == 0 {
+		return "", "", nil
+	}
+	blind := make([]string, 0, len(unknown))
+	for context := range unknown {
+		blind = append(blind, context)
+	}
+	sort.Strings(blind)
+	return "unknown", "storage locality evidence is incomplete", blind
+}
+
+func hostPathRedundancyFailure(path vsphere.HostMultipath) bool {
+	return path.PathCount < 2 || path.Dead > 0 || path.Disabled > 0
 }
 
 func evaluatePortGroupPromiscuous(in Input, emit func(Finding)) {

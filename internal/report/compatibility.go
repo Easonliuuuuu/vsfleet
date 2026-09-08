@@ -458,6 +458,7 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"LUN":            {Kind: KindText, Note: "SCSI LUN display name, falling back to its canonical name or device name."},
 		"Device path":    {Kind: KindText, Empty: "when the resolved ScsiLun has no device name"},
 		"Policy":         {Kind: KindText, Empty: "when vSphere reports no multipath policy"},
+		"Local disk":     {Kind: KindBoolean, Empty: "when vSphere does not report storage locality"},
 		"Path count":     {Kind: KindInteger, Note: "Total paths to this LUN; paths are aggregated into one row."},
 		"Active paths":   {Kind: KindInteger},
 		"Standby paths":  {Kind: KindInteger},

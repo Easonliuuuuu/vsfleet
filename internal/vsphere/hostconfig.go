@@ -219,23 +219,32 @@ func mapHostMultipaths(storage *types.HostStorageDeviceInfo, info *types.HostMul
 	if storage == nil || info == nil {
 		return nil
 	}
-	luns := make(map[string]types.ScsiLun, len(storage.ScsiLun)*3)
+	type lunEvidence struct {
+		lun       types.ScsiLun
+		localDisk *bool
+	}
+	luns := make(map[string]lunEvidence, len(storage.ScsiLun)*3)
 	for _, raw := range storage.ScsiLun {
 		if raw == nil || raw.GetScsiLun() == nil {
 			continue
 		}
 		lun := raw.GetScsiLun()
-		luns[lun.Key] = *lun
+		evidence := lunEvidence{lun: *lun}
+		if disk, ok := raw.(*types.HostScsiDisk); ok {
+			evidence.localDisk = disk.LocalDisk
+		}
+		luns[lun.Key] = evidence
 		if lun.Uuid != "" {
-			luns[lun.Uuid] = *lun
+			luns[lun.Uuid] = evidence
 		}
 		if lun.CanonicalName != "" {
-			luns[lun.CanonicalName] = *lun
+			luns[lun.CanonicalName] = evidence
 		}
 	}
 	out := make([]HostMultipath, 0, len(info.Lun))
 	for _, value := range info.Lun {
-		lun := luns[value.Lun]
+		resolved := luns[value.Lun]
+		lun := resolved.lun
 		name := lun.DisplayName
 		if name == "" {
 			name = lun.CanonicalName
@@ -248,6 +257,7 @@ func mapHostMultipaths(storage *types.HostStorageDeviceInfo, info *types.HostMul
 			LUN:        name,
 			DevicePath: lun.DeviceName,
 			Policy:     multipathPolicy(value.Policy),
+			LocalDisk:  resolved.localDisk,
 			PathCount:  len(value.Path),
 		}
 		for _, path := range value.Path {

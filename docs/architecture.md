@@ -148,7 +148,9 @@ six host configuration tabs as not recorded. Version 10 adds persisted
 distributed virtual switch and port-group observations for `dvSwitch` and
 `dvPort`; runs before version 10 mark those tabs as not recorded. Inventory
 schema version 11 keeps the new datastore backing fields in the payload
-without changing RVTools worksheet columns. A shared
+without changing RVTools worksheet columns. Inventory schema version 14 adds
+the `Local disk` column to `vMultiPath`; absent locality is preserved as an
+unknown value for conservative health evaluation. A shared
 `rvtoolsSheets` compatibility-sheet builder canonicalizes and validates the run
 once and returns every supported worksheet (`vInfo`, `vCPU`, `vMemory`,
 per-VM `vDisk`/`vNetwork`,

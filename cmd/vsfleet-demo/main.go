@@ -19,9 +19,31 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	_, err := tui.Run(ctx, demo.NewBackend(), tui.Options{Current: "prod-vc", Demo: true})
+	backend, opts, cleanup, err := setupDemo()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "vsfleet-demo: %v\n", err)
 		os.Exit(1)
 	}
+	defer cleanup()
+
+	_, err = tui.Run(ctx, backend, opts)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "vsfleet-demo: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// setupDemo builds the synthetic backend, the seeded in-memory assessment
+// service, and the TUI options for the presentation binary. It mirrors the
+// "vsfleet demo" wiring in internal/cli/demo.go so both launch paths expose
+// the same History capability. The returned cleanup closes the store and
+// must run even when tui.Run fails.
+func setupDemo() (*demo.Backend, tui.Options, func(), error) {
+	backend := demo.NewBackend()
+	service, closeHistory, err := backend.AssessmentService()
+	if err != nil {
+		return nil, tui.Options{}, nil, err
+	}
+	opts := tui.Options{Current: "prod-vc", Demo: true, Assessment: service}
+	return backend, opts, closeHistory, nil
 }

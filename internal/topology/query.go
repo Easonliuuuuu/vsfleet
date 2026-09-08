@@ -28,6 +28,23 @@ func (g Graph) Resolve(kind Kind, query string, contexts []string) []Subject {
 	return out
 }
 
+// Unknown creates an explicit unknown result for a subject that was not found
+// in the graph. The blindness list is calculated only for the requested
+// context scope, so an absent object never falls back to a same-named subject
+// from another vCenter.
+func (g Graph) Unknown(kind Kind, name string, contexts []string) SubjectResult {
+	checked := append([]string(nil), contexts...)
+	if len(checked) == 0 {
+		checked = append(checked, g.contexts...)
+	}
+	checked = sortedContexts(checked)
+	return SubjectResult{
+		Subject:    Subject{Kind: string(kind), Name: name, Basis: BasisName},
+		Confidence: ConfidenceUnknown,
+		Blind:      g.blindness(checked, kind),
+	}
+}
+
 func subjectMatches(subject Subject, query string) bool {
 	if strings.EqualFold(subject.Name, query) {
 		return true
@@ -194,7 +211,7 @@ func (g Graph) subjectIndex(subject Subject) (int, bool) {
 		if subject.Name != "" && !strings.EqualFold(candidate.subject.Name, subject.Name) && !subjectMembersOverlap(candidate.subject.Members, subject.Members) {
 			continue
 		}
-		if len(subject.Members) == 0 || subjectMembersOverlap(candidate.subject.Members, subject.Members) || strings.EqualFold(candidate.subject.Name, subject.Name) {
+		if subjectMembersOverlap(candidate.subject.Members, subject.Members) {
 			return index, true
 		}
 	}

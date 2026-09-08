@@ -5,12 +5,12 @@
 package tests
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/vmware/govmomi/simulator"
@@ -74,6 +74,23 @@ type runner struct {
 	configPath string
 }
 
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(value []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.WriteString(string(value))
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
 func newRunner(t *testing.T) *runner {
 	t.Helper()
 	return &runner{t: t, configPath: filepath.Join(t.TempDir(), "config.toml")}
@@ -83,7 +100,7 @@ func newRunner(t *testing.T) *runner {
 // tests supply passwords without touching the operating system keyring.
 func (r *runner) run(stdin string, args ...string) (stdout, stderr string, err error) {
 	r.t.Helper()
-	var out, errOut bytes.Buffer
+	var out, errOut lockedBuffer
 	app := &cli.App{
 		In:  strings.NewReader(stdin),
 		Out: &out,

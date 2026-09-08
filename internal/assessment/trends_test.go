@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,6 +250,35 @@ func TestHostCPUUtilizationNotOverflowing(t *testing.T) {
 	wantUtil := 18400.0 / 76800.0 * 100.0
 	if diff := *point.CPUUtilization - wantUtil; diff < -0.01 || diff > 0.01 {
 		t.Fatalf("CPU utilization = %.2f%%, want %.2f%%", *point.CPUUtilization, wantUtil)
+	}
+}
+
+func TestCapacitySeriesPointsRetainRunIDsAcrossScopes(t *testing.T) {
+	series := make(map[string]*CapacitySeries)
+	for _, runID := range []int64{11, 12, 13} {
+		run := Run{ID: runID}
+		point := CapacityPoint{CPUCapacity: floatPtr(float64(runID))}
+		appendCapacityPoint(series, "host", "estate", "", run, point)
+		appendCapacityPoint(series, "host", "context", "prod", run, point)
+		appendCapacityPoint(series, "host", "resource", "esx-01", run, point)
+	}
+	for key, item := range series {
+		if len(item.Points) != 3 {
+			t.Fatalf("series %q has %d points, want 3", key, len(item.Points))
+		}
+		for i, point := range item.Points {
+			want := int64(i + 11)
+			if point.Run.ID != want {
+				t.Fatalf("series %q point %d run=%d, want %d", key, i, point.Run.ID, want)
+			}
+		}
+	}
+	encoded, err := json.Marshal(series["estate\x00"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"run":{"id":11,`) || !strings.Contains(string(encoded), `"run":{"id":13,`) {
+		t.Fatalf("JSON capacity points lost run IDs: %s", encoded)
 	}
 }
 

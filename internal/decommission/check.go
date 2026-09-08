@@ -75,7 +75,7 @@ type Report struct {
 // present in the selected run.
 func Evaluate(data assessment.ExportData, query string, contexts []string) Report {
 	query = strings.TrimSpace(query)
-	data = scopeData(data, contexts)
+	data = assessment.ScopeExportData(data, contexts)
 	graph := topology.Build(data)
 	subjects := graph.Resolve(topology.KindVM, query, contexts)
 	out := Report{SchemaVersion: SchemaVersion, RunID: data.Run.ID, Query: query, Verdict: VerdictUnknown, Subjects: make([]SubjectReport, 0, len(subjects))}
@@ -131,36 +131,6 @@ func Evaluate(data assessment.ExportData, query string, contexts []string) Repor
 		out.Verdict = VerdictUnknown
 	}
 	return out
-}
-
-func scopeData(data assessment.ExportData, contexts []string) assessment.ExportData {
-	if len(contexts) == 0 {
-		return data
-	}
-	allowed := make(map[string]bool, len(contexts))
-	for _, context := range contexts {
-		allowed[strings.ToLower(strings.TrimSpace(context))] = true
-	}
-	scoped := data
-	scoped.Contexts = make([]assessment.ContextRun, 0, len(data.Contexts))
-	for _, context := range data.Contexts {
-		if allowed[strings.ToLower(context.Name)] {
-			scoped.Contexts = append(scoped.Contexts, context)
-		}
-	}
-	scoped.VMs = make([]assessment.ExportVM, 0, len(data.VMs))
-	for _, item := range data.VMs {
-		if allowed[strings.ToLower(observationContext(item.Observation))] {
-			scoped.VMs = append(scoped.VMs, item)
-		}
-	}
-	scoped.Resources = make([]assessment.ResourceObservation, 0, len(data.Resources))
-	for _, resource := range data.Resources {
-		if allowed[strings.ToLower(resource.Context)] {
-			scoped.Resources = append(scoped.Resources, resource)
-		}
-	}
-	return scoped
 }
 
 func evaluateSubject(data assessment.ExportData, subject topology.Subject, dependencies topology.SubjectResult, observations []assessment.ExportVM) SubjectReport {

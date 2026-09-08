@@ -69,6 +69,13 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if err != nil {
 		return err
 	}
+	if len(a.ContextNames) > 0 {
+		if s, sErr := a.History(); sErr == nil {
+			if full, fErr := s.LoadExportData(cmd.Context(), data.Run.ID); fErr == nil {
+				data.Contexts = full.Contexts
+			}
+		}
+	}
 	graph := topology.Build(data)
 	subjects := graph.Resolve(kind, args[1], a.ContextNames)
 	result := topology.Result{

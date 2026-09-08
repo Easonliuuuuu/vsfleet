@@ -4,6 +4,7 @@ package tests
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
@@ -46,12 +47,23 @@ func TestVCSIMContextIsolation(t *testing.T) {
 	}
 
 	for _, direction := range []string{"topology", "dependencies", "blast-radius"} {
-		result := topologyJSON(t, r, historyDB, "does-not-exist", direction, "vm", "DC0_C0_RP0_VM0")
+		stdout, stderr, err := r.run("", "--history-db", historyDB, "-o", "json", "--context", "does-not-exist", direction, "vm", "DC0_C0_RP0_VM0", "latest")
+		errMsg := ""
+		if err != nil {
+			errMsg = err.Error()
+		}
+		if !strings.Contains(errMsg, "unknown assessment context") && !strings.Contains(stderr, "unknown assessment context") {
+			t.Fatalf("invalid selector %s: err=%v, stdout=%q, stderr=%q", direction, err, stdout, stderr)
+		}
+	}
+
+	for _, direction := range []string{"topology", "dependencies", "blast-radius"} {
+		result := topologyJSON(t, r, historyDB, "vc-a", direction, "vm", "does-not-exist")
 		if len(result.Subjects) != 1 || result.Subjects[0].Confidence != "unknown" {
-			t.Fatalf("invalid selector %s result=%+v", direction, result)
+			t.Fatalf("missing VM in valid context %s result=%+v", direction, result)
 		}
 		if len(result.Subjects[0].Subject.Members) != 0 || len(result.Subjects[0].Ancestors) != 0 || len(result.Subjects[0].Edges) != 0 {
-			t.Fatalf("invalid selector %s crossed graph boundary: %+v", direction, result)
+			t.Fatalf("missing VM in valid context %s crossed graph boundary: %+v", direction, result)
 		}
 	}
 }

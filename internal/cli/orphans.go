@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -11,9 +12,23 @@ import (
 )
 
 type orphanFlags struct {
-	confidence []string
-	minSize    int64
+	confidence    []string
+	minSize       int64
+	failOnUnknown bool
 }
+
+// orphanCoverageExitError reports that the orphan scan could not cover the whole
+// datastore scope, so "no candidates" is not proof of a clean estate. It is
+// raised only under --fail-on-unknown.
+type orphanCoverageExitError struct{ gaps int }
+
+func (e *orphanCoverageExitError) Error() string {
+	if e.gaps == 0 {
+		return "orphan scan coverage is incomplete: no datastore browse evidence"
+	}
+	return fmt.Sprintf("orphan scan coverage is incomplete (%d datastore(s) not fully browsed)", e.gaps)
+}
+func (e *orphanCoverageExitError) ExitCode() int { return 2 }
 
 func newAssessmentOrphansCommand(a *App) *cobra.Command {
 	var flags orphanFlags
@@ -39,16 +54,36 @@ func newAssessmentOrphansCommand(a *App) *cobra.Command {
 			}
 			report := health.Orphans(data)
 			report.Entries = filterOrphans(report.Entries, flags)
+			printOrphanCoverage(a.errOut(), report.Coverage)
 			if a.json() {
-				return writeJSON(a.out(), report)
+				if err := writeJSON(a.out(), report); err != nil {
+					return err
+				}
+			} else {
+				printOrphans(a, report)
 			}
-			printOrphans(a, report)
+			if flags.failOnUnknown && !report.Coverage.Complete() {
+				return &orphanCoverageExitError{gaps: len(report.Coverage.Gaps)}
+			}
 			return nil
 		},
 	}
 	cmd.Flags().StringSliceVar(&flags.confidence, "confidence", nil, "only show confidence tier (repeat or comma-separate)")
 	cmd.Flags().Int64Var(&flags.minSize, "min-size", 0, "only show files at least this many bytes")
+	cmd.Flags().BoolVar(&flags.failOnUnknown, "fail-on-unknown", false, "exit 2 when any datastore was not fully browsed")
 	return cmd
+}
+
+// printOrphanCoverage names every datastore that could not be fully browsed, so
+// an empty candidate list is never read as a clean estate.
+func printOrphanCoverage(out io.Writer, coverage health.OrphanCoverage) {
+	for _, gap := range coverage.Gaps {
+		message := fmt.Sprintf("%s / %s not evaluated (%s)", gap.Object.Context, gap.Object.Name, gap.Status)
+		if gap.Reason != "" {
+			message += ": " + gap.Reason
+		}
+		fmt.Fprintf(out, "%s %s\n", glyphFail, message)
+	}
 }
 
 func filterOrphans(entries []health.OrphanEvidence, flags orphanFlags) []health.OrphanEvidence {
@@ -71,7 +106,7 @@ func filterOrphans(entries []health.OrphanEvidence, flags orphanFlags) []health.
 
 func printOrphans(a *App, report health.OrphanReport) {
 	if len(report.Entries) == 0 {
-		fmt.Fprintln(a.out(), "No browsed VMDK orphan candidates.")
+		fmt.Fprintln(a.out(), orphanEmptyMessage(report.Coverage))
 		return
 	}
 	for i, entry := range report.Entries {
@@ -101,6 +136,21 @@ func printOrphans(a *App, report health.OrphanReport) {
 			fields.add("reason", strings.Join(entry.Reasons, "; "))
 		}
 		fields.flush()
+	}
+}
+
+// orphanEmptyMessage renders the no-candidates line so that an incomplete scan
+// is never reported as a clean estate.
+func orphanEmptyMessage(coverage health.OrphanCoverage) string {
+	switch {
+	case coverage.Datastores == 0:
+		return "No datastore inventory in this assessment; orphan scan NOT EVALUATED."
+	case coverage.Browsed == 0:
+		return "No datastore browse evidence; orphan scan NOT EVALUATED (capture with --browse-datastores)."
+	case !coverage.Complete():
+		return fmt.Sprintf("No orphan candidates in %d of %d browsed datastore(s); %d NOT EVALUATED (see warnings above).", coverage.Browsed, coverage.Datastores, len(coverage.Gaps))
+	default:
+		return "No browsed VMDK orphan candidates."
 	}
 }
 

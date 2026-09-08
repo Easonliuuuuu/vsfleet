@@ -159,7 +159,11 @@ a clean result. Orphan confidence is estate-aware: `--fail-on-findings
 --severity warning` fails only on verified-unreferenced VMDKs; suspected and
 cross-context evidence is informational, while incomplete coverage is unknown.
 Use `assessment orphans [RUN]` for the evidence drill-down, with
-`--confidence` and `--min-size` filters or `-o json` for automation.
+`--confidence` and `--min-size` filters or `-o json` for automation. When a
+datastore was not browsed (no `--browse-datastores`), failed, was denied, or was
+truncated, the command prints `NOT EVALUATED` instead of a clean result, names
+the datastores on stderr, and reports the same state under `coverage` in the
+JSON output; `--fail-on-unknown` turns incomplete coverage into a non-zero exit.
 
 `vsfleet assessment capacity [RUN]` is an offline growth drill-down. It joins
 the first and last usable datastore observations in the selected window, names

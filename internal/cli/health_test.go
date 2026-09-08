@@ -110,6 +110,96 @@ func newOrphanTestHistoryDB(t *testing.T, schema string) string {
 	return dbPath
 }
 
+func newOrphanCoverageHistoryDB(t *testing.T, datastore vsphere.Datastore) string {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+	s, err := assessment.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	ctx := &config.Context{Name: "prod", Endpoint: "https://vc.example"}
+	run, err := s.StartRunWithMetadata(context.Background(), "test", []*config.Context{ctx}, when, assessment.RunMetadata{InventorySchemaVersion: "11"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, _ := json.Marshal(datastore)
+	if err := s.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", Collections: []assessment.CollectionResult{{Kind: "vm", Status: "success"}, {Kind: "datastore", Status: "success", Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-1", Kind: "datastore", ID: datastore.ID, Name: datastore.Name, Payload: payload}}}}}, when.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.FinishRun(context.Background(), run.ID, when.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return dbPath
+}
+
+func TestAssessmentOrphansReportsMissingBrowseEvidence(t *testing.T) {
+	strong := vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}
+
+	// Captured without --browse-datastores: an empty candidate list must not
+	// read as a clean estate.
+	noBrowse := newOrphanCoverageHistoryDB(t, vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Accessible: true, Backing: strong})
+	stdout, stderr, err := runAssessmentOrphans(t, noBrowse, "latest")
+	if err != nil {
+		t.Fatalf("orphans err=%v", err)
+	}
+	if strings.Contains(stdout, "No browsed VMDK orphan candidates.") || !strings.Contains(stdout, "NOT EVALUATED") {
+		t.Fatalf("no-browse stdout=%q", stdout)
+	}
+	if !strings.Contains(stderr, "not-browsed") {
+		t.Fatalf("no-browse stderr=%q", stderr)
+	}
+
+	// --fail-on-unknown makes the incomplete coverage a non-zero exit.
+	_, _, gateErr := runAssessmentOrphans(t, noBrowse, "latest", "--fail-on-unknown")
+	var coded interface{ ExitCode() int }
+	if !errors.As(gateErr, &coded) || coded.ExitCode() != 2 {
+		t.Fatalf("fail-on-unknown err=%v code=%v", gateErr, coded)
+	}
+
+	// JSON exposes coverage even with entries == [].
+	jsonOut, _, err := runAssessmentOrphans(t, noBrowse, "latest", "-o", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Entries  []any `json:"entries"`
+		Coverage struct {
+			Datastores int `json:"datastores"`
+			Browsed    int `json:"browsed"`
+			Gaps       []struct {
+				Status string `json:"status"`
+			} `json:"gaps"`
+		} `json:"coverage"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &report); err != nil {
+		t.Fatalf("invalid orphans JSON: %v\n%s", err, jsonOut)
+	}
+	if len(report.Entries) != 0 || report.Coverage.Browsed != 0 || len(report.Coverage.Gaps) != 1 || report.Coverage.Gaps[0].Status != "not-browsed" {
+		t.Fatalf("coverage JSON=%+v", report.Coverage)
+	}
+
+	// A truncated listing with zero candidates is still not a clean result.
+	truncated := newOrphanCoverageHistoryDB(t, vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-2", Name: "datastore2", Accessible: true, Backing: strong, BrowseStatus: "success", BrowseTruncated: true})
+	stdout, _, err = runAssessmentOrphans(t, truncated, "latest")
+	if err != nil || strings.Contains(stdout, "No browsed VMDK orphan candidates.") || !strings.Contains(stdout, "NOT EVALUATED") {
+		t.Fatalf("truncated err=%v stdout=%q", err, stdout)
+	}
+
+	// A fully browsed, genuinely clean estate still prints a clean result and exits 0.
+	clean := newOrphanCoverageHistoryDB(t, vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-3", Name: "datastore3", Accessible: true, Backing: strong, BrowseStatus: "success"})
+	stdout, _, err = runAssessmentOrphans(t, clean, "latest", "--fail-on-unknown")
+	if err != nil {
+		t.Fatalf("clean estate failed: %v", err)
+	}
+	if !strings.Contains(stdout, "No browsed VMDK orphan candidates.") {
+		t.Fatalf("clean stdout=%q", stdout)
+	}
+}
+
 func TestAssessmentOrphansCommandAndConfidenceFiltering(t *testing.T) {
 	db := newOrphanTestHistoryDB(t, "10")
 	stdout, _, err := runAssessmentOrphans(t, db, "latest")

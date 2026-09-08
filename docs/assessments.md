@@ -155,6 +155,14 @@ therefore fails only on verified orphans; low-confidence guesses are
 informational. `assessment orphans -o json` exposes the paths, sizes,
 timestamps, identity keys, references, and coverage reasons.
 
+An empty candidate list is only a clean result when every datastore in the
+assessment was fully browsed. `assessment orphans` reports the scan-coverage
+state independently of the candidates: a run captured without
+`--browse-datastores`, a failed or denied browse, or a truncated listing prints
+`NOT EVALUATED`, names the affected datastores on stderr, and is exposed under
+`coverage` in the JSON output even when `entries` is empty. Add
+`--fail-on-unknown` to exit non-zero when any datastore was not fully browsed.
+
 ### Migration readiness
 
 `vsfleet assessment findings [RUN]` is the assessment-prefixed equivalent of

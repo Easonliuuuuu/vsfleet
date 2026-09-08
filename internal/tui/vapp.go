@@ -182,19 +182,26 @@ func childVApps(parent *vsphere.VApp, inv *vsphere.Inventory) []vappChild {
 		if !ok || kind != "VirtualApp" {
 			continue
 		}
-		found := false
+		var matched *vsphere.VApp
 		for i := range inv.VApps {
-			if inv.VApps[i].ID == id {
-				key := vappKey(inv.VApps[i].Context, id)
-				if !seen[key] {
-					out = append(out, vappChild{app: &inv.VApps[i], key: key, name: inv.VApps[i].Name})
-					seen[key] = true
-				}
-				found = true
+			if inv.VApps[i].ID != id {
+				continue
+			}
+			if parent.Context != "" && inv.VApps[i].Context == parent.Context {
+				matched = &inv.VApps[i]
 				break
 			}
+			if matched == nil && (parent.Context == "" || inv.VApps[i].Context == "") {
+				matched = &inv.VApps[i]
+			}
 		}
-		if !found {
+		if matched != nil {
+			key := vappKey(matched.Context, id)
+			if !seen[key] {
+				out = append(out, vappChild{app: matched, key: key, name: matched.Name})
+				seen[key] = true
+			}
+		} else {
 			key := vappKey(parent.Context, id)
 			if !seen[key] {
 				out = append(out, vappChild{key: key, name: "vAPP " + id})
@@ -204,22 +211,56 @@ func childVApps(parent *vsphere.VApp, inv *vsphere.Inventory) []vappChild {
 	}
 	// Older snapshots and hand-written backends may not have reference fields.
 	for _, name := range parent.ChildVApps {
-		found := false
+		var exactMatches []*vsphere.VApp
+		var fallbackMatches []*vsphere.VApp
 		for i := range inv.VApps {
-			key := vappKey(inv.VApps[i].Context, inv.VApps[i].ID)
-			if inv.VApps[i].Name == name && !seen[key] {
-				out = append(out, vappChild{app: &inv.VApps[i], key: key, name: inv.VApps[i].Name})
-				seen[key] = true
-				found = true
+			if inv.VApps[i].Name != name {
+				continue
+			}
+			if parent.Context != "" && inv.VApps[i].Context == parent.Context {
+				exactMatches = append(exactMatches, &inv.VApps[i])
+			} else if parent.Context == "" || inv.VApps[i].Context == "" {
+				fallbackMatches = append(fallbackMatches, &inv.VApps[i])
+			}
+		}
+
+		candidates := exactMatches
+		if len(candidates) == 0 {
+			candidates = fallbackMatches
+		}
+
+		if len(candidates) > 1 {
+			sort.SliceStable(candidates, func(i, j int) bool {
+				keyI := vappKey(candidates[i].Context, candidates[i].ID)
+				keyJ := vappKey(candidates[j].Context, candidates[j].ID)
+				return keyI < keyJ
+			})
+		}
+
+		alreadyResolved := false
+		for _, c := range candidates {
+			key := vappKey(c.Context, c.ID)
+			if seen[key] {
+				alreadyResolved = true
 				break
 			}
 		}
-		if !found {
-			key := vappKey(parent.Context, "missing-vapp:"+name)
-			if !seen[key] {
-				out = append(out, vappChild{key: key, name: name})
-				seen[key] = true
-			}
+		if alreadyResolved {
+			continue
+		}
+
+		if len(candidates) > 0 {
+			chosen := candidates[0]
+			key := vappKey(chosen.Context, chosen.ID)
+			out = append(out, vappChild{app: chosen, key: key, name: chosen.Name})
+			seen[key] = true
+			continue
+		}
+
+		key := vappKey(parent.Context, "missing-vapp:"+name)
+		if !seen[key] {
+			out = append(out, vappChild{key: key, name: name})
+			seen[key] = true
 		}
 	}
 	return out

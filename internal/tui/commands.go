@@ -455,6 +455,18 @@ type dsFindMsg struct {
 	err        error
 }
 
+type dsReferenceMsg struct {
+	generation uint64
+	listing    vsphere.DatastoreReferenceListing
+	err        error
+}
+
+type dsAssessmentMsg struct {
+	generation uint64
+	data       assessment.ExportData
+	err        error
+}
+
 // listDatastoreDirCmd reads exactly one directory, off the update loop, so a
 // slow or hanging datastore browser cannot make the interface stop responding
 // — cancelling is then only a matter of dropping the reply.
@@ -469,6 +481,20 @@ func findInDatastoreCmd(ctx context.Context, b datastoreBrowserBackend, cc *conf
 	return func() tea.Msg {
 		listing, err := b.FindInDatastore(ctx, cc, w.datastoreID, w.datastore, pattern)
 		return dsFindMsg{context: w.context, query: pattern, generation: w.generation, listing: listing, err: err}
+	}
+}
+
+func listDatastoreReferencesCmd(ctx context.Context, b datastoreRelationshipBackend, cc *config.Context, datastoreID string, generation uint64) tea.Cmd {
+	return func() tea.Msg {
+		listing, err := b.ListDatastoreVMReferences(ctx, cc, datastoreID)
+		return dsReferenceMsg{generation: generation, listing: listing, err: err}
+	}
+}
+
+func loadDatastoreAssessmentCmd(ctx context.Context, service *assessment.Service, contextName, vcenterID string, generation uint64) tea.Cmd {
+	return func() tea.Msg {
+		data, err := service.LatestExportDataForContext(ctx, contextName, vcenterID)
+		return dsAssessmentMsg{generation: generation, data: data, err: err}
 	}
 }
 

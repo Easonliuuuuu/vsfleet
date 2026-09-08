@@ -245,6 +245,8 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 			return []key.Binding{k.Up, k.Down, k.RunAction, k.CancelAction}
 		}
 		return []key.Binding{k.Up, k.Down, k.Open, k.Filter, k.FindFiles, k.CopyPath, k.Back, k.Quit}
+	case modeDatastoreEntry:
+		return []key.Binding{k.Up, k.Down, k.Open, k.CopyPath, k.Back, k.Quit}
 	case modeDatastoreFind:
 		return []key.Binding{k.Up, k.Down, k.Open, k.FindFiles, k.CopyPath, k.Back, k.Quit}
 	default:

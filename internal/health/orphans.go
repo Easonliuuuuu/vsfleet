@@ -17,13 +17,28 @@ const (
 	ConfidenceVerified     Confidence = "verified-unreferenced"
 	ConfidenceSuspected    Confidence = "suspected-unreferenced"
 	ConfidenceOtherContext Confidence = "referenced-other-context"
+	ConfidenceReferenced   Confidence = "referenced"
 	ConfidenceUnknown      Confidence = "unknown-incomplete-coverage"
 )
+
+// DatastoreFileAssessment is the point-in-time relationship evidence for one
+// interactive browser entry. Unlike OrphanEvidence it also represents a file
+// referenced in its own context, because the detail view needs to explain the
+// positive relationship as well as orphan candidates.
+type DatastoreFileAssessment struct {
+	Observed        bool
+	Confidence      Confidence
+	ReferencedBy    []OrphanReference
+	CheckedContexts []string
+	Blind           []OrphanBlindness
+	Reasons         []string
+}
 
 // OrphanReference identifies the VM or template which uses a disk path.
 type OrphanReference struct {
 	Context   string `json:"context"`
 	VCenterID string `json:"vcenter_id,omitempty"`
+	VMID      string `json:"vm_id,omitempty"`
 	VM        string `json:"vm"`
 	Template  bool   `json:"template,omitempty"`
 	Path      string `json:"path"`
@@ -107,6 +122,152 @@ type OrphanReport struct {
 	RunID    int64            `json:"run_id"`
 	Entries  []OrphanEvidence `json:"entries"`
 	Coverage OrphanCoverage   `json:"coverage"`
+}
+
+// AssessDatastoreFile evaluates one browser path against stored assessment
+// evidence. It deliberately returns UNKNOWN when the path was not observed or
+// coverage is incomplete; absence from an old capture is not proof that a
+// currently visible file is orphaned.
+func AssessDatastoreFile(data assessment.ExportData, current vsphere.Datastore, filePath string) DatastoreFileAssessment {
+	result := DatastoreFileAssessment{Confidence: ConfidenceUnknown}
+	_, relative, ok := vsphere.SplitDatastorePath(filePath)
+	if !ok || relative == "" {
+		result.Reasons = []string{"file path is not a canonical datastore path"}
+		return result
+	}
+	var stores []orphanDatastore
+	currentKeys := assessment.DatastoreIdentity(current)
+	for _, resource := range data.Resources {
+		if resource.Kind != "datastore" || !strings.EqualFold(resource.Context, current.Context) {
+			continue
+		}
+		var datastore vsphere.Datastore
+		if !assessment.DecodeResource(resource, &datastore) {
+			continue
+		}
+		keys := assessment.DatastoreIdentity(datastore)
+		idMatch := current.ID != "" && datastore.ID == current.ID
+		nameMatch := strings.EqualFold(datastore.Name, current.Name)
+		identityMatch := len(currentKeys) > 0 && anyStringIntersection(currentKeys, keys)
+		if idMatch || nameMatch || identityMatch {
+			stores = append(stores, orphanDatastore{resource: resource, ds: datastore, keys: keys, local: datastore.Backing.Local})
+		}
+	}
+	if len(stores) != 1 {
+		if len(stores) == 0 {
+			result.Reasons = []string{"datastore was not observed in the selected assessment"}
+		} else {
+			result.Reasons = []string{"datastore identity is ambiguous in the selected assessment"}
+		}
+		return result
+	}
+	store := stores[0]
+	if store.ds.BrowseStatus != "success" {
+		result.Reasons = []string{nonempty(store.ds.BrowseError, "datastore browse evidence is unavailable")}
+		return result
+	}
+	for _, file := range store.ds.Files {
+		_, observedPath, ok := vsphere.SplitDatastorePath(file.Path)
+		if ok && vmdkFamily(observedPath) == vmdkFamily(relative) {
+			result.Observed = true
+			break
+		}
+	}
+	if !result.Observed {
+		result.Reasons = []string{"file was not observed in the selected assessment"}
+		return result
+	}
+	result.CheckedContexts = checkedContexts(data, store)
+	for _, item := range data.VMs {
+		vm := item.Observation.VM
+		for _, disk := range vm.Disks {
+			name, diskPath, ok := vsphere.SplitDatastorePath(disk.BackingPath)
+			if !ok || vmdkFamily(diskPath) != vmdkFamily(relative) {
+				continue
+			}
+			if !sameStoredDatastore(data, store, item.Observation.Context, name) {
+				continue
+			}
+			result.ReferencedBy = append(result.ReferencedBy, OrphanReference{
+				Context: item.Observation.Context, VCenterID: item.Observation.VCenterID,
+				VMID: vm.ID, VM: vm.Name, Template: vm.IsTemplate, Path: diskPath,
+			})
+		}
+	}
+	result.ReferencedBy = uniqueOrphanReferences(result.ReferencedBy)
+	for _, ref := range result.ReferencedBy {
+		if strings.EqualFold(ref.Context, store.resource.Context) {
+			result.Confidence = ConfidenceReferenced
+			return result
+		}
+	}
+	if len(result.ReferencedBy) > 0 {
+		result.Confidence = ConfidenceOtherContext
+		return result
+	}
+	for _, entry := range Orphans(data).Entries {
+		_, entryPath, entryOK := vsphere.SplitDatastorePath(entry.Path)
+		if entryOK && strings.EqualFold(entry.Object.Context, store.resource.Context) && entry.Object.ID == store.ds.ID && vmdkFamily(entryPath) == vmdkFamily(relative) {
+			result.Confidence, result.Blind, result.Reasons = entry.Confidence, entry.Blind, entry.Reasons
+			return result
+		}
+	}
+	result.Reasons = []string{"stored orphan evidence could not establish ownership"}
+	return result
+}
+
+func vmdkFamily(value string) string {
+	value = vsphere.NormalizeRelativePath(value)
+	for _, suffix := range []string{"-flat.vmdk", "-delta.vmdk", "-sesparse.vmdk", "-ctk.vmdk", "-rdm.vmdk", "-rdmp.vmdk", "-digest.vmdk"} {
+		if strings.HasSuffix(value, suffix) {
+			value = strings.TrimSuffix(value, suffix) + ".vmdk"
+			break
+		}
+	}
+	base := strings.TrimSuffix(value, ".vmdk")
+	if len(base) > 7 && base[len(base)-7] == '-' && allDigits(base[len(base)-6:]) {
+		value = base[:len(base)-7] + ".vmdk"
+	}
+	return value
+}
+
+func sameStoredDatastore(data assessment.ExportData, target orphanDatastore, context, name string) bool {
+	if strings.EqualFold(context, target.resource.Context) && strings.EqualFold(name, target.ds.Name) {
+		return true
+	}
+	if target.local || len(target.keys) == 0 {
+		return false
+	}
+	for _, resource := range data.Resources {
+		if resource.Kind != "datastore" || !strings.EqualFold(resource.Context, context) || !strings.EqualFold(resource.Name, name) {
+			continue
+		}
+		var datastore vsphere.Datastore
+		if assessment.DecodeResource(resource, &datastore) && anyStringIntersection(target.keys, assessment.DatastoreIdentity(datastore)) {
+			return true
+		}
+	}
+	return false
+}
+
+func uniqueOrphanReferences(values []OrphanReference) []OrphanReference {
+	seen := map[string]bool{}
+	out := make([]OrphanReference, 0, len(values))
+	for _, value := range values {
+		key := value.Context + "\x00" + value.VCenterID + "\x00" + value.VMID + "\x00" + value.VM + "\x00" + value.Path
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, value)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Context != out[j].Context {
+			return out[i].Context < out[j].Context
+		}
+		return out[i].VM < out[j].VM
+	})
+	return out
 }
 
 func orphanConfidenceLabel(value Confidence) string {
@@ -193,6 +354,7 @@ func Orphans(data assessment.ExportData) OrphanReport {
 				ref: OrphanReference{
 					Context:   refContext,
 					VCenterID: item.Observation.VCenterID,
+					VMID:      vm.ID,
 					VM:        vm.Name,
 					Template:  vm.IsTemplate,
 					Path:      vsphere.NormalizeRelativePath(relative),

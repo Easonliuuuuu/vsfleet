@@ -4,11 +4,14 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -63,6 +66,32 @@ type dsWorkspace struct {
 	// call is ever made to the vCenter, so the read-only guarantee this
 	// program makes stays a guarantee about pure reads.
 	cancel context.CancelFunc
+
+	// detail is the selected file's relationship inspector. Its result is
+	// cached for this workspace so inspecting several files on one datastore
+	// does not repeat the same VM configuration lookup.
+	detail           *dsEntryDetail
+	refListing       *vsphere.DatastoreReferenceListing
+	refErr           error
+	refLoaded        bool
+	assessmentData   *assessment.ExportData
+	assessmentErr    error
+	assessmentLoaded bool
+}
+
+type dsEntryDetail struct {
+	entry            vsphere.DatastoreEntry
+	refs             vsphere.DatastoreReferenceListing
+	refErr           error
+	refLoaded        bool
+	assessment       *health.DatastoreFileAssessment
+	assessmentRun    assessment.Run
+	assessmentErr    error
+	assessmentLoaded bool
+	loading          bool
+	pending          int
+	generation       uint64
+	cursor           int
 }
 
 const (
@@ -334,7 +363,7 @@ func (m *Model) handleDatastoreFilesKey(msg tea.KeyMsg) tea.Cmd {
 			m.filter.SetValue("")
 			return m.listDatastoreDir(vsphere.ChildBrowsePath(m.ds.path, entry.Name))
 		}
-		m.actions = &actionList{items: datastoreEntryActions(entry)}
+		return m.openDatastoreEntry(entry)
 	}
 	return nil
 }
@@ -445,6 +474,183 @@ func selectedEntry(entries []vsphere.DatastoreEntry, cursor int) (vsphere.Datast
 	return entries[cursor], true
 }
 
+func (m *Model) openDatastoreEntry(entry vsphere.DatastoreEntry) tea.Cmd {
+	if m.ds == nil {
+		return nil
+	}
+	m.ds.abandon()
+	m.ds.detail = &dsEntryDetail{entry: entry, generation: m.ds.generation, loading: false}
+	m.mode = modeDatastoreEntry
+	isVMDK := strings.HasSuffix(strings.ToLower(entry.Name), ".vmdk")
+	var cmds []tea.Cmd
+	if !isVMDK {
+		m.ds.detail.refLoaded = true
+	} else if m.ds.refLoaded {
+		if m.ds.refListing != nil {
+			m.ds.detail.refs = *m.ds.refListing
+		}
+		m.ds.detail.refErr, m.ds.detail.refLoaded = m.ds.refErr, true
+	} else if backend, ok := m.backend.(datastoreRelationshipBackend); ok {
+		st, inScope := m.dsContext()
+		if inScope {
+			m.ds.detail.pending++
+			m.ds.detail.refLoaded = true
+			ctx, cancel := context.WithCancel(m.ctx)
+			m.ds.cancel = cancel
+			cmds = append(cmds, listDatastoreReferencesCmd(ctx, backend, st.cc, m.ds.datastoreID, m.ds.generation))
+		} else {
+			m.ds.refLoaded, m.ds.refErr = true, fmt.Errorf("file browsing is unavailable for %s", m.ds.context)
+			m.ds.detail.refLoaded, m.ds.detail.refErr = true, m.ds.refErr
+		}
+	} else {
+		m.ds.refLoaded, m.ds.refErr = true, fmt.Errorf("live VM references are unavailable in this build")
+		m.ds.detail.refLoaded, m.ds.detail.refErr = true, m.ds.refErr
+	}
+	if m.assessment != nil && !m.ds.assessmentLoaded && isVMDK {
+		if _, inScope := m.dsContext(); inScope {
+			m.ds.detail.pending++
+			m.ds.detail.assessmentLoaded = true
+			ctx, cancel := context.WithCancel(m.ctx)
+			if m.ds.cancel == nil {
+				m.ds.cancel = cancel
+			} else {
+				// Both detail requests share the workspace cancellation boundary.
+				oldCancel := m.ds.cancel
+				m.ds.cancel = func() { oldCancel(); cancel() }
+			}
+			status, _ := m.backend.Status(m.ds.context)
+			cmds = append(cmds, loadDatastoreAssessmentCmd(ctx, m.assessment, m.ds.context, status.InstanceID, m.ds.generation))
+		}
+	} else {
+		m.ds.detail.assessmentLoaded = true
+		if m.ds.assessmentLoaded {
+			m.ds.detail.assessmentErr = m.ds.assessmentErr
+			if m.ds.assessmentData != nil {
+				if current, ok := m.currentDatastore(); ok {
+					assessment := health.AssessDatastoreFile(*m.ds.assessmentData, current, entry.Path)
+					m.ds.detail.assessment = &assessment
+				}
+			}
+		}
+	}
+	m.ds.detail.loading = m.ds.detail.pending > 0
+	if len(cmds) > 0 {
+		cmds = append(cmds, m.spin.Tick)
+	} else {
+		m.ds.detail.loading = false
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *Model) applyDSReferences(msg dsReferenceMsg) tea.Cmd {
+	if m.ds == nil || m.ds.detail == nil || msg.generation != m.ds.detail.generation {
+		return nil
+	}
+	m.ds.refListing = &msg.listing
+	m.ds.refErr = msg.err
+	m.ds.refLoaded = true
+	m.ds.detail.refs, m.ds.detail.refErr = msg.listing, msg.err
+	m.ds.detail.pending = max(0, m.ds.detail.pending-1)
+	m.ds.detail.loading = m.ds.detail.pending > 0
+	if m.ds.cancel != nil && !m.ds.detail.loading {
+		m.ds.cancel = nil
+	}
+	return nil
+}
+
+func (m *Model) applyDSAssessment(msg dsAssessmentMsg) tea.Cmd {
+	if m.ds == nil || m.ds.detail == nil || msg.generation != m.ds.detail.generation {
+		return nil
+	}
+	m.ds.assessmentLoaded = true
+	m.ds.assessmentErr = msg.err
+	if msg.err == nil {
+		m.ds.assessmentData = &msg.data
+		m.ds.detail.assessment, m.ds.detail.assessmentRun = nil, msg.data.Run
+		if current, ok := m.currentDatastore(); ok {
+			assessment := health.AssessDatastoreFile(msg.data, current, m.ds.detail.entry.Path)
+			m.ds.detail.assessment = &assessment
+		}
+	} else {
+		m.ds.detail.assessmentErr = msg.err
+	}
+	m.ds.detail.pending = max(0, m.ds.detail.pending-1)
+	m.ds.detail.loading = m.ds.detail.pending > 0
+	if m.ds.cancel != nil && !m.ds.detail.loading {
+		m.ds.cancel = nil
+	}
+	return nil
+}
+
+func (m *Model) currentDatastore() (vsphere.Datastore, bool) {
+	st, ok := m.dsContext()
+	if !ok || st.inv == nil || m.ds == nil {
+		return vsphere.Datastore{}, false
+	}
+	for _, datastore := range st.inv.Datastores {
+		if datastore.ID == m.ds.datastoreID || strings.EqualFold(datastore.Name, m.ds.datastore) {
+			return datastore, true
+		}
+	}
+	return vsphere.Datastore{}, false
+}
+
+func (m *Model) handleDatastoreEntryKey(msg tea.KeyMsg) tea.Cmd {
+	if m.ds == nil || m.ds.detail == nil {
+		m.mode = modeDatastoreFiles
+		return nil
+	}
+	d := m.ds.detail
+	switch {
+	case key.Matches(msg, m.keys.Back):
+		m.ds.abandon()
+		m.ds.detail = nil
+		m.mode = modeDatastoreFiles
+		return nil
+	case key.Matches(msg, m.keys.Up):
+		d.cursor = clamp(d.cursor-1, 0, max(0, len(m.datastoreDetailReferences())-1))
+	case key.Matches(msg, m.keys.Down):
+		d.cursor = clamp(d.cursor+1, 0, max(0, len(m.datastoreDetailReferences())-1))
+	case key.Matches(msg, m.keys.CopyPath):
+		return m.copyCmd(d.entry.Path)
+	case key.Matches(msg, m.keys.Open):
+		refs := m.datastoreDetailReferences()
+		if d.cursor >= 0 && d.cursor < len(refs) {
+			return m.jumpToDatastoreReference(refs[d.cursor])
+		}
+	}
+	return nil
+}
+
+func (m *Model) jumpToDatastoreReference(ref vsphere.DatastoreVMReference) tea.Cmd {
+	if ref.VMID == "" {
+		return nil
+	}
+	found := false
+	for i, st := range m.states {
+		if strings.EqualFold(st.cc.Name, ref.Context) {
+			m.selected, m.ctxCursor = i, i
+			found = true
+			break
+		}
+	}
+	if !found {
+		m.setMessage("referenced context is not configured", true)
+		return nil
+	}
+	m.allScope = false
+	m.kind = vsphere.KindVM
+	if ref.Template {
+		m.kind = vsphere.KindTemplate
+	}
+	m.filter.SetValue("")
+	m.jump = &jumpConstraint{kind: m.kind, matcher: "moref", value: ref.VMID, label: "Referenced by " + ref.VMName}
+	m.cursor, m.offset = 0, 0
+	m.clearDSWorkspace()
+	m.mode = modeBrowse
+	return tea.Batch(m.ensureSelectedLoaded(false)...)
+}
+
 // datastoreEntryDir is the directory containing an entry, relative to the
 // datastore root.
 func datastoreEntryDir(datastore string, entry vsphere.DatastoreEntry) string {
@@ -539,6 +745,135 @@ func (m *Model) viewDatastoreFind() []string {
 		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("partial result — stopped at %d matches; narrow the pattern", len(m.ds.results))))
 	}
 	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func (m *Model) viewDatastoreEntry() []string {
+	if m.ds == nil || m.ds.detail == nil {
+		return []string{m.theme.dim.Render("nothing selected")}
+	}
+	d, t := m.ds.detail, m.theme
+	lines := []string{joinEnds(t.title.Render(d.entry.Name), t.dim.Render("datastore file · read-only"), m.width), ""}
+	lines = append(lines,
+		truncate("  "+t.label.Render("Path")+t.value.Render("  "+d.entry.Path), m.width),
+		"  "+t.label.Render("Type")+t.value.Render("  "+string(d.entry.Type)),
+		"  "+t.label.Render("Size")+t.value.Render("  "+humanize.Bytes(d.entry.SizeBytes)),
+		"  "+t.label.Render("Modified")+t.value.Render("  "+formatDatastoreTime(d.entry.Modified)), "")
+	if d.entry.Type != vsphere.DatastoreEntryFile || !strings.HasSuffix(strings.ToLower(d.entry.Name), ".vmdk") {
+		lines = append(lines, "  "+t.dim.Render("ownership and orphan assessment apply to VMDK files only"))
+		return scrollLines(lines, 0, m.bodyHeight())
+	}
+	lines = append(lines, t.header.Render("  CURRENT REFERENCES"))
+	refs := m.datastoreDetailReferences()
+	if d.loading && len(refs) == 0 {
+		lines = append(lines, "  "+m.spin.View()+t.dim.Render(" checking VM disk references…"))
+	} else if len(refs) == 0 {
+		lines = append(lines, "  "+t.dim.Render("no current VM/template reference found"))
+	} else {
+		for i, ref := range refs {
+			label := ref.VMName
+			if ref.Template {
+				label += " (template)"
+			}
+			line := fmt.Sprintf("  %s @ %s", label, ref.Context)
+			if i == d.cursor {
+				line = t.focused.Render(line)
+			} else {
+				line = t.text.Render(line)
+			}
+			lines = append(lines, line)
+		}
+	}
+	if d.refErr != nil {
+		lines = append(lines, "  "+t.warn.Render("live reference lookup: "+d.refErr.Error()))
+	} else if d.refLoaded && !d.refs.Complete() {
+		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("live reference lookup is partial (%d of %d VMs checked)", d.refs.CheckedVMs, d.refs.TotalVMs)))
+	}
+	lines = append(lines, "", t.header.Render("  LATEST ASSESSMENT EVIDENCE"))
+	switch {
+	case d.assessmentErr != nil:
+		lines = append(lines, "  "+t.dim.Render(d.assessmentErr.Error()))
+	case d.assessment == nil:
+		lines = append(lines, "  "+t.dim.Render("not available"))
+	default:
+		lines = append(lines, "  "+t.label.Render("Run")+t.value.Render(fmt.Sprintf("  #%d · %s", d.assessmentRun.ID, formatDatastoreTime(d.assessmentRun.FinishedAt))))
+		lines = append(lines, "  "+t.label.Render("Orphan status")+t.value.Render("  "+string(d.assessment.Confidence)))
+		for _, reason := range d.assessment.Reasons {
+			lines = append(lines, "  "+t.warn.Render(reason))
+		}
+		if len(d.assessment.Blind) > 0 {
+			lines = append(lines, "  "+t.warn.Render("assessment coverage is partial; UNKNOWN is preserved"))
+		}
+	}
+	lines = append(lines, "", "  "+t.dim.Render("enter jumps to the selected reference · y copies path · esc returns"))
+	return scrollLines(lines, 0, m.bodyHeight())
+}
+
+func formatDatastoreTime(value time.Time) string {
+	if value.IsZero() {
+		return "—"
+	}
+	return value.Local().Format("2006-01-02 15:04")
+}
+
+func (m *Model) datastoreDetailReferences() []vsphere.DatastoreVMReference {
+	if m.ds == nil || m.ds.detail == nil {
+		return nil
+	}
+	_, selectedPath, _ := vsphere.SplitDatastorePath(m.ds.detail.entry.Path)
+	refs := make([]vsphere.DatastoreVMReference, 0, len(m.ds.detail.refs.References))
+	for _, ref := range m.ds.detail.refs.References {
+		_, refPath, ok := vsphere.SplitDatastorePath(ref.BackingPath)
+		if ok && datastoreVMDKFamily(refPath) == datastoreVMDKFamily(selectedPath) {
+			refs = append(refs, ref)
+		}
+	}
+	if m.ds.detail.assessment != nil {
+		for _, ref := range m.ds.detail.assessment.ReferencedBy {
+			_, refPath, ok := vsphere.SplitDatastorePath(ref.Path)
+			if !ok || datastoreVMDKFamily(refPath) != datastoreVMDKFamily(selectedPath) {
+				continue
+			}
+			candidate := vsphere.DatastoreVMReference{Context: ref.Context, VMID: ref.VMID, VMName: ref.VM, Template: ref.Template, BackingPath: ref.Path}
+			seen := false
+			for _, existing := range refs {
+				if existing.VMID == candidate.VMID && strings.EqualFold(existing.Context, candidate.Context) {
+					seen = true
+					break
+				}
+			}
+			if !seen {
+				refs = append(refs, candidate)
+			}
+		}
+	}
+	return refs
+}
+
+func datastoreVMDKFamily(value string) string {
+	value = vsphere.NormalizeRelativePath(value)
+	for _, suffix := range []string{"-flat.vmdk", "-delta.vmdk", "-sesparse.vmdk", "-ctk.vmdk", "-rdm.vmdk", "-rdmp.vmdk", "-digest.vmdk"} {
+		if strings.HasSuffix(value, suffix) {
+			value = strings.TrimSuffix(value, suffix) + ".vmdk"
+			break
+		}
+	}
+	base := strings.TrimSuffix(value, ".vmdk")
+	if len(base) > 7 && base[len(base)-7] == '-' && datastoreAllDigits(base[len(base)-6:]) {
+		value = base[:len(base)-7] + ".vmdk"
+	}
+	return value
+}
+
+func datastoreAllDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // dsTable renders one list of entries with its own scroll window. showPath

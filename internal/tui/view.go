@@ -83,6 +83,8 @@ func (m *Model) View() string {
 		body = strings.Join(m.viewHistoryTimeline(), "\n")
 	case m.mode == modeDatastoreFiles:
 		body = strings.Join(m.viewDatastoreFiles(), "\n")
+	case m.mode == modeDatastoreEntry:
+		body = strings.Join(m.viewDatastoreEntry(), "\n")
 	case m.mode == modeDatastoreFind:
 		body = strings.Join(m.viewDatastoreFind(), "\n")
 	case m.mode == modeHistoryTimelineDetail:

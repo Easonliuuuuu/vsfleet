@@ -95,6 +95,14 @@ type datastoreBrowserBackend interface {
 	FindInDatastore(ctx context.Context, cc *config.Context, datastoreID, datastore, pattern string) (vsphere.DatastoreListing, error)
 }
 
+// datastoreRelationshipBackend is the optional, operator-triggered lookup
+// used by a datastore file's detail view. Keeping it separate from the
+// directory browser lets lightweight fakes and custom backends remain useful;
+// lack of this extension is rendered as unknown relationship evidence.
+type datastoreRelationshipBackend interface {
+	ListDatastoreVMReferences(ctx context.Context, cc *config.Context, datastoreID string) (vsphere.DatastoreReferenceListing, error)
+}
+
 // sessionBackend is the production Backend, over the same session manager,
 // configuration and credential resolver the command line uses.
 type sessionBackend struct {
@@ -220,6 +228,12 @@ func (b *sessionBackend) FindInDatastore(ctx context.Context, cc *config.Context
 	})
 }
 
+func (b *sessionBackend) ListDatastoreVMReferences(ctx context.Context, cc *config.Context, datastoreID string) (vsphere.DatastoreReferenceListing, error) {
+	return browseReference(ctx, b, cc, func(client *vsphere.Client, opCtx context.Context) (vsphere.DatastoreReferenceListing, error) {
+		return client.ListDatastoreVMReferences(opCtx, datastoreID)
+	})
+}
+
 // browse runs one datastore browser query on a connected session.
 //
 // It takes its own operation context rather than reusing an inventory
@@ -237,6 +251,20 @@ func browse(ctx context.Context, b *sessionBackend, cc *config.Context, query fu
 	client := s.Client()
 	if client == nil {
 		return vsphere.DatastoreListing{}, fmt.Errorf("context %q is not connected", cc.Name)
+	}
+	return query(client, opCtx)
+}
+
+func browseReference(ctx context.Context, b *sessionBackend, cc *config.Context, query func(*vsphere.Client, context.Context) (vsphere.DatastoreReferenceListing, error)) (vsphere.DatastoreReferenceListing, error) {
+	opCtx, cancel, tracker := b.mgr.Operation(ctx)
+	defer cancel()
+	s, err := b.mgr.Connect(opCtx, cc)
+	if err != nil {
+		return vsphere.DatastoreReferenceListing{}, b.mgr.TimeoutError(err, tracker)
+	}
+	client := s.Client()
+	if client == nil {
+		return vsphere.DatastoreReferenceListing{}, fmt.Errorf("context %q is not connected", cc.Name)
 	}
 	return query(client, opCtx)
 }

@@ -624,6 +624,32 @@ type DatastoreEntry struct {
 	Modified  time.Time
 }
 
+// DatastoreVMReference identifies a VM or template disk attached to a
+// datastore. It is returned by an operator-triggered relationship lookup and
+// is never persisted as part of the normal datastore inventory.
+type DatastoreVMReference struct {
+	Context     string
+	VMID        string
+	VMName      string
+	Template    bool
+	DiskLabel   string
+	BackingPath string
+}
+
+// DatastoreReferenceListing reports the relationship lookup together with
+// coverage. An empty References slice is authoritative only when CheckedVMs
+// equals TotalVMs and Problems is empty.
+type DatastoreReferenceListing struct {
+	References []DatastoreVMReference
+	TotalVMs   int
+	CheckedVMs int
+	Problems   []string
+}
+
+func (r DatastoreReferenceListing) Complete() bool {
+	return r.TotalVMs == r.CheckedVMs && len(r.Problems) == 0
+}
+
 // DatastoreListing is one answered browser query together with its own
 // provenance. Truncated is a field rather than something folded into the
 // entries because a partial result that reads as a complete one is precisely

@@ -57,6 +57,31 @@ func TestOrphansClassifiesSharedStorageAndBothSnapshotDirections(t *testing.T) {
 	}
 }
 
+func TestAssessDatastoreFilePreservesReferenceAndUnknownCoverage(t *testing.T) {
+	ds := vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}, BrowseStatus: "success", Files: []vsphere.DatastoreFile{{Path: "[datastore1] app/app.vmdk"}}}
+	data := assessment.ExportData{
+		Run:       assessment.Run{ID: 9, InventorySchemaVersion: "11"},
+		Contexts:  []assessment.ContextRun{completeOrphanContext("prod")},
+		VMs:       []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-prod", VM: vsphere.VM{ID: "vm-1", Name: "app", Disks: []vsphere.VMDisk{{BackingPath: "[datastore1] app/app.vmdk"}}}}}},
+		Resources: []assessment.ResourceObservation{orphanResource(t, "prod", "vc-prod", ds)},
+	}
+	got := AssessDatastoreFile(data, ds, "[datastore1] app/app.vmdk")
+	if !got.Observed || got.Confidence != ConfidenceReferenced || len(got.ReferencedBy) != 1 || got.ReferencedBy[0].VMID != "vm-1" {
+		t.Fatalf("assessment=%+v, want referenced VM evidence", got)
+	}
+	data.VMs = nil
+	got = AssessDatastoreFile(data, ds, "[datastore1] app/app.vmdk")
+	if got.Confidence != ConfidenceVerified {
+		t.Fatalf("unreferenced assessment=%+v, want verified", got)
+	}
+	ds.BrowseTruncated = true
+	data.Resources[0] = orphanResource(t, "prod", "vc-prod", ds)
+	got = AssessDatastoreFile(data, ds, "[datastore1] app/app.vmdk")
+	if got.Confidence != ConfidenceUnknown || len(got.Reasons) == 0 {
+		t.Fatalf("truncated assessment=%+v, want unknown coverage", got)
+	}
+}
+
 func TestOrphansDowngradesTruncatedAndBlindCoverage(t *testing.T) {
 	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	truncated := vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "prod", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}, BrowseStatus: "success", BrowseTruncated: true, Files: []vsphere.DatastoreFile{{Path: "[prod] orphan.vmdk"}}}

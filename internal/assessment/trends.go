@@ -419,11 +419,19 @@ func (s *Store) Report(ctx context.Context, runID int64, olderThan time.Duration
 		return report, err
 	}
 	for _, contextRun := range contexts {
+		vmCoverageRecorded := false
 		for _, collection := range contextRun.Collections {
+			if collection.Kind == "vm" {
+				vmCoverageRecorded = true
+			}
 			report.Coverage = append(report.Coverage, ReportCoverage{Context: contextRun.Name, Kind: collection.Kind, Status: collection.Status, ItemCount: collection.ItemCount, Error: collection.Error})
 			if collection.Status != "success" && collection.Status != "empty" {
 				report.Warnings = append(report.Warnings, fmt.Sprintf("%s %s collection: %s", contextRun.Name, collection.Kind, nonempty(collection.Error, collection.Status)))
 			}
+		}
+		if !vmCoverageRecorded && !Successful(contextRun.VMStatus) {
+			report.Coverage = append(report.Coverage, ReportCoverage{Context: contextRun.Name, Kind: "vm", Status: contextRun.VMStatus, Error: contextRun.Error})
+			report.Warnings = append(report.Warnings, fmt.Sprintf("%s VM collection: %s", contextRun.Name, nonempty(contextRun.Error, contextRun.VMStatus)))
 		}
 	}
 	sort.Slice(report.Coverage, func(i, j int) bool {
@@ -473,6 +481,7 @@ func appendCapacityPoint(series map[string]*CapacitySeries, kind, scope, name st
 	if series[key] == nil {
 		series[key] = &CapacitySeries{Kind: kind, Scope: scope, Name: name}
 	}
+	point.Run = run
 	series[key].Points = append(series[key].Points, point)
 }
 

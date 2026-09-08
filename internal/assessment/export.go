@@ -70,6 +70,41 @@ func (s *Store) LoadExportData(ctx context.Context, runID int64) (ExportData, er
 	return ExportData{Run: run, Contexts: contexts, VMs: vms, Resources: resources}, nil
 }
 
+// ScopeExportData returns an independent view containing only the requested
+// contexts. It is used by offline queries before they build a graph so an
+// unscoped object or relationship cannot leak into a context-scoped result.
+// An empty context list means all contexts, matching the history query
+// contract.
+func ScopeExportData(data ExportData, contexts []string) ExportData {
+	if len(contexts) == 0 {
+		return data
+	}
+	allowed := make(map[string]bool, len(contexts))
+	for _, contextName := range contexts {
+		allowed[strings.ToLower(strings.TrimSpace(contextName))] = true
+	}
+	scoped := data
+	scoped.Contexts = make([]ContextRun, 0, len(data.Contexts))
+	for _, contextRun := range data.Contexts {
+		if allowed[strings.ToLower(contextRun.Name)] {
+			scoped.Contexts = append(scoped.Contexts, contextRun)
+		}
+	}
+	scoped.VMs = make([]ExportVM, 0, len(data.VMs))
+	for _, item := range data.VMs {
+		if allowed[strings.ToLower(item.Observation.Context)] {
+			scoped.VMs = append(scoped.VMs, item)
+		}
+	}
+	scoped.Resources = make([]ResourceObservation, 0, len(data.Resources))
+	for _, resource := range data.Resources {
+		if allowed[strings.ToLower(resource.Context)] {
+			scoped.Resources = append(scoped.Resources, resource)
+		}
+	}
+	return scoped
+}
+
 func getRunTx(ctx context.Context, tx *sql.Tx, id int64) (Run, error) {
 	var r Run
 	var start, finish sql.NullInt64

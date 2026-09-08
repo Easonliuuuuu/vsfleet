@@ -92,3 +92,35 @@ func TestTopologyCommandRejectsBadKind(t *testing.T) {
 		t.Fatalf("bad kind error=%v", err)
 	}
 }
+
+func TestTopologyCommandsKeepUnknownScopeIsolated(t *testing.T) {
+	dbPath := newTopologyTestHistoryDB(t)
+	for _, direction := range []string{"topology", "dependencies", "blast-radius"} {
+		stdout, _, err := runTopology(t, dbPath, "--context", "does-not-exist", direction, "datastore", "datastore1", "-o", "json")
+		if err != nil {
+			t.Fatalf("%s: %v", direction, err)
+		}
+		var result struct {
+			Subjects []struct {
+				Subject struct {
+					Members []map[string]any `json:"members"`
+				} `json:"subject"`
+				Ancestors  []map[string]any `json:"ancestors"`
+				Edges      []map[string]any `json:"edges"`
+				Confidence string           `json:"confidence"`
+			} `json:"subjects"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &result); err != nil {
+			t.Fatalf("%s JSON: %v\n%s", direction, err, stdout)
+		}
+		if len(result.Subjects) != 1 || result.Subjects[0].Confidence != "unknown" {
+			t.Fatalf("%s unknown result=%+v", direction, result)
+		}
+		if len(result.Subjects[0].Subject.Members) != 0 || len(result.Subjects[0].Ancestors) != 0 || len(result.Subjects[0].Edges) != 0 {
+			t.Fatalf("%s crossed the requested scope: %+v", direction, result.Subjects[0])
+		}
+		if strings.Contains(stdout, "prod") || strings.Contains(stdout, "edge") {
+			t.Fatalf("%s leaked another context: %s", direction, stdout)
+		}
+	}
+}

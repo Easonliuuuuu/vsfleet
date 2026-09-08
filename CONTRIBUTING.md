@@ -58,6 +58,31 @@ The integration tests in `tests/` use VMware's built-in `govmomi/simulator` and
 in-memory proxy servers, so they run completely offline without requiring real
 vCenter credentials.
 
+The out-of-process multi-vCenter suite uses the `vcsim`-compatible launcher in
+`cmd/vsfleet-vcsim`. It is compiled against the govmomi version pinned in
+`go.mod`, starts one independent simulator process per fixture endpoint, and
+keeps all listeners on loopback:
+
+```bash
+# Build the external simulator process used by the tagged suite
+go build -o "$(go env GOPATH)/bin/vsfleet-vcsim" ./cmd/vsfleet-vcsim
+
+# Run the suite locally; it skips with an actionable message if the binary is absent
+go test -tags integration ./tests/... -timeout 20m
+
+# Require the process and keep endpoint logs in a known directory
+VSFLEET_VCSIM_BIN="$(go env GOPATH)/bin/vsfleet-vcsim" \
+VSFLEET_VCSIM_REQUIRED=1 \
+VSFLEET_VCSIM_LOG_DIR=/tmp/vsfleet-vcsim-logs \
+go test -tags integration -race ./tests/... -timeout 20m
+```
+
+`VSFLEET_VCSIM_BIN` overrides binary lookup, `VSFLEET_VCSIM_REQUIRED=1` turns
+missing-binary skips into failures (as CI requires), and
+`VSFLEET_VCSIM_LOG_DIR` controls where one `<fixture>-<endpoint>.log` file is
+written per process. The normal untagged `go test ./...` run does not start
+these processes.
+
 ---
 
 ## Developing with the Synthetic Testbed

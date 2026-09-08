@@ -65,3 +65,34 @@ jobs:
         with:
           version: latest
           install-go: false
+
+  integration-vcsim:
+    name: Multi-vCenter vcsim integration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+          check-latest: true
+
+      # govmomi v0.56.0 exposes simulator as a library rather than an
+      # installable github.com/vmware/govmomi/vcsim module. This launcher is
+      # still an independent OS process and is compiled against that pinned
+      # module version from go.mod.
+      - name: Build vcsim-compatible launcher
+        run: go build -o "${RUNNER_TEMP}/vsfleet-vcsim" ./cmd/vsfleet-vcsim
+
+      - name: Run integration suite
+        env:
+          VSFLEET_VCSIM_BIN: ${{ runner.temp }}/vsfleet-vcsim
+          VSFLEET_VCSIM_REQUIRED: "1"
+          VSFLEET_VCSIM_LOG_DIR: ${{ runner.temp }}/vcsim-logs
+        run: go test -tags integration -race ./tests/... -timeout 20m
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: vcsim-logs
+          path: ${{ runner.temp }}/vcsim-logs

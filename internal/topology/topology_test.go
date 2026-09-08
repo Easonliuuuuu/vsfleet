@@ -105,6 +105,32 @@ func TestSameNameIndependentDatastoresAreAmbiguous(t *testing.T) {
 	}
 }
 
+func TestMemberlessSubjectCannotResolveByNameAcrossContexts(t *testing.T) {
+	data := datastoreSubjectData(t, "12", "datastore1", false)
+	data.Resources[0].Name = "datastore1"
+	data.Resources[1].Name = "datastore1"
+	graph := Build(data)
+	result := graph.Topology(Subject{Kind: string(KindDatastore), Name: "datastore1"})
+	if result.Confidence != ConfidenceUnknown {
+		t.Fatalf("member-less subject confidence=%s, want unknown", result.Confidence)
+	}
+	if len(result.Subject.Members) != 0 || len(result.Ancestors) != 0 || len(result.Edges) != 0 {
+		t.Fatalf("member-less subject resolved graph data: %+v", result)
+	}
+}
+
+func TestUnknownReportsBlindnessOnlyForRequestedScope(t *testing.T) {
+	data := datastoreSubjectData(t, "12", "ds-edge", true)
+	graph := Build(data)
+	result := graph.Unknown(KindDatastore, "missing", []string{"edge"})
+	if result.Confidence != ConfidenceUnknown || len(result.Subject.Members) != 0 {
+		t.Fatalf("unknown result=%+v", result)
+	}
+	if len(result.Blind) != 1 || result.Blind[0].Context != "edge" {
+		t.Fatalf("unknown blindness=%+v, want only edge", result.Blind)
+	}
+}
+
 func TestBlindContextDowngradesButKeepsFoundEdges(t *testing.T) {
 	data := datastoreSubjectData(t, "12", "ds-edge", true)
 	graph := Build(data)

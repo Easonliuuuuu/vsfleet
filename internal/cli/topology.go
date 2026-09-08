@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/topology"
 )
 
@@ -69,6 +70,15 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if err != nil {
 		return err
 	}
+	// Scope inventory rows before building the graph. Keep the run's context
+	// coverage metadata so a scoped subject can still report that another
+	// context was blind; metadata is not an inventory node and cannot create a
+	// cross-context edge.
+	scopedData := assessment.ScopeExportData(data, a.ContextNames)
+	if len(a.ContextNames) > 0 {
+		scopedData.Contexts = data.Contexts
+	}
+	data = scopedData
 	graph := topology.Build(data)
 	subjects := graph.Resolve(kind, args[1], a.ContextNames)
 	result := topology.Result{
@@ -95,21 +105,44 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if len(result.Subjects) == 0 {
 		// Keep a machine-readable unknown result rather than turning an absent
 		// object into a successful empty answer.
-		unknown := topology.Subject{Kind: string(kind), Name: args[1]}
-		switch direction {
-		case directionTopology:
-			result.Subjects = append(result.Subjects, graph.Topology(unknown))
-		case directionDependencies:
-			result.Subjects = append(result.Subjects, graph.Dependencies(unknown, depth))
-		case directionBlastRadius:
-			result.Subjects = append(result.Subjects, graph.BlastRadius(unknown, depth))
-		}
+		result.Subjects = append(result.Subjects, graph.Unknown(kind, args[1], a.ContextNames))
 	}
 	result.CheckedContexts, result.Blind = topologyResultCoverage(result.Subjects)
+	if len(result.CheckedContexts) == 0 {
+		if len(a.ContextNames) > 0 {
+			result.CheckedContexts = append([]string(nil), a.ContextNames...)
+		} else {
+			for _, contextRun := range data.Contexts {
+				result.CheckedContexts = append(result.CheckedContexts, contextRun.Name)
+			}
+		}
+		result.CheckedContexts = uniqueSortedStrings(result.CheckedContexts)
+	}
 	if a.json() {
 		return writeJSON(a.out(), result)
 	}
 	return printTopologyResult(a.out(), result, direction)
+}
+
+func uniqueSortedStrings(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		if value != "" {
+			seen[value] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for value := range seen {
+		out = append(out, value)
+	}
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			if strings.ToLower(out[j]) < strings.ToLower(out[i]) {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return out
 }
 
 func topologyResultCoverage(subjects []topology.SubjectResult) ([]string, []topology.Blindness) {

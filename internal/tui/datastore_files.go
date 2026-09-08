@@ -664,16 +664,6 @@ func datastoreEntryDir(datastore string, entry vsphere.DatastoreEntry) string {
 	return vsphere.ParentBrowsePath(relative)
 }
 
-// datastoreEntryActions is what a file offers. The list is short on purpose:
-// this workspace inspects, and every action that would change something on a
-// datastore is absent because it was never written.
-func datastoreEntryActions(entry vsphere.DatastoreEntry) []action {
-	return []action{
-		copyNamed("Copy datastore path", entry.Path),
-		copyNamed("Copy file name", entry.Name),
-	}
-}
-
 func dsColumns() []column {
 	return []column{
 		{title: "TYPE", width: dsTypeWidth},

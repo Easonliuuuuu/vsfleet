@@ -443,7 +443,7 @@ func networkRows(data assessment.ExportData) [][]any {
 			rows = append(rows, []any{
 				vm.Name, vm.PowerState, vm.IsTemplate, nic.Label, nic.Adapter, nic.Network,
 				optionalBool(nic.Connected), optionalBool(nic.StartsConnected), nic.MACAddress, nic.MACAddressType,
-				strings.Join(nic.IPv4, ", "), strings.Join(nic.IPv6, ", "), optionalBool(nic.DirectPathIO), vm.Annotation,
+				strings.Join(nic.IPv4, ", "), strings.Join(nic.IPv6, ", "), optionalBool(nic.UPTCompatible), vm.Annotation,
 				vm.Datacenter, vm.Cluster, vm.Host, vm.Folder, vm.GuestOS, vm.ID, vm.InstanceUUID,
 				contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context,
 			})

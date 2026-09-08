@@ -232,7 +232,9 @@ type VMDisk struct {
 }
 
 // VMNIC is one virtual ethernet adapter and its guest-reported network data.
-// NetworkID is retained for joins when a display name is unavailable.
+// UPTCompatible is the VMXNET3 UPT capability flag reported by vSphere; it is
+// not evidence of a host-device binding. See VMPCIDevice for passthrough
+// evidence. NetworkID is retained for joins when a display name is unavailable.
 type VMNIC struct {
 	Key             int32    `json:"key"`
 	Label           string   `json:"label"`
@@ -244,7 +246,7 @@ type VMNIC struct {
 	MACAddressType  string   `json:"mac_address_type,omitempty"`
 	Connected       *bool    `json:"connected,omitempty"`
 	StartsConnected *bool    `json:"starts_connected,omitempty"`
-	DirectPathIO    *bool    `json:"direct_path_io,omitempty"`
+	UPTCompatible   *bool    `json:"upt_compatibility_enabled,omitempty"`
 	IPv4            []string `json:"ipv4,omitempty"`
 	IPv6            []string `json:"ipv6,omitempty"`
 }

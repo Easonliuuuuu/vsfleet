@@ -224,6 +224,91 @@ func TestEvaluateExpandedMigrationReadiness(t *testing.T) {
 	}
 }
 
+func TestEvaluateHostDevicePassthroughUsesBindingEvidence(t *testing.T) {
+	trueValue := true
+	falseValue := false
+	baseVM := func(id string) vsphere.VM {
+		return vsphere.VM{
+			Location:               vsphere.Location{Context: "prod", Datacenter: "dc-a"},
+			ID:                     id,
+			Name:                   id,
+			ConfigurationAvailable: true,
+			CPU:                    1,
+			CoresPerSocket:         1,
+			CPUSockets:             1,
+			Firmware:               "efi",
+			SecureBootEnabled:      &falseValue,
+			CPUAllocation:          &vsphere.VMResourceAllocation{},
+			MemoryAllocation:       &vsphere.VMResourceAllocation{},
+		}
+	}
+	dataFor := func(vms ...vsphere.VM) assessment.ExportData {
+		exportVMs := make([]assessment.ExportVM, 0, len(vms))
+		for _, vm := range vms {
+			exportVMs = append(exportVMs, assessment.ExportVM{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: vm}})
+		}
+		return assessment.ExportData{
+			Run: assessment.Run{ID: 62, InventorySchemaVersion: "15"},
+			Contexts: []assessment.ContextRun{{Name: "prod", Datacenter: "dc-a", VMStatus: "success", Collections: []assessment.CollectionRun{
+				{Kind: "vm", Status: "success"}, {Kind: "host", Status: "empty"}, {Kind: "cluster", Status: "empty"},
+				{Kind: "resourcepool", Status: "empty"}, {Kind: "dvswitch", Status: "empty"}, {Kind: "datastore", Status: "empty"},
+			}}},
+			VMs: exportVMs,
+		}
+	}
+
+	uptVM := baseVM("vm-upt")
+	uptVM.NICs = []vsphere.VMNIC{{Key: 1, Adapter: "Vmxnet3", UPTCompatible: &trueValue}}
+	sriovVM := baseVM("vm-sriov")
+	sriovVM.NICs = []vsphere.VMNIC{{Key: 2, Adapter: "SR-IOV"}}
+	pciVM := baseVM("vm-pci")
+	pciVM.PCIDevices = []vsphere.VMPCIDevice{{Key: 3, Label: "GPU", BackingType: "device"}}
+	vgpuVM := baseVM("vm-vgpu")
+	vgpuVM.PCIDevices = []vsphere.VMPCIDevice{{Key: 4, Label: "vGPU", BackingType: "vmiop", VGPU: "grid_v100-4q"}}
+
+	report := Evaluate(dataFor(uptVM, sriovVM, pciVM, vgpuVM), Options{})
+	var findings []Finding
+	for _, finding := range report.Findings {
+		if finding.Rule == "host-device-passthrough" {
+			findings = append(findings, finding)
+		}
+	}
+	if len(findings) != 3 {
+		t.Fatalf("host-device findings = %+v, want SR-IOV, PCI, and vGPU only", findings)
+	}
+	seen := make(map[string]bool, len(findings))
+	for _, finding := range findings {
+		seen[finding.Object.ID] = true
+	}
+	for _, id := range []string{"vm-sriov", "vm-pci", "vm-vgpu"} {
+		if !seen[id] {
+			t.Errorf("missing host-device finding for %s", id)
+		}
+	}
+	if seen["vm-upt"] {
+		t.Errorf("VMXNET3 UPT capability produced a host-device finding")
+	}
+	vgpuEvidence := false
+	for _, finding := range findings {
+		if finding.Object.ID != "vm-vgpu" {
+			continue
+		}
+		for _, evidence := range finding.Evidence {
+			if evidence.Field == "vgpu" && evidence.Observed == "grid_v100-4q" {
+				vgpuEvidence = true
+			}
+		}
+	}
+	if !vgpuEvidence {
+		t.Errorf("vGPU finding lacks vgpu evidence: %+v", findings)
+	}
+
+	readiness := Readiness(Evaluate(dataFor(uptVM), Options{}))
+	if readiness.Verdict == "blocked" {
+		t.Fatalf("UPT-only VM readiness = %+v, want no blocker", readiness)
+	}
+}
+
 func TestMigrationReadinessDoesNotTreatAdvisoriesOrMissingConfigurationAsReady(t *testing.T) {
 	unlimited := int64(-1)
 	advisoryVM := vsphere.VM{Location: vsphere.Location{Context: "prod"}, ID: "vm-1", Name: "legacy", ConfigurationAvailable: true, Firmware: "bios", CPU: 1, CoresPerSocket: 1,

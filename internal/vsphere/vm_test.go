@@ -13,6 +13,7 @@ import (
 func TestWalkDevicesExtractsDisksAndGuestNetworks(t *testing.T) {
 	thin, eager, split, writeThrough := true, false, false, true
 	connected, starts := true, true
+	uptCompatible := true
 	controllerDesc := &types.Description{Label: "SCSI controller 0"}
 	controller := &types.VirtualLsiLogicController{VirtualSCSIController: types.VirtualSCSIController{
 		VirtualController:  types.VirtualController{VirtualDevice: types.VirtualDevice{Key: 100, DeviceInfo: controllerDesc}},
@@ -33,13 +34,18 @@ func TestWalkDevicesExtractsDisksAndGuestNetworks(t *testing.T) {
 		AddressType:   "assigned", MacAddress: "00:50:56:AA:BB:CC",
 	}
 	card.Backing = &types.VirtualEthernetCardNetworkBackingInfo{VirtualDeviceDeviceBackingInfo: types.VirtualDeviceDeviceBackingInfo{DeviceName: "VM Network"}, Network: &types.ManagedObjectReference{Type: "Network", Value: "network-1"}}
+	card.UptCompatibilityEnabled = &uptCompatible
 	nic := &types.VirtualVmxnet3{VirtualVmxnet: types.VirtualVmxnet{VirtualEthernetCard: card}}
+	sriov := &types.VirtualSriovEthernetCard{VirtualEthernetCard: types.VirtualEthernetCard{
+		VirtualDevice: types.VirtualDevice{Key: 201, DeviceInfo: &types.Description{Label: "Network adapter 2"}},
+		AddressType:   "assigned", MacAddress: "00:50:56:AA:BB:DD",
+	}}
 	guest := &types.GuestInfo{Net: []types.GuestNicInfo{{DeviceConfigId: 200, Network: "guest-portgroup", MacAddress: "00:50:56:aa:bb:cc", IpAddress: []string{"192.0.2.20", "2001:db8::20"}}}}
 	idx := &index{byRef: map[types.ManagedObjectReference]entity{{Type: "Network", Value: "network-1"}: {name: "VM Network"}}}
 
-	disks, nics, _, _ := walkDevices([]types.BaseVirtualDevice{nic, disk, controller}, guest, idx)
-	if len(disks) != 1 || len(nics) != 1 {
-		t.Fatalf("devices = %d disks, %d nics; want one each", len(disks), len(nics))
+	disks, nics, _, _ := walkDevices([]types.BaseVirtualDevice{nic, sriov, disk, controller}, guest, idx)
+	if len(disks) != 1 || len(nics) != 2 {
+		t.Fatalf("devices = %d disks, %d nics; want one disk and two nics", len(disks), len(nics))
 	}
 	gotDisk := disks[0]
 	if gotDisk.Label != "Hard disk 1" || gotDisk.Controller != "LSI Logic" || gotDisk.ControllerLabel != "SCSI controller 0" || gotDisk.BackingPath == "" || gotDisk.UUID != "disk-uuid" {
@@ -57,6 +63,12 @@ func TestWalkDevicesExtractsDisksAndGuestNetworks(t *testing.T) {
 	}
 	if gotNIC.Connected == nil || !*gotNIC.Connected || gotNIC.StartsConnected == nil || !*gotNIC.StartsConnected {
 		t.Errorf("nic connection flags = %+v", gotNIC)
+	}
+	if gotNIC.UPTCompatible == nil || !*gotNIC.UPTCompatible {
+		t.Errorf("nic UPT compatibility = %+v", gotNIC.UPTCompatible)
+	}
+	if nics[1].Adapter != "SR-IOV" {
+		t.Errorf("SR-IOV nic normalization = %+v", nics[1])
 	}
 }
 
@@ -111,12 +123,19 @@ func TestWalkMigrationDevicesNormalizesSpecialHardware(t *testing.T) {
 		Connectable: &types.VirtualDeviceConnectInfo{Connected: connected, StartConnected: connected},
 		Backing:     &types.VirtualFloppyImageBackingInfo{VirtualDeviceFileBackingInfo: types.VirtualDeviceFileBackingInfo{FileName: "[ds] app/boot.img"}},
 	}}
-	tpms, pciDevices, floppies := walkMigrationDevices([]types.BaseVirtualDevice{floppy, pci, tpm})
+	vmiop := &types.VirtualPCIPassthrough{VirtualDevice: types.VirtualDevice{
+		Key: 604, DeviceInfo: &types.Description{Label: "vGPU"},
+		Backing: &types.VirtualPCIPassthroughVmiopBackingInfo{Vgpu: "grid_v100-4q"},
+	}}
+	tpms, pciDevices, floppies := walkMigrationDevices([]types.BaseVirtualDevice{floppy, pci, tpm, vmiop})
 	if len(tpms) != 1 || tpms[0].Key != 601 || tpms[0].Label != "TPM" {
 		t.Fatalf("TPM evidence = %+v", tpms)
 	}
-	if len(pciDevices) != 1 || pciDevices[0].BackingType != "device" || pciDevices[0].Address != "65:00.0" || pciDevices[0].DeviceID != "1db6" || pciDevices[0].VendorID != 0x10de {
+	if len(pciDevices) != 2 || pciDevices[0].BackingType != "device" || pciDevices[0].Address != "65:00.0" || pciDevices[0].DeviceID != "1db6" || pciDevices[0].VendorID != 0x10de {
 		t.Fatalf("PCI evidence = %+v", pciDevices)
+	}
+	if pciDevices[1].BackingType != "vmiop" || pciDevices[1].VGPU != "grid_v100-4q" {
+		t.Fatalf("vGPU evidence = %+v", pciDevices[1])
 	}
 	if len(floppies) != 1 || floppies[0].BackingType != "image" || floppies[0].BackingPath != "[ds] app/boot.img" || floppies[0].Connected == nil || !*floppies[0].Connected {
 		t.Fatalf("floppy evidence = %+v", floppies)

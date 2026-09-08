@@ -24,12 +24,15 @@ type RunStatus string
 // datastore backing identity and browse-truncation provenance; version 12 adds
 // persisted network inventory; version 13 adds target-neutral VM migration
 // configuration and special-device evidence; version 14 adds host storage
-// locality evidence. All keep the payload
-// backward-compatible with older ledger rows:
+// locality evidence; version 15 renames the VM NIC direct-path field to UPT
+// compatibility, which is what vSphere reports. The old serialized direct-path
+// value in schema 12–14 rows was UPT compatibility mislabeled and is no longer
+// read.
+// All keep the payload backward-compatible with older ledger rows:
 // a reader of an older run sees the field absent, which is what it is. Health
 // rules that need the version-6 evidence must therefore remain not-evaluated
 // for runs captured before this schema.
-const CurrentInventorySchemaVersion = "14"
+const CurrentInventorySchemaVersion = "15"
 
 const (
 	RunRunning  RunStatus = "running"

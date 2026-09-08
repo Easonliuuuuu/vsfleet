@@ -607,13 +607,10 @@ func evaluateHostDevicePassthrough(in Input, emit func(Finding)) {
 			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has a PCI or vGPU passthrough device", Evidence: evidence})
 		}
 		for _, nic := range vm.NICs {
-			if !strings.EqualFold(nic.Adapter, "SR-IOV") && (nic.DirectPathIO == nil || !*nic.DirectPathIO) {
+			if !strings.EqualFold(nic.Adapter, "SR-IOV") {
 				continue
 			}
 			evidence := []Evidence{{Field: "adapter", Observed: nonempty(nic.Adapter, "network adapter")}}
-			if nic.DirectPathIO != nil {
-				evidence = append(evidence, Evidence{Field: "direct_path_io", Observed: fmt.Sprintf("%t", *nic.DirectPathIO)})
-			}
 			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has a host-backed network adapter", Evidence: evidence})
 		}
 	}

@@ -121,9 +121,16 @@ type AssessmentReport struct {
 	Warnings          []string          `json:"warnings,omitempty"`
 }
 
-func (s *Store) trendRuns(ctx context.Context, opts TrendOptions) ([]Run, error) {
+// eligibleTrendRuns returns runs matching status, --from, --to, and --since,
+// sorted oldest-first. It deliberately does not apply --limit: the limit is
+// applied after context presence is known so it counts assessments that
+// actually contribute to the trend.
+func (s *Store) eligibleTrendRuns(ctx context.Context, opts TrendOptions) ([]Run, error) {
 	if opts.Limit < 0 {
 		return nil, fmt.Errorf("trend limit cannot be negative")
+	}
+	if opts.FromID != 0 && opts.ToID != 0 && opts.FromID > opts.ToID {
+		return nil, fmt.Errorf("trend window --from must not be after --to")
 	}
 	runs, err := s.Runs(ctx)
 	if err != nil {
@@ -148,18 +155,129 @@ func (s *Store) trendRuns(ctx context.Context, opts TrendOptions) ([]Run, error)
 		}
 		filtered = append(filtered, run)
 	}
-	if opts.FromID != 0 && opts.ToID != 0 && opts.FromID > opts.ToID {
-		return nil, fmt.Errorf("trend window --from must not be after --to")
-	}
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].StartedAt.Before(filtered[j].StartedAt) })
-	if opts.Limit > 0 && len(filtered) > opts.Limit {
-		filtered = filtered[len(filtered)-opts.Limit:]
-	}
 	return filtered, nil
 }
 
+func limitTrendRuns(runs []Run, limit int) []Run {
+	if limit > 0 && len(runs) > limit {
+		return runs[len(runs)-limit:]
+	}
+	return runs
+}
+
+// normalizeContexts trims surrounding whitespace, lower-cases for
+// case-insensitive matching, and de-duplicates the requested context
+// selectors. A blank selector is a usage error rather than a silent no-op.
+func normalizeContexts(contexts []string) ([]string, error) {
+	out := make([]string, 0, len(contexts))
+	seen := make(map[string]bool, len(contexts))
+	for _, raw := range contexts {
+		name := strings.ToLower(strings.TrimSpace(raw))
+		if name == "" {
+			return nil, fmt.Errorf("assessment context selector must not be blank")
+		}
+		if !seen[name] {
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out, nil
+}
+
+// contextPresent reports whether a run recorded usable evidence for a context.
+// A successful or empty VM collection is present evidence; a failed collection
+// counts only when partial runs are explicitly included, and then stays visible
+// as a coverage warning downstream rather than a zero observation.
+func contextPresent(c ContextRun, includePartial bool) bool {
+	switch {
+	case Successful(c.VMStatus):
+		return true
+	case includePartial && c.VMStatus != "" && c.VMStatus != "running":
+		return true
+	default:
+		return false
+	}
+}
+
+// contributingTrendRuns resolves the historical window for a scoped trend
+// query. It applies the status/window/since filters, then, when one or more
+// contexts are requested, validates every requested name against the contexts
+// recorded anywhere in that eligible window (an unknown name is a hard error),
+// drops runs that did not record any requested context, and only then applies
+// --limit so the limit counts contributing assessments. With no context
+// requested the behaviour is unchanged: the eligible window, limited.
+func (s *Store) contributingTrendRuns(ctx context.Context, opts TrendOptions) ([]Run, error) {
+	eligible, err := s.eligibleTrendRuns(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	wanted, err := normalizeContexts(opts.Contexts)
+	if err != nil {
+		return nil, err
+	}
+	if len(wanted) == 0 {
+		return limitTrendRuns(eligible, opts.Limit), nil
+	}
+
+	known := make(map[string]bool)
+	presenceByRun := make([]map[string]bool, len(eligible))
+	for i, run := range eligible {
+		contexts, err := s.ContextRuns(ctx, run.ID)
+		if err != nil {
+			return nil, err
+		}
+		present := make(map[string]bool, len(contexts))
+		for _, c := range contexts {
+			name := strings.ToLower(strings.TrimSpace(c.Name))
+			known[name] = true
+			if contextPresent(c, opts.IncludePartial) {
+				present[name] = true
+			}
+		}
+		presenceByRun[i] = present
+	}
+
+	var unknown []string
+	for _, name := range wanted {
+		if !known[name] {
+			unknown = append(unknown, name)
+		}
+	}
+	if len(unknown) > 0 {
+		sort.Strings(unknown)
+		return nil, fmt.Errorf("unknown assessment context(s): %s", strings.Join(unknown, ", "))
+	}
+
+	contributing := make([]Run, 0, len(eligible))
+	for i, run := range eligible {
+		for _, name := range wanted {
+			if presenceByRun[i][name] {
+				contributing = append(contributing, run)
+				break
+			}
+		}
+	}
+	return limitTrendRuns(contributing, opts.Limit), nil
+}
+
+// filterCoverageContexts keeps only coverage issues attributable to one of the
+// selected contexts. Unscoped queries keep every issue.
+func filterCoverageContexts(issues []CoverageIssue, contexts []string) []CoverageIssue {
+	if len(contexts) == 0 {
+		return issues
+	}
+	out := make([]CoverageIssue, 0, len(issues))
+	for _, issue := range issues {
+		if trendContextAllowed(issue.Context, contexts) {
+			out = append(out, issue)
+		}
+	}
+	return out
+}
+
 func (s *Store) ChurnTrend(ctx context.Context, opts TrendOptions) (ChurnTrend, error) {
-	runs, err := s.trendRuns(ctx, opts)
+	runs, err := s.contributingTrendRuns(ctx, opts)
 	if err != nil {
 		return ChurnTrend{}, err
 	}
@@ -200,7 +318,7 @@ func (s *Store) ChurnTrend(ctx context.Context, opts TrendOptions) (ChurnTrend, 
 					}
 				}
 			}
-			trend.Coverage = append(trend.Coverage, d.Coverage...)
+			trend.Coverage = append(trend.Coverage, filterCoverageContexts(d.Coverage, opts.Contexts)...)
 		}
 		trend.Points = append(trend.Points, point)
 		previous = run.ID
@@ -212,7 +330,7 @@ func (s *Store) SnapshotTrend(ctx context.Context, opts TrendOptions, olderThan 
 	if olderThan <= 0 {
 		olderThan = 30 * 24 * time.Hour
 	}
-	runs, err := s.trendRuns(ctx, opts)
+	runs, err := s.contributingTrendRuns(ctx, opts)
 	if err != nil {
 		return SnapshotTrend{}, err
 	}
@@ -234,7 +352,7 @@ func (s *Store) SnapshotTrend(ctx context.Context, opts TrendOptions, olderThan 
 		if err != nil {
 			return SnapshotTrend{}, err
 		}
-		point := SnapshotTrendPoint{}
+		point := SnapshotTrendPoint{Run: run}
 		for _, age := range ages {
 			if !trendContextAllowed(age.Context, opts.Contexts) {
 				continue
@@ -269,7 +387,7 @@ func (s *Store) CapacityTrend(ctx context.Context, opts TrendOptions, kinds []st
 	if len(kinds) == 0 {
 		kinds = []string{"host", "cluster", "datastore"}
 	}
-	runs, err := s.trendRuns(ctx, opts)
+	runs, err := s.contributingTrendRuns(ctx, opts)
 	if err != nil {
 		return CapacityTrend{}, err
 	}
@@ -281,27 +399,33 @@ func (s *Store) CapacityTrend(ctx context.Context, opts TrendOptions, kinds []st
 		}
 		series := make(map[string]*CapacitySeries)
 		perRun := make([][]storedResource, len(runs))
+		recordedPerRun := make([]map[string]bool, len(runs))
 		contextNames := make(map[string]bool)
 		resourceNames := make(map[string]bool)
-		for _, run := range runs {
+		for runIndex, run := range runs {
 			data, err := s.loadResources(ctx, run.ID)
 			if err != nil {
 				return CapacityTrend{}, err
 			}
+			recorded := recordedResourceContexts(data.Coverage)
+			recordedPerRun[runIndex] = recorded
 			for _, key := range sortedCoverageKeys(data.Coverage) {
 				collection := data.Coverage[key]
+				contextName := strings.TrimSuffix(key, "\x00"+collection.Kind)
+				if !trendContextAllowed(contextName, opts.Contexts) {
+					continue
+				}
 				if collection.Kind == kind && collection.Status != "success" && collection.Status != "empty" {
-					trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "trend", Context: strings.TrimSuffix(key, "\x00"+collection.Kind), Message: fmt.Sprintf("%s collection %s: %s", collection.Kind, collection.Status, nonempty(collection.Error, "incomplete"))})
+					trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "trend", Context: contextName, Message: fmt.Sprintf("%s collection %s: %s", collection.Kind, collection.Status, nonempty(collection.Error, "incomplete"))})
 				}
 			}
-			if !hasCoverageKind(data.Coverage, kind) {
-				trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "trend", Context: "run " + fmt.Sprint(run.ID), Message: kind + " collection was not recorded"})
-			}
-			runIndex := 0
-			for i := range runs {
-				if runs[i].ID == run.ID {
-					runIndex = i
-					break
+			if len(opts.Contexts) == 0 {
+				if !hasCoverageKind(data.Coverage, kind) {
+					trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "trend", Context: "run " + fmt.Sprint(run.ID), Message: kind + " collection was not recorded"})
+				}
+			} else {
+				for _, contextName := range missingKindContexts(recorded, data.Coverage, kind, opts.Contexts) {
+					trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "trend", Context: contextName, Message: fmt.Sprintf("run %d %s collection was not recorded", run.ID, kind)})
 				}
 			}
 			runResources := make([]storedResource, 0, len(data.ByKind[kind]))
@@ -324,6 +448,9 @@ func (s *Store) CapacityTrend(ctx context.Context, opts TrendOptions, kinds []st
 		sort.Strings(contextsSorted)
 		for _, contextName := range contextsSorted {
 			for i, run := range runs {
+				if !recordedPerRun[i][contextName] {
+					continue
+				}
 				appendCapacityPoint(series, kind, "context", contextName, run, capacityForResources(kind, filterResourcesContext(perRun[i], contextName), "context", contextName))
 			}
 		}
@@ -336,6 +463,9 @@ func (s *Store) CapacityTrend(ctx context.Context, opts TrendOptions, kinds []st
 			parts := strings.SplitN(resourceName, "/", 2)
 			contextName, name := parts[0], parts[len(parts)-1]
 			for i, run := range runs {
+				if !recordedPerRun[i][contextName] {
+					continue
+				}
 				appendCapacityPoint(series, kind, "resource", resourceName, run, capacityForResources(kind, filterResourcesName(perRun[i], contextName, name), "resource", name))
 			}
 		}
@@ -375,6 +505,33 @@ func filterResourcesContext(resources []storedResource, contextName string) []st
 			out = append(out, resource)
 		}
 	}
+	return out
+}
+
+// recordedResourceContexts returns the set of context names that recorded at
+// least one resource collection in a run. A context with only empty
+// collections still counts as recorded: its zero values are real evidence.
+func recordedResourceContexts(coverage map[string]CollectionRun) map[string]bool {
+	out := make(map[string]bool)
+	for key, collection := range coverage {
+		out[strings.TrimSuffix(key, "\x00"+collection.Kind)] = true
+	}
+	return out
+}
+
+// missingKindContexts lists selected contexts that recorded a run but not the
+// requested resource kind, so a scoped trend can flag the exact gap.
+func missingKindContexts(recorded map[string]bool, coverage map[string]CollectionRun, kind string, contexts []string) []string {
+	var out []string
+	for contextName := range recorded {
+		if !trendContextAllowed(contextName, contexts) {
+			continue
+		}
+		if _, ok := coverage[contextName+"\x00"+kind]; !ok {
+			out = append(out, contextName)
+		}
+	}
+	sort.Strings(out)
 	return out
 }
 

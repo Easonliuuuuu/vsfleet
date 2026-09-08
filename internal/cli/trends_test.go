@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -43,5 +44,62 @@ func TestTrendCommandScopedToKnownContextSucceeds(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	if _, _, err := runAssessment(t, dbPath, "trends", "capacity", "--context", "PROD", "-o", "json"); err != nil {
 		t.Fatalf("known context (case-insensitive): %v", err)
+	}
+}
+
+func TestStoredAssessmentCommandsRejectUnknownContext(t *testing.T) {
+	dbPath := newTopologyTestHistoryDB(t)
+	for _, args := range [][]string{
+		{"report", "--context", "ghost"},
+		{"snapshots", "--context", "ghost"},
+		{"findings", "--context", "ghost"},
+		{"readiness", "--context", "ghost"},
+		{"orphans", "--context", "ghost"},
+	} {
+		_, _, err := runAssessment(t, dbPath, args...)
+		if err == nil || !strings.Contains(err.Error(), "unknown assessment context") {
+			t.Fatalf("%v: err=%v, want unknown-context failure", args, err)
+		}
+	}
+}
+
+func TestAssessmentReportScopesStoredEvidence(t *testing.T) {
+	dbPath := newTopologyTestHistoryDB(t)
+	stdout, _, err := runAssessment(t, dbPath, "report", "--context", " PROD ", "-o", "json")
+	if err != nil {
+		t.Fatalf("scoped report: %v", err)
+	}
+	var report struct {
+		VMCount        int `json:"vm_count"`
+		DatastoreCount int `json:"datastore_count"`
+		Coverage       []struct {
+			Context string `json:"context"`
+		} `json:"coverage"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &report); err != nil {
+		t.Fatalf("report JSON: %v\n%s", err, stdout)
+	}
+	if report.VMCount != 0 || report.DatastoreCount != 1 {
+		t.Fatalf("scoped report counts = vm %d datastore %d", report.VMCount, report.DatastoreCount)
+	}
+	for _, coverage := range report.Coverage {
+		if !strings.EqualFold(coverage.Context, "prod") {
+			t.Fatalf("unselected coverage leaked: %+v", coverage)
+		}
+	}
+}
+
+func TestAssessmentMetadataCommandsRejectContext(t *testing.T) {
+	dbPath := newTopologyTestHistoryDB(t)
+	for _, args := range [][]string{
+		{"list", "--context", "prod"},
+		{"doctor", "--context", "prod"},
+		{"prune", "--context", "prod"},
+		{"backup", "/tmp/vsfleet-context-test.db", "--context", "prod"},
+	} {
+		_, _, err := runAssessment(t, dbPath, args...)
+		if err == nil || !strings.Contains(err.Error(), "--context is not supported") {
+			t.Fatalf("%v: err=%v, want unsupported-context failure", args, err)
+		}
 	}
 }

@@ -63,16 +63,23 @@ Trends aggregate estate totals before context and resource drill-downs. By
 default they use complete assessments; use `--include-partial` when partial
 runs are intentionally part of the analysis.
 
-`--context` scopes churn, snapshot, capacity-trend, and capacity-report output.
+`--context` scopes stored assessment reads, including report, snapshots, diff,
+health/findings, readiness, orphans, exports, topology, network, decommission,
+VM history, churn, snapshot trends, capacity trends, and capacity reports.
 Names are matched case-insensitively after trimming whitespace. A requested
-context that never appears in the eligible history window (after `--status`,
-`--from`, `--to`, and `--since` are applied) is an error and exits `1` rather
-than being reported as zero observations; a blank `--context` value is likewise
-rejected. Scoped runs that did not record a requested context are dropped from
-the window, and `--limit` then counts only the assessments that contribute to
-the scoped trend. A context whose collection succeeded but returned nothing is
-kept as a legitimate zero; a context whose collection failed stays visible as a
-coverage warning. No JSON schema change or database migration is involved.
+context that never appears in the selected stored run(s) is an error and exits
+`1` rather than being reported as zero observations or silently widening to the
+full estate; a blank `--context` value is likewise rejected. For a diff, a
+context present on only one side remains a non-comparable coverage warning and
+does not become an inferred appeared/vanished change. Scoped runs that did not
+record a requested context are dropped from trends, and `--limit` then counts
+only the assessments that contribute to the scoped trend. A context whose
+collection succeeded but returned nothing is kept as a legitimate zero; a
+context whose collection failed stays visible as a coverage warning. Stored
+selectors use ledger context names and do not require current configuration.
+Metadata and maintenance commands reject `--context` because they do not
+produce context-scoped evidence. No JSON schema change or database migration is
+involved.
 
 ### Capacity attribution and projection
 

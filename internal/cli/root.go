@@ -213,6 +213,13 @@ func (a *App) checkFormat() error {
 	}
 }
 
+func rejectStoredContextSelection(cmd *cobra.Command, operation string) error {
+	if cmd.Flags().Changed("context") {
+		return fmt.Errorf("--context is not supported for assessment %s", operation)
+	}
+	return nil
+}
+
 // NewRootCommand builds the vsfleet command tree.
 func NewRootCommand(a *App) *cobra.Command {
 	root := &cobra.Command{

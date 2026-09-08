@@ -140,11 +140,7 @@ func newVMHistoryCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		contextName := ""
-		if len(a.ContextNames) == 1 {
-			contextName = a.ContextNames[0]
-		}
-		events, err := s.Timeline(cmd.Context(), args[0], contextName, allObservations, includeRuntime)
+		events, err := s.TimelineForContexts(cmd.Context(), args[0], a.ContextNames, allObservations, includeRuntime)
 		if err != nil {
 			return err
 		}

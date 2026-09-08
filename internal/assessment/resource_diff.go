@@ -66,7 +66,7 @@ func nullFloatPtr(v sql.NullFloat64) *float64 {
 	return &v.Float64
 }
 
-func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, includeRuntime bool, d *Diff) error {
+func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, includeRuntime bool, selected []string, d *Diff) error {
 	base, err := s.loadResources(ctx, baseID)
 	if err != nil {
 		return err
@@ -75,6 +75,8 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 	if err != nil {
 		return err
 	}
+	filterResourceRunData(base, selected)
+	filterResourceRunData(target, selected)
 	for _, kind := range []string{"host", "cluster", "resourcepool", "datastore", "dvswitch"} {
 		baseByVC, targetByVC := make(map[string][]storedResource), make(map[string][]storedResource)
 		// vcNames resolves a VCenterID back to its context name for the "not
@@ -155,6 +157,27 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 	})
 	d.Counts.Resources = len(d.Resources)
 	return nil
+}
+
+func filterResourceRunData(data resourceRunData, selected []string) {
+	if len(selected) == 0 {
+		return
+	}
+	for key, coverage := range data.Coverage {
+		contextName := strings.TrimSuffix(key, "\x00"+coverage.Kind)
+		if !contextSelected(contextName, selected) {
+			delete(data.Coverage, key)
+		}
+	}
+	for kind, values := range data.ByKind {
+		filtered := values[:0]
+		for _, value := range values {
+			if contextSelected(value.observation.Context, selected) {
+				filtered = append(filtered, value)
+			}
+		}
+		data.ByKind[kind] = filtered
+	}
 }
 
 func hasCoverageKind(coverage map[string]CollectionRun, kind string) bool {

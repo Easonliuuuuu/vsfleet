@@ -58,6 +58,9 @@ func newFindingsCommand(a *App, use, short string) *cobra.Command {
 	var flags healthFlags
 	cmd := &cobra.Command{Use: use, Short: short, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if flags.listRules {
+			if err := rejectStoredContextSelection(cmd, "rule listing"); err != nil {
+				return err
+			}
 			return printHealthRules(a)
 		}
 		report, err := evaluateHealthCommand(cmd, a, args, flags)
@@ -144,7 +147,7 @@ func loadRunExportData(cmd *cobra.Command, a *App, args []string) (assessment.Ex
 	if err != nil {
 		return assessment.ExportData{}, err
 	}
-	return s.LoadExportData(cmd.Context(), runID)
+	return s.LoadExportDataForContexts(cmd.Context(), runID, a.ContextNames)
 }
 
 func printHealthRules(a *App) error {

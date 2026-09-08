@@ -171,8 +171,10 @@ verdict can never say `ready` over evidence that was not collected.
 Schema version 13 adds migration evidence for firmware and Secure Boot,
 vTPM, CPU socket/core topology, VM CPU/memory reservations and limits, RDM and
 shared-disk relationships, manually assigned MAC addresses, PCI/SR-IOV/vGPU
-passthrough, legacy floppy devices, and vCenter extension ownership. RDM,
-shared-disk, vTPM, and host-device passthrough findings are blocking warnings;
+passthrough, legacy floppy devices, and vCenter extension ownership. The
+`host-device-passthrough` rule requires PCI/vGPU or SR-IOV evidence; ordinary
+VMXNET3 UPT compatibility does not block. RDM, shared-disk, vTPM, and
+host-device passthrough findings are blocking warnings;
 firmware, Secure Boot, topology, resource controls, manual MACs, floppies, and
 extension ownership are informational advisories. Missing VM configuration
 evidence remains `unknown`, including when no special device is present.
@@ -313,6 +315,10 @@ the host configuration properties are deliberately not added to those paths.
 Inventory schema version 14 adds tri-state local-storage evidence to each
 `vMultiPath` row. Local disks are excluded from redundancy findings; unknown
 locality remains unresolved rather than being treated as healthy shared storage.
+Inventory schema version 15 renames the persisted VM NIC direct-path field to
+`upt_compatibility_enabled`; the old `direct_path_io` value in schema 12–14
+rows was UPT compatibility mislabeled and is no longer read as passthrough
+evidence.
 
 ### Distributed switch inventory
 

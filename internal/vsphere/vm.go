@@ -590,7 +590,7 @@ func newVMNIC(card *types.VirtualEthernetCard, adapter string, byKey map[int32]t
 		out.Connected, out.StartsConnected = clonePtr(&card.Connectable.Connected), clonePtr(&card.Connectable.StartConnected)
 	}
 	if card.UptCompatibilityEnabled != nil {
-		out.DirectPathIO = clonePtr(card.UptCompatibilityEnabled)
+		out.UPTCompatible = clonePtr(card.UptCompatibilityEnabled)
 	}
 	if card.MacAddress != "" {
 		if nic, ok := byKey[card.Key]; ok {

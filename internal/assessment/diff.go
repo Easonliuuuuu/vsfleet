@@ -320,13 +320,13 @@ type migrationNIC struct {
 	Adapter        string `json:"adapter,omitempty"`
 	MACAddress     string `json:"mac_address,omitempty"`
 	MACAddressType string `json:"mac_address_type,omitempty"`
-	DirectPathIO   *bool  `json:"direct_path_io,omitempty"`
+	UPTCompatible  *bool  `json:"upt_compatibility_enabled,omitempty"`
 }
 
 func migrationNICs(values []vsphere.VMNIC) []migrationNIC {
 	out := make([]migrationNIC, 0, len(values))
 	for _, value := range values {
-		out = append(out, migrationNIC{Key: value.Key, Adapter: value.Adapter, MACAddress: value.MACAddress, MACAddressType: value.MACAddressType, DirectPathIO: value.DirectPathIO})
+		out = append(out, migrationNIC{Key: value.Key, Adapter: value.Adapter, MACAddress: value.MACAddress, MACAddressType: value.MACAddressType, UPTCompatible: value.UPTCompatible})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out

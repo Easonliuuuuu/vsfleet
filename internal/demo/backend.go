@@ -345,7 +345,7 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 				VSwitches:  []vsphere.HostVSwitch{{Key: name + "-switch-1", Name: "vSwitch0", NumPorts: 128, FreePorts: 120, MTU: 1500, Uplinks: []string{"vmnic0"}, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true), TrafficShaping: boolValue(false)}},
 				PortGroups: []vsphere.HostPortGroup{{Key: name + "-port-1", Name: "Management Network", Switch: "vSwitch0", VLAN: 120, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true)}},
 				VMKs:       []vsphere.HostVMKernel{{Key: name + "-vmk-1", Device: "vmk0", PortGroup: "Management Network", MAC: "00:50:56:aa:01:02", MTU: 1500, TSO: boolValue(true), Netstack: "defaultTcpipStack", DHCP: boolValue(false), IP: subnet + ".10", SubnetMask: "255.255.255.0", ServiceConsole: false}},
-				Multipaths: []vsphere.HostMultipath{{Key: name + "-lun-1", LUN: "naa.60060160.example.0001", DevicePath: "/vmfs/devices/disks/naa.60060160.example.0001", Policy: "VMW_PSP_RR", PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 1}},
+				Multipaths: []vsphere.HostMultipath{{Key: name + "-lun-1", LUN: "naa.60060160.example.0001", DevicePath: "/vmfs/devices/disks/naa.60060160.example.0001", Policy: "VMW_PSP_RR", LocalDisk: boolValue(false), PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 1}},
 			},
 			{Location: loc("host", "esxi-02"), ID: name + "-host-2", Name: "esxi-02", Cluster: "compute-a", PowerState: "poweredOn", ConnectionState: "connected", Vendor: "Dell Inc.", Model: "PowerEdge R750", Version: "8.0.3", Build: "24022515", CPUCores: 32, CPUThreads: 64, CPUMHz: 2400, TotalCPUMHz: 76800, MemoryMB: 524288, CPUUsageMHz: 22100, MemoryUsageMB: 301000, VMCount: 38,
 				HBAs:       []vsphere.HostHBA{{Key: name + "-hba-2", Device: "vmhba1", Bus: 4, Status: "online", Model: "Broadcom 57508", Driver: "bnxtroce", PCI: "0000:af:00.0", StorageProtocol: "iscsi", Type: "HostInternetScsiHba", IScsiName: "iqn.2026-09.example:" + name + ":esxi-02", IScsiAlias: "esxi-02.example.internal"}},
@@ -353,7 +353,7 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 				VSwitches:  []vsphere.HostVSwitch{{Key: name + "-switch-2", Name: "vSwitch0", NumPorts: 128, FreePorts: 119, MTU: 1500, Uplinks: []string{"vmnic1"}, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true), TrafficShaping: boolValue(false)}},
 				PortGroups: []vsphere.HostPortGroup{{Key: name + "-port-2", Name: "Management Network", Switch: "vSwitch0", VLAN: 120, Promiscuous: boolValue(false), MACChanges: boolValue(true), ForgedTransmits: boolValue(true)}},
 				VMKs:       []vsphere.HostVMKernel{{Key: name + "-vmk-2", Device: "vmk0", PortGroup: "Management Network", MAC: "00:50:56:aa:02:02", MTU: 1500, TSO: boolValue(true), Netstack: "defaultTcpipStack", DHCP: boolValue(false), IP: subnet + ".20", SubnetMask: "255.255.255.0", ServiceConsole: false}},
-				Multipaths: []vsphere.HostMultipath{{Key: name + "-lun-2", LUN: "naa.60060160.example.0002", DevicePath: "/vmfs/devices/disks/naa.60060160.example.0002", Policy: "VMW_PSP_RR", PathCount: 2, Active: 2, WorkingPaths: 2}},
+				Multipaths: []vsphere.HostMultipath{{Key: name + "-lun-2", LUN: "naa.60060160.example.0002", DevicePath: "/vmfs/devices/disks/naa.60060160.example.0002", Policy: "VMW_PSP_RR", LocalDisk: boolValue(false), PathCount: 2, Active: 2, WorkingPaths: 2}},
 			},
 		},
 		Clusters: []vsphere.Cluster{

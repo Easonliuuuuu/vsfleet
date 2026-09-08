@@ -63,6 +63,17 @@ Trends aggregate estate totals before context and resource drill-downs. By
 default they use complete assessments; use `--include-partial` when partial
 runs are intentionally part of the analysis.
 
+`--context` scopes churn, snapshot, capacity-trend, and capacity-report output.
+Names are matched case-insensitively after trimming whitespace. A requested
+context that never appears in the eligible history window (after `--status`,
+`--from`, `--to`, and `--since` are applied) is an error and exits `1` rather
+than being reported as zero observations; a blank `--context` value is likewise
+rejected. Scoped runs that did not record a requested context are dropped from
+the window, and `--limit` then counts only the assessments that contribute to
+the scoped trend. A context whose collection succeeded but returned nothing is
+kept as a legitimate zero; a context whose collection failed stays visible as a
+coverage warning. No JSON schema change or database migration is involved.
+
 ### Capacity attribution and projection
 
 ```sh

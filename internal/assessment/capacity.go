@@ -153,7 +153,7 @@ func (s *Store) CapacityReport(ctx context.Context, opts TrendOptions, threshold
 	if thresholds.FreeBytes < 0 {
 		return CapacityReport{}, fmt.Errorf("capacity free-bytes threshold must be zero or greater")
 	}
-	runs, err := s.trendRuns(ctx, opts)
+	runs, err := s.contributingTrendRuns(ctx, opts)
 	if err != nil {
 		return CapacityReport{}, err
 	}

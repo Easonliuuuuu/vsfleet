@@ -414,6 +414,36 @@ func TestEvaluateZombieVMDKConservativelyMatchesReferencesAndDeltas(t *testing.T
 	t.Fatal("datastore-zombie-vmdk status was not reported")
 }
 
+func TestEvaluateZombieVMDKUnknownWhenBrowseCoverageIsPartial(t *testing.T) {
+	browsed, _ := json.Marshal(vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "browsed", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}, BrowseStatus: "success"})
+	unbrowsed, _ := json.Marshal(vsphere.Datastore{Location: vsphere.Location{Context: "edge"}, ID: "ds-2", Name: "unbrowsed", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-2"}})
+	data := assessment.ExportData{
+		Run: assessment.Run{ID: 47, InventorySchemaVersion: "11"},
+		Contexts: []assessment.ContextRun{
+			{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "datastore", Status: "success"}}},
+			{Name: "edge", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "datastore", Status: "success"}}},
+		},
+		Resources: []assessment.ResourceObservation{
+			{Context: "prod", VCenterID: "vc-1", Kind: "datastore", ID: "ds-1", Name: "browsed", Payload: browsed},
+			{Context: "edge", VCenterID: "vc-2", Kind: "datastore", ID: "ds-2", Name: "unbrowsed", Payload: unbrowsed},
+		},
+	}
+	report := Evaluate(data, Options{})
+	for _, status := range report.Rules {
+		if status.Rule != "datastore-zombie-vmdk" {
+			continue
+		}
+		if status.Status != "evaluated" || status.Result != "unknown" || status.Reason != "orphan coverage is incomplete" {
+			t.Fatalf("zombie status=%+v", status)
+		}
+		if !containsString(status.Blind, "edge") {
+			t.Fatalf("zombie blind contexts=%v, want edge", status.Blind)
+		}
+		return
+	}
+	t.Fatal("datastore-zombie-vmdk status was not reported")
+}
+
 func TestEvaluateThresholdBoundaries(t *testing.T) {
 	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	data := healthFixture("5", finish)

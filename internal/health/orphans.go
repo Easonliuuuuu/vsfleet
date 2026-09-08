@@ -51,11 +51,62 @@ type OrphanEvidence struct {
 	Reasons         []string          `json:"reasons,omitempty"`
 }
 
+// OrphanScanStatus classifies why a datastore's browse evidence is missing or
+// incomplete.
+type OrphanScanStatus string
+
+const (
+	// OrphanScanNotBrowsed means the assessment was captured without
+	// --browse-datastores, so the datastore was never listed.
+	OrphanScanNotBrowsed OrphanScanStatus = "not-browsed"
+	// OrphanScanFailed means the browse was attempted and errored.
+	OrphanScanFailed OrphanScanStatus = "failed"
+	// OrphanScanDenied means the datastore was inaccessible or the account
+	// lacked Datastore.Browse.
+	OrphanScanDenied OrphanScanStatus = "denied"
+	// OrphanScanTruncated means the listing succeeded but was cut short at the
+	// file cap, so absent files are not evidence of absence.
+	OrphanScanTruncated OrphanScanStatus = "truncated"
+)
+
+// OrphanScanGap names one datastore whose orphan evidence is missing or partial.
+// The CLI and JSON consumers use it so an empty Entries list is never mistaken
+// for a fully scanned, genuinely clean estate.
+type OrphanScanGap struct {
+	Object Object           `json:"object"`
+	Status OrphanScanStatus `json:"status"`
+	Reason string           `json:"reason,omitempty"`
+}
+
+// OrphanCoverage is the top-level scan-coverage state of an orphan report. It is
+// populated independently of Entries: a run that browsed nothing still reports
+// Browsed == 0 with one Gaps entry per datastore.
+type OrphanCoverage struct {
+	// Datastores is the number of datastore resources in the assessment.
+	Datastores int `json:"datastores"`
+	// Browsed is the number of datastores whose browse listing succeeded
+	// (a truncated listing still counts, and also appears in Gaps).
+	Browsed int `json:"browsed"`
+	// Gaps names every datastore that was not browsed, failed to browse, was
+	// inaccessible, or whose listing was truncated.
+	Gaps []OrphanScanGap `json:"gaps,omitempty"`
+}
+
+// Complete reports whether every datastore in the assessment was fully browsed.
+// "No candidates" is only a genuine clean result when Complete is true.
+func (c OrphanCoverage) Complete() bool {
+	return c.Datastores > 0 && len(c.Gaps) == 0
+}
+
 // OrphanReport contains every browsed VMDK candidate, including unknown ones.
 // Unknown entries are retained for drill-down but are not health findings.
+// Coverage records whether the datastore scope was actually scanned, so a
+// consumer can tell an empty Entries list on a clean estate from one produced
+// by missing browse evidence.
 type OrphanReport struct {
-	RunID   int64            `json:"run_id"`
-	Entries []OrphanEvidence `json:"entries"`
+	RunID    int64            `json:"run_id"`
+	Entries  []OrphanEvidence `json:"entries"`
+	Coverage OrphanCoverage   `json:"coverage"`
 }
 
 func orphanConfidenceLabel(value Confidence) string {
@@ -255,7 +306,37 @@ func Orphans(data assessment.ExportData) OrphanReport {
 		}
 		return entries[i].Confidence < entries[j].Confidence
 	})
-	return OrphanReport{RunID: data.Run.ID, Entries: entries}
+	return OrphanReport{RunID: data.Run.ID, Entries: entries, Coverage: orphanCoverage(data, stores)}
+}
+
+// orphanCoverage records the browse state of every datastore in the assessment
+// so an empty candidate list carries its own evidence of completeness.
+func orphanCoverage(data assessment.ExportData, stores []orphanDatastore) OrphanCoverage {
+	coverage := OrphanCoverage{Datastores: len(stores)}
+	for _, store := range stores {
+		object := resourceObject(data, store.resource, "datastore", store.ds.Name, store.ds.ID, store.ds.Datacenter)
+		switch store.ds.BrowseStatus {
+		case "success":
+			coverage.Browsed++
+			if store.ds.BrowseTruncated {
+				coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanTruncated, Reason: "datastore browse listing was truncated at the file cap"})
+			}
+		case "denied":
+			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanDenied, Reason: nonempty(store.ds.BrowseError, "datastore is inaccessible")})
+		case "failed":
+			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanFailed, Reason: nonempty(store.ds.BrowseError, "datastore browse failed")})
+		default:
+			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanNotBrowsed, Reason: "assessment was captured without --browse-datastores"})
+		}
+	}
+	sort.SliceStable(coverage.Gaps, func(i, j int) bool {
+		a, b := coverage.Gaps[i].Object, coverage.Gaps[j].Object
+		if !strings.EqualFold(a.Context, b.Context) {
+			return strings.ToLower(a.Context) < strings.ToLower(b.Context)
+		}
+		return strings.ToLower(a.Name) < strings.ToLower(b.Name)
+	})
+	return coverage
 }
 
 func storesNamed(byContextName map[string][]orphanDatastore, name string) []orphanDatastore {

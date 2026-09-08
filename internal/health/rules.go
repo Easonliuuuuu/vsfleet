@@ -117,9 +117,10 @@ var rules = []Rule{
 			}
 		},
 		Resolve: func(in Input) (string, string, []string) {
+			report := Orphans(in.Data)
 			unknown := false
 			blindSet := make(map[string]bool)
-			for _, orphan := range Orphans(in.Data).Entries {
+			for _, orphan := range report.Entries {
 				if orphan.Confidence != ConfidenceUnknown {
 					continue
 				}
@@ -127,6 +128,13 @@ var rules = []Rule{
 				for _, blind := range orphan.Blind {
 					blindSet[blind.Context] = true
 				}
+			}
+			// A datastore that was never browsed (or failed, or was truncated)
+			// produces no entry at all, so partial coverage is invisible unless
+			// the report's own scan-coverage state is consulted.
+			for _, gap := range report.Coverage.Gaps {
+				unknown = true
+				blindSet[gap.Object.Context] = true
 			}
 			if !unknown {
 				return "", "", nil

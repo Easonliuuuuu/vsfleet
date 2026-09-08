@@ -7,6 +7,10 @@
 * **assessment:** attribute datastore growth and project free-space thresholds
 * **health:** add an absolute datastore free-space floor
 
+### Bug Fixes
+
+* **assessment:** stop reporting a clean orphan scan when datastore browse evidence is missing ([#115](https://github.com/Easonliuuuuu/vsfleet/issues/115))
+
 ## [0.5.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.4.0...v0.5.0) (2026-09-05)
 
 

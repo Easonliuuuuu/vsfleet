@@ -73,6 +73,76 @@ func TestOrphansDowngradesTruncatedAndBlindCoverage(t *testing.T) {
 	}
 }
 
+func TestOrphansCoverageReportsBrowseState(t *testing.T) {
+	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	base := func(status string) assessment.ExportData {
+		return assessment.ExportData{
+			Run:      assessment.Run{ID: 7, InventorySchemaVersion: "11", FinishedAt: finish},
+			Contexts: []assessment.ContextRun{completeOrphanContext("prod")},
+			Resources: []assessment.ResourceObservation{orphanResource(t, "prod", "vc-prod", vsphere.Datastore{
+				Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1",
+				Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}, BrowseStatus: status,
+			})},
+		}
+	}
+
+	t.Run("no browse", func(t *testing.T) {
+		cov := Orphans(base("")).Coverage
+		if cov.Complete() || cov.Browsed != 0 || len(cov.Gaps) != 1 || cov.Gaps[0].Status != OrphanScanNotBrowsed {
+			t.Fatalf("coverage=%+v", cov)
+		}
+	})
+	t.Run("failed browse", func(t *testing.T) {
+		data := base("failed")
+		var ds vsphere.Datastore
+		_ = json.Unmarshal(data.Resources[0].Payload, &ds)
+		ds.BrowseError = "permission denied"
+		data.Resources[0].Payload, _ = json.Marshal(ds)
+		cov := Orphans(data).Coverage
+		if cov.Complete() || len(cov.Gaps) != 1 || cov.Gaps[0].Status != OrphanScanFailed || cov.Gaps[0].Reason != "permission denied" {
+			t.Fatalf("coverage=%+v", cov)
+		}
+	})
+	t.Run("denied browse", func(t *testing.T) {
+		cov := Orphans(base("denied")).Coverage
+		if cov.Complete() || len(cov.Gaps) != 1 || cov.Gaps[0].Status != OrphanScanDenied {
+			t.Fatalf("coverage=%+v", cov)
+		}
+	})
+	t.Run("complete clean browse", func(t *testing.T) {
+		cov := Orphans(base("success")).Coverage
+		if !cov.Complete() || cov.Browsed != 1 || len(cov.Gaps) != 0 {
+			t.Fatalf("coverage=%+v", cov)
+		}
+	})
+}
+
+func TestOrphansCoveragePartialAndTruncatedBrowse(t *testing.T) {
+	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	browsed := vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "browsed", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}, BrowseStatus: "success"}
+	truncated := vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-2", Name: "truncated", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-2"}, BrowseStatus: "success", BrowseTruncated: true, Files: []vsphere.DatastoreFile{{Path: "[truncated] lost/orphan.vmdk"}}}
+	unbrowsed := vsphere.Datastore{Location: vsphere.Location{Context: "edge"}, ID: "ds-3", Name: "unbrowsed", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-3"}}
+	data := assessment.ExportData{
+		Run:       assessment.Run{ID: 8, InventorySchemaVersion: "11", FinishedAt: finish},
+		Contexts:  []assessment.ContextRun{completeOrphanContext("prod"), completeOrphanContext("edge")},
+		Resources: []assessment.ResourceObservation{orphanResource(t, "prod", "vc-prod", browsed), orphanResource(t, "prod", "vc-prod", truncated), orphanResource(t, "edge", "vc-edge", unbrowsed)},
+	}
+	cov := Orphans(data).Coverage
+	if cov.Complete() {
+		t.Fatalf("partial estate reported complete: %+v", cov)
+	}
+	if cov.Datastores != 3 || cov.Browsed != 2 {
+		t.Fatalf("counts=%+v", cov)
+	}
+	byName := make(map[string]OrphanScanStatus, len(cov.Gaps))
+	for _, gap := range cov.Gaps {
+		byName[gap.Object.Name] = gap.Status
+	}
+	if byName["truncated"] != OrphanScanTruncated || byName["unbrowsed"] != OrphanScanNotBrowsed || len(cov.Gaps) != 2 {
+		t.Fatalf("gaps=%+v", cov.Gaps)
+	}
+}
+
 func TestOrphansDoesNotCrossSuppressSameNameDatastores(t *testing.T) {
 	left := vsphere.Datastore{Location: vsphere.Location{Context: "left"}, ID: "ds-left", Name: "datastore1", Backing: vsphere.DatastoreBacking{Extents: []string{"naa.left"}}, BrowseStatus: "success", Files: []vsphere.DatastoreFile{{Path: "[datastore1] orphan.vmdk"}}}
 	right := vsphere.Datastore{Location: vsphere.Location{Context: "right"}, ID: "ds-right", Name: "datastore1", Backing: vsphere.DatastoreBacking{Extents: []string{"naa.right"}}, BrowseStatus: "success", Files: []vsphere.DatastoreFile{{Path: "[datastore1] orphan.vmdk"}}}

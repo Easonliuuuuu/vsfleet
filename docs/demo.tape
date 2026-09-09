@@ -37,33 +37,36 @@ Type "vsfleet-history --port-base 38443"
 Enter
 Wait+Screen@30s /credentials required/
 Type "H"
-Wait+Screen@10s /baseline #3/
-
-# Pick a clean baseline/deployment pair before revealing the history hub.
-Type "b"
-Wait+Screen /Select base assessment/
-Down@250ms 2
-Enter
-Wait+Screen /baseline #1/
-Type "t"
-Wait+Screen /Select target assessment/
-Down@250ms 2
-Enter
-Wait+Screen /target #2/
-Sleep 700ms
+Wait+Screen@15s /RUNS/
+Sleep 900ms
 Show
 
+# The hub opens on the newest pair. The change stream is ranked by what a
+# change means for a migration, not by object name, and the inspector follows
+# the cursor. "1" keeps only the blockers; "0" restores the full stream.
+Sleep 2400ms
+Down@450ms 3
+Sleep 1400ms
+Type "1"
+Sleep 2200ms
+Type "0"
+Sleep 1000ms
+
+# edge-vc missed run #3, so the span is not estate-wide until "c" clips the
+# baseline back to the newest run with matching coverage.
+Type "c"
+Wait+Screen /clipped the span/
 Sleep 2600ms
-Enter
-Sleep 2600ms
-Escape
-Sleep 300ms
-Right
-Wait+Screen /Trends/
+
+# The stored runs and the read-only health verdict share the hub.
+Tab
+Sleep 100ms
+Tab
+Wait+Screen /newest first/
+Sleep 2400ms
+Tab
+Wait+Screen /read-only findings/
 Sleep 2800ms
-Right
-Wait+Screen /Runs/
-Sleep 3000ms
 
 # Move to the friendly offline estate while capture is hidden.
 Hide

@@ -1,0 +1,109 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vsfleet-vcsim-prod
+  labels:
+    app.kubernetes.io/name: vsfleet-vcsim
+    app.kubernetes.io/instance: prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vsfleet-vcsim
+      app.kubernetes.io/instance: prod
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vsfleet-vcsim
+        app.kubernetes.io/instance: prod
+    spec:
+      securityContext:
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vcsim
+          image: vsfleet-vcsim:ci-test
+          imagePullPolicy: Never
+          args: ["-l", "0.0.0.0:8989", "-username", "operator@vsphere.local", "-password", "vsfleet-vcsim-password", "-dc", "1", "-cluster", "1", "-host", "2", "-vm", "2", "-ds", "2", "-pg", "2"]
+          ports:
+            - name: soap
+              containerPort: 8989
+          readinessProbe:
+            tcpSocket:
+              port: soap
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vsfleet-vcsim-prod
+spec:
+  selector:
+    app.kubernetes.io/name: vsfleet-vcsim
+    app.kubernetes.io/instance: prod
+  ports:
+    - name: soap
+      port: 8989
+      targetPort: soap
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vsfleet-vcsim-edge
+  labels:
+    app.kubernetes.io/name: vsfleet-vcsim
+    app.kubernetes.io/instance: edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vsfleet-vcsim
+      app.kubernetes.io/instance: edge
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vsfleet-vcsim
+        app.kubernetes.io/instance: edge
+    spec:
+      securityContext:
+        runAsGroup: 65532
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: vcsim
+          image: vsfleet-vcsim:ci-test
+          imagePullPolicy: Never
+          args: ["-l", "0.0.0.0:8989", "-username", "operator@vsphere.local", "-password", "vsfleet-vcsim-password", "-dc", "1", "-cluster", "1", "-host", "2", "-vm", "2", "-ds", "2", "-pg", "2"]
+          ports:
+            - name: soap
+              containerPort: 8989
+          readinessProbe:
+            tcpSocket:
+              port: soap
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vsfleet-vcsim-edge
+spec:
+  selector:
+    app.kubernetes.io/name: vsfleet-vcsim
+    app.kubernetes.io/instance: edge
+  ports:
+    - name: soap
+      port: 8989
+      targetPort: soap

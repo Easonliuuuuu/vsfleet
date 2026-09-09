@@ -84,6 +84,7 @@ jobs:
           mkdir -p linux/amd64 linux/arm64
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o linux/amd64/vsfleet ./cmd/vsfleet
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o linux/arm64/vsfleet ./cmd/vsfleet
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o linux/amd64/vsfleet-vcsim ./cmd/vsfleet-vcsim
 
       - name: Build multi-arch container image
         run: |
@@ -97,6 +98,28 @@ jobs:
           docker build --build-arg TARGETPLATFORM=linux/amd64 -t vsfleet:ci-test .
           docker run --rm vsfleet:ci-test --version
           docker run --rm vsfleet:ci-test --help
+
+      - name: Build vcsim fixture image
+        run: docker build -f Dockerfile.vcsim -t vsfleet-vcsim:ci-test .
+
+      - name: Create Kubernetes test cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: vsfleet-ci
+
+      - name: Load local images into Kubernetes
+        run: kind load docker-image --name vsfleet-ci vsfleet:ci-test vsfleet-vcsim:ci-test
+
+      - name: Run Kubernetes end-to-end workload
+        env:
+          VSFLEET_K8S_DEBUG_DIR: ${{ runner.temp }}/kubernetes-debug
+        run: ./scripts/test-kubernetes.sh
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: kubernetes-debug
+          path: ${{ runner.temp }}/kubernetes-debug
 
   integration-vcsim:
     name: Multi-vCenter vcsim integration

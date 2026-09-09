@@ -103,54 +103,38 @@ verification.
 
 ## Kubernetes
 
-The same contract works with a projected Secret and a writable volume for
-history and exports:
+The maintained [CronJob template](https://github.com/Easonliuuuuu/vsfleet/blob/main/deploy/kubernetes/cronjob.yaml)
+uses the same ConfigMap, Secret, and history-volume contract as the container
+examples. It runs as the image's unprivileged UID/GID (`65532`), has a
+read-only root filesystem, drops Linux capabilities, and sets `fsGroup: 65532`
+so the mounted SQLite database is writable.
 
-```yaml
-apiVersion: batch/v1
-kind: CronJob
+Create the prerequisites in the namespace where the CronJob will run:
+
+```sh
+kubectl -n vsfleet create configmap vsfleet-config --from-file=config.toml
+kubectl -n vsfleet create secret generic vsfleet-credentials \
+  --from-file=vsfleet-prod=./secrets/vsfleet-prod
+kubectl -n vsfleet create -f - <<'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
 metadata:
-  name: vsfleet-assessment
+  name: vsfleet-data
 spec:
-  schedule: "0 2 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          restartPolicy: OnFailure
-          containers:
-            - name: vsfleet
-              image: ghcr.io/easonliuuuuu/vsfleet:v0.5.0
-              args: ["assessment", "run", "--all-contexts", "--label", "nightly"]
-              env:
-                - name: VSFLEET_CONFIG
-                  value: /etc/vsfleet/config.toml
-                - name: VSFLEET_HISTORY_DB
-                  value: /var/lib/vsfleet/history.db
-              volumeMounts:
-                - name: config
-                  mountPath: /etc/vsfleet
-                  readOnly: true
-                - name: credentials
-                  mountPath: /run/secrets
-                  readOnly: true
-                - name: data
-                  mountPath: /var/lib/vsfleet
-          volumes:
-            - name: config
-              configMap:
-                name: vsfleet-config
-            - name: credentials
-              secret:
-                secretName: vsfleet-credentials
-            - name: data
-              persistentVolumeClaim:
-                claimName: vsfleet-data
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+EOF
+kubectl -n vsfleet apply -f deploy/kubernetes/cronjob.yaml
 ```
 
-The Secret key should match the `file:` path in `config.toml`, for example
-`vsfleet-prod` mounted at `/run/secrets/vsfleet-prod`. Set `SSL_CERT_FILE` and
-mount another PEM file when the vCenter uses a private CA.
+The Secret key must match the `file:` path in `config.toml`; the command above
+mounts `vsfleet-prod` at `/run/secrets/vsfleet-prod`. Set `SSL_CERT_FILE` and
+mount another PEM file when the vCenter uses a private CA. The CronJob template
+is exercised on every pull request against two private, synthetic `vcsim`
+Services in an ephemeral Kubernetes cluster; it never contacts production
+vCenters.
 
 ## Signature verification
 

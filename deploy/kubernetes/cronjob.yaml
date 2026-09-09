@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: vsfleet-assessment
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            fsGroup: 65532
+            fsGroupChangePolicy: OnRootMismatch
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: vsfleet
+              image: ghcr.io/easonliuuuuu/vsfleet:v0.5.0
+              imagePullPolicy: IfNotPresent
+              args: ["--all-contexts", "-o", "json", "assessment", "run", "--label", "nightly"]
+              env:
+                - name: VSFLEET_CONFIG
+                  value: /etc/vsfleet/config.toml
+                - name: VSFLEET_HISTORY_DB
+                  value: /var/lib/vsfleet/history.db
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsGroup: 65532
+                runAsNonRoot: true
+                runAsUser: 65532
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 1
+                  memory: 512Mi
+              volumeMounts:
+                - name: config
+                  mountPath: /etc/vsfleet
+                  readOnly: true
+                - name: credentials
+                  mountPath: /run/secrets
+                  readOnly: true
+                - name: data
+                  mountPath: /var/lib/vsfleet
+          volumes:
+            - name: config
+              configMap:
+                name: vsfleet-config
+            - name: credentials
+              secret:
+                secretName: vsfleet-credentials
+            - name: data
+              persistentVolumeClaim:
+                claimName: vsfleet-data

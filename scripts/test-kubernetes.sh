@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Validate the public Kubernetes CronJob contract against two isolated vcsim
+# Services. The caller creates the kind cluster and loads both local images.
+set -Eeuo pipefail
+
+namespace="${VSFLEET_K8S_NAMESPACE:-vsfleet-e2e}"
+debug_dir="${VSFLEET_K8S_DEBUG_DIR:-$(mktemp -d)}"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+mkdir -p "$debug_dir"
+
+collect_debug() {
+  kubectl -n "$namespace" get all,configmap,secret,pvc,endpointslices -o yaml >"$debug_dir/resources.yaml" 2>&1 || true
+  kubectl -n "$namespace" get events --sort-by=.lastTimestamp >"$debug_dir/events.txt" 2>&1 || true
+  while IFS= read -r pod; do
+    kubectl -n "$namespace" describe pod "$pod" >"$debug_dir/$pod.describe.txt" 2>&1 || true
+    kubectl -n "$namespace" logs "$pod" --all-containers --prefix >"$debug_dir/$pod.log" 2>&1 || true
+  done < <(kubectl -n "$namespace" get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+}
+trap collect_debug EXIT
+
+run_job() {
+  local name="$1"
+  kubectl -n "$namespace" create job --from=cronjob/vsfleet-assessment "$name"
+}
+
+job_log() {
+  kubectl -n "$namespace" logs "job/$1"
+}
+
+wait_complete() {
+  kubectl -n "$namespace" wait --for=condition=complete "job/$1" --timeout=3m
+}
+
+wait_failed() {
+  kubectl -n "$namespace" wait --for=condition=failed "job/$1" --timeout=3m
+}
+
+wait_for_no_ready_endpoints() {
+  local service="$1"
+  local ready=1
+  for _ in {1..30}; do
+    ready="$(kubectl -n "$namespace" get endpointslices -l "kubernetes.io/service-name=$service" -o json | jq '[.items[].endpoints[]? | select(.conditions.ready == true)] | length')"
+    if [[ "$ready" == "0" ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  printf 'service %s still has %s ready endpoint(s) after scale-down\n' "$service" "$ready" >&2
+  return 1
+}
+
+kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f "$repo_root/tests/kubernetes/storage-pv.yaml"
+kubectl -n "$namespace" apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: vsfleet-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 64Mi
+  storageClassName: ""
+  volumeName: vsfleet-e2e-history
+EOF
+kubectl -n "$namespace" wait --for=jsonpath='{.status.phase}'=Bound pvc/vsfleet-data --timeout=90s
+kubectl -n "$namespace" create configmap vsfleet-config --from-file=config.toml="$repo_root/tests/kubernetes/config.toml"
+kubectl -n "$namespace" create secret generic vsfleet-credentials --from-literal=vsfleet-vcsim=vsfleet-vcsim-password
+kubectl -n "$namespace" apply -f "$repo_root/tests/kubernetes/vcsim.yaml"
+kubectl -n "$namespace" rollout status deployment/vsfleet-vcsim-prod --timeout=2m
+kubectl -n "$namespace" rollout status deployment/vsfleet-vcsim-edge --timeout=2m
+
+kubectl -n "$namespace" apply -f "$repo_root/deploy/kubernetes/cronjob.yaml"
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type merge -p '{"spec":{"suspend":true}}'
+kubectl -n "$namespace" set image cronjob/vsfleet-assessment vsfleet=vsfleet:ci-test
+
+# The checked-in workload must retain its non-root, read-only security contract.
+kubectl -n "$namespace" get cronjob vsfleet-assessment -o json | jq -e '
+  .spec.jobTemplate.spec.template.spec as $pod |
+  ($pod.securityContext.fsGroup == 65532) and
+  any($pod.containers[];
+    .name == "vsfleet" and
+    .securityContext.runAsNonRoot == true and
+    .securityContext.readOnlyRootFilesystem == true and
+    .securityContext.allowPrivilegeEscalation == false and
+    (.securityContext.capabilities.drop | index("ALL") != null)
+  )
+' >/dev/null
+
+run_job vsfleet-complete
+wait_complete vsfleet-complete
+job_log vsfleet-complete | jq -e '.status == "complete" and .requested_contexts == 2 and .successful_contexts == 2' >/dev/null
+
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"template":{"spec":{"containers":[{"name":"vsfleet","args":["-o","json","assessment","list"]}]}}}}}}'
+run_job vsfleet-history
+wait_complete vsfleet-history
+job_log vsfleet-history | jq -e 'length >= 1 and any(.[]; .status == "complete")' >/dev/null
+
+kubectl -n "$namespace" scale deployment/vsfleet-vcsim-edge --replicas=0
+kubectl -n "$namespace" rollout status deployment/vsfleet-vcsim-edge --timeout=90s
+wait_for_no_ready_endpoints vsfleet-vcsim-edge
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"vsfleet","args":["--timeout","5s","--all-contexts","-o","json","assessment","run","--fail-on-partial"]}]}}}}}}'
+run_job vsfleet-partial
+wait_failed vsfleet-partial
+
+partial_pod="$(kubectl -n "$namespace" get pods -l job-name=vsfleet-partial -o jsonpath='{.items[0].metadata.name}')"
+kubectl -n "$namespace" get pod "$partial_pod" -o json | jq -e '
+  [.status.containerStatuses[] | select(.name == "vsfleet") | .state.terminated.exitCode] | index(3)
+' >/dev/null
+job_log vsfleet-partial | jq -e '.status == "partial" and .requested_contexts == 2 and .successful_contexts == 1' >/dev/null
+
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"vsfleet","args":["-o","json","assessment","readiness","latest"]}]}}}}}}'
+run_job vsfleet-readiness
+wait_complete vsfleet-readiness
+job_log vsfleet-readiness | jq -e '.verdict != "ready" and (.unresolved | length) > 0' >/dev/null
+
+printf 'Kubernetes end-to-end checks passed; debug output: %s\n' "$debug_dir"

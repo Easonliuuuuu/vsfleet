@@ -1,0 +1,8 @@
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:1c2c046bc09ed40fad370b599a0b1ae7987f55b01e247cf27a7c27cd97e5bbc7
+
+# The Kubernetes integration fixture builds this binary alongside the product
+# image. It is intentionally CI-only: production images contain only vsfleet.
+COPY --chmod=0555 linux/amd64/vsfleet-vcsim /usr/bin/vsfleet-vcsim
+
+USER 65532:65532
+ENTRYPOINT ["/usr/bin/vsfleet-vcsim"]

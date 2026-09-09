@@ -887,7 +887,7 @@ func (m *Model) changesListHeight() int {
 }
 
 // scrollChangesIntoView keeps changeCursor's row inside the window
-// renderChangeList draws, the same job scrollIntoView does for the browse
+// renderScopeStream draws, the same job scrollIntoView does for the browse
 // table's m.offset.
 func (m *Model) scrollChangesIntoView(n int) {
 	h := m.changesListHeight() - 1 // the list's own heading claims one row
@@ -921,37 +921,9 @@ func (m *Model) historySplitWidth() int {
 	return w
 }
 
-// renderChangeList renders the heading plus as many rows as fit height,
-// starting from m.changeOffset, at the given width. It is used both for the
-// single-pane list and for the split layout's narrower left column.
-func (m *Model) renderChangeList(rows []historyRow, width, height int) []string {
-	t := m.theme
-	changeW, nameW, kindW, ctxW, detailW := historyColumnWidths(width)
-	heading := "  " + pad("CHANGE", changeW, false) + " " + pad("NAME", nameW, false) + " " + pad("KIND", kindW, false) + " " + pad("vCENTER", ctxW, false)
-	if detailW > 0 {
-		heading += " " + pad("DETAIL", detailW, false)
-	}
-	lines := []string{t.header.Render(truncate(heading, width))}
-	for i := m.changeOffset; i < len(rows) && len(lines) < height; i++ {
-		r := rows[i]
-		line := "  " + pad(r.change, changeW, false) + " " + pad(r.label, nameW, false) + " " + pad(r.kind, kindW, false) + " " + pad(r.context, ctxW, false)
-		if detailW > 0 {
-			line += " " + pad(r.detail, detailW, false)
-		}
-		line = truncate(line, width)
-		if i == m.changeCursor {
-			line = t.focused.Render(line)
-		} else {
-			line = t.text.Render(line)
-		}
-		lines = append(lines, line)
-	}
-	return lines
-}
-
 // joinSideBySide pads two blocks of lines to fixed widths and joins them
-// with a vertical rule, for the wide-terminal split between the Changes list
-// and its inspector.
+// with a vertical rule, for the wide-terminal split between the change
+// stream and its inspector.
 func joinSideBySide(t theme, left, right []string, leftW, rightW, height int) []string {
 	rule := t.rule.Render("│")
 	out := make([]string, height)
@@ -966,34 +938,6 @@ func joinSideBySide(t theme, left, right []string, leftW, rightW, height int) []
 		out[i] = pad(l, leftW, false) + " " + rule + " " + pad(r, rightW, false)
 	}
 	return out
-}
-
-// historyColumnWidths sizes the Changes list to the terminal: CHANGE, KIND
-// and vCENTER hold their content at any reasonable width, NAME takes what is
-// left up to a readable cap, and DETAIL — the per-row before/after preview —
-// only appears once there is genuine room for it rather than truncating
-// everything else to force it in.
-func historyColumnWidths(width int) (changeW, nameW, kindW, ctxW, detailW int) {
-	changeW, kindW, ctxW = 17, 10, 12
-	if width < 70 {
-		// Below single-pane comfort — also what the split layout's narrower
-		// list column always lands in — CHANGE/KIND/vCENTER give up their
-		// full-word room first, since NAME is what an operator scans for.
-		changeW, kindW, ctxW = 10, 8, 10
-	}
-	avail := width - 2 - changeW - 1 - kindW - 1 - ctxW - 1
-	nameW = avail
-	if nameW > 34 {
-		detailW = nameW - 34 - 1
-		nameW = 34
-	}
-	if nameW < 8 {
-		nameW = 8
-	}
-	if detailW < 10 {
-		detailW = 0
-	}
-	return
 }
 
 func (m *Model) viewHistoryHubRuns() []string {

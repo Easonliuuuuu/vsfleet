@@ -29,10 +29,14 @@ job_log() {
 }
 
 job_json() {
-  # A partial assessment reports the failed context before emitting its JSON
-  # result. Keep that diagnostic in the pod logs, but pass only the JSON value
-  # to the contract assertions below.
-  job_log "$1" | sed -n '/^[[:space:]]*[{[]/,$p'
+  # Kubernetes combines stdout and stderr. A partial assessment's expected
+  # diagnostics can therefore land before or inside its JSON result. Keep them
+  # in the pod logs, but remove just those known forms for the JSON assertions.
+  job_log "$1" | awk '
+    /^✕ / || /^vsfleet: / { next }
+    /^[[:space:]]*(\{|\[)/ { json = 1 }
+    json { print }
+  '
 }
 
 wait_complete() {

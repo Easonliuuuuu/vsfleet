@@ -28,6 +28,13 @@ job_log() {
   kubectl -n "$namespace" logs "job/$1"
 }
 
+job_json() {
+  # A partial assessment reports the failed context before emitting its JSON
+  # result. Keep that diagnostic in the pod logs, but pass only the JSON value
+  # to the contract assertions below.
+  job_log "$1" | sed -n '/^[[:space:]]*[{[]/,$p'
+}
+
 wait_complete() {
   local name="$1"
   local failed
@@ -111,12 +118,12 @@ kubectl -n "$namespace" patch cronjob vsfleet-assessment --type merge -p '{"spec
 
 run_job vsfleet-complete
 wait_complete vsfleet-complete
-job_log vsfleet-complete | jq -e '.status == "complete" and .requested_contexts == 2 and .successful_contexts == 2' >/dev/null
+job_json vsfleet-complete | jq -e '.status == "complete" and .requested_contexts == 2 and .successful_contexts == 2' >/dev/null
 
 kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"template":{"spec":{"containers":[{"name":"vsfleet","args":["-o","json","assessment","list"]}]}}}}}}'
 run_job vsfleet-history
 wait_complete vsfleet-history
-job_log vsfleet-history | jq -e 'length >= 1 and any(.[]; .status == "complete")' >/dev/null
+job_json vsfleet-history | jq -e 'length >= 1 and any(.[]; .status == "complete")' >/dev/null
 
 kubectl -n "$namespace" scale deployment/vsfleet-vcsim-edge --replicas=0
 kubectl -n "$namespace" rollout status deployment/vsfleet-vcsim-edge --timeout=90s
@@ -129,11 +136,11 @@ partial_pod="$(kubectl -n "$namespace" get pods -l job-name=vsfleet-partial -o j
 kubectl -n "$namespace" get pod "$partial_pod" -o json | jq -e '
   [.status.containerStatuses[] | select(.name == "vsfleet") | .state.terminated.exitCode] | index(3)
 ' >/dev/null
-job_log vsfleet-partial | jq -e '.status == "partial" and .requested_contexts == 2 and .successful_contexts == 1' >/dev/null
+job_json vsfleet-partial | jq -e '.status == "partial" and .requested_contexts == 2 and .successful_contexts == 1' >/dev/null
 
 kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"vsfleet","args":["-o","json","assessment","readiness","latest"]}]}}}}}}'
 run_job vsfleet-readiness
 wait_complete vsfleet-readiness
-job_log vsfleet-readiness | jq -e '.verdict != "ready" and (.unresolved | length) > 0' >/dev/null
+job_json vsfleet-readiness | jq -e '.verdict != "ready" and (.unresolved | length) > 0' >/dev/null
 
 printf 'Kubernetes end-to-end checks passed; debug output: %s\n' "$debug_dir"

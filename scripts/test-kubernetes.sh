@@ -29,7 +29,22 @@ job_log() {
 }
 
 wait_complete() {
-  kubectl -n "$namespace" wait --for=condition=complete "job/$1" --timeout=3m
+  local name="$1"
+  local failed
+  for _ in {1..90}; do
+    if kubectl -n "$namespace" get "job/$name" -o json | jq -e 'any(.status.conditions[]?; .type == "Complete" and .status == "True")' >/dev/null; then
+      return 0
+    fi
+    failed="$(kubectl -n "$namespace" get "job/$name" -o json | jq '[.status.conditions[]? | select(.type == "Failed" and .status == "True")] | length')"
+    if [[ "$failed" != "0" ]]; then
+      kubectl -n "$namespace" describe "job/$name" >&2 || true
+      kubectl -n "$namespace" logs "job/$name" >&2 || true
+      return 1
+    fi
+    sleep 2
+  done
+  printf 'job %s did not complete within 3m\n' "$name" >&2
+  return 1
 }
 
 wait_failed() {
@@ -88,6 +103,11 @@ kubectl -n "$namespace" get cronjob vsfleet-assessment -o json | jq -e '
     (.securityContext.capabilities.drop | index("ALL") != null)
   )
 ' >/dev/null
+
+# Keep failed pods for the CI collector. Production retains the checked-in
+# OnFailure retry policy; this ephemeral assertion job should expose its first
+# failure immediately.
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type merge -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never"}}}}}}'
 
 run_job vsfleet-complete
 wait_complete vsfleet-complete

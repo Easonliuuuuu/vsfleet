@@ -566,14 +566,26 @@ type Model struct {
 	historyCapacityReport *assessment.CapacityReport
 	historyHealth         *health.Report
 	historyHealthErr      error
-	runEditInput          textinput.Model
-	runEditKind           string
-	runEditRunID          int64
-	timeline              []assessment.VMHistoryEvent
-	timelineCursor        int
-	timelineOffset        int
-	timelineAll           bool
-	timelineQuery         string
+	// historyCoverage is which vCenters each stored run actually reached,
+	// keyed by run ID then context name with the collection status as the
+	// value. The Changes pane draws it as a matrix under the run axis: a
+	// narrower capture is the commonest reason a diff reads as mass
+	// deletion, and a row of misses says so before the counts do.
+	historyCoverage map[int64]map[string]string
+	// scrubOffset is the newest run visible on the run axis, as an index
+	// into runs (which is newest-first), and scrubHandle is which end of the
+	// comparison — "b" or "t" — the arrow keys move.
+	scrubOffset    int
+	scrubHandle    string
+	impactFilter   impact
+	runEditInput   textinput.Model
+	runEditKind    string
+	runEditRunID   int64
+	timeline       []assessment.VMHistoryEvent
+	timelineCursor int
+	timelineOffset int
+	timelineAll    bool
+	timelineQuery  string
 	// detailFrom is the screen the detail pane was opened from, so esc goes
 	// back to the search results rather than always to the table.
 	detailFrom mode
@@ -1419,7 +1431,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.runs, m.historyErr = msg.runs, msg.err
 		if m.historyErr == nil {
 			m.loadDefaultHistoryDiff()
-			return m, m.historyDiffCommand()
+			m.centreScrubWindow()
+			return m, tea.Batch(m.historyDiffCommand(), loadHistoryCoverageCmd(m.ctx, m.assessment, m.runs))
+		}
+		return m, nil
+	case historyCoverageMsg:
+		// A coverage read that fails is not worth interrupting the pane for:
+		// the matrix collapses to "coverage loading…" and every other band
+		// still answers. The diff's own coverage warnings remain.
+		if msg.err == nil {
+			m.historyCoverage = msg.coverage
 		}
 		return m, nil
 	case historyDiffMsg:

@@ -45,12 +45,66 @@ func TestChangesRunPickerSelectsAnotherBaseline(t *testing.T) {
 	if m.mode != modeChanges || m.targetRun == 0 || m.baseRun == 0 {
 		t.Fatalf("changes state: mode=%v base=%d target=%d", m.mode, m.baseRun, m.targetRun)
 	}
-	press(t, m, "b", "down", "enter")
+	// "b" makes the baseline the end the axis moves; "←" walks it one run
+	// older. The pane never leaves the screen to do it — that full-screen
+	// detour is what the axis replaces.
+	press(t, m, "b", "left")
 	if m.mode != modeChanges || m.baseRun == m.targetRun {
-		t.Fatalf("picker did not select a distinct baseline: mode=%v base=%d target=%d", m.mode, m.baseRun, m.targetRun)
+		t.Fatalf("axis did not select a distinct baseline: mode=%v base=%d target=%d", m.mode, m.baseRun, m.targetRun)
 	}
 	if m.baseRun != 1 {
 		t.Fatalf("base run=%d, want oldest run 1", m.baseRun)
+	}
+	if m.changeDiff == nil || m.changeDiff.Base.ID != 1 {
+		t.Fatalf("axis did not re-diff against the new baseline: diff=%+v", m.changeDiff)
+	}
+	// "R" is still the way to reach a run the axis window is nowhere near,
+	// and it opens the picker for whichever end is active.
+	press(t, m, "R")
+	if m.mode != modeHistoryRuns || m.pickerRole != "base" {
+		t.Fatalf("R did not open the run picker for the active end: mode=%v role=%q", m.mode, m.pickerRole)
+	}
+	press(t, m, "up", "enter")
+	if m.mode != modeChanges || m.baseRun != 2 {
+		t.Fatalf("picker did not select the run above: mode=%v base=%d", m.mode, m.baseRun)
+	}
+}
+
+// TestChangesAxisStepsOverTheOtherEnd pins the one move the axis must refuse
+// to make: walking an end onto the run the other end is already on, which
+// would diff an assessment against itself.
+func TestChangesAxisStepsOverTheOtherEnd(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	cc := &config.Context{Name: "prod", Endpoint: "https://prod", Username: "user"}
+	for i := 0; i < 3; i++ {
+		when := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
+		run, err := store.StartRun(context.Background(), "test", []*config.Context{cc}, when)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success"}, when); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.FinishRun(context.Background(), run.ID, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	press(t, m, "H")
+	// Default span is #2 → #3. Moving the target one run older would land it
+	// on the baseline, so it steps past to #1 instead — and then, with no
+	// older run left, stays put.
+	press(t, m, "t", "left")
+	if m.targetRun != 1 || m.baseRun != 2 {
+		t.Fatalf("target did not step over the baseline: base=%d target=%d", m.baseRun, m.targetRun)
+	}
+	press(t, m, "left")
+	if m.targetRun != 1 {
+		t.Fatalf("target moved past the oldest run: target=%d", m.targetRun)
 	}
 }
 
@@ -452,7 +506,7 @@ func TestTimelineHeaderWidthSafeAtMinimumTerminalWidth(t *testing.T) {
 func TestHistoryHealthPaneLoadsLatestAssessment(t *testing.T) {
 	store := oneVMDiffStore(t)
 	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
-	press(t, m, "H", "right", "right", "right")
+	press(t, m, "H", "tab", "tab", "tab")
 	if m.historyPane != historyPaneHealth || m.historyHealth == nil {
 		t.Fatalf("health pane did not load: pane=%d report=%+v err=%v", m.historyPane, m.historyHealth, m.historyHealthErr)
 	}

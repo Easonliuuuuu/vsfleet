@@ -122,8 +122,42 @@ type historyHealthMsg struct {
 	err    error
 }
 
+// historyCoverageMsg carries which vCenters each run reached. It is loaded
+// once per run list rather than per diff: the coverage matrix draws every run
+// on the axis, not only the two being compared.
+type historyCoverageMsg struct {
+	coverage map[int64]map[string]string
+	err      error
+}
+
 func loadHistoryRunsCmd(ctx context.Context, service *assessment.Service) tea.Cmd {
 	return func() tea.Msg { runs, err := service.Runs(ctx); return historyRunsMsg{runs: runs, err: err} }
+}
+
+// coverageRunLimit bounds how many runs the coverage matrix reads. The axis
+// can only draw a few dozen cells on any real terminal, and one query per run
+// is not worth paying for runs nothing will ever show.
+const coverageRunLimit = 40
+
+func loadHistoryCoverageCmd(ctx context.Context, service *assessment.Service, runs []assessment.Run) tea.Cmd {
+	return func() tea.Msg {
+		coverage := make(map[int64]map[string]string, len(runs))
+		for i, run := range runs {
+			if i >= coverageRunLimit {
+				break
+			}
+			contexts, err := service.ContextRuns(ctx, run.ID)
+			if err != nil {
+				return historyCoverageMsg{err: err}
+			}
+			byName := make(map[string]string, len(contexts))
+			for _, c := range contexts {
+				byName[c.Name] = c.VMStatus
+			}
+			coverage[run.ID] = byName
+		}
+		return historyCoverageMsg{coverage: coverage}
+	}
 }
 
 func loadHistoryDiffCmd(ctx context.Context, service *assessment.Service, base, target int64) tea.Cmd {

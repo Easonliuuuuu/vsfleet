@@ -16,7 +16,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/vsfleet.png">
-    <img src="docs/assets/vsfleet.gif" alt="vsfleet inspecting VM and vApp inventory across three vCenters, widening a filter into an estate-wide search, diagnosing an unavailable site, and reviewing assessment changes, trends, and runs" width="1200">
+    <img src="docs/assets/vsfleet.gif" alt="vsfleet ranking assessment changes by migration impact across a run axis, reviewing stored runs and the read-only health verdict, then inspecting VM and vApp inventory across three vCenters, widening a filter into an estate-wide search, and diagnosing an unavailable site" width="1200">
   </picture>
 </p>
 

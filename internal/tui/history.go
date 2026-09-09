@@ -26,6 +26,10 @@ func (m *Model) enterChanges() tea.Cmd {
 	m.filter.Blur()
 	m.changeCursor, m.changeOffset = 0, 0
 	m.offset = 0
+	m.scrubOffset = 0
+	m.scrubHandle = "t"
+	m.impactFilter = impactAll
+	m.historyCoverage = nil
 	m.historyHealth = nil
 	m.historyHealthErr = nil
 	if m.assessment == nil {
@@ -158,7 +162,7 @@ func (m *Model) viewComparisonBar(d *assessment.Diff) []string {
 	t := m.theme
 	lines := []string{
 		"  " + t.accent.Render("b") + " " + t.dim.Render("baseline") + "  " + comparisonRunLine(t, d.Base, "", m.width),
-		"  " + t.accent.Render("t") + " " + t.dim.Render("target ") + "  " + comparisonRunLine(t, d.Target, formatInterval(d.Target.StartedAt.Sub(d.Base.StartedAt)), m.width),
+		"  " + t.accent.Render("t") + " " + t.dim.Render("target  ") + "  " + comparisonRunLine(t, d.Target, formatInterval(d.Target.StartedAt.Sub(d.Base.StartedAt)), m.width),
 	}
 	missingTarget, missingBaseline := coverageGaps(d)
 	if len(missingTarget) > 0 {
@@ -174,7 +178,7 @@ func (m *Model) viewComparisonBar(d *assessment.Diff) []string {
 	if len(missingTarget) == 0 && len(missingBaseline) == 0 && d.Base.SuccessfulContexts != d.Target.SuccessfulContexts {
 		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! baseline covered %s, target covered %s — the counts below are not a full-estate comparison", vCenterCount(d.Base.SuccessfulContexts), vCenterCount(d.Target.SuccessfulContexts))))
 	}
-	for _, note := range coverageNotes(d) {
+	for _, note := range condenseCoverageNotes(coverageNotes(d)) {
 		lines = append(lines, "  "+t.dim.Render("· "+note))
 	}
 	for i, line := range lines {
@@ -280,6 +284,43 @@ func coverageNotes(d *assessment.Diff) []string {
 	return out
 }
 
+// condenseCoverageNotes folds the per-kind "was not recorded" notes into one
+// line per side. An estate whose runs predate host, cluster, datastore,
+// resource-pool and dvswitch collection produced ten separate lines here,
+// which pushed the changes themselves off a short terminal — the same ten
+// facts fit on one line each, named by kind.
+func condenseCoverageNotes(notes []string) []string {
+	const suffix = " collection was not recorded in "
+	kinds := map[string][]string{}
+	var scopes, other []string
+	for _, note := range notes {
+		i := strings.Index(note, suffix)
+		if i < 0 {
+			other = append(other, note)
+			continue
+		}
+		kind, scope := note[:i], note[i+len(suffix):]
+		if _, seen := kinds[scope]; !seen {
+			scopes = append(scopes, scope)
+		}
+		kinds[scope] = append(kinds[scope], kind)
+	}
+	sort.Strings(scopes)
+	for _, scope := range scopes {
+		sort.Strings(kinds[scope])
+	}
+	// A ledger that predates a collection is missing it on both sides, which
+	// is one fact, not two.
+	if len(scopes) == 2 && strings.Join(kinds[scopes[0]], ",") == strings.Join(kinds[scopes[1]], ",") {
+		return append([]string{"not collected in either run: " + strings.Join(kinds[scopes[0]], ", ")}, other...)
+	}
+	out := make([]string, 0, len(scopes)+len(other))
+	for _, scope := range scopes {
+		out = append(out, "not collected in the "+scope+": "+strings.Join(kinds[scope], ", "))
+	}
+	return append(out, other...)
+}
+
 // formatInterval renders the gap between two runs the way an operator would
 // say it out loud: minutes below an hour, hours and minutes below a day,
 // whole days and hours beyond that.
@@ -359,7 +400,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	rows := m.changeRows()
+	rows := m.scopeRows()
 	switch {
 	case key.Matches(msg, m.keys.PrevPane):
 		m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
@@ -367,17 +408,14 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.NextPane):
 		m.historyPane = historyPaneTrends
 		return nil
-	case key.Matches(msg, m.keys.History):
-		m.mode = modeBrowse
-		m.filter.Placeholder = filterPlaceholder
-	case key.Matches(msg, m.keys.Back):
+	case key.Matches(msg, m.keys.History), key.Matches(msg, m.keys.Back):
 		m.mode = modeBrowse
 		m.filter.Placeholder = filterPlaceholder
 	case key.Matches(msg, m.keys.Timeline):
 		if len(rows) == 0 || m.changeCursor >= len(rows) {
 			return nil
 		}
-		return m.openTimelineForRow(rows[m.changeCursor], modeChanges)
+		return m.openTimelineForRow(rows[m.changeCursor].lead(), modeChanges)
 	case key.Matches(msg, m.keys.Up):
 		m.changeCursor = clamp(m.changeCursor-1, 0, max(0, len(rows)-1))
 		m.scrollChangesIntoView(len(rows))
@@ -389,22 +427,38 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		return m.filter.Focus()
 	case key.Matches(msg, m.keys.Capture):
 		return m.captureCommand()
+	case key.Matches(msg, m.keys.ImpactFilter):
+		m.setImpactFilter(msg.String())
+		return nil
+	case key.Matches(msg, m.keys.ClipSpan):
+		return m.clipSpanToSharedCoverage()
+	case key.Matches(msg, m.keys.ScrubPrev):
+		return m.moveScrubHandle(1)
+	case key.Matches(msg, m.keys.ScrubNext):
+		return m.moveScrubHandle(-1)
 	case key.Matches(msg, m.keys.Swap):
 		if m.baseRun == 0 || m.targetRun == 0 {
 			return nil
 		}
 		m.baseRun, m.targetRun = m.targetRun, m.baseRun
 		return m.historyDiffCommand()
-	case key.Matches(msg, m.keys.Base), key.Matches(msg, m.keys.Target):
+	case key.Matches(msg, m.keys.Base):
+		m.scrubHandle = "b"
+		return nil
+	case key.Matches(msg, m.keys.Target):
+		m.scrubHandle = "t"
+		return nil
+	case key.Matches(msg, m.keys.PickRun):
+		// The axis is the everyday way to move an end; this is the way to
+		// reach a run the axis window is nowhere near.
 		if len(m.runs) == 0 {
 			return nil
 		}
-		if key.Matches(msg, m.keys.Base) {
+		m.pickerRole = "target"
+		m.runCursor = m.runIndex(m.targetRun)
+		if m.scrubHandle == "b" {
 			m.pickerRole = "base"
 			m.runCursor = m.runIndex(m.baseRun)
-		} else {
-			m.pickerRole = "target"
-			m.runCursor = m.runIndex(m.targetRun)
 		}
 		m.mode = modeHistoryRuns
 		return nil
@@ -417,6 +471,102 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// setImpactFilter narrows the stream to one class of change, or clears the
+// filter when the same key is pressed again or "0" is. The cursor returns to
+// the top because the row it was on is usually not in the new set.
+func (m *Model) setImpactFilter(key string) {
+	want := impactAll
+	switch key {
+	case "1":
+		want = impactBlocks
+	case "2":
+		want = impactSizing
+	case "3":
+		want = impactGrowth
+	case "4":
+		want = impactChurn
+	}
+	if want == m.impactFilter {
+		want = impactAll
+	}
+	m.impactFilter = want
+	m.changeCursor, m.changeOffset = 0, 0
+}
+
+// moveScrubHandle slides the active end of the comparison along the run axis.
+// step is in run-list indices, so +1 is one run older and -1 one run newer.
+// The other end is stepped over rather than landed on: a comparison of a run
+// with itself is not a state worth passing through.
+func (m *Model) moveScrubHandle(step int) tea.Cmd {
+	if len(m.runs) < 2 {
+		return nil
+	}
+	active, other := m.targetRun, m.baseRun
+	if m.scrubHandle == "b" {
+		active, other = m.baseRun, m.targetRun
+	}
+	i := m.runIndex(active) + step
+	if i >= 0 && i < len(m.runs) && m.runs[i].ID == other {
+		i += step
+	}
+	if i < 0 || i >= len(m.runs) {
+		return nil
+	}
+	if m.scrubHandle == "b" {
+		m.baseRun = m.runs[i].ID
+	} else {
+		m.targetRun = m.runs[i].ID
+	}
+	m.centreScrubWindow()
+	m.historyErr = nil
+	return m.historyDiffCommand()
+}
+
+// clipSpanToSharedCoverage moves the baseline to the newest older run that
+// reached exactly the vCenters the target reached. This is the fix for the
+// diff's loudest failure mode — a narrower capture reading as mass deletion —
+// as one key rather than as a warning the operator has to act on by hand.
+func (m *Model) clipSpanToSharedCoverage() tea.Cmd {
+	if m.historyCoverage == nil {
+		m.setMessage("coverage is still loading", false)
+		return nil
+	}
+	id, ok := clipTarget(m.runs, m.historyCoverage, m.targetRun)
+	if !ok {
+		m.setMessage("no older assessment covered the same vCenters as "+historyRunLabel(m.targetRun), true)
+		return nil
+	}
+	if id == m.baseRun {
+		m.setMessage("baseline "+historyRunLabel(id)+" already covers the same vCenters as the target", false)
+		return nil
+	}
+	m.baseRun = id
+	m.centreScrubWindow()
+	m.historyErr = nil
+	m.setMessage("clipped the span to "+historyRunLabel(id)+" — the newest baseline with the target's coverage", false)
+	return m.historyDiffCommand()
+}
+
+// centreScrubWindow scrolls the run axis so both ends of the comparison are
+// on it. An end you moved off the edge of the axis is an end you can no
+// longer see you are moving.
+func (m *Model) centreScrubWindow() {
+	if len(m.runs) == 0 {
+		return
+	}
+	_, count := scrubWindow(m.runs, m.scrubOffset, m.width)
+	newest := min(m.runIndex(m.baseRun), m.runIndex(m.targetRun))
+	oldest := max(m.runIndex(m.baseRun), m.runIndex(m.targetRun))
+	offset := m.scrubOffset
+	if newest < offset {
+		offset = newest
+	}
+	if oldest >= offset+count {
+		offset = oldest - count + 1
+	}
+	m.scrubOffset = clamp(offset, 0, max(0, len(m.runs)-count))
 }
 
 // openTimelineForRow opens the VM timeline for one Changes row, remembering
@@ -446,7 +596,7 @@ func (m *Model) openTimelineForRow(row historyRow, from mode) tea.Cmd {
 // previously advertised in the footer here but silently dropped by the
 // dispatch, so pressing it did nothing.
 func (m *Model) handleChangeDetailKey(msg tea.KeyMsg) tea.Cmd {
-	rows := m.changeRows()
+	rows := m.scopeRows()
 	switch {
 	case key.Matches(msg, m.keys.Back):
 		m.mode = modeChanges
@@ -460,7 +610,7 @@ func (m *Model) handleChangeDetailKey(msg tea.KeyMsg) tea.Cmd {
 		if len(rows) == 0 || m.changeCursor >= len(rows) {
 			return nil
 		}
-		return m.openTimelineForRow(rows[m.changeCursor], modeChangeDetail)
+		return m.openTimelineForRow(rows[m.changeCursor].lead(), modeChangeDetail)
 	}
 	return nil
 }
@@ -620,20 +770,58 @@ func (m *Model) viewChanges() []string {
 		return m.viewHistoryHubRuns()
 	}
 	t := m.theme
-	lines := []string{t.title.Render("Changes"), ""}
-	if m.capturing {
-		lines = append(lines, "  "+m.spin.View()+t.dim.Render("capturing VM inventory from "+captureScopeLabel(m.capturingStates())+"…"), "")
-	}
+	lines := m.changesHeaderLines()
 	if m.historyErr != nil {
 		return append(lines, "  "+t.warn.Render(m.historyErr.Error()), t.dim.Render("  press n to capture "+captureScopeLabel(m.inScope())))
 	}
 	if m.changeDiff == nil {
-		return append(lines, t.dim.Render("no comparable assessments"))
+		return append(lines, t.dim.Render("  no comparable assessments"))
 	}
-	d := m.changeDiff
-	lines = append(lines, m.viewComparisonBar(d)...)
-	lines = append(lines, "")
-	c := d.Counts
+	rows := m.scopeRows()
+	if len(rows) == 0 {
+		if m.impactFilter != impactAll {
+			return append(lines, t.dim.Render("  nothing in this span "+m.impactFilter.why()+" — 0 clears the filter"))
+		}
+		return append(lines, t.dim.Render("  no changes in the selected assessments"))
+	}
+	avail := m.changesListHeight()
+	// Above the split threshold the inspector that used to be a whole
+	// separate screen — Enter, look, Esc, repeat — sits beside the stream and
+	// follows the cursor. Below it, the stream keeps the full width and Enter
+	// still opens a full-screen inspector.
+	if splitW := m.historySplitWidth(); splitW > 0 {
+		rightW := m.width - splitW - 3
+		list := m.renderScopeStream(rows, splitW, avail)
+		var inspector []string
+		if m.changeCursor >= 0 && m.changeCursor < len(rows) {
+			inspector = m.scopeInspector(rows[m.changeCursor])
+		}
+		return append(lines, joinSideBySide(t, list, inspector, splitW, rightW, avail)...)
+	}
+	return append(lines, m.renderScopeStream(rows, m.width, avail)...)
+}
+
+// changesHeaderLines is everything above the change stream: the run axis, the
+// coverage under it, the identity of the two runs being compared, and the
+// counts. It is one function rather than inline rendering so the stream's
+// height budget is measured against exactly what was drawn, instead of an
+// arithmetic estimate that drifts every time a band gains a line.
+func (m *Model) changesHeaderLines() []string {
+	t := m.theme
+	var lines []string
+	if m.capturing {
+		lines = append(lines, "  "+m.spin.View()+t.dim.Render("capturing VM inventory from "+captureScopeLabel(m.capturingStates())+"…"))
+	}
+	// The capture-size row is the first thing to go on a short terminal: it
+	// is the only band on this screen that is decoration rather than an
+	// answer, since the counts below say what actually changed.
+	lines = append(lines, m.viewScrubber(m.width, m.bodyHeight() >= 18)...)
+	lines = append(lines, m.viewCoverage(m.width)...)
+	if m.changeDiff == nil {
+		return append(lines, "")
+	}
+	lines = append(lines, m.viewComparisonBar(m.changeDiff)...)
+	c := m.changeDiff.Counts
 	counts := strings.Join([]string{
 		countSegment(t, c.Vanished, "vanished", t.bad),
 		countSegment(t, c.Appeared, "appeared", t.ok),
@@ -642,27 +830,11 @@ func (m *Model) viewChanges() []string {
 		countSegment(t, c.Resources, "infra", t.warn),
 		countSegment(t, c.Snapshots, "snapshots", t.warn),
 	}, t.faint.Render("   "))
-	lines = append(lines, truncate("  "+counts, m.width), "")
-	rows := m.changeRows()
-	if len(rows) == 0 {
-		lines = append(lines, t.dim.Render("no changes in the selected assessments"))
-		return lines
+	lines = append(lines, truncate("  "+counts, m.width))
+	if m.impactFilter != impactAll {
+		lines = append(lines, truncate("  "+t.accent.Render(m.impactFilter.String())+t.dim.Render(" only — "+m.impactFilter.why()+" · 0 clears"), m.width))
 	}
-	avail := m.changesListHeight()
-	// Above the split threshold, the inspector that used to be a whole
-	// separate screen — Enter, look, Esc, repeat — now sits beside the list
-	// and follows the cursor. Below it, the list keeps the full width it has
-	// always had and Enter still opens a full-screen inspector.
-	if splitW := m.historySplitWidth(); splitW > 0 {
-		rightW := m.width - splitW - 3
-		list := m.renderChangeList(rows, splitW, avail)
-		var inspector []string
-		if m.changeCursor >= 0 && m.changeCursor < len(rows) {
-			inspector = m.historyInspector(rows[m.changeCursor])
-		}
-		return append(lines, joinSideBySide(t, list, inspector, splitW, rightW, avail)...)
-	}
-	return append(lines, m.renderChangeList(rows, m.width, avail)...)
+	return append(lines, "")
 }
 
 func (m *Model) viewHistoryHealth() []string {
@@ -705,22 +877,13 @@ func (m *Model) viewHistoryHealth() []string {
 	return scrollLines(lines, m.offset, m.bodyHeight())
 }
 
-// changesListHeight is how many rows renderChangeList can draw — its own
-// heading included — below the title, comparison bar, and counts line. It is
-// factored out of viewChanges so cursor movement can scroll the list into
-// view using the exact budget the view renders with, the way scrollIntoView
-// does for the browse table; without it, Up/Down could move the cursor past
-// what renderChangeList draws with no way to see where it went, silencing
-// the highlight the split's inspector otherwise gives no other cue for.
+// changesListHeight is how many rows the change stream can draw — its own
+// heading included — under the bands above it. It measures the rendered
+// header rather than re-deriving its height, so cursor movement scrolls
+// against the exact budget the view draws with; without it, Up/Down could
+// move the cursor past what is drawn with no way to see where it went.
 func (m *Model) changesListHeight() int {
-	lines := 2 // title, blank
-	if m.capturing {
-		lines += 2
-	}
-	if m.changeDiff != nil {
-		lines += len(m.viewComparisonBar(m.changeDiff)) + 3 // bar, blank, counts, blank
-	}
-	return max(1, m.bodyHeight()-lines)
+	return max(1, m.bodyHeight()-len(m.changesHeaderLines()))
 }
 
 // scrollChangesIntoView keeps changeCursor's row inside the window
@@ -1007,11 +1170,11 @@ func tuiSparkline(values []float64) string {
 // It renders the same content historyInspector puts in the split's right
 // column, full width and full height, reached by Enter instead of always on.
 func (m *Model) viewChangeDetail() []string {
-	rows := m.changeRows()
+	rows := m.scopeRows()
 	if m.changeCursor < 0 || m.changeCursor >= len(rows) {
 		return []string{m.theme.dim.Render("nothing selected")}
 	}
-	return scrollLines(m.historyInspector(rows[m.changeCursor]), 0, m.bodyHeight())
+	return scrollLines(m.scopeInspector(rows[m.changeCursor]), 0, m.bodyHeight())
 }
 
 // historyInspector is the detail for one Changes row: the summary already on

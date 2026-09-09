@@ -53,13 +53,28 @@ type keyMap struct {
 	Timeline    key.Binding
 	TimelineAll key.Binding
 
-	// PrevPane and NextPane move between the history hub's Changes, Trends and
-	// Runs panes. They exist so the history footer stops borrowing NextTab and
-	// PrevTab, whose "next kind"/"prev kind" labels describe the browse screen
-	// and are wrong here. They are also arrow-only: the hub handles the arrow
-	// keys alone, and "h" is already the timeline on that screen.
+	// PrevPane and NextPane move between the history hub's Changes, Trends,
+	// Runs and Health panes. They exist so the history footer stops borrowing
+	// NextTab and PrevTab, whose "next kind"/"prev kind" labels describe the
+	// browse screen and are wrong here. They are on tab and shift+tab rather
+	// than the arrows because the Changes pane's run axis is what the arrows
+	// move: on that screen ← and → are a scrubber, not a tab strip.
 	PrevPane key.Binding
 	NextPane key.Binding
+
+	// The next four belong to the Changes pane's run axis. ScrubPrev and
+	// ScrubNext move whichever end of the comparison is active, PickRun opens
+	// the full run list for it when the axis window is not where you want to
+	// go, and ClipSpan moves the baseline to the nearest older run that
+	// covered the same vCenters as the target — the one-key answer to a diff
+	// that reads as mass deletion because one site was dark.
+	ScrubPrev key.Binding
+	ScrubNext key.Binding
+	PickRun   key.Binding
+	ClipSpan  key.Binding
+	// ImpactFilter narrows the change stream to one class of change. "0"
+	// clears it, so the filter never becomes a state you cannot leave.
+	ImpactFilter key.Binding
 
 	// FindFiles and CopyPath belong to the datastore file browser. Both keys
 	// are free everywhere else, so neither has to be relabelled per screen
@@ -131,8 +146,16 @@ func defaultKeys() keyMap {
 		Swap:        key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "swap")),
 		Timeline:    key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "timeline")),
 		TimelineAll: key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all observations")),
-		PrevPane:    key.NewBinding(key.WithKeys("left"), key.WithHelp("←", "prev pane")),
-		NextPane:    key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "next pane")),
+		PrevPane:    key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("⇧tab", "prev pane")),
+		NextPane:    key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next pane")),
+
+		// Arrows only: "h" and "l" are the timeline and the browse screen's
+		// kind keys, and a scrubber that also fired those would be a trap.
+		ScrubPrev:    key.NewBinding(key.WithKeys("left"), key.WithHelp("←/→", "move end")),
+		ScrubNext:    key.NewBinding(key.WithKeys("right"), key.WithHelp("→", "newer run")),
+		PickRun:      key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "pick run")),
+		ClipSpan:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "clip to shared coverage")),
+		ImpactFilter: key.NewBinding(key.WithKeys("0", "1", "2", "3", "4"), key.WithHelp("1-4", "impact")),
 
 		FindFiles: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "find in datastore")),
 		CopyPath:  key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy datastore path")),
@@ -182,7 +205,11 @@ func (k keyMap) helpSections(demo bool) []helpSection {
 		// The changes screen puts its run-picker and capture bindings in the
 		// footer; keeping this section to one line preserves the compact help
 		// overlay at the minimum supported terminal height.
-		{"History", []key.Binding{k.History}},
+		// The Changes pane's own bindings stay in its footer rather than
+		// claiming a section here: this overlay has to fit the minimum
+		// supported terminal height, and a second history block pushes the
+		// Connection keys off the bottom of it.
+		{"History", []key.Binding{k.History, k.NextPane}},
 		{"Table", []key.Binding{k.Sort}},
 		{"Contexts screen (c)", ctxBindings},
 		{"Other", []key.Binding{k.Help, k.Quit}},
@@ -226,10 +253,10 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
 	case modeChanges:
-		if m.historyPane == historyPaneHealth {
-			return []key.Binding{k.Up, k.Down, k.PrevPane, k.NextPane, k.Capture, k.Back, k.Help, k.Quit}
+		if m.historyPane != historyPaneChanges {
+			return []key.Binding{k.Up, k.Down, k.NextPane, k.Capture, k.Back, k.Help, k.Quit}
 		}
-		return []key.Binding{k.Up, k.Down, k.PrevPane, k.NextPane, k.Base, k.Target, k.Swap, k.Capture, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.ScrubPrev, k.Base, k.Target, k.ClipSpan, k.ImpactFilter, k.NextPane, k.Capture, k.Back, k.Quit}
 	case modeChangeDetail:
 		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:

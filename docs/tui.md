@@ -133,12 +133,39 @@ member row is annotated with the context name.
 ## History workspace
 
 Press `H` to open the History hub, which contains Changes, Trends, Runs, and
-Health. Use `←`/`→` to switch panes. Health shows the migration verdict,
-categories, and default read-only findings for the latest stored assessment;
-`↑`/`↓` scroll the pane. Use `vsfleet health` when thresholds need tuning.
-Changes compares the newest two assessments; `b`
-and `t` choose a different baseline or target, and `Enter` opens a change. From
-change detail, `h` opens a VM timeline and `a` includes unchanged observations.
+Health. Use `Tab`/`Shift+Tab` to switch panes. Health shows the migration
+verdict, categories, and default read-only findings for the latest stored
+assessment; `↑`/`↓` scroll the pane. Use `vsfleet health` when thresholds need
+tuning.
+
+Changes opens on the newest two assessments and puts the stored runs on a run
+axis at the top of the pane, oldest to newest, with the two ends of the
+comparison marked `b` and `t`:
+
+| Action | Keys | Notes |
+| --- | --- | --- |
+| Choose which end moves | `b` / `t` | The active end is drawn in upper case |
+| Move that end | `←` / `→` | One run older or newer; the other end is stepped over |
+| Reach a distant run | `R` | Opens the full run list for the active end |
+| Swap the ends | `s` | |
+| Clip to shared coverage | `c` | Moves the baseline to the newest older run that reached the same vCenters as the target |
+| Filter by impact | `1`-`4`, `0` clears | blocks, sizing, growth, churn |
+
+Under the axis, a coverage matrix shows which vCenters each run actually
+reached — `●` reached, `✕` not compared, `·` no record. It collapses to a
+single line when every visible run saw the same vCenters, and appears in full
+when they did not: a run that could not reach a site is why a comparison
+quietly stops being estate-wide, and `c` is the one-key fix.
+
+The change stream below is ordered by what a change means for a migration
+rather than by object name. Anything that has to be dealt with before a
+cutover — a vanished VM or host, a snapshot older than 30 days, a changed
+migration configuration — is ranked first and is never rolled up. Identical
+changes elsewhere are rolled into one line with the shared name prefix and a
+count (`k8s-worker-0… 12 VMs`), and the inspector names every member. `Enter`
+opens a change on a narrow terminal; on a wide one the inspector is already
+beside the stream. From a change, `h` opens a VM timeline and `a` includes
+unchanged observations.
 
 Press `n` to capture the vCenter in scope. In Runs, `e` edits a label, `N` an
 operator note, and `p` toggles a pin. Captures run in the background while

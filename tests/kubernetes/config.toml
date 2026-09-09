@@ -1,0 +1,26 @@
+version = 1
+current_context = "vc-prod"
+
+[[contexts]]
+name = "vc-prod"
+endpoint = "https://vsfleet-vcsim-prod:8989"
+username = "operator@vsphere.local"
+credential = "file:/run/secrets/vsfleet-vcsim"
+
+[contexts.transport]
+type = "direct"
+
+[contexts.tls]
+mode = "insecure"
+
+[[contexts]]
+name = "vc-edge"
+endpoint = "https://vsfleet-vcsim-edge:8989"
+username = "operator@vsphere.local"
+credential = "file:/run/secrets/vsfleet-vcsim"
+
+[contexts.transport]
+type = "direct"
+
+[contexts.tls]
+mode = "insecure"

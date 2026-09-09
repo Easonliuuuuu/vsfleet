@@ -1,0 +1,16 @@
+# This hostPath PV is only for the disposable, single-node kind cluster used
+# by CI. Production installations should bind vsfleet-data to their own
+# StorageClass and backup policy.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: vsfleet-e2e-history
+spec:
+  capacity:
+    storage: 64Mi
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: ""
+  hostPath:
+    path: /var/lib/vsfleet-e2e-history
+    type: DirectoryOrCreate

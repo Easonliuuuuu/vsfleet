@@ -107,7 +107,9 @@ The maintained [CronJob template](https://github.com/Easonliuuuuu/vsfleet/blob/m
 uses the same ConfigMap, Secret, and history-volume contract as the container
 examples. It runs as the image's unprivileged UID/GID (`65532`), has a
 read-only root filesystem, drops Linux capabilities, and sets `fsGroup: 65532`
-so the mounted SQLite database is writable.
+so the mounted SQLite database is writable on storage drivers that honor pod
+ownership. For `hostPath` volumes, pre-create the directory with UID/GID
+`65532`; use a managed StorageClass for production history data.
 
 Create the prerequisites in the namespace where the CronJob will run:
 

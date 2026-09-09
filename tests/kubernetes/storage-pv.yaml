@@ -1,6 +1,7 @@
 # This hostPath PV is only for the disposable, single-node kind cluster used
-# by CI. Production installations should bind vsfleet-data to their own
-# StorageClass and backup policy.
+# by CI. Its path is pre-created for UID/GID 65532 by the workflow because
+# hostPath does not honor a Pod fsGroup. Production installations should bind
+# vsfleet-data to their own StorageClass and backup policy.
 apiVersion: v1
 kind: PersistentVolume
 metadata:

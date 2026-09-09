@@ -110,6 +110,13 @@ jobs:
       - name: Load local images into Kubernetes
         run: kind load docker-image --name vsfleet-ci vsfleet:ci-test vsfleet-vcsim:ci-test
 
+      # The e2e fixture uses a kind-only hostPath PV. Unlike normal CSI-backed
+      # volumes, hostPath does not apply the workload's fsGroup automatically.
+      - name: Prepare writable Kubernetes test storage
+        run: |
+          docker exec vsfleet-ci-control-plane mkdir -p /var/lib/vsfleet-e2e-history
+          docker exec vsfleet-ci-control-plane chown 65532:65532 /var/lib/vsfleet-e2e-history
+
       - name: Run Kubernetes end-to-end workload
         env:
           VSFLEET_K8S_DEBUG_DIR: ${{ runner.temp }}/kubernetes-debug

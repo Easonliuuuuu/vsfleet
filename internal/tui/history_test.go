@@ -563,7 +563,7 @@ func TestHistoryCaptureKeyIsPaneIndependent(t *testing.T) {
 	}
 	defer store.Close()
 
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store, Collector: &assessment.Collector{Store: store}}})
 	m.mode = modeChanges
 	// A populated run list is what used to make "n" ambiguous: the Runs pane
 	// read it as "edit this run's note".
@@ -658,10 +658,10 @@ func TestCaptureCredentialRequestIsScopedAndAttributed(t *testing.T) {
 	}
 	defer store.Close()
 
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store, Collector: &assessment.Collector{Store: store}}})
 	// captureCommand's own tea.Cmd is not run here — running it would resolve
-	// the capture immediately (the service carries no collector) and clear
-	// the very state this test inspects.
+	// the capture immediately (the collector carries no session manager) and
+	// clear the very state this test inspects.
 	if cmd := m.captureCommand(); cmd == nil {
 		t.Fatal("captureCommand returned nil with an assessment service configured")
 	}
@@ -705,7 +705,7 @@ func TestCaptureCredentialGateClosesOnCompletion(t *testing.T) {
 	}
 	defer store.Close()
 
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store, Collector: &assessment.Collector{Store: store}}})
 	if cmd := m.captureCommand(); cmd == nil {
 		t.Fatal("captureCommand returned nil with an assessment service configured")
 	}
@@ -730,5 +730,85 @@ func TestCaptureCredentialGateClosesOnCompletion(t *testing.T) {
 		}
 	default:
 		t.Fatal("the post-capture request was never answered")
+	}
+}
+
+// TestStoreOnlyServiceDoesNotAdvertiseOrEnterCapture pins issue #119: the demo
+// seeds a store-only assessment service (no collector), so the History hub must
+// neither offer the "n capture" action nor let a keypress enter a capturing
+// state that only a collector could leave.
+func TestStoreOnlyServiceDoesNotAdvertiseOrEnterCapture(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+	if m.canCapture() {
+		t.Fatal("a store-only service reported itself as capture-capable")
+	}
+	m.mode = modeChanges
+	m.runs = []assessment.Run{{ID: 1}, {ID: 2}}
+
+	for _, pane := range []int{historyPaneChanges, historyPaneRuns} {
+		m.historyPane = pane
+		for _, b := range defaultKeys().footerHints(m) {
+			if b.Help().Key == "n" {
+				t.Fatalf("pane %d footer still advertises the capture key", pane)
+			}
+		}
+	}
+
+	m.historyPane = historyPaneChanges
+	m.message = ""
+	press(t, m, "n")
+	if m.capturing {
+		t.Fatal("\"n\" entered the capturing state against a store-only service")
+	}
+	if m.message != "" {
+		t.Fatalf("\"n\" set a sticky progress message %q against a store-only service", m.message)
+	}
+	if m.historyErr == nil {
+		t.Fatal("\"n\" against a store-only service left no explanation on screen")
+	}
+
+	// The Changes error panel must not tell the operator to repeat a key that
+	// can never succeed here.
+	m.historyErr = errors.New("some earlier failure")
+	for _, line := range m.viewChanges() {
+		if strings.Contains(ansi.Strip(line), "press n to capture") {
+			t.Fatal("the Changes error panel still tells a store-only session to press n")
+		}
+	}
+}
+
+// TestCaptureErrorReplacesTheStickyProgressMessage pins the other half of
+// issue #119: a failed capture cleared m.capturing but left the footer stuck
+// on "capturing …" with no way back.
+func TestCaptureErrorReplacesTheStickyProgressMessage(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store, Collector: &assessment.Collector{Store: store}}})
+	if cmd := m.captureCommand(); cmd == nil {
+		t.Fatal("captureCommand returned nil with a capture-capable service")
+	}
+	if !strings.HasPrefix(m.message, "capturing ") {
+		t.Fatalf("capture did not set a progress message, got %q", m.message)
+	}
+
+	m.Update(historyCaptureMsg{err: errors.New("proxy connection refused")})
+	if m.capturing {
+		t.Fatal("a failed capture left the model in the capturing state")
+	}
+	if strings.HasPrefix(m.message, "capturing ") {
+		t.Fatalf("a failed capture left the sticky progress message %q", m.message)
+	}
+	if !strings.Contains(m.message, "proxy connection refused") {
+		t.Fatalf("the failure was not surfaced in the status line, got %q", m.message)
 	}
 }

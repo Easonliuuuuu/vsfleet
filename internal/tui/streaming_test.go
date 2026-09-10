@@ -53,7 +53,7 @@ func TestCaptureStartsItsOwnSpinnerTick(t *testing.T) {
 		t.Fatalf("open history store: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	m := newTestModel(t, b, Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, b, Options{Current: "prod", Assessment: &assessment.Service{Store: store, Collector: &assessment.Collector{Store: store}}})
 
 	cmd := m.captureCommand()
 	if cmd == nil {

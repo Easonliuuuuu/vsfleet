@@ -253,10 +253,17 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
 	case modeChanges:
-		if m.historyPane != historyPaneChanges {
-			return []key.Binding{k.Up, k.Down, k.NextPane, k.Capture, k.Back, k.Help, k.Quit}
+		// Capture is only offered when the service can actually run one; a
+		// store-only history (the demo) drops the "n" hint rather than
+		// advertising an action that always fails.
+		capture := []key.Binding{k.Capture}
+		if !m.canCapture() {
+			capture = nil
 		}
-		return []key.Binding{k.ScrubPrev, k.Base, k.Target, k.ClipSpan, k.ImpactFilter, k.NextPane, k.Capture, k.Back, k.Quit}
+		if m.historyPane != historyPaneChanges {
+			return append(append([]key.Binding{k.Up, k.Down, k.NextPane}, capture...), k.Back, k.Help, k.Quit)
+		}
+		return append(append([]key.Binding{k.ScrubPrev, k.Base, k.Target, k.ClipSpan, k.ImpactFilter, k.NextPane}, capture...), k.Back, k.Quit)
 	case modeChangeDetail:
 		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:

@@ -60,7 +60,11 @@ func (m *Model) loadDefaultHistoryDiff() {
 	if len(m.runs) < 2 {
 		m.changeDiff = nil
 		m.baseRun, m.targetRun = 0, 0
-		m.historyErr = fmt.Errorf("capture at least two assessments to compare")
+		if m.canCapture() {
+			m.historyErr = fmt.Errorf("capture at least two assessments to compare")
+		} else {
+			m.historyErr = fmt.Errorf("fewer than two stored assessments — nothing to compare")
+		}
 		return
 	}
 	// Runs are newest first. The newest pair is the useful default and is
@@ -643,6 +647,12 @@ func (m *Model) captureCommand() tea.Cmd {
 	if m.assessment == nil || m.capturing {
 		return nil
 	}
+	// A store-only service has nothing to capture with. Bail before touching
+	// m.capturing so the hub cannot enter a state only a collector can leave.
+	if !m.canCapture() {
+		m.historyErr = fmt.Errorf("capture is not available in this session — the stored assessments are read-only")
+		return nil
+	}
 	states := m.inScope()
 	if len(states) == 0 {
 		m.historyErr = fmt.Errorf("no vCenter in scope to capture")
@@ -780,7 +790,11 @@ func (m *Model) viewChanges() []string {
 	t := m.theme
 	lines := m.changesHeaderLines()
 	if m.historyErr != nil {
-		return append(lines, "  "+t.warn.Render(m.historyErr.Error()), t.dim.Render("  press n to capture "+captureScopeLabel(m.inScope())))
+		lines = append(lines, "  "+t.warn.Render(m.historyErr.Error()))
+		if m.canCapture() {
+			lines = append(lines, t.dim.Render("  press n to capture "+captureScopeLabel(m.inScope())))
+		}
+		return lines
 	}
 	if m.changeDiff == nil {
 		return append(lines, t.dim.Render("  no comparable assessments"))
@@ -950,7 +964,11 @@ func joinSideBySide(t theme, left, right []string, leftW, rightW, height int) []
 
 func (m *Model) viewHistoryHubRuns() []string {
 	t := m.theme
-	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first · e label · N note · p pin · n capture")}
+	hint := "  newest first · e label · N note · p pin"
+	if m.canCapture() {
+		hint += " · n capture"
+	}
+	lines := []string{t.title.Render("Runs"), "", t.dim.Render(hint)}
 	for i, r := range m.runs {
 		label := r.Label
 		if label == "" {

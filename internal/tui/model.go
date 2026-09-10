@@ -1487,6 +1487,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.historyErr = msg.err
+			// Replace the sticky "capturing …" progress note so the footer
+			// does not sit forever on an operation that has already failed.
+			m.setMessage("capture failed: "+msg.err.Error(), true)
 			return m, nil
 		}
 		m.setMessage(fmt.Sprintf("assessment %d saved (%s)", msg.run.ID, msg.run.Status), msg.run.Status == assessment.RunPartial)
@@ -1976,6 +1979,14 @@ func phaseForLoadError(err error) contextPhase {
 func (m *Model) setMessage(s string, bad bool) {
 	m.message = s
 	m.messageBad = bad
+}
+
+// canCapture reports whether the History hub can start a new capture. A
+// store-only assessment service (the demo's seeded history) can be browsed and
+// diffed but has no collector, so "n" must neither be advertised nor enter the
+// capturing state against it.
+func (m *Model) canCapture() bool {
+	return m.assessment != nil && m.assessment.CanCapture()
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {

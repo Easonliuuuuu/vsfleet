@@ -370,6 +370,9 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		closeStore()
 		return nil, nil, err
 	}
+	// No Collector: the presentation dials nothing, so it cannot run a live
+	// capture. Service.CanCapture reports false and the TUI hides the "n"
+	// action rather than offering a capture that always fails (issue #119).
 	return &assessment.Service{Store: store}, closeStore, nil
 }
 

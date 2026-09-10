@@ -90,8 +90,17 @@ func (s *Service) LatestExportDataForContext(ctx context.Context, contextName, v
 	}
 	return ExportData{}, fmt.Errorf("no stored assessment for context %q", contextName)
 }
+
+// CanCapture reports whether this service can create new assessments. A
+// store-only service — the demo's seeded history, or any read-only consumer —
+// can read, diff and report on assessments but has no collector to run a live
+// capture, so callers must not advertise or attempt one.
+func (s *Service) CanCapture() bool {
+	return s != nil && s.Collector != nil
+}
+
 func (s *Service) Capture(ctx context.Context, opts CaptureOptions) (Run, error) {
-	if s == nil || s.Collector == nil {
+	if !s.CanCapture() {
 		return Run{}, fmt.Errorf("assessment collector is not configured")
 	}
 	return s.Collector.Capture(ctx, opts)

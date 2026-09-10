@@ -45,6 +45,17 @@ func (m *Model) enterChanges() tea.Cmd {
 	)
 }
 
+// exitHistoryToBrowse returns to the browse table from anywhere in the History
+// hub, restoring every piece of browse-owned filter state that entering History
+// changed. Every History-exit path routes through here so a pane added later
+// cannot forget a field.
+func (m *Model) exitHistoryToBrowse() tea.Cmd {
+	m.mode = modeBrowse
+	m.historyPane = historyPaneChanges
+	m.filter.Placeholder = filterPlaceholder
+	return nil
+}
+
 func (m *Model) loadDefaultHistoryDiff() {
 	if len(m.runs) < 2 {
 		m.changeDiff = nil
@@ -372,9 +383,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 			// pane rather than only from Changes.
 			return m.captureCommand()
 		case key.Matches(msg, m.keys.Back):
-			m.mode = modeBrowse
-			m.historyPane = historyPaneChanges
-			return nil
+			return m.exitHistoryToBrowse()
 		case key.Matches(msg, m.keys.Up):
 			if m.historyPane == historyPaneRuns {
 				m.runCursor = clamp(m.runCursor-1, 0, max(0, len(m.runs)-1))
@@ -409,8 +418,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		m.historyPane = historyPaneTrends
 		return nil
 	case key.Matches(msg, m.keys.History), key.Matches(msg, m.keys.Back):
-		m.mode = modeBrowse
-		m.filter.Placeholder = filterPlaceholder
+		return m.exitHistoryToBrowse()
 	case key.Matches(msg, m.keys.Timeline):
 		if len(rows) == 0 || m.changeCursor >= len(rows) {
 			return nil

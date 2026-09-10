@@ -379,6 +379,44 @@ func TestChangesSplitShowsInlineInspector(t *testing.T) {
 	}
 }
 
+// TestLeavingAnyHistoryPaneRestoresBrowseFilterState pins the acceptance
+// criteria of issue #121: entering History swaps the shared filter placeholder
+// to "filter changes", and every exit path — not just the one from the Changes
+// pane — must put the browse placeholder back.
+func TestLeavingAnyHistoryPaneRestoresBrowseFilterState(t *testing.T) {
+	cases := []struct {
+		name string
+		// keystrokes to reach the pane after "H" has opened History.
+		reach []string
+	}{
+		{"Changes", nil},
+		{"Trends", []string{"tab"}},
+		{"Runs", []string{"tab", "tab"}},
+		{"Health", []string{"tab", "tab", "tab"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			store := oneVMDiffStore(t)
+			m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+			press(t, m, "H")
+			if m.filter.Placeholder != "filter changes" {
+				t.Fatalf("entering History did not set the changes placeholder: %q", m.filter.Placeholder)
+			}
+			press(t, m, tc.reach...)
+			press(t, m, "esc")
+			if m.mode != modeBrowse {
+				t.Fatalf("esc from %s pane did not return to browse: mode=%v", tc.name, m.mode)
+			}
+			if m.filter.Placeholder != filterPlaceholder {
+				t.Fatalf("esc from %s pane leaked the changes placeholder: %q", tc.name, m.filter.Placeholder)
+			}
+			if m.historyPane != historyPaneChanges {
+				t.Fatalf("esc from %s pane left historyPane=%d, want it reset to Changes", tc.name, m.historyPane)
+			}
+		})
+	}
+}
+
 // TestChangesNarrowStillOpensFullScreenDetail pins the fallback itself:
 // below the split threshold, Enter still opens the full-screen inspector
 // the way it always has.

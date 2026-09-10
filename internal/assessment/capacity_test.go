@@ -205,6 +205,52 @@ func TestCapacityReportBlindnessAndRename(t *testing.T) {
 	}
 }
 
+func TestCapacityReportContextIdentityNeverLeaksNULKey(t *testing.T) {
+	store := newCapacityTestStore(t)
+	// The same shared datastore is observed under a legitimate vCenter-ID
+	// transition: prod/vc-1 for the first two runs, prod/vc-2 for the last two.
+	for i := 0; i < 4; i++ {
+		vcenter := "vc-1"
+		if i >= 2 {
+			vcenter = "vc-2"
+		}
+		ctxs := []capacityTestContext{{name: "prod", vcenter: vcenter, endpoint: "https://prod"}}
+		ds := capacityDatastore("shared", "ds-1", vcenter, 2000, int64(1500-100*i))
+		saveCapacityRun(t, store, time.Date(2026, 8, 1+i, 0, 0, 0, 0, time.UTC), ctxs, map[string][]vsphere.Datastore{"prod": {ds}}, nil, nil)
+	}
+	report, err := store.CapacityReport(context.Background(), TrendOptions{}, CapacityThresholds{FreePercent: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Datastores) != 1 {
+		t.Fatalf("datastores=%d, want the transition folded into one group: %+v", len(report.Datastores), report.Datastores)
+	}
+	raw, err := json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsRune(string(raw), '\x00') {
+		t.Fatalf("report JSON contains a NUL delimiter: %s", raw)
+	}
+	ds := report.Datastores[0]
+	for _, blind := range ds.Blind {
+		if strings.ContainsRune(blind.Context, '\x00') {
+			t.Fatalf("blindness context leaked internal key: %q", blind.Context)
+		}
+		if strings.Contains(blind.Reason, "context was not recorded") {
+			t.Fatalf("vCenter transition reported as missing context: %+v", blind)
+		}
+	}
+	for _, issue := range report.Coverage {
+		if strings.ContainsRune(issue.Context, '\x00') {
+			t.Fatalf("coverage context leaked internal key: %q", issue.Context)
+		}
+	}
+	if ds.Confidence == CapacityUnknown {
+		t.Fatalf("confidence downgraded despite complete coverage: %+v", ds)
+	}
+}
+
 func TestCapacityAnomaliesFlagOnlySpikes(t *testing.T) {
 	points := make([]capacityPoint, 0, 5)
 	for i, used := range []int64{100, 101, 102, 103, 113} {

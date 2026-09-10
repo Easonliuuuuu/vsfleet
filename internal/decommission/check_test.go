@@ -30,13 +30,18 @@ func findCheck(report SubjectReport, id string) Check {
 	return Check{}
 }
 
-func TestEvaluateReadyAndMetadataAdvisories(t *testing.T) {
+func TestEvaluateNoBlockersAndMetadataAdvisories(t *testing.T) {
 	report := Evaluate(baseData(vsphere.VM{ID: "vm-1", Name: "app", PowerState: "poweredOff", ConnectionState: "connected", ConfigurationAvailable: true}), "app", nil)
-	if report.Verdict != VerdictReady || len(report.Subjects) != 1 {
+	if report.Verdict != VerdictNoBlockers || len(report.Subjects) != 1 {
 		t.Fatalf("report = %#v", report)
 	}
-	if check := findCheck(report.Subjects[0], "ownership"); check.Status != StatusNotAssessed || check.Impact != ImpactAdvisory {
-		t.Fatalf("ownership check = %#v", check)
+	for _, id := range []string{"ownership", "backup-policy", "application-dependencies"} {
+		if check := findCheck(report.Subjects[0], id); check.Status != StatusNotAssessed || check.Impact != ImpactAdvisory {
+			t.Fatalf("%s check = %#v", id, check)
+		}
+	}
+	if report.SchemaVersion != SchemaVersion {
+		t.Fatalf("schema version = %d", report.SchemaVersion)
 	}
 }
 
@@ -101,11 +106,11 @@ func TestEvaluateAmbiguityAndStrongCrossContextJoin(t *testing.T) {
 	data.VMs[0].Observation.VM.InstanceUUID = "same-instance"
 	data.VMs[1].Observation.VM.InstanceUUID = "same-instance"
 	joined := Evaluate(data, "app", nil)
-	if joined.Ambiguous || joined.Verdict != VerdictReady || len(joined.Subjects) != 1 || len(joined.Subjects[0].Subject.Members) != 2 {
+	if joined.Ambiguous || joined.Verdict != VerdictNoBlockers || len(joined.Subjects) != 1 || len(joined.Subjects[0].Subject.Members) != 2 {
 		t.Fatalf("joined report = %#v", joined)
 	}
 	byUUID := Evaluate(data, "same-instance", nil)
-	if byUUID.Verdict != VerdictReady || len(byUUID.Subjects) != 1 {
+	if byUUID.Verdict != VerdictNoBlockers || len(byUUID.Subjects) != 1 {
 		t.Fatalf("UUID query report = %#v", byUUID)
 	}
 }

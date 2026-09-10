@@ -13,12 +13,18 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-const SchemaVersion = 1
+// SchemaVersion 2 renamed the clean verdict from "ready" to "no-blockers": a VM
+// that clears every technical gate still has no ownership, backup, or
+// application-dependency evidence, and "ready" read as authorization to delete.
+const SchemaVersion = 2
 
 const (
-	VerdictReady   = "ready"
-	VerdictBlocked = "blocked"
-	VerdictUnknown = "unknown"
+	// VerdictNoBlockers means every collected technical gate passed. It is not
+	// authorization to decommission: ownership, backup, and application
+	// dependencies are not assessed by this review (see the not_assessed checks).
+	VerdictNoBlockers = "no-blockers"
+	VerdictBlocked    = "blocked"
+	VerdictUnknown    = "unknown"
 
 	StatusPass        = "pass"
 	StatusFail        = "fail"
@@ -110,7 +116,7 @@ func Evaluate(data assessment.ExportData, query string, contexts []string) Repor
 		return out
 	}
 	out.Ambiguous = len(subjects) > 1
-	out.Verdict = VerdictReady
+	out.Verdict = VerdictNoBlockers
 	for _, subject := range subjects {
 		dependencies := graph.Dependencies(subject, 1)
 		observations := observationsFor(data, subject)
@@ -135,7 +141,7 @@ func Evaluate(data assessment.ExportData, query string, contexts []string) Repor
 			out.Verdict = VerdictUnknown
 		}
 	}
-	if out.Ambiguous && out.Verdict == VerdictReady {
+	if out.Ambiguous && out.Verdict == VerdictNoBlockers {
 		out.Verdict = VerdictUnknown
 	}
 	return out
@@ -144,7 +150,7 @@ func Evaluate(data assessment.ExportData, query string, contexts []string) Repor
 func evaluateSubject(data assessment.ExportData, subject topology.Subject, dependencies topology.SubjectResult, observations []assessment.ExportVM) SubjectReport {
 	out := SubjectReport{
 		Subject:      subject,
-		Verdict:      VerdictReady,
+		Verdict:      VerdictNoBlockers,
 		Checks:       make([]Check, 0, 10),
 		Dependencies: append([]topology.Edge(nil), dependencies.Edges...),
 		Unresolved:   append([]string(nil), dependencies.Unresolved...),
@@ -161,6 +167,7 @@ func evaluateSubject(data assessment.ExportData, subject topology.Subject, depen
 		dependencyCheck("network-relationships", "network", observations, dependencies),
 		Check{ID: "ownership", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "ownership metadata is not collected by this assessment"},
 		Check{ID: "backup-policy", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "backup-policy metadata is not collected by this assessment"},
+		Check{ID: "application-dependencies", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "application and business dependencies are not observable from inventory and are not assessed"},
 	)
 	if len(observations) == 0 {
 		out.Checks = append(out.Checks, Check{ID: "coverage", Status: StatusUnknown, Impact: ImpactUnknown, Message: "matched VM identity has no observation in the selected run"})

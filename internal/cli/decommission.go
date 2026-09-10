@@ -66,6 +66,8 @@ func countBlockers(result decommission.Report) int {
 func printDecommissionResult(out io.Writer, result decommission.Report) error {
 	fmt.Fprintf(out, "VM decommission check: %s\n", strings.ToUpper(result.Verdict))
 	fmt.Fprintf(out, "Assessment: %d  Query: %s\n", result.RunID, result.Query)
+	fmt.Fprintln(out, "This review checks technical blockers only. It is not authorization to delete:")
+	fmt.Fprintln(out, "ownership, backup policy, and application dependencies are not assessed.")
 	if result.Ambiguous {
 		fmt.Fprintf(out, "[AMBIGUOUS] %d distinct VMs matched; use --context to narrow the search.\n", len(result.Subjects))
 	}

@@ -101,14 +101,17 @@ unregisters, or otherwise changes a VM. The command searches every selected
 context, joins observations by VM UUID when available, and returns every
 distinct match when a name is ambiguous; use `--context` to narrow it.
 
-The strict safety verdict is `ready`, `blocked`, or `unknown`. Powered-on or
+The verdict is `no-blockers`, `blocked`, or `unknown` (schema version 2; earlier
+releases used `ready` for `no-blockers`). `no-blockers` means every collected
+technical gate passed; it is not authorization to delete the VM. Powered-on or
 suspended VMs, snapshots, connected CD-ROM/USB devices, and inaccessible,
 orphaned, disconnected, or invalid connection states are blockers. Missing
 power, connection, hardware, dependency, or collection evidence is unknown.
 Disk backing paths, datastore dependencies, network relationships, unresolved
-references, and blind contexts are included as evidence. Ownership and backup
-policy metadata are reported as `not_assessed` advisories because those fields
-are not part of the stored inventory yet.
+references, and blind contexts are included as evidence. Ownership, backup
+policy, and application-dependency evidence are reported as `not_assessed`
+advisories because those fields are not part of the stored inventory yet; the
+verdict never accounts for them.
 
 The default run is `latest`; pass an explicit run ID or label for a reproducible
 offline result. JSON is intended for automation, and `--fail-on-blockers`

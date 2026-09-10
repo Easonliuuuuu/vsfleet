@@ -212,10 +212,13 @@ strict-safety gates with the stored topology graph. It is an advisory report
 only: it never performs a decommissioning action. Powered-on or suspended VMs,
 snapshots, connected CD-ROM/USB devices, and inaccessible, orphaned,
 disconnected, or invalid connection states produce blockers. Missing evidence
-or unresolved dependencies produce `unknown`, while ownership and backup
-policy fields remain `not_assessed` advisories until those metadata sources are
-collected. Use `--fail-on-blockers` for an automation gate; the command returns
-exit code 2 only for a blocked verdict.
+or unresolved dependencies produce `unknown`. A clean result is `no-blockers`
+(schema version 2; earlier releases called this `ready`): it means the
+collected technical gates passed and is not authorization to delete the VM.
+Ownership, backup policy, and application dependencies remain `not_assessed`
+advisories until those metadata sources are collected, and the verdict never
+accounts for them. Use `--fail-on-blockers` for an automation gate; the command
+returns exit code 2 only for a blocked verdict.
 
 ### Topology and dependency queries
 

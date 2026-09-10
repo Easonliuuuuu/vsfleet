@@ -123,9 +123,17 @@ type capacityDS struct {
 	identity []string
 }
 
+// capacityContext is the display identity of a context: a human-readable name
+// plus the vCenter it was observed in. It is carried alongside the internal
+// composite key so blindness diagnostics never surface the NUL-delimited key.
+type capacityContext struct {
+	Name      string
+	VCenterID string
+}
+
 type capacityGroup struct {
 	items    []capacityDS
-	contexts map[string]bool
+	contexts map[string]capacityContext
 	identity map[string]bool
 }
 
@@ -296,11 +304,11 @@ func groupCapacityDatastores(values []capacityDS) []capacityGroup {
 		root := find(i)
 		group := byRoot[root]
 		if group == nil {
-			group = &capacityGroup{contexts: make(map[string]bool), identity: make(map[string]bool)}
+			group = &capacityGroup{contexts: make(map[string]capacityContext), identity: make(map[string]bool)}
 			byRoot[root] = group
 		}
 		group.items = append(group.items, value)
-		group.contexts[capacityContextKey(value.resource.Context, value.resource.VCenterID)] = true
+		group.contexts[capacityContextKey(value.resource.Context, value.resource.VCenterID)] = capacityContext{Name: value.resource.Context, VCenterID: value.resource.VCenterID}
 		for _, key := range value.identity {
 			group.identity[key] = true
 		}
@@ -688,13 +696,48 @@ func mergeContributors(values []GrowthContributor) []GrowthContributor {
 	return out
 }
 
+// groupContextsByRun resolves which context identity actually applies to the
+// group in each run. Runs where the group reported a datastore use that run's
+// own context/vCenter; runs with no datastore observation carry the identity
+// from the nearest run that has one, so a legitimate vCenter-ID transition is
+// attributed to the runs it spans rather than compared against every run.
+func groupContextsByRun(group capacityGroup, runs []Run) map[int64]map[string]capacityContext {
+	observed := make(map[int64]map[string]capacityContext)
+	for _, item := range group.items {
+		key := capacityContextKey(item.resource.Context, item.resource.VCenterID)
+		if observed[item.run.ID] == nil {
+			observed[item.run.ID] = make(map[string]capacityContext)
+		}
+		observed[item.run.ID][key] = capacityContext{Name: item.resource.Context, VCenterID: item.resource.VCenterID}
+	}
+	out := make(map[int64]map[string]capacityContext, len(runs))
+	for i, run := range runs {
+		if len(observed[run.ID]) > 0 {
+			out[run.ID] = observed[run.ID]
+			continue
+		}
+		for offset := 1; offset < len(runs); offset++ {
+			if j := i - offset; j >= 0 && len(observed[runs[j].ID]) > 0 {
+				out[run.ID] = observed[runs[j].ID]
+				break
+			}
+			if j := i + offset; j < len(runs) && len(observed[runs[j].ID]) > 0 {
+				out[run.ID] = observed[runs[j].ID]
+				break
+			}
+		}
+	}
+	return out
+}
+
 func capacityBlindness(group capacityGroup, runs []Run, contextsByRun map[int64]map[string]ContextRun) []CapacityBlindness {
 	var out []CapacityBlindness
+	perRun := groupContextsByRun(group, runs)
 	for _, run := range runs {
-		for contextKey := range group.contexts {
+		for contextKey, identity := range perRun[run.ID] {
 			contextRun, ok := contextsByRun[run.ID][contextKey]
 			if !ok {
-				out = appendUniqueBlindness(out, CapacityBlindness{Context: contextKey, Reason: fmt.Sprintf("run %d context was not recorded", run.ID)})
+				out = appendUniqueBlindness(out, CapacityBlindness{Context: identity.Name, Reason: fmt.Sprintf("run %d context was not recorded", run.ID)})
 				continue
 			}
 			vmSeen := false

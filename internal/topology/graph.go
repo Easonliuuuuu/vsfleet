@@ -507,15 +507,40 @@ func (g *Graph) makeSubjects() {
 				keyed = append(keyed, index)
 			}
 		}
-		for i := 1; i < len(unknown); i++ {
-			dsu.union(unknown[0], unknown[i])
+		// A weak key is kind, context and name, so every record here was
+		// observed in one vCenter. Two of them reported under different
+		// managed-object IDs are two objects, however alike their names
+		// look — a datastore named LocalDS_0 in each of two datacenters is
+		// not one datastore. Only observations that agree on an ID, or that
+		// carry none of their own (a network reconstructed from a VM NIC),
+		// may be fused into one subject.
+		anonymous, identified := groupByObservedID(g.records, unknown)
+		for _, group := range identified {
+			for i := 1; i < len(group); i++ {
+				dsu.union(group[0], group[i])
+			}
+		}
+		for i := 1; i < len(anonymous); i++ {
+			dsu.union(anonymous[0], anonymous[i])
+		}
+		// An ID-less observation joins an identified one only when a single
+		// identity is in play. With several same-named objects to choose
+		// from there is no evidence for picking one, so it stays its own
+		// subject rather than silently attaching to the first.
+		if len(anonymous) > 0 && len(identified) == 1 {
+			dsu.union(anonymous[0], identified[0][0])
 		}
 		roots := make(map[int]bool)
+		keyedIDs := make(map[string]bool, len(keyed))
 		for _, index := range keyed {
 			roots[dsu.find(index)] = true
+			keyedIDs[observedID(g.records[index])] = true
 		}
 		if len(roots) == 1 && len(unknown) > 0 {
 			for _, index := range unknown {
+				if id := observedID(g.records[index]); id != "" && !keyedIDs[id] {
+					continue
+				}
 				dsu.union(index, keyed[0])
 			}
 		}
@@ -648,12 +673,13 @@ func (g *Graph) addVMRelationships(index int) {
 		if !valid || name == "" || relative == "" {
 			continue
 		}
+		label := datastorePathSpelling(disk.BackingPath, name)
 		candidates := g.namedCandidates(KindDatastore, r.node.Context, name, "")
 		if len(candidates) == 0 {
-			g.addUnresolvedEdge(index, KindDatastore, name, RelationStoredOn, BasisDiskPath, EdgeUnresolved, disk.BackingPath)
+			g.addUnresolvedEdge(index, KindDatastore, label, RelationStoredOn, BasisDiskPath, EdgeUnresolved, disk.BackingPath)
 			continue
 		}
-		g.addCandidates(index, candidates, RelationStoredOn, BasisDiskPath, EdgeConfirmed, disk.BackingPath, "datastore "+name)
+		g.addCandidates(index, candidates, RelationStoredOn, BasisDiskPath, EdgeConfirmed, disk.BackingPath, "datastore "+label)
 	}
 	for _, name := range vm.Datastores {
 		candidates := g.namedCandidates(KindDatastore, r.node.Context, name, "")
@@ -877,13 +903,18 @@ func (g *Graph) addEdge(from, to int, relation Relation, basis Basis, confidence
 	g.edges = append(g.edges, graphEdge{from: from, to: to, relation: relation, basis: basis, confidence: confidence, detail: detail})
 }
 
+// addUnresolved records one thing a subject refers to that the graph could not
+// place. Names arrive from several collections that spell them differently —
+// a disk backing path is lower-cased for joining, the VM's own datastore list
+// is not — so a repeat is recognized without regard to case and the first
+// spelling seen is the one an operator reads.
 func (g *Graph) addUnresolved(index int, value string) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return
 	}
 	for _, existing := range g.unresolved[index] {
-		if existing == value {
+		if strings.EqualFold(existing, value) {
 			return
 		}
 	}
@@ -939,6 +970,53 @@ func edgeScore(edge graphEdge) int {
 		score += 5
 	}
 	return score
+}
+
+// datastorePathSpelling returns the datastore name as the backing path spells
+// it. SplitDatastorePath lower-cases for joining, which is right for matching
+// and wrong for a label an operator has to recognize in vCenter.
+func datastorePathSpelling(backingPath, normalized string) string {
+	trimmed := strings.TrimSpace(strings.ReplaceAll(backingPath, "\\", "/"))
+	if !strings.HasPrefix(trimmed, "[") {
+		return normalized
+	}
+	closing := strings.IndexByte(trimmed, ']')
+	if closing <= 1 {
+		return normalized
+	}
+	if raw := strings.TrimSpace(trimmed[1:closing]); strings.EqualFold(raw, normalized) {
+		return raw
+	}
+	return normalized
+}
+
+// observedID is the managed-object ID a record was observed under, normalized
+// for comparison. It is empty for a record vsfleet reconstructed from a
+// reference rather than read from the inventory itself.
+func observedID(record nodeRecord) string {
+	return strings.ToLower(strings.TrimSpace(record.node.ID))
+}
+
+// groupByObservedID splits records that share a weak key into the ones with no
+// managed-object ID of their own and one group per distinct ID, preserving
+// first-seen order so subject formation stays deterministic.
+func groupByObservedID(records []nodeRecord, indexes []int) (anonymous []int, identified [][]int) {
+	positions := make(map[string]int, len(indexes))
+	for _, index := range indexes {
+		id := observedID(records[index])
+		if id == "" {
+			anonymous = append(anonymous, index)
+			continue
+		}
+		position, ok := positions[id]
+		if !ok {
+			positions[id] = len(identified)
+			identified = append(identified, []int{index})
+			continue
+		}
+		identified[position] = append(identified[position], index)
+	}
+	return anonymous, identified
 }
 
 func weakKey(kind Kind, contextName, name, vlan string) string {

@@ -218,10 +218,24 @@ func (g Graph) subjectIndex(subject Subject) (int, bool) {
 	return -1, false
 }
 
+// subjectMembersOverlap reports whether two member lists describe the same
+// object. Within one vCenter a managed-object ID settles it: two members that
+// both carry one and disagree are two objects, and matching their names
+// instead would hand every same-named subject the first one's ancestry. A name
+// is only evidence when at least one side has no ID to compare.
 func subjectMembersOverlap(a, b []Node) bool {
 	for _, left := range a {
 		for _, right := range b {
-			if strings.EqualFold(left.Context, right.Context) && ((left.ID != "" && strings.EqualFold(left.ID, right.ID)) || strings.EqualFold(left.Name, right.Name)) {
+			if !strings.EqualFold(left.Context, right.Context) {
+				continue
+			}
+			if left.ID != "" && right.ID != "" {
+				if strings.EqualFold(left.ID, right.ID) {
+					return true
+				}
+				continue
+			}
+			if strings.EqualFold(left.Name, right.Name) {
 				return true
 			}
 		}

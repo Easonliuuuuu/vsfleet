@@ -12,6 +12,74 @@
 * **assessment:** stop reporting a clean orphan scan when datastore browse evidence is missing ([#115](https://github.com/Easonliuuuuu/vsfleet/issues/115))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.6.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.5.0...v0.6.0) (2026-09-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **health:** health --fail-on-findings --severity warning now fails only on verified-unreferenced orphan VMDKs; suspected and referenced-other-context results are informational, and incomplete coverage is unknown.
+
+### Features
+
+* **assessment:** attribute datastore growth and project thresholds ([17542e7](https://github.com/Easonliuuuuu/vsfleet/commit/17542e794fbabe01eeff899dabd8b8d6db4d8d7a))
+* **assessment:** persist VM templates in captures ([4aa5729](https://github.com/Easonliuuuuu/vsfleet/commit/4aa572955cf3761e675fef8efffd30bcad935fdc))
+* **cli:** add assessment orphans drill-down ([15aab1c](https://github.com/Easonliuuuuu/vsfleet/commit/15aab1c739ceeac22cffa500185d18faa036fbd4))
+* **cli:** add offline VM decommission checks ([24a2af3](https://github.com/Easonliuuuuu/vsfleet/commit/24a2af395da1bf45a6121f9fafa289474fff7ff5))
+* **config:** record the parent context a nested context was added from ([bd66eb7](https://github.com/Easonliuuuuu/vsfleet/commit/bd66eb7d0b73c026b7d31be49a067ee776e13d6e))
+* **health:** add migration readiness assessment ([95272f4](https://github.com/Easonliuuuuu/vsfleet/commit/95272f41234a38323848d36be879768d7dabcf67))
+* **health:** add persisted assessment health findings ([48df5c3](https://github.com/Easonliuuuuu/vsfleet/commit/48df5c354bca3159b7faf7e06f4cbe8b03b51519))
+* **health:** classify orphan VMDK confidence across the estate ([e01ee22](https://github.com/Easonliuuuuu/vsfleet/commit/e01ee222f4a2b8a448dc07d9883caedfdfcb59e7))
+* **health:** detect connected CD-ROM and USB devices ([769a633](https://github.com/Easonliuuuuu/vsfleet/commit/769a633c6edd620f4e30281a0b82d6e8c7462a76))
+* **health:** detect inaccessible and orphaned VMs ([078ece7](https://github.com/Easonliuuuuu/vsfleet/commit/078ece7956d513478b988047af5648bab6acae27))
+* **health:** expand migration readiness evidence ([4feb022](https://github.com/Easonliuuuuu/vsfleet/commit/4feb02214f86e927170d7f3f696a7d35a4e71dd0))
+* **health:** report orphaned VMs and zombie VMDKs ([0d9bb73](https://github.com/Easonliuuuuu/vsfleet/commit/0d9bb7311a95130a15ed871d198d717f00920334))
+* **network:** compare cross-cluster migration readiness ([79e4f3f](https://github.com/Easonliuuuuu/vsfleet/commit/79e4f3f3ff99ab7261ff0070a9b570f743f6aecb))
+* **report:** export resource pools as vRP ([e658225](https://github.com/Easonliuuuuu/vsfleet/commit/e6582256ee707118324550c2e0c224b7f6dfb730))
+* run headless, report partial captures, and describe the export profile ([b67a3e1](https://github.com/Easonliuuuuu/vsfleet/commit/b67a3e143cc12bedc200e7e77d7a59122e7f80ec))
+* **topology:** add cross-vCenter relationship queries ([7d9397e](https://github.com/Easonliuuuuu/vsfleet/commit/7d9397eeac76599152389bbdc255ac1aacdbb061))
+* **tui:** add a nested vCenter as a context from a VM's detail pane ([8072d07](https://github.com/Easonliuuuuu/vsfleet/commit/8072d07474a7652bacd1afdd1bc36dc529386b8a))
+* **tui:** add read-only datastore file browser and search ([ed85f61](https://github.com/Easonliuuuuu/vsfleet/commit/ed85f615ca9bf92da22b505b060ba98628d32650))
+* **tui:** add SSH, browser, copy, and jump actions to the detail pane ([fa624cb](https://github.com/Easonliuuuuu/vsfleet/commit/fa624cb0907cf2df5c5a5fd80047defe92de47c6))
+* **tui:** connect datastore files to VM ownership evidence ([7397e9f](https://github.com/Easonliuuuuu/vsfleet/commit/7397e9f18fcaa20c8806035a1ce78b02f6d92901))
+* **tui:** rank history changes by migration impact on a run axis ([d945b38](https://github.com/Easonliuuuuu/vsfleet/commit/d945b38fc17aa4447bf93c1e6d32ee55c8aaed18))
+* **vsphere:** browse datastore disk files on demand ([006a1c8](https://github.com/Easonliuuuuu/vsfleet/commit/006a1c8f586a1b20891296d701a0ffc9bdb14eef))
+* **vsphere:** collect datastore backing identity ([2274e9f](https://github.com/Easonliuuuuu/vsfleet/commit/2274e9fdd039b68bedb97e1d08e4db907374df87))
+* **vsphere:** collect distributed switch inventory ([2d51390](https://github.com/Easonliuuuuu/vsfleet/commit/2d513908de984680b008d447e0a24777294404e7))
+* **vsphere:** collect host storage and network inventory ([59ae488](https://github.com/Easonliuuuuu/vsfleet/commit/59ae488da280a6f7b8dd6fda33ece4937d6fbf3b))
+
+
+### Bug Fixes
+
+* **assessment:** use total host CPU capacity in metric projection and trends ([3118271](https://github.com/Easonliuuuuu/vsfleet/commit/3118271744adf7235573918830a7b111cc69ec7a))
+* **capacity.go:** stop leaking NUL-delimited context keys into blindness diagnostics ([edba631](https://github.com/Easonliuuuuu/vsfleet/commit/edba6319afa530906ab4028fdee450438393a039))
+* **cli:** close the history database when a command finishes ([370a05e](https://github.com/Easonliuuuuu/vsfleet/commit/370a05e28d7a9af62c6736c01034cfc0f0ee77d9))
+* **cli:** honor context selectors for stored assessments ([fa5adfb](https://github.com/Easonliuuuuu/vsfleet/commit/fa5adfb82b5dd9b3577e5386d1d382b815395faa))
+* **decommission:** rename clean verdict so it never reads as delete authorization ([122b07d](https://github.com/Easonliuuuuu/vsfleet/commit/122b07d8ba747a56de01bb7230b02b6b6f6f0183)), closes [#98](https://github.com/Easonliuuuuu/vsfleet/issues/98)
+* **demo:** disable context management and add-vcenter actions in demo UI ([0d00dc7](https://github.com/Easonliuuuuu/vsfleet/commit/0d00dc7bef8d413397d6c65f78e62488a3d2fc5f))
+* **demo:** wire seeded assessment history into standalone launcher ([9584754](https://github.com/Easonliuuuuu/vsfleet/commit/9584754483c40c4226de5f65cd1480832ab73cae))
+* **health:** exclude local storage from path redundancy findings ([#132](https://github.com/Easonliuuuuu/vsfleet/issues/132)) ([7c660cf](https://github.com/Easonliuuuuu/vsfleet/commit/7c660cf9821a57e3c7fa649d55140400cca1983b))
+* **health:** remove obsolete orphan matchers ([ab9255c](https://github.com/Easonliuuuuu/vsfleet/commit/ab9255c37225793e16b5ad7074d7212b173caae1))
+* **health:** satisfy staticcheck partition sorting ([3986e71](https://github.com/Easonliuuuuu/vsfleet/commit/3986e71b555e38ddfde3fa22a67ea296e26c521b))
+* **health:** stop treating VMXNET3 UPT as passthrough ([b5c8e00](https://github.com/Easonliuuuuu/vsfleet/commit/b5c8e006529b5a1d91875ca63189c078bb63124a))
+* **history.go:** restore browse filter placeholder on every History exit ([1e7f6e6](https://github.com/Easonliuuuuu/vsfleet/commit/1e7f6e634c318d255d024e8c53dafe504a6bc2e4))
+* **kubernetes:** prepare kind hostPath permissions ([5ebc5e4](https://github.com/Easonliuuuuu/vsfleet/commit/5ebc5e4a520b87bf79aa7477fc30aa486747f1de))
+* **kubernetes:** provide temporary storage for vcsim ([0a013bc](https://github.com/Easonliuuuuu/vsfleet/commit/0a013bc62a26f5a3a5df04dd0fcef73cfc2efb2d))
+* **kubernetes:** tolerate interleaved partial diagnostics ([f278e68](https://github.com/Easonliuuuuu/vsfleet/commit/f278e6850c59d222e73d5adfc32fadb7ba64531c))
+* **lint:** resolve Staticcheck findings ([1f900f1](https://github.com/Easonliuuuuu/vsfleet/commit/1f900f1cafa7844e01b4b6eed897cf9a58b77440))
+* **orphans:** report scan coverage so missing browse evidence is not a clean result ([b87037c](https://github.com/Easonliuuuuu/vsfleet/commit/b87037cdfd1436f1562b8c23e1699cc6299513a3))
+* **topology:** keep same-named objects in one vCenter distinct ([a6f92ce](https://github.com/Easonliuuuuu/vsfleet/commit/a6f92ce676ea50e1f79e6b4ce87724a83f71cfaf))
+* **topology:** preserve run context coverage metadata for blind analysis ([a72b8d9](https://github.com/Easonliuuuuu/vsfleet/commit/a72b8d9fe4d01bab82b4a83df3084d3edc4523db))
+* **trends:** make context selection authoritative for scoped trends ([49ecb82](https://github.com/Easonliuuuuu/vsfleet/commit/49ecb820c833e5aba78135207d0ee1da9eb2ae98))
+* **tui:** distinguish resolved child vapps from missing in legacy pass ([5aa848e](https://github.com/Easonliuuuuu/vsfleet/commit/5aa848ea4ce4a0dc9dc46a59941550fefc41fdf7))
+* **tui:** give the vApp VM pane the real detail cursor and actions ([8c46832](https://github.com/Easonliuuuuu/vsfleet/commit/8c4683236f99eb52c18a7e98a5f6fc0bc2415f58))
+* **tui:** hide History capture when no assessment collector is configured ([adfa251](https://github.com/Easonliuuuuu/vsfleet/commit/adfa251faa81bb3f771a5de4c1b4eec72cfffa13))
+* **tui:** make SSH handoffs diagnosable and proxy-safe ([9a8580a](https://github.com/Easonliuuuuu/vsfleet/commit/9a8580a5e598a9ce172015abcbd8bbf52a5952b2))
+* **tui:** remove unused datastore action helper ([ffc31cc](https://github.com/Easonliuuuuu/vsfleet/commit/ffc31cc13a0d73a6b0e25ccaa6a935b13105e098))
+* **tui:** render dedicated headers for timeline and timeline-detail views ([504b892](https://github.com/Easonliuuuuu/vsfleet/commit/504b892997c33a49f1f15a7bab023740070b9d8d))
+* **tui:** wrap credential overlay instructions at narrow widths ([1920cf7](https://github.com/Easonliuuuuu/vsfleet/commit/1920cf7fe0e0272c284fb0e0c3cf46cca365060a))
+* **vsphere:** remove unused host mapper ([43469ce](https://github.com/Easonliuuuuu/vsfleet/commit/43469ce128ca332b6f6bc19114ebe371173142b2))
+* **vsphere:** use case-insensitive path comparison ([1872499](https://github.com/Easonliuuuuu/vsfleet/commit/1872499e26b5db1e80357aad8bcabb67d2d46faa))
+
 ## [0.5.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.4.0...v0.5.0) (2026-09-05)
 
 

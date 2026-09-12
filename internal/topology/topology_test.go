@@ -186,3 +186,102 @@ func TestBuildAndQueriesAreDeterministic(t *testing.T) {
 		t.Fatal("query output was not deterministic")
 	}
 }
+
+// sameNameInOneVCenterData models what vcsim and many real estates produce: two
+// datacenters in one vCenter, each with a local datastore and a standard
+// network carrying the same display name. Local datastores report no backing
+// identity, so name is the only thing the two observations share.
+func sameNameInOneVCenterData(t *testing.T) assessment.ExportData {
+	t.Helper()
+	dc0DS := vsphere.Datastore{Location: vsphere.Location{Context: "prod", Datacenter: "DC0", Path: "/DC0/datastore/LocalDS_0"}, ID: "datastore-129", Name: "LocalDS_0", Backing: vsphere.DatastoreBacking{Local: true}}
+	dc1DS := vsphere.Datastore{Location: vsphere.Location{Context: "prod", Datacenter: "DC1", Path: "/DC1/datastore/LocalDS_0"}, ID: "datastore-133", Name: "LocalDS_0", Backing: vsphere.DatastoreBacking{Local: true}}
+	dc0Net := vsphere.Network{Location: vsphere.Location{Context: "prod", Datacenter: "DC0", Path: "/DC0/network/VM Network"}, ID: "network-6", Name: "VM Network"}
+	dc1Net := vsphere.Network{Location: vsphere.Location{Context: "prod", Datacenter: "DC1", Path: "/DC1/network/VM Network"}, ID: "network-70", Name: "VM Network"}
+	return assessment.ExportData{
+		Run:      assessment.Run{ID: 11, InventorySchemaVersion: "12"},
+		Contexts: []assessment.ContextRun{topologyContext("prod", "success", true)},
+		VMs: []assessment.ExportVM{
+			{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-prod", VM: vsphere.VM{ID: "vm-1", Name: "dc0-app", Datastores: []string{"LocalDS_0"}, Disks: []vsphere.VMDisk{{BackingPath: "[LocalDS_0] dc0-app/disk1.vmdk"}}}}},
+			{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-prod", VM: vsphere.VM{ID: "vm-2", Name: "dc1-app", Datastores: []string{"LocalDS_0"}, Disks: []vsphere.VMDisk{{BackingPath: "[LocalDS_0] dc1-app/disk1.vmdk"}}}}},
+		},
+		Resources: []assessment.ResourceObservation{
+			topologyResource(t, "prod", "vc-prod", "datastore", dc0DS.ID, dc0DS.Name, dc0DS),
+			topologyResource(t, "prod", "vc-prod", "datastore", dc1DS.ID, dc1DS.Name, dc1DS),
+			topologyResource(t, "prod", "vc-prod", "network", dc0Net.ID, dc0Net.Name, dc0Net),
+			topologyResource(t, "prod", "vc-prod", "network", dc1Net.ID, dc1Net.Name, dc1Net),
+		},
+	}
+}
+
+func TestSameNamedObjectsInOneVCenterStayDistinct(t *testing.T) {
+	graph := Build(sameNameInOneVCenterData(t))
+	for _, tc := range []struct {
+		kind Kind
+		name string
+		ids  []string
+	}{
+		{KindDatastore, "LocalDS_0", []string{"datastore-129", "datastore-133"}},
+		{KindNetwork, "VM Network", []string{"network-6", "network-70"}},
+	} {
+		subjects := graph.Resolve(tc.kind, tc.name, nil)
+		if len(subjects) != len(tc.ids) {
+			t.Fatalf("%s %q: resolved %d subjects, want %d", tc.kind, tc.name, len(subjects), len(tc.ids))
+		}
+		seen := make(map[string]bool, len(subjects))
+		for _, subject := range subjects {
+			if len(subject.Members) != 1 {
+				t.Fatalf("%s %q: subject has %d members, want the one object it was observed as", tc.kind, tc.name, len(subject.Members))
+			}
+			seen[subject.Members[0].ID] = true
+		}
+		for _, id := range tc.ids {
+			if !seen[id] {
+				t.Fatalf("%s %q: %s was absorbed into another subject; got %v", tc.kind, tc.name, id, seen)
+			}
+		}
+	}
+}
+
+func TestSameNamedSubjectsKeepTheirOwnAncestry(t *testing.T) {
+	graph := Build(sameNameInOneVCenterData(t))
+	want := map[string]string{"network-6": "DC0", "network-70": "DC1"}
+	for _, subject := range graph.Resolve(KindNetwork, "VM Network", nil) {
+		id := subject.Members[0].ID
+		result := graph.Topology(subject)
+		var datacenters []string
+		for _, edge := range result.Ancestors {
+			if edge.From.Kind == "datacenter" {
+				datacenters = append(datacenters, edge.From.Name)
+			}
+		}
+		if len(datacenters) != 1 || datacenters[0] != want[id] {
+			t.Fatalf("network %s ancestry names datacenters %v, want only %s", id, datacenters, want[id])
+		}
+	}
+}
+
+func TestAmbiguousNameIsUnresolvedRatherThanAttributed(t *testing.T) {
+	graph := Build(sameNameInOneVCenterData(t))
+	subject := graph.Resolve(KindVM, "dc0-app", nil)[0]
+	result := graph.Dependencies(subject, 1)
+	for _, edge := range result.Edges {
+		if edge.To.Kind == string(KindDatastore) {
+			t.Fatalf("a name shared by two datastores produced edge %+v, want it left unresolved", edge)
+		}
+	}
+	// The disk path lower-cases the datastore name for joining and the VM's own
+	// datastore list does not; one unresolved dependency must not be reported
+	// twice, and it is reported the way vCenter spells it.
+	if !reflect.DeepEqual(result.Unresolved, []string{"datastore LocalDS_0"}) {
+		t.Fatalf("unresolved=%q, want one entry spelled as vCenter reports it", result.Unresolved)
+	}
+}
+
+func TestBlastRadiusDoesNotSpreadAcrossSameNamedDatastores(t *testing.T) {
+	graph := Build(sameNameInOneVCenterData(t))
+	for _, subject := range graph.Resolve(KindDatastore, "LocalDS_0", nil) {
+		if result := graph.BlastRadius(subject, 1); len(result.Edges) != 0 {
+			t.Fatalf("datastore %s claims dependents %+v; name alone cannot tell the two apart", subject.Members[0].ID, result.Edges)
+		}
+	}
+}

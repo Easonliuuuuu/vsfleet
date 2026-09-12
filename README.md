@@ -202,7 +202,7 @@ vsfleet exports stored assessments for migration planning, sizing, audit, and do
 
 ```sh
 vsfleet assessment export --format rvtools --file estate.xlsx
-vsfleet assessment export --format csv --dir ./audit-csv/
+vsfleet assessment export --format csv --file ./audit-csv/
 ```
 
 - **Byte-Identical Consistency**: Exporting the same stored assessment twice produces byte-identical files accompanied by a SHA256 receipt.

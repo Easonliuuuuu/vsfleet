@@ -229,14 +229,34 @@ func NewRootCommand(a *App) *cobra.Command {
 clusters. Each context carries its own endpoint, credential reference,
 network route and TLS policy, so a lab reached directly and a customer
 vCenter reached through a SOCKS5 proxy work side by side in one process.`,
+		Example: `  # Open the terminal interface on the current context
+  vsfleet
+
+  # Try everything against sample data, with no vCenter and nothing written
+  vsfleet demo
+
+  # Add a vCenter and make it current
+  vsfleet context add --name prod --endpoint https://vcsa.example.internal --username svc-ro@vsphere.local --use
+
+  # List VMs on one context, then on every context at once
+  vsfleet vm list --context prod
+  vsfleet vm list --all-contexts
+
+  # Find an object when you do not know which vCenter holds it
+  vsfleet search ubuntu-golden --all-contexts
+
+  # Capture history, then compare the two most recent captures
+  vsfleet assessment run --all-contexts --label nightly
+  vsfleet assessment diff`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.String(),
 		// A bare "vsfleet" opens the terminal interface: that is the product,
-		// not the subcommand tree. Args stays NoArgs so a genuine typo like
-		// "vsfleet statas" still reports "unknown command" instead of quietly
-		// launching the interface with an argument it ignores.
-		Args: cobra.NoArgs,
+		// not the subcommand tree. Arguments stay rejected so a genuine typo
+		// like "vsfleet statas" still reports "unknown command" instead of
+		// quietly launching the interface with an argument it ignores — and
+		// rejectUnknownArgs, unlike cobra.NoArgs, offers the near miss.
+		Args: rejectUnknownArgs,
 		PersistentPreRunE: func(*cobra.Command, []string) error {
 			return a.checkFormat()
 		},
@@ -260,21 +280,24 @@ vCenter reached through a SOCKS5 proxy work side by side in one process.`,
 	// "vsfleet vm list --refresh" is still the error it should be.
 	addRefreshFlag(root, a)
 
+	registerCommandGroups(root)
 	root.AddCommand(
-		newContextCommand(a),
-		newDemoCommand(a),
-		newDoctorCommand(a),
-		newSearchCommand(a),
-		newStatusCommand(a),
-		newUICommand(a),
-		newAssessmentCommand(a),
-		newHealthCommand(a),
-		newTopologyCommand(a),
-		newDependenciesCommand(a),
-		newBlastRadiusCommand(a),
-		newCompatibilityCommand(a),
+		inGroup(groupStart, newUICommand(a)),
+		inGroup(groupStart, newDemoCommand(a)),
+		inGroup(groupStart, newContextCommand(a)),
+		inGroup(groupStart, newStatusCommand(a)),
+		inGroup(groupInventory, newSearchCommand(a)),
+		inGroup(groupHistory, newAssessmentCommand(a)),
+		inGroup(groupHistory, newHealthCommand(a)),
+		inGroup(groupAnalysis, newTopologyCommand(a)),
+		inGroup(groupAnalysis, newDependenciesCommand(a)),
+		inGroup(groupAnalysis, newBlastRadiusCommand(a)),
+		inGroup(groupAnalysis, newCompatibilityCommand(a)),
+		inGroup(groupDiagnose, newDoctorCommand(a)),
 	)
-	root.AddCommand(newInventoryCommands(a)...)
+	for _, cmd := range newInventoryCommands(a) {
+		root.AddCommand(inGroup(groupInventory, cmd))
+	}
 	return root
 }
 

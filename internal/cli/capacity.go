@@ -38,7 +38,24 @@ func newAssessmentCapacityCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "capacity [RUN]",
 		Short: "Attribute datastore growth and project free-space thresholds",
-		Args:  cobra.MaximumNArgs(1),
+		Long: strings.TrimSpace(`
+Attribute datastore growth to the VMs driving it and project when each
+datastore crosses a free-space floor, using the stored assessment history.
+
+Projection needs more than one capture to extrapolate from, so run this after
+history has accumulated rather than against a single capture.`),
+		Example: `  # Growth and projections across the stored history
+  vsfleet assessment capacity
+
+  # Narrow to the last 30 days and two datastores
+  vsfleet assessment capacity --since 30d --datastore ds-nvme-01 --datastore ds-nvme-02
+
+  # Project against a 20% floor, showing the top 10 contributors
+  vsfleet assessment capacity --min-free 20 --top 10
+
+  # Gate a pipeline: exit 2 when a floor is projected within 90 days
+  vsfleet assessment capacity --fail-on-projection 90d`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s, err := a.History()
 			if err != nil {

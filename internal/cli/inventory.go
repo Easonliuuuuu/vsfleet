@@ -135,7 +135,19 @@ func newInventoryCommands(a *App) []*cobra.Command {
 
 func newVMHistoryCommand(a *App) *cobra.Command {
 	var allObservations, includeRuntime bool
-	cmd := &cobra.Command{Use: "history NAME_OR_UUID", Short: "Show a VM's stored assessment timeline", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "history NAME_OR_UUID", Short: "Show a VM's stored assessment timeline", Long: strings.TrimSpace(`
+Show how one VM changed across every stored assessment.
+
+The VM may be named or given by instance UUID; a UUID is the stable choice,
+because it survives a rename. Reads stored evidence only and never contacts a
+vCenter.`), Example: `  # Every recorded change for a VM
+  vsfleet vm history web-01
+
+  # By instance UUID, which survives a rename
+  vsfleet vm history 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52
+
+  # Include unchanged captures, and volatile runtime fields
+  vsfleet vm history web-01 --all-observations --include-runtime`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -174,7 +186,32 @@ func newVMHistoryCommand(a *App) *cobra.Command {
 }
 
 func group(name string, aliases []string, short string, sub *cobra.Command) *cobra.Command {
-	cmd := &cobra.Command{Use: name, Aliases: aliases, Short: short}
+	cmd := requireSubcommand(&cobra.Command{
+		Use:     name,
+		Aliases: aliases,
+		Short:   short,
+		Example: fmt.Sprintf(`  # List on the current context
+  vsfleet %[1]s list
+
+  # List across every configured vCenter at once
+  vsfleet %[1]s list --all-contexts
+
+  # Narrow by name, as JSON
+  vsfleet %[1]s list --context prod --filter web -o json`, name),
+	})
+	// The list subcommand is built by a shared helper that does not know its
+	// kind, so the kind-specific examples are filled in here, where it does.
+	sub.Example = fmt.Sprintf(`  # List on the current context
+  vsfleet %[1]s list
+
+  # List across every configured vCenter at once
+  vsfleet %[1]s list --all-contexts
+
+  # Narrow by name
+  vsfleet %[1]s list --context prod --filter web
+
+  # As JSON, for a script
+  vsfleet %[1]s list --all-contexts -o json`, name)
 	cmd.AddCommand(sub)
 	return cmd
 }

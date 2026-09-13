@@ -15,7 +15,19 @@ func newNetworkCompareCommand(a *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "compare SOURCE_CLUSTER TARGET_CLUSTER [RUN]",
 		Short: "Compare stored network readiness between two clusters",
-		Args:  cobra.RangeArgs(2, 3),
+		Long: strings.TrimSpace(`
+Compare the networks reachable from two clusters: VLAN mappings, policy, MTU,
+host coverage and the VMs affected.
+
+This is the question to answer before moving workloads between clusters. RUN
+selects which stored assessment to read and defaults to the most recent one.
+Reads stored evidence only and never contacts a vCenter.`),
+		Example: `  # What differs between two clusters today
+  vsfleet network compare prod-cluster-a prod-cluster-b
+
+  # The same comparison against a labelled capture, as JSON
+  vsfleet network compare prod-cluster-a dr-cluster-a pre-migration -o json`,
+		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			data, err := loadRunExportData(cmd, a, args[2:])
 			if err != nil {
@@ -37,7 +49,20 @@ func newAssessmentNetworkReadinessCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "network-readiness [RUN]",
 		Short: "Assess stored network readiness between two clusters",
-		Args:  cobra.MaximumNArgs(1),
+		Long: strings.TrimSpace(`
+Reduce a cross-cluster network comparison to a single readiness verdict.
+
+This is the verdict form of "vsfleet network compare", which reports the same
+evidence in full. Reads stored evidence only and never contacts a vCenter.`),
+		Example: `  # Readiness verdict between two clusters
+  vsfleet assessment network-readiness --source prod-cluster-a --target dr-cluster-a
+
+  # Against a labelled capture, as JSON
+  vsfleet assessment network-readiness --source prod-cluster-a --target dr-cluster-a pre-migration -o json
+
+  # Gate a migration pipeline: exit non-zero when blockers remain
+  vsfleet assessment network-readiness --source prod-cluster-a --target dr-cluster-a --fail-on-blockers`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			data, err := loadRunExportData(cmd, a, args)
 			if err != nil {

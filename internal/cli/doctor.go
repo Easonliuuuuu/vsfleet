@@ -13,6 +13,14 @@ func newDoctorCommand(a *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor [context...]",
 		Short: "Diagnose the path to one or more vCenters",
+		Example: `  # Diagnose the current context stage by stage
+  vsfleet doctor
+
+  # Diagnose named contexts
+  vsfleet doctor prod dr
+
+  # Diagnose everything, as JSON
+  vsfleet doctor --all-contexts -o json`,
 		Long: `Walk every stage of the connection to a vCenter and report where it stops.
 
 Stages are checked in order — configuration, credential, route, proxy, DNS,

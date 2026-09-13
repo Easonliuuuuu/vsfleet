@@ -23,7 +23,21 @@ func newVMDecommissionCheckCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "decommission-check NAME_OR_UUID [RUN]",
 		Short: "Review stored evidence before decommissioning a VM",
-		Args:  cobra.RangeArgs(1, 2),
+		Long: strings.TrimSpace(`
+Collect the stored evidence that argues for or against retiring a VM: how long
+it has been powered off, what still depends on it, what it still consumes.
+
+Reads stored evidence only. It changes nothing in any vCenter and never powers
+anything off — the decision, and the action, stay with the operator.`),
+		Example: `  # Review a VM against the most recent assessment
+  vsfleet vm decommission-check web-01
+
+  # Review it as it stood in a labelled assessment
+  vsfleet vm decommission-check web-01 nightly
+
+  # Gate a retirement pipeline: exit 2 when blockers remain
+  vsfleet vm decommission-check web-01 --fail-on-blockers -o json`,
+		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			selector := "latest"
 			if len(args) == 2 {

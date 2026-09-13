@@ -23,6 +23,17 @@ func newUICommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ui",
 		Short: "Browse every vCenter in one terminal interface",
+		Example: `  # Open the interface on the current context
+  vsfleet ui
+
+  # Open it across the whole estate
+  vsfleet ui --all-contexts
+
+  # Re-read inventory every five minutes instead of the default
+  vsfleet ui --refresh 5m
+
+  # Only read when asked
+  vsfleet ui --refresh -1`,
 		Long: `Open the terminal interface.
 
 The numbered tabs show one resource kind at a time for the vCenter in scope

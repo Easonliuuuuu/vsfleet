@@ -217,11 +217,39 @@ vsfleet search nvme --kind datastore -o json | jq
 | `-o, --output table\|json` | Select human or machine-readable output |
 | `--refresh <duration>` | Set or disable background TUI polling |
 
-The built-in help is the exhaustive flag-level reference and always reflects
-the installed binary:
+## Finding your way around
+
+The built-in help is the exhaustive reference and always reflects the
+installed binary. `-h` / `--help` works at every level of the tree, and every
+command carries worked examples:
 
 ```sh
-vsfleet --help
-vsfleet context add --help
-vsfleet assessment diff --help
+vsfleet --help                          # grouped by the job being done
+vsfleet assessment --help               # what is under a command group
+vsfleet assessment diff --help          # flags, arguments, and examples
+vsfleet assessment trends capacity -h   # four levels deep, same thing
+```
+
+`vsfleet --help` groups the tree rather than listing it alphabetically:
+getting started, inventory and search, assessment and history, analysis, and
+diagnostics.
+
+A mistyped command fails with a non-zero exit status and suggests the near
+miss, so a typo in a scheduled job is never mistaken for success:
+
+```console
+$ vsfleet assessment lst
+vsfleet: unknown command "lst" for "vsfleet assessment"
+
+Did you mean this?
+	list
+
+Run 'vsfleet assessment --help' for the available commands.
+```
+
+Shell completion covers commands, flags, and the closed argument vocabularies
+such as the `KIND` accepted by `topology`, `dependencies`, and `blast-radius`:
+
+```sh
+vsfleet completion bash --help   # and zsh, fish, powershell
 ```

@@ -18,13 +18,42 @@ const (
 	directionBlastRadius  topologyDirection = "blast-radius"
 )
 
+// topologyQueryLong is shared by the three query directions: they differ only
+// in which way they walk the graph, and the vocabulary of KIND, NAME and RUN
+// is worth stating wherever a user lands.
+const topologyQueryLong = `
+KIND is one of vm, template, host, cluster, datastore, network, dvswitch or
+resourcepool. NAME is the object's name in the estate. RUN selects which
+stored assessment to read and defaults to the most recent one; pass an
+assessment ID or label from "vsfleet assessment list".
+
+The query reads stored evidence and never contacts a vCenter, so it answers
+the same way whether or not the site is reachable.`
+
 func newTopologyCommand(a *App) *cobra.Command {
-	return newTopologyQueryCommand(a, directionTopology, "topology KIND NAME [RUN]", nil, "Show a subject's containment and attachments")
+	cmd := newTopologyQueryCommand(a, directionTopology, "topology KIND NAME [RUN]", nil, "Show a subject's containment and attachments")
+	cmd.Example = `  # Where a VM sits and what is attached to it
+  vsfleet topology vm web-01
+
+  # The same subject in a specific stored assessment
+  vsfleet topology vm web-01 nightly
+
+  # What a datastore holds, as JSON
+  vsfleet topology datastore ds-nvme-01 -o json`
+	return cmd
 }
 
 func newDependenciesCommand(a *App) *cobra.Command {
 	var depth int
 	cmd := newTopologyQueryCommand(a, directionDependencies, "dependencies KIND NAME [RUN]", []string{"deps"}, "Show what a subject depends on")
+	cmd.Example = `  # What a VM needs in order to run
+  vsfleet dependencies vm web-01
+
+  # Follow the chain further out
+  vsfleet dependencies vm web-01 --depth 3
+
+  # What a cluster depends on, in a labelled assessment
+  vsfleet deps cluster prod-cluster-a nightly`
 	cmd.Flags().IntVar(&depth, "depth", 1, "dependency traversal depth (1-5)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return runTopologyQuery(cmd, a, args, directionDependencies, depth)
@@ -35,6 +64,14 @@ func newDependenciesCommand(a *App) *cobra.Command {
 func newBlastRadiusCommand(a *App) *cobra.Command {
 	var depth int
 	cmd := newTopologyQueryCommand(a, directionBlastRadius, "blast-radius KIND NAME [RUN]", []string{"blast"}, "Show the objects affected by a subject")
+	cmd.Example = `  # What breaks if this host goes down
+  vsfleet blast-radius host esxi-07
+
+  # What a datastore outage would reach, two hops out
+  vsfleet blast-radius datastore ds-nvme-01 --depth 2
+
+  # What depends on a port group, as JSON
+  vsfleet blast network vlan-200 -o json`
 	cmd.Flags().IntVar(&depth, "depth", 1, "blast-radius traversal depth (1-5)")
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return runTopologyQuery(cmd, a, args, directionBlastRadius, depth)
@@ -47,7 +84,17 @@ func newTopologyQueryCommand(a *App, direction topologyDirection, use string, al
 		Use:     use,
 		Aliases: aliases,
 		Short:   short,
+		Long:    strings.TrimSpace(short + ".\n" + topologyQueryLong),
 		Args:    cobra.RangeArgs(2, 3),
+		// Only the first positional argument comes from a fixed vocabulary;
+		// NAME and RUN are estate data, so completion stops after KIND rather
+		// than offering the kind list again in their place.
+		ValidArgs: topologyKinds,
+		ArgAliases: []string{
+			"vms", "virtualmachine", "templates", "tpl", "hosts", "esxi",
+			"clusters", "datastores", "ds", "networks", "portgroup",
+			"dvswitches", "resourcepools", "pool",
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTopologyQuery(cmd, a, args, direction, 1)
 		},

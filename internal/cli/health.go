@@ -51,7 +51,31 @@ func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
 }
 
 func newHealthCommand(a *App) *cobra.Command {
-	return newFindingsCommand(a, "health [RUN]", "Assess the estate described by a stored assessment")
+	cmd := newFindingsCommand(a, "health [RUN]", "Assess the estate described by a stored assessment")
+	cmd.Long = strings.TrimSpace(`
+Run every health rule against a stored assessment and report a verdict.
+
+RUN selects which assessment to read and defaults to the most recent one; pass
+an assessment ID or label from "vsfleet assessment list". Reads stored
+evidence only and never contacts a vCenter.`)
+	cmd.Example = `  # See what the rules check before running them
+  vsfleet health --list-rules
+
+  # Assess the most recent capture
+  vsfleet health
+
+  # Critical findings only, with recommendations and evidence
+  vsfleet health --severity critical --wide
+
+  # One category, against a labelled capture
+  vsfleet health nightly --category migration
+
+  # Gate a pipeline: exit 2 on any warning or worse
+  vsfleet health --severity warning --fail-on-findings
+
+  # Loosen a threshold and turn one rule off
+  vsfleet health --max-snapshot-age 90d --disable-rule guest-disk-free`
+	return cmd
 }
 
 func newFindingsCommand(a *App, use, short string) *cobra.Command {

@@ -48,19 +48,68 @@ func (e *partialExitError) Error() string {
 func (e *partialExitError) ExitCode() int { return 3 }
 
 func newAssessmentCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "assessment", Aliases: []string{"assess", "history"}, Short: "Capture and compare historical assessments"}
+	cmd := requireSubcommand(&cobra.Command{
+		Use:     "assessment",
+		Aliases: []string{"assess", "history"},
+		Short:   "Capture and compare historical assessments",
+		Long: strings.TrimSpace(`
+Capture a point-in-time snapshot of the estate into the local history
+database, then read it back: compare two captures, render a report, export an
+RVTools workbook, or ask what changed.
+
+Every subcommand below "run" reads stored evidence only. They never contact a
+vCenter, so they stay usable when a site is offline and always describe the
+estate as it was when the capture was taken.`),
+		Example: `  # Capture every context and label the capture
+  vsfleet assessment run --all-contexts --label nightly
+
+  # See what has been captured, then compare the two most recent
+  vsfleet assessment list
+  vsfleet assessment diff
+
+  # Compare a labelled baseline against the latest capture
+  vsfleet assessment diff nightly latest
+
+  # Fail a pipeline when VMs were removed
+  vsfleet assessment diff --fail-on removed
+
+  # Read a capture without touching a vCenter
+  vsfleet assessment findings
+  vsfleet assessment export --file estate.xlsx`,
+	})
 	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentCapacityCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentNetworkReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
 	return cmd
 }
 
 func newAssessmentFindingsCommand(a *App) *cobra.Command {
-	return newFindingsCommand(a, "findings [RUN]", "Show health findings for a stored assessment")
+	cmd := newFindingsCommand(a, "findings [RUN]", "Show health findings for a stored assessment")
+	cmd.Long = strings.TrimSpace(`
+List the individual health findings behind a stored assessment.
+
+This is the itemised form of "vsfleet health", which reports the same rules as
+a single verdict. Reads stored evidence only and never contacts a vCenter.`)
+	cmd.Example = `  # Findings for the most recent capture
+  vsfleet assessment findings
+
+  # Findings for a labelled capture, as JSON
+  vsfleet assessment findings nightly -o json
+
+  # Capacity findings of warning severity or worse
+  vsfleet assessment findings --category capacity --severity warning`
+	return cmd
 }
 
 func newAssessmentReadinessCommand(a *App) *cobra.Command {
 	var flags healthFlags
 	var failOnBlockers bool
-	cmd := &cobra.Command{Use: "readiness [RUN]", Short: "Assess migration readiness from a stored assessment", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "readiness [RUN]", Short: "Assess migration readiness from a stored assessment", Example: `  # Readiness verdict for the most recent capture
+  vsfleet assessment readiness
+
+  # Verdict for a labelled capture, as JSON
+  vsfleet assessment readiness pre-migration -o json
+
+  # Gate a migration pipeline: exit 2 when blockers remain
+  vsfleet assessment readiness --fail-on-blockers`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		// Readiness always considers every category and severity. The tuning and
 		// disable flags still apply because they change the evaluated report.
 		flags.minimumSeverity = "info"
@@ -126,7 +175,17 @@ type exportReceipt struct {
 func newAssessmentExportCommand(a *App) *cobra.Command {
 	var format, file string
 	var force bool
-	cmd := &cobra.Command{Use: "export [RUN]", Short: "Export a stored assessment as RVTools XLSX or CSV", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "export [RUN]", Short: "Export a stored assessment as RVTools XLSX or CSV", Example: `  # 19-sheet RVTools workbook from the most recent capture
+  vsfleet assessment export --file estate.xlsx
+
+  # One CSV per RVTools tab, into a directory
+  vsfleet assessment export --format csv --file ./estate-csv
+
+  # Export a labelled capture, replacing an existing file
+  vsfleet assessment export nightly --file estate.xlsx --force
+
+  # See what the workbook will contain before exporting
+  vsfleet compatibility report`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		format = strings.ToLower(strings.TrimSpace(format))
 		switch format {
 		case "rvtools":
@@ -350,7 +409,21 @@ func nonemptyExport(value, fallback string) string {
 }
 
 func newAssessmentTrendsCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "trends", Short: "Show historical estate trends"}
+	cmd := requireSubcommand(&cobra.Command{
+		Use:   "trends",
+		Short: "Show historical estate trends",
+		Long: strings.TrimSpace(`
+Plot one dimension of the estate across every stored capture, rather than
+comparing two captures against each other.`),
+		Example: `  # VM population and churn over the stored history
+  vsfleet assessment trends churn
+
+  # Snapshot age, narrowed to a window
+  vsfleet assessment trends snapshots --from 2026-01-01 --to 2026-03-31
+
+  # Compute and storage capacity, most recent 20 captures
+  vsfleet assessment trends capacity --limit 20`,
+	})
 	cmd.AddCommand(newAssessmentChurnTrendCommand(a), newAssessmentSnapshotTrendCommand(a), newAssessmentCapacityTrendCommand(a))
 	return cmd
 }
@@ -394,7 +467,14 @@ func (f trendFlags) options(ctx context.Context, s *assessment.Store, fallbackCo
 
 func newAssessmentChurnTrendCommand(a *App) *cobra.Command {
 	var flags trendFlags
-	cmd := &cobra.Command{Use: "churn", Short: "Show VM population and churn over time", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "churn", Short: "Show VM population and churn over time", Example: `  # VM population across the stored history
+  vsfleet assessment trends churn
+
+  # A window, by label or ID
+  vsfleet assessment trends churn --from pre-migration --to nightly
+
+  # One context, most recent 10 captures, as JSON
+  vsfleet assessment trends churn --context prod --limit 10 -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -424,7 +504,14 @@ func newAssessmentChurnTrendCommand(a *App) *cobra.Command {
 func newAssessmentSnapshotTrendCommand(a *App) *cobra.Command {
 	var flags trendFlags
 	var older string
-	cmd := &cobra.Command{Use: "snapshots", Short: "Show snapshot-age trends", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "snapshots", Short: "Show snapshot-age trends", Example: `  # Snapshot-age trend across the stored history
+  vsfleet assessment trends snapshots
+
+  # Count snapshots older than 90 days instead of the 30-day default
+  vsfleet assessment trends snapshots --older-than 90d
+
+  # A window, including partial captures
+  vsfleet assessment trends snapshots --from 2026-01-01 --include-partial`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -464,7 +551,14 @@ func newAssessmentSnapshotTrendCommand(a *App) *cobra.Command {
 func newAssessmentCapacityTrendCommand(a *App) *cobra.Command {
 	var flags trendFlags
 	var kind string
-	cmd := &cobra.Command{Use: "capacity", Short: "Show compute and storage capacity trends", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "capacity", Short: "Show compute and storage capacity trends", Example: `  # Compute and storage capacity across the stored history
+  vsfleet assessment trends capacity
+
+  # Datastores only, most recent 20 captures
+  vsfleet assessment trends capacity --kind datastore --limit 20
+
+  # Hosts in one context, as JSON
+  vsfleet assessment trends capacity --kind host --context prod -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -504,7 +598,14 @@ func newAssessmentCapacityTrendCommand(a *App) *cobra.Command {
 
 func newAssessmentReportCommand(a *App) *cobra.Command {
 	var older string
-	cmd := &cobra.Command{Use: "report [RUN]", Short: "Render a point-in-time assessment report", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "report [RUN]", Short: "Render a point-in-time assessment report", Example: `  # Report on the most recent capture
+  vsfleet assessment report
+
+  # Report on a labelled capture
+  vsfleet assessment report pre-migration
+
+  # Count snapshots older than 90 days as stale, as JSON
+  vsfleet assessment report --older-than 90d -o json`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -548,7 +649,15 @@ func newAssessmentPruneCommand(a *App) *cobra.Command {
 	var older string
 	var keepLast int
 	var execute bool
-	cmd := &cobra.Command{Use: "prune", Short: "Prune old assessment history", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "prune", Short: "Prune old assessment history", Long: strings.TrimSpace(`
+Delete old captures from the local history database.
+
+Pruning is a dry run unless --execute is passed, so the default output is a
+preview of what would go. Pinned captures are never pruned.`), Example: `  # Preview what a prune would remove (nothing is deleted)
+  vsfleet assessment prune --older-than 90d
+
+  # Actually remove them, keeping the 5 newest complete captures
+  vsfleet assessment prune --older-than 90d --keep-last 5 --execute`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := rejectStoredContextSelection(cmd, "prune"); err != nil {
 			return err
 		}
@@ -591,7 +700,11 @@ func newAssessmentPruneCommand(a *App) *cobra.Command {
 
 func newAssessmentBackupCommand(a *App) *cobra.Command {
 	var force bool
-	cmd := &cobra.Command{Use: "backup FILE", Short: "Create a consistent SQLite history backup", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "backup FILE", Short: "Create a consistent SQLite history backup", Example: `  # Back the history database up to a file
+  vsfleet assessment backup ./vsfleet-history.db
+
+  # Overwrite an existing backup, e.g. from a nightly job
+  vsfleet assessment backup ./vsfleet-history.db --force`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := rejectStoredContextSelection(cmd, "backup"); err != nil {
 			return err
 		}
@@ -614,7 +727,11 @@ func newAssessmentBackupCommand(a *App) *cobra.Command {
 
 func newAssessmentRestoreCommand(a *App) *cobra.Command {
 	var force bool
-	cmd := &cobra.Command{Use: "restore FILE", Short: "Restore SQLite history from a backup", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "restore FILE", Short: "Restore SQLite history from a backup", Example: `  # Restore into a fresh history database
+  vsfleet assessment restore ./vsfleet-history.db
+
+  # Replace the history database in place (destructive, so it must be confirmed)
+  vsfleet assessment restore ./vsfleet-history.db --force`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := rejectStoredContextSelection(cmd, "restore"); err != nil {
 			return err
 		}
@@ -637,7 +754,11 @@ func newAssessmentRestoreCommand(a *App) *cobra.Command {
 }
 
 func newAssessmentDoctorCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "doctor", Short: "Check assessment database integrity", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "doctor", Short: "Check assessment database integrity", Example: `  # Check the local history database
+  vsfleet assessment doctor
+
+  # Check a specific database, as JSON
+  vsfleet assessment doctor --history-db ./vsfleet-history.db -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := rejectStoredContextSelection(cmd, "doctor"); err != nil {
 			return err
 		}
@@ -712,7 +833,26 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 	var pin bool
 	var browseDatastores bool
 	var failOnPartial bool
-	cmd := &cobra.Command{Use: "run", Short: "Capture a point-in-time inventory assessment", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "run", Short: "Capture a point-in-time inventory assessment", Long: strings.TrimSpace(`
+Read inventory from the selected contexts and store it as one immutable
+capture in the local history database.
+
+This is the only assessment subcommand that contacts a vCenter; everything
+else reads back what it stored. A capture that reaches some contexts but not
+all is stored as partial and says so.`), Example: `  # Capture the current context
+  vsfleet assessment run
+
+  # Capture the whole estate under a stable label
+  vsfleet assessment run --all-contexts --label nightly
+
+  # Also record datastore VMDK files, so "assessment orphans" has evidence
+  vsfleet assessment run --all-contexts --browse-datastores
+
+  # Pin a baseline so pruning never removes it
+  vsfleet assessment run --all-contexts --label pre-migration --pin
+
+  # Gate a scheduled job: exit 3 when a site was unreachable
+  vsfleet assessment run --all-contexts --fail-on-partial`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		contexts, err := a.Contexts()
 		if err != nil {
 			return err
@@ -753,7 +893,15 @@ func newAssessmentRunCommand(a *App) *cobra.Command {
 }
 
 func newAssessmentListCommand(a *App) *cobra.Command {
-	return &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List stored assessments", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	return &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List stored assessments", Long: strings.TrimSpace(`
+List the captures in the local history database, newest first.
+
+The ID and label columns are what every other subcommand accepts as its RUN
+argument, alongside the selector "latest".`), Example: `  # Every stored capture, newest first
+  vsfleet assessment list
+
+  # As JSON, to pick a run ID in a script
+  vsfleet assessment list -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := rejectStoredContextSelection(cmd, "list"); err != nil {
 			return err
 		}
@@ -786,7 +934,29 @@ func newAssessmentDiffCommand(a *App) *cobra.Command {
 	var failOn []string
 	var maxAge string
 	var requireComplete bool
-	cmd := &cobra.Command{Use: "diff [BASE] [TARGET]", Short: "Compare two assessments", Args: cobra.MaximumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "diff [BASE] [TARGET]", Short: "Compare two assessments", Long: strings.TrimSpace(`
+Compare two stored captures and report what changed between them.
+
+BASE and TARGET are assessment IDs or labels from "vsfleet assessment list",
+or the selector "latest". With no arguments the two most recent captures are
+compared; with one, it is compared against the most recent.
+
+Volatile runtime fields — power state, guest, IP, tools, storage — are left
+out unless --include-runtime is passed, so ordinary churn does not drown the
+structural changes.`), Example: `  # The two most recent captures
+  vsfleet assessment diff
+
+  # A labelled baseline against the most recent capture
+  vsfleet assessment diff pre-migration latest
+
+  # Two captures by ID, including volatile runtime fields
+  vsfleet assessment diff 41 42 --include-runtime
+
+  # Gate a pipeline: exit 2 when VMs were removed or networks changed
+  vsfleet assessment diff --fail-on removed,network-changed
+
+  # Refuse to report on captures that are not fully comparable
+  vsfleet assessment diff --require-complete`, Args: cobra.MaximumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -859,7 +1029,14 @@ func newAssessmentDiffCommand(a *App) *cobra.Command {
 func newAssessmentSnapshotsCommand(a *App) *cobra.Command {
 	var at int64
 	var older string
-	cmd := &cobra.Command{Use: "snapshots", Short: "Show snapshot ages in an assessment", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	cmd := &cobra.Command{Use: "snapshots", Short: "Show snapshot ages in an assessment", Example: `  # Snapshots in the most recent capture
+  vsfleet assessment snapshots
+
+  # Only snapshots at least 90 days old
+  vsfleet assessment snapshots --older-than 90d
+
+  # Snapshots in a specific capture, as JSON
+  vsfleet assessment snapshots --at 42 -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		s, err := a.History()
 		if err != nil {
 			return err
@@ -895,7 +1072,11 @@ func newAssessmentSnapshotsCommand(a *App) *cobra.Command {
 
 func newAssessmentDeleteCommand(a *App) *cobra.Command {
 	var force bool
-	cmd := &cobra.Command{Use: "delete RUN", Short: "Delete one stored assessment", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "delete RUN", Short: "Delete one stored assessment", Example: `  # Delete one capture by ID (deletion must be confirmed)
+  vsfleet assessment delete 42 --force
+
+  # Delete a labelled capture
+  vsfleet assessment delete nightly --force`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := rejectStoredContextSelection(cmd, "delete"); err != nil {
 			return err
 		}
@@ -919,7 +1100,14 @@ func newAssessmentDeleteCommand(a *App) *cobra.Command {
 func newAssessmentUpdateCommand(a *App) *cobra.Command {
 	var label, note string
 	var pin, unpin bool
-	cmd := &cobra.Command{Use: "update RUN", Short: "Update assessment label, note, or pin", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "update RUN", Short: "Update assessment label, note, or pin", Example: `  # Label a capture so other commands can select it by name
+  vsfleet assessment update 42 --label pre-migration
+
+  # Pin it against pruning, with a note
+  vsfleet assessment update 42 --pin --note "baseline for the Q3 migration"
+
+  # Clear the note and unpin
+  vsfleet assessment update 42 --note "" --unpin`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := rejectStoredContextSelection(cmd, "update"); err != nil {
 			return err
 		}

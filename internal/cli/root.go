@@ -224,11 +224,15 @@ func rejectStoredContextSelection(cmd *cobra.Command, operation string) error {
 func NewRootCommand(a *App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "vsfleet",
-		Short: "Operate all your vCenters from one terminal",
+		Short: "Read-only vSphere estate assessment and diagnostics across every vCenter",
 		Long: `vsfleet treats every vCenter as a named context, the way kubectl treats
 clusters. Each context carries its own endpoint, credential reference,
 network route and TLS policy, so a lab reached directly and a customer
-vCenter reached through a SOCKS5 proxy work side by side in one process.`,
+vCenter reached through a SOCKS5 proxy work side by side in one process.
+
+Every command is strictly read-only: vsfleet never powers a VM on or off,
+reverts a snapshot, alters inventory or changes a network. It is safe to point
+at production.`,
 		Example: `  # Open the terminal interface on the current context
   vsfleet
 

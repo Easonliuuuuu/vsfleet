@@ -74,7 +74,7 @@ homebrew_casks:
     binaries:
       - vsfleet
     homepage: https://github.com/easonliuuuuu/vsfleet
-    description: Operate multiple VMware vCenter servers from one terminal
+    description: Read-only vSphere estate assessment and diagnostics across every vCenter
     repository:
       owner: Easonliuuuuu
       name: homebrew-tap

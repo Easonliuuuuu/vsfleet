@@ -84,7 +84,6 @@ jobs:
           mkdir -p linux/amd64 linux/arm64
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o linux/amd64/vsfleet ./cmd/vsfleet
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o linux/arm64/vsfleet ./cmd/vsfleet
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o linux/amd64/vsfleet-vcsim ./cmd/vsfleet-vcsim
 
       - name: Build multi-arch container image
         run: |
@@ -99,8 +98,28 @@ jobs:
           docker run --rm vsfleet:ci-test --version
           docker run --rm vsfleet:ci-test --help
 
-      - name: Build vcsim fixture image
-        run: docker build -f Dockerfile.vcsim -t vsfleet-vcsim:ci-test .
+  kubernetes-e2e:
+    name: Kubernetes end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      # Rebuilt independently of the docker-build job so this job's failure
+      # domain stays confined to Kubernetes/kind behavior. These are the same
+      # small, distroless-COPY images the Docker job smoke tests, so
+      # rebuilding them here is cheap relative to the kind cluster below.
+      - name: Build Linux amd64 test images
+        run: |
+          mkdir -p linux/amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o linux/amd64/vsfleet ./cmd/vsfleet
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o linux/amd64/vsfleet-vcsim ./cmd/vsfleet-vcsim
+          docker build --build-arg TARGETPLATFORM=linux/amd64 -t vsfleet:ci-test .
+          docker build -f Dockerfile.vcsim -t vsfleet-vcsim:ci-test .
 
       - name: Create Kubernetes test cluster
         uses: helm/kind-action@v1

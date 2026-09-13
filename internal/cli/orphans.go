@@ -35,7 +35,24 @@ func newAssessmentOrphansCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "orphans [RUN]",
 		Short: "Explain browsed datastore VMDK orphan evidence",
-		Args:  cobra.MaximumNArgs(1),
+		Long: strings.TrimSpace(`
+Explain the VMDK files found on datastores that no registered VM claims, with
+the confidence behind each candidate.
+
+The evidence comes from datastore browsing, which only "assessment run
+--browse-datastores" records. Without it there is nothing to explain, and
+coverage gaps are reported separately: "no candidates" is not proof of a clean
+estate unless the scan reached every datastore.`),
+		Example: `  # Capture the evidence, then explain it
+  vsfleet assessment run --all-contexts --browse-datastores
+  vsfleet assessment orphans
+
+  # Only high-confidence candidates over 10 GiB
+  vsfleet assessment orphans --confidence verified --min-size 10737418240
+
+  # Gate a cleanup pipeline on complete coverage
+  vsfleet assessment orphans --fail-on-unknown -o json`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			for i := range flags.confidence {
 				flags.confidence[i] = strings.ToLower(strings.TrimSpace(flags.confidence[i]))

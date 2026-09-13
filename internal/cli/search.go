@@ -18,6 +18,14 @@ func newSearchCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "search <text>",
 		Short: "Search every vCenter at once",
+		Example: `  # Find a name anywhere in the estate
+  vsfleet search ubuntu-golden --all-contexts
+
+  # Restrict to one kind and cap the result count
+  vsfleet search nvme --kind datastore --limit 20
+
+  # Several kinds at once, as JSON
+  vsfleet search web --kind vm,template -o json`,
 		Long: `Search every configured vCenter for objects whose name contains the text.
 
 This is the question that is genuinely hard to answer today: which of the

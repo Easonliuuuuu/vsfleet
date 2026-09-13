@@ -11,6 +11,11 @@ func newDemoCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "demo",
 		Short: "Explore a sample estate without connecting to a vCenter",
+		Example: `  # Open the interface on sample data
+  vsfleet demo
+
+  # Same, without the background refresh
+  vsfleet demo --refresh -1`,
 		Long: `Open the terminal interface on invented inventory.
 
 The estate is three vCenters: two healthy sites reached by different routes

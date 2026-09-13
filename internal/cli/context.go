@@ -16,11 +16,34 @@ import (
 )
 
 func newContextCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{
+	cmd := requireSubcommand(&cobra.Command{
 		Use:     "context",
 		Aliases: []string{"contexts", "ctx"},
 		Short:   "Manage vCenter contexts",
-	}
+		Long: strings.TrimSpace(`
+A context names one vCenter and everything needed to reach it: endpoint,
+credential reference, network route and TLS policy. Contexts are independent,
+so a lab reached directly and a customer vCenter reached through a SOCKS5
+proxy work side by side.
+
+Passwords are never written to the configuration file. The file records a
+reference; the secret lives in the OS keyring or comes from a prompt, an
+environment variable, a file or a program at the moment it is needed.`),
+		Example: `  # Add a context interactively
+  vsfleet context add
+
+  # Add one unattended, from a provisioning script
+  vsfleet context add --name prod \
+    --endpoint https://vcsa.example.internal \
+    --username svc-ro@vsphere.local --password-stdin < secret.txt
+
+  # See what is configured and which one is current
+  vsfleet context list
+
+  # Switch the current context, then confirm it works
+  vsfleet context use prod
+  vsfleet context test prod`,
+	})
 	cmd.AddCommand(
 		newContextAddCommand(a),
 		newContextListCommand(a),
@@ -84,6 +107,26 @@ func newContextAddCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add",
 		Short: "Add a vCenter context",
+		Example: `  # Interactive wizard
+  vsfleet context add
+
+  # Unattended, password piped in and stored in the OS keyring
+  vsfleet context add --name prod \
+    --endpoint https://vcsa.example.internal \
+    --username svc-ro@vsphere.local --password-stdin < secret.txt
+
+  # Through a SOCKS5 proxy, resolving DNS at the proxy
+  vsfleet context add --name customer-a \
+    --endpoint https://vcsa.internal --username svc-ro@vsphere.local \
+    --transport socks5 --proxy-address bastion.example.net:1080 --remote-dns
+
+  # Pin the presented certificate instead of trusting the system store
+  vsfleet context add --name lab --endpoint https://vcsa.lab \
+    --username administrator@vsphere.local --tls thumbprint
+
+  # Take the password from a secret manager at connect time
+  vsfleet context add --name ci --endpoint https://vcsa.example.internal \
+    --username svc-ro@vsphere.local --credential "exec:vault-read vsphere/ci"`,
 		Long: `Add a vCenter context.
 
 Run without flags for an interactive wizard. Pass --name, --endpoint and
@@ -393,7 +436,12 @@ func newContextListCommand(a *App) *cobra.Command {
 		Use:     "list",
 		Aliases: []string{"ls"},
 		Short:   "List configured contexts",
-		Args:    cobra.NoArgs,
+		Example: `  # Every context, with the current one marked
+  vsfleet context list
+
+  # As JSON
+  vsfleet context list -o json`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := a.Config()
 			if err != nil {
@@ -422,7 +470,9 @@ func newContextListCommand(a *App) *cobra.Command {
 
 func newContextUseCommand(a *App) *cobra.Command {
 	return &cobra.Command{
-		Use:   "use <name>",
+		Use: "use <name>",
+		Example: `  # Make prod the current context
+  vsfleet context use prod`,
 		Short: "Set the current context",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -448,7 +498,15 @@ func newContextShowCommand(a *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show [name]",
 		Short: "Show one context in full",
-		Args:  cobra.MaximumNArgs(1),
+		Example: `  # The current context
+  vsfleet context show
+
+  # A named context
+  vsfleet context show prod
+
+  # As JSON, to diff against expected configuration
+  vsfleet context show prod -o json`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var name string
 			if len(args) == 1 {
@@ -487,7 +545,9 @@ func newContextRemoveCommand(a *App) *cobra.Command {
 		Use:     "remove <name>",
 		Aliases: []string{"rm", "delete"},
 		Short:   "Remove a context",
-		Args:    cobra.ExactArgs(1),
+		Example: `  # Remove a context and invalidate its session
+  vsfleet context remove lab`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := a.Config()
 			if err != nil {
@@ -514,6 +574,11 @@ func newContextTestCommand(a *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "test [name]",
 		Short: "Test the connection to a context",
+		Example: `  # Test the current context
+  vsfleet context test
+
+  # Test a named context with a short timeout
+  vsfleet context test prod --timeout 5s`,
 		Long: `Test the connection to a context.
 
 Every stage of the path is checked separately, because "cannot connect" is

@@ -12,6 +12,14 @@ func newStatusCommand(a *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show connection status for every context",
+		Example: `  # Status of the current context
+  vsfleet status
+
+  # Status of the whole estate, as JSON for monitoring
+  vsfleet status --all-contexts -o json
+
+  # Status of two named contexts, with a shorter timeout
+  vsfleet status --context prod --context dr --timeout 5s`,
 		Long: `Connect to every configured context and report what happened.
 
 One unreachable environment is reported as one failed row. It never prevents

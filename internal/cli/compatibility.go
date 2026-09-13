@@ -10,7 +10,16 @@ import (
 )
 
 func newCompatibilityCommand(a *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "compatibility", Aliases: []string{"compat"}, Short: "Describe what the export profile writes"}
+	cmd := requireSubcommand(&cobra.Command{
+		Use:     "compatibility",
+		Aliases: []string{"compat"},
+		Short:   "Describe what the export profile writes",
+		Example: `  # Every worksheet and column the RVTools export writes
+  vsfleet compatibility report
+
+  # One worksheet, as JSON, for a pipeline to validate against
+  vsfleet compatibility report --sheet vInfo -o json`,
+	})
 	cmd.AddCommand(newCompatibilityReportCommand(a))
 	return cmd
 }
@@ -20,6 +29,14 @@ func newCompatibilityReportCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "report",
 		Short: "Report every worksheet and column the rvtools export writes",
+		Example: `  # Every worksheet and column the export writes
+  vsfleet compatibility report
+
+  # One worksheet
+  vsfleet compatibility report --sheet vInfo
+
+  # As JSON, for a pipeline to validate its own requirements against
+  vsfleet compatibility report -o json`,
 		Long: strings.TrimSpace(`
 Report every worksheet the rvtools export profile writes, with each column's
 type, unit, and when it is left empty.

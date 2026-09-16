@@ -61,6 +61,30 @@ func TestEvaluateInitialRules(t *testing.T) {
 	}
 }
 
+// An empty ConnectionState or ToolsState is missing evidence — a source
+// that never collects the field, such as an imported RVTools workbook —
+// not a reported bad state. Neither rule has a MinSchema gate to fall back
+// on, so each has to make this distinction itself.
+func TestHostDisconnectedAndToolsNotRunningTreatEmptyStateAsUnknown(t *testing.T) {
+	hostUnknown, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-3", Name: "esx-3"})
+	data := assessment.ExportData{
+		Run:      assessment.Run{ID: 1, InventorySchemaVersion: "2"},
+		Contexts: []assessment.ContextRun{{Name: "prod", Datacenter: "dc-a"}},
+		VMs: []assessment.ExportVM{
+			{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: vsphere.VM{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "vm-1", Name: "imported-vm", PowerState: "poweredOn"}}},
+		},
+		Resources: []assessment.ResourceObservation{
+			{Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-3", Name: "esx-3", Payload: hostUnknown},
+		},
+	}
+	report := Evaluate(data, Options{Thresholds: DefaultThresholds()})
+	for _, finding := range report.Findings {
+		if finding.Rule == "host-disconnected" || finding.Rule == "tools-not-running" {
+			t.Errorf("rule %q fired on missing evidence alone: %+v", finding.Rule, finding)
+		}
+	}
+}
+
 func TestEvaluateMarksFailedCollectionUnknown(t *testing.T) {
 	data := assessment.ExportData{
 		Run:      assessment.Run{ID: 50, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion},

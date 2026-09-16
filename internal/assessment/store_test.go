@@ -74,6 +74,38 @@ func TestStoreRoundTripAndDiff(t *testing.T) {
 	}
 }
 
+// TestContextRunsAgainstMemoryStoreDoesNotDeadlock guards loadVMs against a
+// regression that only ever showed up on OpenMemory: that store pins the
+// pool to exactly one physical connection (see open()'s memory branch),
+// and loadVMs used to issue its per-VM snapshot query while the per-context
+// VM-rows query was still open. With only one connection to give out, the
+// nested query had nowhere to get one from, and the outer query could not
+// finish and release its own connection until the nested query returned —
+// a genuine deadlock, not transient contention. A bounded context is used
+// here on purpose: if this regresses, the test fails with a clear timeout
+// instead of hanging the whole run.
+func TestContextRunsAgainstMemoryStoreDoesNotDeadlock(t *testing.T) {
+	s, err := OpenMemory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	vm := testVM("web-01", "vm-1", "instance-1", "bios-1", "esx-1")
+	vm.Snapshots = []vsphere.VMSnapshot{{ID: "snap-1", Name: "before-upgrade", CreateTime: base.Add(-time.Hour), PowerState: "poweredOn"}}
+	run := saveTestRun(t, s, base, vm)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	contexts, err := s.ContextRuns(ctx, run.ID)
+	if err != nil {
+		t.Fatalf("ContextRuns: %v", err)
+	}
+	if len(contexts) != 1 || contexts[0].Name != "prod" {
+		t.Fatalf("contexts=%+v, want one context named prod", contexts)
+	}
+}
+
 func TestStoreDoesNotClaimLifecycleForFailedContext(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {

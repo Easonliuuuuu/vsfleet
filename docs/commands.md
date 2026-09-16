@@ -35,6 +35,7 @@ configuration, history database, and output options shown below.
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
 | `vsfleet vm decommission-check <name-or-uuid> [run]` | Review stored evidence before decommissioning a VM |
 | `vsfleet assessment ...` | Capture and compare historical observations |
+| `vsfleet import rvtools <file.xlsx>` | Import an RVTools-compatible export as a new offline assessment run |
 | `vsfleet compatibility report` | Describe every worksheet and column the export writes |
 
 ## Inventory and search
@@ -73,6 +74,38 @@ template currently references it, and the confidence recorded by the most
 recent stored assessment. A datastore name that matches more than one
 datastore — across contexts, or, rarely, within one context spanning several
 datacenters — is refused rather than guessed at; narrow it with `--context`.
+
+## Importing RVTools exports
+
+`vsfleet import rvtools` adapts an RVTools-compatible XLSX export into a new
+stored assessment run, entirely offline — no configuration, credentials, or
+vCenter connection is used:
+
+```sh
+# Preview what would be imported without writing anything
+vsfleet import rvtools estate.xlsx --dry-run
+
+# Import it, labelled, with an explicit capture time
+vsfleet import rvtools estate.xlsx --label pre-migration --captured-at 2026-01-01T00:00:00Z
+
+# Once imported, every stored-evidence command works on it like a live capture
+vsfleet assessment list
+vsfleet vm history web-01
+vsfleet assessment diff pre-migration wave-1
+```
+
+This first profile reads `vInfo`, `vCPU`, `vMemory`, `vDisk`, `vNetwork`,
+`vHost`, `vCluster` and `vDatastore` by column name, not position, so a
+workbook with extra or reordered columns still imports; anything else is
+reported as an ignored worksheet or column rather than silently dropped.
+RVTools has no standalone worksheet for resource pools, distributed switches,
+or networks, so those three collections are always recorded as not
+collected — visible in `vsfleet assessment list` as a `partial` run and in
+`vsfleet assessment findings` as rules not evaluated, the same honest gap a
+live capture records for a denied query. A field the workbook does not carry
+is left absent, never defaulted to a value that would read as confirmed
+evidence; an imported run's `assessment list` row shows `rvtools-import` as
+its source, so it is never mistaken for a live capture.
 
 ## Topology and dependencies
 

@@ -64,7 +64,22 @@ const (
 	sheetVHost      = "vHost"
 	sheetVCluster   = "vCluster"
 	sheetVDatastore = "vDatastore"
+	sheetVSnapshot  = "vSnapshot"
 )
+
+// snapshotTimeLayouts covers the "Date / time" formats this profile knows how
+// to read: vsfleet's own RVTools-compatible export (yyyy/mm/dd hh:mm:ss,
+// internal/report/rvtools.go's dateFormat) and the ISO and US locale layouts
+// real RVTools builds are known to use. A row whose date matches none of
+// these is skipped with a warning rather than imported with a guessed or
+// zero time — a wrong snapshot age is worse than a missing snapshot.
+var snapshotTimeLayouts = []string{
+	time.RFC3339,
+	"2006/01/02 15:04:05",
+	"2006-01-02 15:04:05",
+	"1/2/2006 15:04:05",
+	"1/2/2006 3:04:05 PM",
+}
 
 // skippedKinds are the persisted collection kinds this profile version has no
 // worksheet mapping for at all — RVTools' layout has no standalone
@@ -143,6 +158,7 @@ type ContextSummary struct {
 	HostCount      int    `json:"host_count"`
 	ClusterCount   int    `json:"cluster_count"`
 	DatastoreCount int    `json:"datastore_count"`
+	SnapshotCount  int    `json:"snapshot_count"`
 }
 
 // Report describes what an import recognized and would do, in enough detail
@@ -178,9 +194,10 @@ type importedContext struct {
 // never touches the assessment store; only Write does, and only after every
 // row that could be read has been read.
 type Result struct {
-	Report   Report
-	contexts []*importedContext
-	opts     Options
+	Report               Report
+	contexts             []*importedContext
+	opts                 Options
+	snapshotSheetPresent bool
 }
 
 // sheetTable is one worksheet's header-indexed rows. Columns are looked up by
@@ -221,11 +238,27 @@ func (t sheetTable) cell(row []string, header string) string {
 
 func isSupportedSheet(name string) bool {
 	switch name {
-	case sheetVInfo, sheetVCPU, sheetVMemory, sheetVDisk, sheetVNetwork, sheetVHost, sheetVCluster, sheetVDatastore:
+	case sheetVInfo, sheetVCPU, sheetVMemory, sheetVDisk, sheetVNetwork, sheetVHost, sheetVCluster, sheetVDatastore, sheetVSnapshot:
 		return true
 	default:
 		return false
 	}
+}
+
+// parseSnapshotTime tries every layout this profile recognizes and reports
+// which one matched, so a caller can tell "no usable timestamp" apart from
+// "this is genuinely the epoch".
+func parseSnapshotTime(s string) (time.Time, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return time.Time{}, false
+	}
+	for _, layout := range snapshotTimeLayouts {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
 
 func isBlankRow(row []string) bool {
@@ -362,6 +395,28 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 	}
 	attachVMRows(sheetVDisk, applyDiskRow)
 	attachVMRows(sheetVNetwork, applyNetworkRow)
+	_, snapshotSheetPresent := tables[sheetVSnapshot]
+	attachVMRows(sheetVSnapshot, func(t sheetTable, row []string, vm *vsphere.VM) {
+		createTime, ok := parseSnapshotTime(t.cell(row, "Date / time"))
+		if !ok {
+			warnings = append(warnings, fmt.Sprintf("%s: row for VM %q has an unparseable or missing Date / time; snapshot skipped", sheetVSnapshot, vm.Name))
+			return
+		}
+		name := t.cell(row, "Name")
+		vm.Snapshots = append(vm.Snapshots, vsphere.VMSnapshot{
+			// RVTools' flat export carries no snapshot moref or parent/tree
+			// structure, so ParentID and Current are left at their zero value
+			// (unknown, not "not a parent" / "not current") and ID is
+			// synthesized from name and creation time — the strongest identity
+			// this profile has, not a real managed-object ID.
+			ID:          fmt.Sprintf("import:%s@%d", name, createTime.UnixNano()),
+			Name:        name,
+			Description: t.cell(row, "Description"),
+			CreateTime:  createTime,
+			PowerState:  t.cell(row, "State"),
+			Quiesced:    parseBool(t.cell(row, "Quiesced")),
+		})
+	})
 
 	attachResourceRows(tables, sheetVHost, &warnings, contextFor, func(c *importedContext, t sheetTable, row []string) {
 		c.hosts = append(c.hosts, hostFromRow(t, row, c.name))
@@ -385,15 +440,24 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 	for _, key := range order {
 		c := byKey[key]
 		contexts = append(contexts, c)
+		snapshotCount := 0
+		for _, vm := range c.vms {
+			snapshotCount += len(vm.Snapshots)
+		}
 		summaries = append(summaries, ContextSummary{
 			Key: c.key, Name: c.name, Endpoint: c.endpoint, VCenterID: c.vcenterID,
 			VMCount: len(c.vms), HostCount: len(c.hosts), ClusterCount: len(c.clusters), DatastoreCount: len(c.datastores),
+			SnapshotCount: snapshotCount,
 		})
 	}
-	skipped := make([]string, 0, len(skippedKinds))
+	skipped := make([]string, 0, len(skippedKinds)+1)
 	for _, s := range skippedKinds {
 		skipped = append(skipped, s.kind)
 	}
+	if !snapshotSheetPresent {
+		skipped = append(skipped, "snapshot")
+	}
+	sort.Strings(skipped)
 
 	report := Report{
 		ProfileVersion:   ProfileVersion,
@@ -406,7 +470,7 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 		Warnings:         warnings,
 		SkippedKinds:     skipped,
 	}
-	return &Result{Report: report, contexts: contexts, opts: opts}, nil
+	return &Result{Report: report, contexts: contexts, opts: opts, snapshotSheetPresent: snapshotSheetPresent}, nil
 }
 
 // attachResourceRows is the shared walk for the three one-row-per-object
@@ -674,6 +738,15 @@ func (r *Result) Write(ctx context.Context, store *assessment.Store, now time.Ti
 		result.Collections = append(result.Collections, resourceCollection("host", c.vcenterID, c.name, c.hosts, func(h vsphere.Host) (string, string) { return h.ID, h.Name }))
 		result.Collections = append(result.Collections, resourceCollection("cluster", c.vcenterID, c.name, c.clusters, func(v vsphere.Cluster) (string, string) { return v.ID, v.Name }))
 		result.Collections = append(result.Collections, resourceCollection("datastore", c.vcenterID, c.name, c.datastores, func(v vsphere.Datastore) (string, string) { return v.ID, v.Name }))
+		if r.snapshotSheetPresent {
+			snapshotCount := 0
+			for _, vm := range c.vms {
+				snapshotCount += len(vm.Snapshots)
+			}
+			result.Collections = append(result.Collections, assessment.CollectionResult{Kind: "snapshot", Status: vmCollectionStatus(snapshotCount), ItemCount: snapshotCount})
+		} else {
+			result.Collections = append(result.Collections, assessment.CollectionResult{Kind: "snapshot", Status: "unavailable", Error: "workbook has no vSnapshot worksheet in this profile"})
+		}
 		for _, skip := range skippedKinds {
 			result.Collections = append(result.Collections, assessment.CollectionResult{Kind: skip.kind, Status: "unavailable", Error: skip.reason})
 		}

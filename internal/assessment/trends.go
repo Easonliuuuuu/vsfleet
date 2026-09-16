@@ -346,6 +346,8 @@ func (s *Store) SnapshotTrend(ctx context.Context, opts TrendOptions, olderThan 
 			}
 			if contextRun.VMStatus != "success" && contextRun.VMStatus != "empty" {
 				trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "snapshot", Context: contextRun.Name, Message: "VM collection is not complete: " + nonempty(contextRun.Error, contextRun.VMStatus)})
+			} else if !ContextComplete(contextRun, []string{"snapshot"}) {
+				trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "snapshot", Context: contextRun.Name, Message: "snapshot evidence was not collected: " + CoverageReason([]ContextRun{contextRun}, contextRun.Name, []string{"snapshot"})})
 			}
 		}
 		ages, err := s.snapshotAges(ctx, run.ID, 0)

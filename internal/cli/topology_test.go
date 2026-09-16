@@ -35,8 +35,8 @@ func newTopologyTestHistoryDB(t *testing.T) string {
 	} {
 		ds := vsphere.Datastore{Location: vsphere.Location{Context: item.name, Datacenter: "dc"}, ID: item.id, Name: "datastore1", Backing: vsphere.DatastoreBacking{Extents: []string{item.extent}}}
 		payload, _ := json.Marshal(ds)
-		collections := make([]assessment.CollectionResult, 0, 7)
-		for _, kind := range []string{"vm", "host", "cluster", "resourcepool", "dvswitch", "datastore", "network"} {
+		collections := make([]assessment.CollectionResult, 0, 8)
+		for _, kind := range []string{"vm", "host", "cluster", "resourcepool", "dvswitch", "datastore", "network", "snapshot"} {
 			collection := assessment.CollectionResult{Kind: kind, Status: "empty"}
 			if kind == "datastore" {
 				collection.Status = "success"

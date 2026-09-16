@@ -136,12 +136,12 @@ func TestParseRecognizesMappedAndIgnoresUnmappedWorksheets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	for _, want := range []string{sheetVInfo, sheetVCPU, sheetVMemory, sheetVDisk, sheetVNetwork, sheetVHost, sheetVCluster, sheetVDatastore} {
+	for _, want := range []string{sheetVInfo, sheetVCPU, sheetVMemory, sheetVDisk, sheetVNetwork, sheetVHost, sheetVCluster, sheetVDatastore, sheetVSnapshot} {
 		if !contains(result.Report.RecognizedSheets, want) {
 			t.Errorf("recognized sheets = %v, want %q among them", result.Report.RecognizedSheets, want)
 		}
 	}
-	for _, want := range []string{"vTools", "vPartition", "vHBA", "vNIC", "vSwitch", "vPort", "dvSwitch", "dvPort", "vSC+VMK", "vMultiPath", "vRP", "vSnapshot", "vHealth", "vsfleetCoverage"} {
+	for _, want := range []string{"vTools", "vPartition", "vHBA", "vNIC", "vSwitch", "vPort", "dvSwitch", "dvPort", "vSC+VMK", "vMultiPath", "vRP", "vHealth", "vsfleetCoverage"} {
 		if !contains(result.Report.IgnoredSheets, want) {
 			t.Errorf("ignored sheets = %v, want %q among them", result.Report.IgnoredSheets, want)
 		}
@@ -459,6 +459,92 @@ func TestExplicitCapturedAtOverridesWorkbookMetadata(t *testing.T) {
 	}
 	if !strings.Contains(result.Report.CapturedAtSource, "explicit") {
 		t.Errorf("captured at source = %q, want it to say explicit", result.Report.CapturedAtSource)
+	}
+}
+
+// TestParseAndWriteRoundTripsSnapshotsWhenTheWorksheetIsPresent covers the
+// regression this importer's first version left open: a workbook that does
+// carry vSnapshot must have that evidence reach VM history/diff, not just
+// the worksheets vsfleet already mapped.
+func TestParseAndWriteRoundTripsSnapshotsWhenTheWorksheetIsPresent(t *testing.T) {
+	createTime := time.Date(2025, 6, 1, 12, 0, 0, 0, time.UTC)
+	path := writeFixtureWorkbook(t, func(data *assessment.ExportData) {
+		for i := range data.VMs {
+			if data.VMs[i].Observation.Context == "alpha" {
+				data.VMs[i].Snapshots = []vsphere.VMSnapshot{
+					{Name: "before-upgrade", Description: "pre-upgrade rollback point", CreateTime: createTime, PowerState: "poweredOn"},
+				}
+			}
+		}
+	})
+	result, err := Parse(openFixture(t, path), Options{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if contains(result.Report.SkippedKinds, "snapshot") {
+		t.Errorf("skipped kinds = %v, want snapshot not skipped when the workbook carries vSnapshot", result.Report.SkippedKinds)
+	}
+	vm := findVM(result, "alpha", "web-01")
+	if vm == nil || len(vm.Snapshots) != 1 {
+		t.Fatalf("expected the alpha VM to carry one round-tripped snapshot, got %+v", vm)
+	}
+	if vm.Snapshots[0].Name != "before-upgrade" || !vm.Snapshots[0].CreateTime.Equal(createTime) || vm.Snapshots[0].PowerState != "poweredOn" {
+		t.Errorf("round-tripped snapshot = %+v, want it to match the source workbook", vm.Snapshots[0])
+	}
+	if vm.Snapshots[0].ID == "" {
+		t.Error("round-tripped snapshot has no synthesized identity")
+	}
+
+	store, err := assessment.OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer store.Close()
+	run, err := result.Write(context.Background(), store, time.Now())
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	contexts, err := store.ContextRuns(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("ContextRuns: %v", err)
+	}
+	if blind := assessment.BlindContexts(contexts, []string{"snapshot"}); len(blind) != 0 {
+		t.Errorf("blind contexts for snapshot = %v, want none: the workbook carried vSnapshot", blind)
+	}
+}
+
+// TestMissingSnapshotWorksheetIsAnExplicitCoverageGap is the other half:
+// without vSnapshot at all, every context must come back blind for snapshot
+// evidence rather than silently reading as "confirmed no snapshots".
+func TestMissingSnapshotWorksheetIsAnExplicitCoverageGap(t *testing.T) {
+	path := writeFixtureWorkbook(t, nil)
+	f := openFixture(t, path)
+	if err := f.DeleteSheet(sheetVSnapshot); err != nil {
+		t.Fatalf("delete vSnapshot for the test fixture: %v", err)
+	}
+	result, err := Parse(f, Options{})
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !contains(result.Report.SkippedKinds, "snapshot") {
+		t.Errorf("skipped kinds = %v, want snapshot listed when the workbook has no vSnapshot worksheet", result.Report.SkippedKinds)
+	}
+
+	store, err := assessment.OpenMemory()
+	if err != nil {
+		t.Fatalf("OpenMemory: %v", err)
+	}
+	defer store.Close()
+	run, err := result.Write(context.Background(), store, time.Now())
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	contexts, err := store.ContextRuns(context.Background(), run.ID)
+	if err != nil {
+		t.Fatalf("ContextRuns: %v", err)
+	}
+	if blind := assessment.BlindContexts(contexts, []string{"snapshot"}); len(blind) != 2 {
+		t.Fatalf("blind contexts for snapshot = %v, want both alpha and beta blind", blind)
 	}
 }
 

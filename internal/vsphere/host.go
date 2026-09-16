@@ -5,9 +5,11 @@ import (
 	"sort"
 
 	"github.com/vmware/govmomi/vim25/mo"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 var hostProps = []string{
+	"customValue",
 	"name",
 	"parent",
 	"runtime.powerState",
@@ -44,8 +46,17 @@ func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool)
 		return nil, err
 	}
 	out := make([]Host, 0, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
 	for i := range raw {
-		out = append(out, newHostWithConfig(c, idx, &raw[i], withConfig))
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
+	for i := range raw {
+		host := newHostWithConfig(c, idx, &raw[i], withConfig)
+		host.Metadata = metadata[raw[i].Self]
+		out = append(out, host)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil

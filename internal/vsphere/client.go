@@ -5,6 +5,7 @@ package vsphere
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/vmware/govmomi/session"
 	"github.com/vmware/govmomi/vim25"
 	"github.com/vmware/govmomi/vim25/soap"
+	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/credentials"
@@ -29,8 +31,16 @@ type Client struct {
 	// Latency is how long the login round trip took.
 	Latency time.Duration
 
-	vim    *govmomi.Client
-	dialer transport.Dialer
+	vim                *govmomi.Client
+	dialer             transport.Dialer
+	tagger             *taggingClient
+	restErr            error
+	metadataMu         sync.Mutex
+	customFields       []types.CustomFieldDef
+	customFieldsErr    error
+	customFieldsLoaded bool
+	tagCache           map[string]Tag
+	categoryCache      map[string]string
 
 	// idxMu guards the cached path index, which several fetch groups running
 	// concurrently on one client may all ask for.
@@ -139,6 +149,15 @@ func Connect(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Cli
 	latency := time.Since(start)
 
 	c := &Client{Context: cc, Latency: latency, vim: gc, dialer: dialer}
+	// vAPI is optional: older vCenters and ESXi endpoints may not expose the
+	// tagging service. Keep the authenticated SOAP connection usable and make
+	// only tag metadata unavailable in that case.
+	tagger := newTaggingClient(vim)
+	if err := tagger.Login(ctx, url.UserPassword(username, cred.Password)); err != nil {
+		c.restErr = err
+	} else {
+		c.tagger = tagger
+	}
 	c.About = aboutFrom(vim)
 	return c, nil
 }
@@ -220,7 +239,16 @@ func (c *Client) Close(ctx context.Context) error {
 	if c.vim == nil {
 		return nil
 	}
-	return c.vim.Logout(ctx)
+	var errs []error
+	if c.tagger != nil {
+		if err := c.tagger.Logout(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if err := c.vim.Logout(ctx); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
 }
 
 // NewClientForTest wraps an existing govmomi client so tests can exercise the

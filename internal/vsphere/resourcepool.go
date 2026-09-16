@@ -8,7 +8,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-var resourcePoolProps = []string{"name", "parent", "owner", "vm", "config", "summary", "overallStatus", "configStatus"}
+var resourcePoolProps = []string{"name", "parent", "owner", "vm", "config", "summary", "overallStatus", "configStatus", "customValue"}
 
 func (c *Client) listResourcePools(ctx context.Context, idx *index) ([]ResourcePool, error) {
 	var raw []mo.ResourcePool
@@ -17,6 +17,13 @@ func (c *Client) listResourcePools(ctx context.Context, idx *index) ([]ResourceP
 	}
 
 	out := make([]ResourcePool, 0, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
+	for i := range raw {
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
 	for i := range raw {
 		m := &raw[i]
 		// A ContainerView of ResourcePool also returns VirtualApp, which is a
@@ -24,7 +31,9 @@ func (c *Client) listResourcePools(ctx context.Context, idx *index) ([]ResourceP
 		if m.Self.Type != "ResourcePool" {
 			continue
 		}
-		out = append(out, newResourcePool(c, idx, m))
+		pool := newResourcePool(c, idx, m)
+		pool.Metadata = metadata[m.Self]
+		out = append(out, pool)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Name != out[j].Name {

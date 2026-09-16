@@ -11,7 +11,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-var dvSwitchProps = []string{"name", "parent", "uuid", "summary", "config", "portgroup"}
+var dvSwitchProps = []string{"name", "parent", "uuid", "summary", "config", "portgroup", "customValue"}
 var dvPortGroupProps = []string{"name", "parent", "key", "config"}
 
 // ListDVSwitches returns distributed switches and their configuration-derived
@@ -32,6 +32,13 @@ func (c *Client) listDVSwitches(ctx context.Context, idx *index) ([]DVSwitch, er
 	}
 
 	byRef := make(map[types.ManagedObjectReference]int, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
+	for i := range raw {
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
 	out := make([]DVSwitch, 0, len(raw))
 	for i := range raw {
 		m := &raw[i]
@@ -47,6 +54,7 @@ func (c *Client) listDVSwitches(ctx context.Context, idx *index) ([]DVSwitch, er
 			Name:     name,
 			UUID:     m.Uuid,
 		}
+		mapped.Metadata = metadata[m.Self]
 		if m.Summary.Name != "" {
 			mapped.Name = m.Summary.Name
 			mapped.Location = idx.locate(c, m.Self, mapped.Name)

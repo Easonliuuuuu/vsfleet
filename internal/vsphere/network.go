@@ -10,7 +10,7 @@ import (
 
 var networkKinds = []string{"Network", "DistributedVirtualPortgroup", "OpaqueNetwork"}
 
-var networkProps = []string{"name", "parent", "summary"}
+var networkProps = []string{"name", "parent", "summary", "customValue"}
 
 // ListNetworks returns the networks and port groups in a vCenter.
 func (c *Client) ListNetworks(ctx context.Context) ([]Network, error) {
@@ -48,6 +48,13 @@ func (c *Client) listNetworks(ctx context.Context, idx *index) ([]Network, error
 		distributedByRef[m.Self.Value] = entry
 	}
 	out := make([]Network, 0, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
+	for i := range raw {
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
 	for i := range raw {
 		m := &raw[i]
 		n := Network{
@@ -69,6 +76,7 @@ func (c *Client) listNetworks(ctx context.Context, idx *index) ([]Network, error
 			n.VLAN = enrichment.vlan
 		}
 		n.Location = idx.locate(c, m.Self, n.Name)
+		n.Metadata = metadata[m.Self]
 		out = append(out, n)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

@@ -3,11 +3,13 @@ package cli
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,8 +18,10 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
+	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/report"
 	"github.com/easonliuuuuu/vsfleet/internal/version"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 type policyExitError struct{ violations []assessment.PolicyViolation }
@@ -77,8 +81,140 @@ estate as it was when the capture was taken.`),
   vsfleet assessment findings
   vsfleet assessment export --file estate.xlsx`,
 	})
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentCapacityCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentNetworkReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
+	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentCapacityCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentInventoryCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentNetworkReadinessCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
 	return cmd
+}
+
+type storedInventoryItem struct {
+	RunID   int64           `json:"run_id"`
+	Context string          `json:"context"`
+	Kind    string          `json:"kind"`
+	ID      string          `json:"id"`
+	Name    string          `json:"name"`
+	Object  json.RawMessage `json:"object"`
+}
+
+func newAssessmentInventoryCommand(a *App) *cobra.Command {
+	var kinds, where []string
+	var wide bool
+	cmd := &cobra.Command{Use: "inventory [RUN]", Short: "Query inventory stored in an assessment", Example: `  # Query tagged objects from the latest capture
+  vsfleet assessment inventory --where 'tag=Production' --wide
+
+  # Show hosts and datastores with at least 8 CPUs or low free space
+  vsfleet assessment inventory --kind host,datastore --where 'cpu_cores>=8'`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		parsed := make([]vsphere.Kind, 0, len(kinds))
+		for _, value := range kinds {
+			value = strings.ToLower(strings.TrimSpace(value))
+			kind, err := vsphere.ParseKind(value)
+			if err != nil {
+				switch value {
+				case "resourcepool", "resourcepools":
+					kind = vsphere.KindResourcePool
+				case "dvswitch", "dvswitches":
+					kind = vsphere.KindDVSwitch
+				default:
+					return err
+				}
+			}
+			parsed = append(parsed, kind)
+		}
+		filter, err := query.Parse(where, parsed)
+		if err != nil {
+			return fmt.Errorf("--where: %w", err)
+		}
+		selector := "latest"
+		if len(args) == 1 {
+			selector = args[0]
+		}
+		s, err := a.History()
+		if err != nil {
+			return err
+		}
+		runID, err := s.ResolveRun(cmd.Context(), selector)
+		if err != nil {
+			return err
+		}
+		data, err := s.LoadExportDataForContexts(cmd.Context(), runID, a.ContextNames)
+		if err != nil {
+			return err
+		}
+		items := storedInventoryItems(data, parsed, filter)
+		if a.json() {
+			return writeJSON(a.out(), items)
+		}
+		headers := []string{"CONTEXT", "KIND", "NAME", "ID", "PATH"}
+		if wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
+		t := newTable(a.out(), headers...)
+		for _, item := range items {
+			subject, _ := query.SubjectFromJSON(vsphere.Kind(item.Kind), item.Object)
+			path, _ := subject.Fields["path"].(string)
+			row := []string{item.Context, item.Kind, item.Name, item.ID, dash(path)}
+			if wide {
+				metadata := metadataFromSubject(subject)
+				row = append(row, dash(metadataTags(metadata)), dash(metadataAttributes(metadata)))
+			}
+			t.row(row...)
+		}
+		t.flush()
+		return nil
+	}}
+	cmd.Flags().StringSliceVar(&kinds, "kind", nil, "restrict to kinds (repeatable or comma-separated)")
+	cmd.Flags().StringArrayVar(&where, "where", nil, "structured predicate (repeatable; predicates are ANDed)")
+	cmd.Flags().BoolVar(&wide, "wide", false, "include tags and custom attributes")
+	return cmd
+}
+
+func storedInventoryItems(data assessment.ExportData, kinds []vsphere.Kind, filter query.Filter) []storedInventoryItem {
+	wants := func(kind vsphere.Kind) bool {
+		if len(kinds) == 0 {
+			return true
+		}
+		for _, want := range kinds {
+			if want == kind {
+				return true
+			}
+		}
+		return false
+	}
+	items := make([]storedInventoryItem, 0, len(data.VMs)+len(data.Resources))
+	for _, vm := range data.VMs {
+		kind := vsphere.KindVM
+		if vm.Observation.VM.IsTemplate {
+			kind = vsphere.KindTemplate
+		}
+		if !wants(kind) {
+			continue
+		}
+		raw, _ := json.Marshal(vm.Observation.VM)
+		subject, err := query.SubjectFromJSON(kind, raw)
+		if err != nil || !filter.Match(subject) {
+			continue
+		}
+		items = append(items, storedInventoryItem{RunID: data.Run.ID, Context: vm.Observation.Context, Kind: string(kind), ID: vm.Observation.VM.ID, Name: vm.Observation.VM.Name, Object: raw})
+	}
+	for _, resource := range data.Resources {
+		kind := vsphere.Kind(resource.Kind)
+		if !wants(kind) {
+			continue
+		}
+		subject, err := query.SubjectFromJSON(kind, resource.Payload)
+		if err != nil || !filter.Match(subject) {
+			continue
+		}
+		items = append(items, storedInventoryItem{RunID: data.Run.ID, Context: resource.Context, Kind: resource.Kind, ID: resource.ID, Name: resource.Name, Object: resource.Payload})
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].Context != items[j].Context {
+			return items[i].Context < items[j].Context
+		}
+		if items[i].Kind != items[j].Kind {
+			return items[i].Kind < items[j].Kind
+		}
+		return items[i].Name < items[j].Name
+	})
+	return items
 }
 
 func newAssessmentFindingsCommand(a *App) *cobra.Command {

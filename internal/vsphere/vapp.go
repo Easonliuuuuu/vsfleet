@@ -9,6 +9,7 @@ import (
 )
 
 var vappProps = []string{
+	"customValue",
 	"name",
 	"parent",
 	"parentVApp",
@@ -35,8 +36,17 @@ func (c *Client) listVApps(ctx context.Context, idx *index) ([]VApp, error) {
 		return nil, err
 	}
 	out := make([]VApp, 0, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
 	for i := range raw {
-		out = append(out, newVApp(c, idx, &raw[i]))
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
+	for i := range raw {
+		vapp := newVApp(c, idx, &raw[i])
+		vapp.Metadata = metadata[raw[i].Self]
+		out = append(out, vapp)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Name != out[j].Name {

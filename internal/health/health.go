@@ -38,12 +38,13 @@ const (
 
 // Object is what a finding is about. Kind is vm, host, or datastore.
 type Object struct {
-	Kind       string `json:"kind"`
-	Name       string `json:"name"`
-	ID         string `json:"id"`
-	Context    string `json:"context"`
-	VCenterID  string `json:"vcenter_id"`
-	Datacenter string `json:"datacenter"`
+	Kind       string           `json:"kind"`
+	Name       string           `json:"name"`
+	ID         string           `json:"id"`
+	Context    string           `json:"context"`
+	VCenterID  string           `json:"vcenter_id"`
+	Datacenter string           `json:"datacenter"`
+	Metadata   vsphere.Metadata `json:"metadata"`
 }
 
 // Evidence is one measured fact behind a finding. Values are strings so all
@@ -300,7 +301,34 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 		}
 	}
 	report.Counts.Total = len(report.Findings)
+	attachFindingMetadata(&report, data)
 	return report
+}
+
+func attachFindingMetadata(report *Report, data assessment.ExportData) {
+	for i := range report.Findings {
+		object := &report.Findings[i].Object
+		for _, vm := range data.VMs {
+			if object.Kind == "vm" && object.Context == vm.Observation.Context && object.ID == vm.Observation.VM.ID {
+				object.Metadata = vm.Observation.VM.Metadata
+				break
+			}
+		}
+		if object.Metadata.TagsStatus != "" {
+			continue
+		}
+		for _, resource := range data.Resources {
+			if object.Kind == resource.Kind && object.Context == resource.Context && object.ID == resource.ID {
+				var payload struct {
+					Metadata vsphere.Metadata `json:"metadata"`
+				}
+				if json.Unmarshal(resource.Payload, &payload) == nil {
+					object.Metadata = payload.Metadata
+				}
+				break
+			}
+		}
+	}
 }
 
 // Rules returns a copy of the registry in stable ID order.

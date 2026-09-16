@@ -312,6 +312,11 @@ func changedFields(a, b vsphere.VM, runtime bool) []FieldChange {
 	add("guest_os", a.GuestOS, b.GuestOS)
 	add("annotation", a.Annotation, b.Annotation)
 	add("migration_configuration", migrationFingerprint(a), migrationFingerprint(b))
+	if before, err := json.Marshal(a); err == nil {
+		if after, err := json.Marshal(b); err == nil {
+			out = append(out, metadataFieldChanges(before, after)...)
+		}
+	}
 	if runtime {
 		add("power_state", a.PowerState, b.PowerState)
 		add("guest_state", a.GuestState, b.GuestState)
@@ -320,6 +325,74 @@ func changedFields(a, b vsphere.VM, runtime bool) []FieldChange {
 		add("storage_gb", fmt.Sprintf("%.3f", a.StorageGB), fmt.Sprintf("%.3f", b.StorageGB))
 	}
 	return out
+}
+
+// metadataFieldChanges reports identity-aware metadata changes while treating
+// an unavailable source as unknown. The full before/after payload still keeps
+// the source status and values for callers that need to inspect it.
+func metadataFieldChanges(before, after json.RawMessage) []FieldChange {
+	var bm, am struct {
+		Metadata vsphere.Metadata `json:"metadata"`
+	}
+	if json.Unmarshal(before, &bm) != nil || json.Unmarshal(after, &am) != nil {
+		return nil
+	}
+	var out []FieldChange
+	if bm.Metadata.TagsStatus == "available" && am.Metadata.TagsStatus == "available" {
+		bt := make(map[string]vsphere.Tag, len(bm.Metadata.Tags))
+		at := make(map[string]vsphere.Tag, len(am.Metadata.Tags))
+		for _, tag := range bm.Metadata.Tags {
+			bt[tag.CategoryID+"/"+tag.ID] = tag
+		}
+		for _, tag := range am.Metadata.Tags {
+			at[tag.CategoryID+"/"+tag.ID] = tag
+		}
+		for key, tag := range at {
+			if old, ok := bt[key]; !ok {
+				out = append(out, FieldChange{Field: "metadata.tags[" + key + "]", After: tagLabel(tag)})
+			} else if tagLabel(old) != tagLabel(tag) {
+				out = append(out, FieldChange{Field: "metadata.tags[" + key + "]", Before: tagLabel(old), After: tagLabel(tag)})
+			}
+		}
+		for key, tag := range bt {
+			if _, ok := at[key]; !ok {
+				out = append(out, FieldChange{Field: "metadata.tags[" + key + "]", Before: tagLabel(tag)})
+			}
+		}
+	}
+	if bm.Metadata.CustomAttributesStatus == "available" && am.Metadata.CustomAttributesStatus == "available" {
+		bt := make(map[int32]vsphere.CustomAttribute, len(bm.Metadata.CustomAttributes))
+		at := make(map[int32]vsphere.CustomAttribute, len(am.Metadata.CustomAttributes))
+		for _, attr := range bm.Metadata.CustomAttributes {
+			bt[attr.Key] = attr
+		}
+		for _, attr := range am.Metadata.CustomAttributes {
+			at[attr.Key] = attr
+		}
+		for key, attr := range at {
+			if old, ok := bt[key]; !ok || old.Name != attr.Name || old.Value != attr.Value {
+				before := ""
+				if ok {
+					before = old.Name + "=" + old.Value
+				}
+				out = append(out, FieldChange{Field: fmt.Sprintf("metadata.custom_attributes[%d]", key), Before: before, After: attr.Name + "=" + attr.Value})
+			}
+		}
+		for key, attr := range bt {
+			if _, ok := at[key]; !ok {
+				out = append(out, FieldChange{Field: fmt.Sprintf("metadata.custom_attributes[%d]", key), Before: attr.Name + "=" + attr.Value})
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Field < out[j].Field })
+	return out
+}
+
+func tagLabel(tag vsphere.Tag) string {
+	if tag.Category == "" {
+		return tag.Name
+	}
+	return tag.Category + "/" + tag.Name
 }
 
 func migrationFingerprint(vm vsphere.VM) string {

@@ -9,7 +9,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-var datastoreProps = []string{"name", "parent", "summary", "browser", "info"}
+var datastoreProps = []string{"name", "parent", "summary", "browser", "info", "customValue"}
 
 // ListDatastores returns the datastores in a vCenter.
 func (c *Client) ListDatastores(ctx context.Context) ([]Datastore, error) {
@@ -30,6 +30,13 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 		return nil, err
 	}
 	out := make([]Datastore, 0, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
+	for i := range raw {
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
 	for i := range raw {
 		m := &raw[i]
 		s := m.Summary
@@ -44,6 +51,7 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 			Maintenance:   s.MaintenanceMode,
 			Backing:       datastoreBacking(m),
 		}
+		datastore.Metadata = metadata[m.Self]
 		if browse {
 			if !datastore.Accessible {
 				datastore.BrowseStatus = "denied"

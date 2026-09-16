@@ -3,12 +3,14 @@ package cli
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -100,11 +102,25 @@ func (a *App) multiContext() bool {
 
 // listFlags are shared by every inventory listing command.
 type listFlags struct {
-	filter string
+	filter   string
+	where    []string
+	wide     bool
+	compiled query.Filter
 }
 
 func (f *listFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&f.filter, "filter", "f", "", "only show objects whose name contains this text")
+	cmd.Flags().StringArrayVar(&f.where, "where", nil, "structured predicate (repeatable; predicates are ANDed)")
+	cmd.Flags().BoolVar(&f.wide, "wide", false, "include tags and custom attributes")
+}
+
+func (f *listFlags) prepare(kinds ...vsphere.Kind) error {
+	compiled, err := query.Parse(f.where, kinds)
+	if err != nil {
+		return fmt.Errorf("--where: %w", err)
+	}
+	f.compiled = compiled
+	return nil
 }
 
 func (f *listFlags) matches(name string) bool {
@@ -112,6 +128,98 @@ func (f *listFlags) matches(name string) bool {
 		return true
 	}
 	return strings.Contains(strings.ToLower(name), strings.ToLower(f.filter))
+}
+
+func (f *listFlags) matchesObject(kind vsphere.Kind, object any, name string) bool {
+	if !f.matches(name) {
+		return false
+	}
+	if f.compiled.Empty() {
+		return true
+	}
+	subject, err := query.SubjectFromObject(kind, object)
+	return err == nil && f.compiled.Match(subject)
+}
+
+func metadataTags(m vsphere.Metadata) string {
+	parts := make([]string, 0, len(m.Tags))
+	for _, tag := range m.Tags {
+		label := tag.Name
+		if tag.Category != "" {
+			label = tag.Category + "/" + label
+		}
+		parts = append(parts, label)
+	}
+	return strings.Join(parts, ",")
+}
+
+func metadataAttributes(m vsphere.Metadata) string {
+	parts := make([]string, 0, len(m.CustomAttributes))
+	for _, attr := range m.CustomAttributes {
+		parts = append(parts, attr.Name+"="+attr.Value)
+	}
+	return strings.Join(parts, ",")
+}
+
+func metadataFromSubject(s query.Subject) vsphere.Metadata {
+	tagsStatus, customStatus := "unavailable", "unavailable"
+	if s.TagsAvailable {
+		tagsStatus = "available"
+	}
+	if s.CustomAvailable {
+		customStatus = "available"
+	}
+	return vsphere.Metadata{Tags: s.Tags, CustomAttributes: s.CustomAttributes, TagsStatus: tagsStatus, CustomAttributesStatus: customStatus}
+}
+
+func reportMetadataWarnings(a *App, values any) {
+	rv := reflect.ValueOf(values)
+	if rv.Kind() != reflect.Slice {
+		return
+	}
+	seen := map[string]bool{}
+	for i := 0; i < rv.Len(); i++ {
+		m, ok := objectMetadata(rv.Index(i).Interface())
+		if !ok {
+			continue
+		}
+		for _, item := range [][3]string{{"tags", m.TagsStatus, m.TagsError}, {"custom attributes", m.CustomAttributesStatus, m.CustomAttributesError}} {
+			source, status, message := item[0], item[1], item[2]
+			if status == "unavailable" {
+				if message == "" {
+					message = "source unavailable"
+				}
+				key := source + ":" + message
+				if !seen[key] {
+					fmt.Fprintf(a.errOut(), "%s metadata %s unavailable: %s\n", glyphFail, source, message)
+					seen[key] = true
+				}
+			}
+		}
+	}
+}
+
+func objectMetadata(value any) (vsphere.Metadata, bool) {
+	switch v := value.(type) {
+	case vsphere.VM:
+		return v.Metadata, true
+	case vsphere.Host:
+		return v.Metadata, true
+	case vsphere.Cluster:
+		return v.Metadata, true
+	case vsphere.VApp:
+		return v.Metadata, true
+	case vsphere.Datastore:
+		return v.Metadata, true
+	case vsphere.Network:
+		return v.Metadata, true
+	case vsphere.ResourcePool:
+		return v.Metadata, true
+	case vsphere.DVSwitch:
+		return v.Metadata, true
+	default:
+		return vsphere.Metadata{}, false
+	}
 }
 
 // newInventoryCommands builds one command group per resource kind. They all
@@ -235,6 +343,9 @@ func listCommand(a *App, short string, run func(*cobra.Command, *listFlags) erro
 
 func newVMListCommand(a *App) *cobra.Command {
 	return listCommand(a, "List virtual machines", func(cmd *cobra.Command, f *listFlags) error {
+		if err := f.prepare(vsphere.KindVM); err != nil {
+			return err
+		}
 		vms, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) {
 			return c.ListVMs(ctx)
 		})
@@ -242,12 +353,16 @@ func newVMListCommand(a *App) *cobra.Command {
 			reportFailures(a, failures)
 			return err
 		}
-		vms = filterSlice(vms, func(v vsphere.VM) bool { return f.matches(v.Name) })
+		reportMetadataWarnings(a, vms)
+		vms = filterSlice(vms, func(v vsphere.VM) bool { return f.matchesObject(vsphere.KindVM, v, v.Name) })
 		if a.json() {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), vms)
 		}
 		headers := []string{"NAME", "STATE", "CPU", "RAM", "HOST", "IP"}
+		if f.wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
@@ -255,6 +370,9 @@ func newVMListCommand(a *App) *cobra.Command {
 		t := newTable(a.out(), headers...)
 		for _, v := range vms {
 			row := []string{v.Name, v.PowerState, i32toa(v.CPU), humanMB(v.MemoryMB), dash(v.Host), dash(v.IPAddress)}
+			if f.wide {
+				row = append(row, dash(metadataTags(v.Metadata)), dash(metadataAttributes(v.Metadata)))
+			}
 			if multi {
 				row = append([]string{v.Context}, row...)
 			}
@@ -268,6 +386,9 @@ func newVMListCommand(a *App) *cobra.Command {
 
 func newTemplateListCommand(a *App) *cobra.Command {
 	return listCommand(a, "List VM templates", func(cmd *cobra.Command, f *listFlags) error {
+		if err := f.prepare(vsphere.KindTemplate); err != nil {
+			return err
+		}
 		tmpl, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) {
 			return c.ListTemplates(ctx)
 		})
@@ -275,12 +396,16 @@ func newTemplateListCommand(a *App) *cobra.Command {
 			reportFailures(a, failures)
 			return err
 		}
-		tmpl = filterSlice(tmpl, func(v vsphere.VM) bool { return f.matches(v.Name) })
+		reportMetadataWarnings(a, tmpl)
+		tmpl = filterSlice(tmpl, func(v vsphere.VM) bool { return f.matchesObject(vsphere.KindTemplate, v, v.Name) })
 		if a.json() {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), tmpl)
 		}
 		headers := []string{"NAME", "OS", "CPU", "RAM", "DATASTORE", "FOLDER"}
+		if f.wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
@@ -288,6 +413,9 @@ func newTemplateListCommand(a *App) *cobra.Command {
 		t := newTable(a.out(), headers...)
 		for _, v := range tmpl {
 			row := []string{v.Name, dash(v.GuestOS), i32toa(v.CPU), humanMB(v.MemoryMB), dash(strings.Join(v.Datastores, ",")), dash(v.Folder)}
+			if f.wide {
+				row = append(row, dash(metadataTags(v.Metadata)), dash(metadataAttributes(v.Metadata)))
+			}
 			if multi {
 				row = append([]string{v.Context}, row...)
 			}
@@ -301,6 +429,9 @@ func newTemplateListCommand(a *App) *cobra.Command {
 
 func newHostListCommand(a *App) *cobra.Command {
 	return listCommand(a, "List ESXi hosts", func(cmd *cobra.Command, f *listFlags) error {
+		if err := f.prepare(vsphere.KindHost); err != nil {
+			return err
+		}
 		hosts, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) {
 			return c.ListHosts(ctx)
 		})
@@ -308,12 +439,16 @@ func newHostListCommand(a *App) *cobra.Command {
 			reportFailures(a, failures)
 			return err
 		}
-		hosts = filterSlice(hosts, func(h vsphere.Host) bool { return f.matches(h.Name) })
+		reportMetadataWarnings(a, hosts)
+		hosts = filterSlice(hosts, func(h vsphere.Host) bool { return f.matchesObject(vsphere.KindHost, h, h.Name) })
 		if a.json() {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), hosts)
 		}
 		headers := []string{"NAME", "CLUSTER", "STATE", "CPU", "RAM", "VMS", "VERSION"}
+		if f.wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
@@ -325,6 +460,9 @@ func newHostListCommand(a *App) *cobra.Command {
 				state += " (maintenance)"
 			}
 			row := []string{h.Name, dash(h.Cluster), state, i32toa(h.CPUCores) + " cores", humanMB(h.MemoryMB), itoa(h.VMCount), dash(h.Version)}
+			if f.wide {
+				row = append(row, dash(metadataTags(h.Metadata)), dash(metadataAttributes(h.Metadata)))
+			}
 			if multi {
 				row = append([]string{h.Context}, row...)
 			}
@@ -338,6 +476,9 @@ func newHostListCommand(a *App) *cobra.Command {
 
 func newClusterListCommand(a *App) *cobra.Command {
 	return listCommand(a, "List compute clusters", func(cmd *cobra.Command, f *listFlags) error {
+		if err := f.prepare(vsphere.KindCluster); err != nil {
+			return err
+		}
 		clusters, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Cluster, error) {
 			return c.ListClusters(ctx)
 		})
@@ -345,12 +486,16 @@ func newClusterListCommand(a *App) *cobra.Command {
 			reportFailures(a, failures)
 			return err
 		}
-		clusters = filterSlice(clusters, func(c vsphere.Cluster) bool { return f.matches(c.Name) })
+		reportMetadataWarnings(a, clusters)
+		clusters = filterSlice(clusters, func(c vsphere.Cluster) bool { return f.matchesObject(vsphere.KindCluster, c, c.Name) })
 		if a.json() {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), clusters)
 		}
 		headers := []string{"NAME", "DATACENTER", "HOSTS", "CPU", "RAM", "DRS", "HA"}
+		if f.wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
@@ -362,6 +507,9 @@ func newClusterListCommand(a *App) *cobra.Command {
 				name += " (standalone)"
 			}
 			row := []string{name, dash(c.Datacenter), itoa(c.Hosts), dash(mhz(c.TotalCPUMHz)), humanMB(c.TotalMemoryMB), onOff(c.DRSEnabled), onOff(c.HAEnabled)}
+			if f.wide {
+				row = append(row, dash(metadataTags(c.Metadata)), dash(metadataAttributes(c.Metadata)))
+			}
 			if multi {
 				row = append([]string{c.Context}, row...)
 			}
@@ -375,6 +523,9 @@ func newClusterListCommand(a *App) *cobra.Command {
 
 func newVAppListCommand(a *App) *cobra.Command {
 	return listCommand(a, "List vSphere vApps", func(cmd *cobra.Command, f *listFlags) error {
+		if err := f.prepare(vsphere.KindVApp); err != nil {
+			return err
+		}
 		vapps, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VApp, error) {
 			return c.ListVApps(ctx)
 		})
@@ -382,12 +533,16 @@ func newVAppListCommand(a *App) *cobra.Command {
 			reportFailures(a, failures)
 			return err
 		}
-		vapps = filterSlice(vapps, func(v vsphere.VApp) bool { return f.matches(v.Name) })
+		reportMetadataWarnings(a, vapps)
+		vapps = filterSlice(vapps, func(v vsphere.VApp) bool { return f.matchesObject(vsphere.KindVApp, v, v.Name) })
 		if a.json() {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), vapps)
 		}
 		headers := []string{"NAME", "STATUS", "VMS", "CHILDREN", "DATACENTER", "PATH"}
+		if f.wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
@@ -396,6 +551,9 @@ func newVAppListCommand(a *App) *cobra.Command {
 		for _, v := range vapps {
 			children := fmt.Sprintf("%d vApp / %d pool", v.ChildVAppCount, v.ChildResourcePoolCount)
 			row := []string{v.Name, dash(v.Status), itoa(v.DirectVMCount), children, dash(v.Datacenter), dash(v.Path)}
+			if f.wide {
+				row = append(row, dash(metadataTags(v.Metadata)), dash(metadataAttributes(v.Metadata)))
+			}
 			if multi {
 				row = append([]string{v.Context}, row...)
 			}
@@ -409,6 +567,9 @@ func newVAppListCommand(a *App) *cobra.Command {
 
 func newDatastoreListCommand(a *App) *cobra.Command {
 	return listCommand(a, "List datastores", func(cmd *cobra.Command, f *listFlags) error {
+		if err := f.prepare(vsphere.KindDatastore); err != nil {
+			return err
+		}
 		stores, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Datastore, error) {
 			return c.ListDatastores(ctx)
 		})
@@ -416,12 +577,16 @@ func newDatastoreListCommand(a *App) *cobra.Command {
 			reportFailures(a, failures)
 			return err
 		}
-		stores = filterSlice(stores, func(d vsphere.Datastore) bool { return f.matches(d.Name) })
+		reportMetadataWarnings(a, stores)
+		stores = filterSlice(stores, func(d vsphere.Datastore) bool { return f.matchesObject(vsphere.KindDatastore, d, d.Name) })
 		if a.json() {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), stores)
 		}
 		headers := []string{"NAME", "TYPE", "CAPACITY", "FREE", "USED", "DATACENTER"}
+		if f.wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
@@ -433,6 +598,9 @@ func newDatastoreListCommand(a *App) *cobra.Command {
 				used = fmt.Sprintf("%.0f%%", d.UsedPercent())
 			}
 			row := []string{d.Name, dash(d.Type), humanBytes(d.CapacityBytes), humanBytes(d.FreeBytes), used, dash(d.Datacenter)}
+			if f.wide {
+				row = append(row, dash(metadataTags(d.Metadata)), dash(metadataAttributes(d.Metadata)))
+			}
 			if multi {
 				row = append([]string{d.Context}, row...)
 			}
@@ -446,6 +614,9 @@ func newDatastoreListCommand(a *App) *cobra.Command {
 
 func newNetworkListCommand(a *App) *cobra.Command {
 	return listCommand(a, "List networks and port groups", func(cmd *cobra.Command, f *listFlags) error {
+		if err := f.prepare(vsphere.KindNetwork); err != nil {
+			return err
+		}
 		nets, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) {
 			return c.ListNetworks(ctx)
 		})
@@ -453,12 +624,16 @@ func newNetworkListCommand(a *App) *cobra.Command {
 			reportFailures(a, failures)
 			return err
 		}
-		nets = filterSlice(nets, func(n vsphere.Network) bool { return f.matches(n.Name) })
+		reportMetadataWarnings(a, nets)
+		nets = filterSlice(nets, func(n vsphere.Network) bool { return f.matchesObject(vsphere.KindNetwork, n, n.Name) })
 		if a.json() {
 			defer reportFailures(a, failures)
 			return writeJSON(a.out(), nets)
 		}
 		headers := []string{"NAME", "TYPE", "SWITCH", "VLAN", "DATACENTER", "ACCESSIBLE"}
+		if f.wide {
+			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
+		}
 		multi := a.multiContext()
 		if multi {
 			headers = append([]string{"CONTEXT"}, headers...)
@@ -466,6 +641,9 @@ func newNetworkListCommand(a *App) *cobra.Command {
 		t := newTable(a.out(), headers...)
 		for _, n := range nets {
 			row := []string{n.Name, n.Type, dash(n.Switch), dash(n.VLAN), dash(n.Datacenter), yesNo(n.Accessible)}
+			if f.wide {
+				row = append(row, dash(metadataTags(n.Metadata)), dash(metadataAttributes(n.Metadata)))
+			}
 			if multi {
 				row = append([]string{n.Context}, row...)
 			}

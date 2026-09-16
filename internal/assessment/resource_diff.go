@@ -20,7 +20,7 @@ type resourceRunData struct {
 
 func (s *Store) loadResources(ctx context.Context, runID int64) (resourceRunData, error) {
 	out := resourceRunData{ByKind: make(map[string][]storedResource), Coverage: make(map[string]CollectionRun)}
-	rows, err := s.db.QueryContext(ctx, `SELECT cr.name,cr.vcenter_id,cc.kind,cc.started_at,cc.finished_at,cc.status,cc.error,cc.item_count FROM context_collections cc JOIN context_runs cr ON cr.id=cc.context_run_id WHERE cr.run_id=?`, runID)
+	rows, err := s.db.QueryContext(ctx, `SELECT cr.name,cr.vcenter_id,cc.kind,cc.started_at,cc.finished_at,cc.status,cc.error,cc.item_count,cc.tags_status,cc.tags_error,cc.custom_attributes_status,cc.custom_attributes_error FROM context_collections cc JOIN context_runs cr ON cr.id=cc.context_run_id WHERE cr.run_id=?`, runID)
 	if err != nil {
 		return out, err
 	}
@@ -28,11 +28,12 @@ func (s *Store) loadResources(ctx context.Context, runID int64) (resourceRunData
 		var contextName, vc, kind, status, message string
 		var start, finish sql.NullInt64
 		var count int
-		if err := rows.Scan(&contextName, &vc, &kind, &start, &finish, &status, &message, &count); err != nil {
+		var tagsStatus, tagsError, customStatus, customError string
+		if err := rows.Scan(&contextName, &vc, &kind, &start, &finish, &status, &message, &count, &tagsStatus, &tagsError, &customStatus, &customError); err != nil {
 			rows.Close()
 			return out, err
 		}
-		out.Coverage[contextName+"\x00"+kind] = CollectionRun{Kind: kind, StartedAt: fromMillis(start), FinishedAt: fromMillis(finish), Status: status, Error: message, ItemCount: count}
+		out.Coverage[contextName+"\x00"+kind] = CollectionRun{Kind: kind, StartedAt: fromMillis(start), FinishedAt: fromMillis(finish), Status: status, Error: message, ItemCount: count, TagsStatus: tagsStatus, TagsError: tagsError, CustomAttributesStatus: customStatus, CustomAttributesError: customError}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -77,7 +78,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 	}
 	filterResourceRunData(base, selected)
 	filterResourceRunData(target, selected)
-	for _, kind := range []string{"host", "cluster", "resourcepool", "datastore", "dvswitch"} {
+	for _, kind := range []string{"host", "cluster", "resourcepool", "datastore", "network", "dvswitch"} {
 		baseByVC, targetByVC := make(map[string][]storedResource), make(map[string][]storedResource)
 		// vcNames resolves a VCenterID back to its context name for the "not
 		// comparable" messages below, the same way Diff does for VMs.
@@ -255,6 +256,8 @@ var resourceStableFields = map[string][]string{
 	"resourcepool": {"name", "datacenter", "path", "owner", "root", "cpu_reservation_mhz", "cpu_limit_mhz", "cpu_overhead_limit_mhz", "cpu_expandable", "cpu_shares", "cpu_level", "mem_configured_mb", "mem_reservation_mb", "mem_limit_mb", "mem_overhead_limit_mb", "mem_expandable", "mem_shares", "mem_level"},
 	"datastore":    {"name", "datacenter", "path", "type"},
 	"dvswitch":     {"name", "datacenter", "path", "uuid", "version", "max_mtu", "num_ports", "max_ports", "link_discovery_protocol", "lacp_version", "hosts", "port_groups"},
+	"vapp":         {"name", "datacenter", "path", "status", "parent_container", "parent_vapp", "direct_vm_count", "child_vapp_count", "child_resource_pool_count", "cluster", "compute_resource"},
+	"network":      {"name", "datacenter", "path", "type", "switch", "vlan"},
 }
 
 var resourceRuntimeFields = map[string][]string{
@@ -263,6 +266,8 @@ var resourceRuntimeFields = map[string][]string{
 	"resourcepool": {},
 	"datastore":    {"accessible", "maintenance", "capacity_bytes", "free_bytes"},
 	"dvswitch":     {},
+	"vapp":         {},
+	"network":      {"accessible"},
 }
 
 func changedResourceFields(kind string, before, after json.RawMessage, includeRuntime bool) []FieldChange {
@@ -286,6 +291,7 @@ func changedResourceFields(kind string, before, after json.RawMessage, includeRu
 			out = append(out, FieldChange{Field: key, Before: bs, After: as})
 		}
 	}
+	out = append(out, metadataFieldChanges(before, after)...)
 	return out
 }
 

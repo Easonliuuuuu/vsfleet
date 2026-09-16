@@ -30,6 +30,8 @@ configuration, history database, and output options shown below.
 | `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
+| `vsfleet datastore files list <datastore> [path]` | List one datastore directory |
+| `vsfleet datastore files find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
 | `vsfleet vm decommission-check <name-or-uuid> [run]` | Review stored evidence before decommissioning a VM |
 | `vsfleet assessment ...` | Capture and compare historical observations |
@@ -51,6 +53,26 @@ vsfleet search nvme --kind datastore --limit 20
 
 Results from healthy contexts remain available when another context fails. The
 failure is reported separately with its context and diagnostic information.
+
+## Datastore file browsing
+
+`vsfleet datastore files` exposes the same read-only datastore browser and
+bounded recursive search the terminal UI offers. Listing is lazy and
+non-recursive — one query per directory — while `find` searches the whole
+datastore and reports when it stops short of a complete answer:
+
+```sh
+vsfleet datastore files list nvme-01
+vsfleet datastore files list nvme-01 vm/web-01/
+vsfleet datastore files find nvme-01 '*.vmdk'
+vsfleet datastore files find nvme-01 orphan.vmdk --limit 20 -o json
+```
+
+A VMDK result includes relationship evidence where it is known: which VM or
+template currently references it, and the confidence recorded by the most
+recent stored assessment. A datastore name that matches more than one
+datastore — across contexts, or, rarely, within one context spanning several
+datacenters — is refused rather than guessed at; narrow it with `--context`.
 
 ## Topology and dependencies
 

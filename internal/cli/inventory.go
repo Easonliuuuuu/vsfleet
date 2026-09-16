@@ -122,13 +122,15 @@ func newInventoryCommands(a *App) []*cobra.Command {
 	vm.AddCommand(newVMDecommissionCheckCommand(a))
 	netw := group("network", []string{"networks", "portgroup"}, "Networks and port groups", newNetworkListCommand(a))
 	netw.AddCommand(newNetworkCompareCommand(a))
+	ds := group("datastore", []string{"datastores", "ds"}, "Datastores", newDatastoreListCommand(a))
+	ds.AddCommand(newDatastoreFilesCommand(a))
 	return []*cobra.Command{
 		vm,
 		group("template", []string{"templates", "tpl"}, "VM templates", newTemplateListCommand(a)),
 		group("host", []string{"hosts", "esxi"}, "ESXi hosts", newHostListCommand(a)),
 		group("cluster", []string{"clusters"}, "Compute clusters", newClusterListCommand(a)),
 		group("vapp", []string{"vapps", "virtualapp"}, "vSphere vApps", newVAppListCommand(a)),
-		group("datastore", []string{"datastores", "ds"}, "Datastores", newDatastoreListCommand(a)),
+		ds,
 		netw,
 	}
 }

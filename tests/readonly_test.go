@@ -219,6 +219,8 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 		{"cluster", "list"},
 		{"vapp", "list"},
 		{"datastore", "list"},
+		{"datastore", "files", "list", "LocalDS_0"},
+		{"datastore", "files", "find", "LocalDS_0", "*.vmdk"},
 		{"network", "list"},
 		{"vm", "list", "--all-contexts"},
 		{"search", "DC0"},

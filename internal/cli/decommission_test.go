@@ -28,7 +28,7 @@ func newDecommissionTestHistoryDB(t *testing.T, vm vsphere.VM) string {
 		t.Fatal(err)
 	}
 	collections := make([]assessment.CollectionResult, 0, 7)
-	for _, kind := range []string{"vm", "host", "cluster", "resourcepool", "dvswitch", "datastore", "network"} {
+	for _, kind := range []string{"vm", "host", "cluster", "resourcepool", "dvswitch", "datastore", "network", "snapshot"} {
 		status := "empty"
 		itemCount := 0
 		if kind == "vm" {

@@ -40,7 +40,7 @@ func twoRunStore(t *testing.T, base, target []assessment.Observation) *assessmen
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.SaveContext(ctx, run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: vms}, when); err != nil {
+		if err := store.SaveContext(ctx, run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: vms, Collections: []assessment.CollectionResult{{Kind: "snapshot", Status: "success"}}}, when); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := store.FinishRun(ctx, run.ID, when); err != nil {
@@ -215,11 +215,11 @@ func TestCoverageMatrixNamesTheDarkVCenterAndClipFixesIt(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := store.SaveContext(ctx, run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-prod", Status: "success", VMs: []assessment.Observation{vmObservation("billing", 2, 4096)}}, when); err != nil {
+		if err := store.SaveContext(ctx, run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-prod", Status: "success", VMs: []assessment.Observation{vmObservation("billing", 2, 4096)}, Collections: []assessment.CollectionResult{{Kind: "snapshot", Status: "success"}}}, when); err != nil {
 			t.Fatal(err)
 		}
 		if i != 1 {
-			if err := store.SaveContext(ctx, run.ID, assessment.ContextResult{Name: "edge-vc", VCenterID: "vc-edge", Status: "success", VMs: []assessment.Observation{edgeVM}}, when); err != nil {
+			if err := store.SaveContext(ctx, run.ID, assessment.ContextResult{Name: "edge-vc", VCenterID: "vc-edge", Status: "success", VMs: []assessment.Observation{edgeVM}, Collections: []assessment.CollectionResult{{Kind: "snapshot", Status: "success"}}}, when); err != nil {
 				t.Fatal(err)
 			}
 		}

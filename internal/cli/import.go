@@ -47,14 +47,16 @@ func newImportRVToolsCommand(a *App) *cobra.Command {
 Adapt an RVTools-compatible XLSX export into a new stored assessment run.
 
 The workbook's own layout never reaches vsfleet's domain model directly: this
-reads vInfo, vCPU, vMemory, vDisk, vNetwork, vHost, vCluster and vDatastore by
-column name and normalizes what they carry. A worksheet or column this
-importer does not recognize is reported, not silently dropped, and a field
-the workbook does not carry is left absent rather than defaulted to a value
-that would read as confirmed evidence. RVTools has no standalone worksheet
-for resource pools, distributed switches, or networks in this profile, so
-those three collections are always recorded as not collected — an explicit
-gap, the same way a live capture records a denied query, never a silent one.
+reads vInfo, vCPU, vMemory, vDisk, vNetwork, vHost, vCluster, vDatastore and
+vSnapshot by column name and normalizes what they carry. A worksheet or
+column this importer does not recognize is reported, not silently dropped,
+and a field the workbook does not carry is left absent rather than defaulted
+to a value that would read as confirmed evidence. RVTools has no standalone
+worksheet for resource pools, distributed switches, or networks in this
+profile, so those three collections are always recorded as not collected; a
+workbook with no vSnapshot worksheet at all gets the same treatment for
+snapshots — an explicit gap, the same way a live capture records a denied
+query, never a silent one.
 
 vCenter identity is reconstructed from the workbook's own "vsfleet Context" or
 "VI SDK Server" column, never by matching display names alone: two contexts
@@ -150,9 +152,9 @@ func printImportReport(a *App, report rvimport.Report, run *assessment.Run) erro
 		fmt.Fprintf(out, "Not collected by this profile: %s\n", strings.Join(report.SkippedKinds, ", "))
 	}
 	fmt.Fprintln(out)
-	t := newTable(out, "CONTEXT", "ENDPOINT", "VMS", "HOSTS", "CLUSTERS", "DATASTORES")
+	t := newTable(out, "CONTEXT", "ENDPOINT", "VMS", "HOSTS", "CLUSTERS", "DATASTORES", "SNAPSHOTS")
 	for _, c := range report.Contexts {
-		t.row(c.Name, dash(c.Endpoint), itoa(c.VMCount), itoa(c.HostCount), itoa(c.ClusterCount), itoa(c.DatastoreCount))
+		t.row(c.Name, dash(c.Endpoint), itoa(c.VMCount), itoa(c.HostCount), itoa(c.ClusterCount), itoa(c.DatastoreCount), itoa(c.SnapshotCount))
 	}
 	t.flush()
 	if len(report.Warnings) > 0 {

@@ -57,7 +57,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	vcNames := make(map[string]string)
 	for id, c := range bc {
 		if c.VCenterID != "" && Successful(c.VMStatus) {
-			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], bv[id]...)
+			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], withSnapshotCoverage(bv[id], c, "baseline", &d)...)
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
@@ -69,7 +69,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	}
 	for id, c := range tc {
 		if c.VCenterID != "" && Successful(c.VMStatus) {
-			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], tv[id]...)
+			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], withSnapshotCoverage(tv[id], c, "target", &d)...)
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
@@ -148,6 +148,28 @@ func vcLabel(names map[string]string, vc string) string {
 		return name
 	}
 	return vc
+}
+
+// withSnapshotCoverage strips snapshot evidence from a context's VMs when
+// that context's own "snapshot" collection was never recorded as successful
+// — an imported run whose workbook carried no vSnapshot worksheet, or a run
+// captured before this collection kind existed. Without this, an absent
+// worksheet would read as "confirmed no snapshots" to every snapshot
+// lifecycle and age check below, which is exactly the false negative #162's
+// coverage principle rules out.
+func withSnapshotCoverage(vms []storedVM, c ContextRun, scope string, d *Diff) []storedVM {
+	if ContextComplete(c, []string{"snapshot"}) {
+		return vms
+	}
+	msg := fmt.Sprintf("%s: snapshot evidence was not collected (%s)", c.Name, CoverageReason([]ContextRun{c}, c.Name, []string{"snapshot"}))
+	d.Warnings = append(d.Warnings, msg)
+	d.Coverage = append(d.Coverage, CoverageIssue{Scope: scope, Context: c.Name, Message: msg})
+	out := make([]storedVM, len(vms))
+	for i, v := range vms {
+		v.snapshots = nil
+		out[i] = v
+	}
+	return out
 }
 
 // Successful reports whether a collection answered the question, including
@@ -411,7 +433,7 @@ func (s *Store) snapshotAges(ctx context.Context, runID int64, olderThan time.Du
 	type key struct{ vc, vm, snap string }
 	wanted := make(map[key]SnapshotAge)
 	for id, c := range targetContexts {
-		if !Successful(c.VMStatus) {
+		if !Successful(c.VMStatus) || !ContextComplete(c, []string{"snapshot"}) {
 			continue
 		}
 		for _, v := range targetVMs[id] {

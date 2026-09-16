@@ -26,7 +26,7 @@ func saveTestRun(t *testing.T, s *Store, when time.Time, vm vsphere.VM) Run {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveContext(context.Background(), r.ID, ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: []Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}}}, when.Add(time.Second)); err != nil {
+	if err := s.SaveContext(context.Background(), r.ID, ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: []Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}}, Collections: []CollectionResult{{Kind: "snapshot", Status: "success"}}}, when.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	r, err = s.FinishRun(context.Background(), r.ID, when.Add(time.Second))
@@ -254,5 +254,69 @@ func TestPruneCascadesObservations(t *testing.T) {
 	}
 	if after != 0 {
 		t.Errorf("vm_observations = %d after pruning every run, want 0 (cascade did not fire)", after)
+	}
+}
+
+// TestDiffTreatsMissingSnapshotCollectionAsNotEvaluated guards the coverage
+// gap rvimport's own VM/snapshot split makes possible: a context whose "vm"
+// collection succeeded but whose "snapshot" collection was never recorded
+// (an imported workbook with no vSnapshot worksheet). Even though the target
+// VM observation here happens to carry a snapshot, the diff must not treat
+// it as evidence — a missing worksheet must read as "not evaluated", never
+// as "confirmed no snapshots" and never as "confirmed this new snapshot
+// appeared".
+func TestDiffTreatsMissingSnapshotCollectionAsNotEvaluated(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	r1, err := s.StartRun(context.Background(), "test", []*config.Context{testContext("prod")}, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vm1 := testVM("billing", "vm-1", "instance-1", "bios-1", "esx-1")
+	if err := s.SaveContext(context.Background(), r1.ID, ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: []Observation{{VCenterID: "vc-1", Context: "prod", VM: vm1}}, Collections: []CollectionResult{{Kind: "snapshot", Status: "success"}}}, base.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	r1, err = s.FinishRun(context.Background(), r1.ID, base.Add(time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r2, err := s.StartRun(context.Background(), "test", []*config.Context{testContext("prod")}, base.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	vm2 := testVM("billing", "vm-1", "instance-1", "bios-1", "esx-1")
+	vm2.Snapshots = []vsphere.VMSnapshot{{ID: "snap-1", Name: "untracked", CreateTime: base, PowerState: "poweredOn"}}
+	// No "snapshot" collection recorded, the way an rvimport run with no
+	// vSnapshot worksheet leaves it — even though this VM observation
+	// happens to carry snapshot evidence.
+	if err := s.SaveContext(context.Background(), r2.ID, ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: []Observation{{VCenterID: "vc-1", Context: "prod", VM: vm2}}}, base.Add(time.Hour+time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	r2, err = s.FinishRun(context.Background(), r2.ID, base.Add(time.Hour+time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	d, err := s.Diff(context.Background(), r1.ID, r2.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Counts.Snapshots != 0 {
+		t.Errorf("counts=%+v, want the uncovered snapshot excluded from lifecycle comparison", d.Counts)
+	}
+	found := false
+	for _, c := range d.Coverage {
+		if c.Context == "prod" && strings.Contains(c.Message, "snapshot") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("coverage=%+v, want a snapshot coverage gap reported for the target context", d.Coverage)
 	}
 }

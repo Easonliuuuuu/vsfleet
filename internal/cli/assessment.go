@@ -916,13 +916,13 @@ argument, alongside the selector "latest".`), Example: `  # Every stored capture
 		if a.json() {
 			return writeJSON(a.out(), runs)
 		}
-		t := newTable(a.out(), "ID", "LABEL", "STARTED", "STATUS", "CONTEXTS", "SUCCESSFUL")
+		t := newTable(a.out(), "ID", "LABEL", "SOURCE", "STARTED", "STATUS", "CONTEXTS", "SUCCESSFUL")
 		for _, r := range runs {
 			label := r.Label
 			if r.Pinned {
 				label = "📌 " + label
 			}
-			t.row(strconv.FormatInt(r.ID, 10), label, r.StartedAt.Local().Format("2006-01-02 15:04:05"), string(r.Status), itoa(r.RequestedContexts), itoa(r.SuccessfulContexts))
+			t.row(strconv.FormatInt(r.ID, 10), label, dash(r.Source), r.StartedAt.Local().Format("2006-01-02 15:04:05"), string(r.Status), itoa(r.RequestedContexts), itoa(r.SuccessfulContexts))
 		}
 		t.flush()
 		return nil

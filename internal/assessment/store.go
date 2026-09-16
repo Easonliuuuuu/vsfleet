@@ -1209,34 +1209,51 @@ func (s *Store) loadVMs(ctx context.Context, runID int64) (map[int64][]storedVM,
 	}
 	byContext := make(map[int64][]storedVM)
 	for id := range contexts {
-		vrows, err := s.db.QueryContext(ctx, `SELECT id,moref,instance_uuid,bios_uuid,payload FROM vm_observations WHERE context_run_id=?`, id)
+		// vm_observations is fully drained into memory before loadSnapshots
+		// issues its own query. A store opened with OpenMemory pins the pool
+		// to exactly one physical connection — see open()'s memory branch —
+		// so a nested query issued while this one is still open would have
+		// nowhere to go: the single connection is held by this very read and
+		// can only be released by finishing it, which the nested query is
+		// blocking on. That is a deadlock, not contention that clears on its
+		// own, and file-backed stores' larger pool only ever hid it.
+		rows, err := s.db.QueryContext(ctx, `SELECT id,moref,instance_uuid,bios_uuid,payload FROM vm_observations WHERE context_run_id=?`, id)
 		if err != nil {
 			return nil, nil, err
 		}
-		for vrows.Next() {
-			var vmID int64
-			var moref, iu, bu string
-			var payload []byte
-			if err := vrows.Scan(&vmID, &moref, &iu, &bu, &payload); err != nil {
-				vrows.Close()
+		type rawVM struct {
+			id            int64
+			moref, iu, bu string
+			payload       []byte
+		}
+		var raw []rawVM
+		for rows.Next() {
+			var v rawVM
+			if err := rows.Scan(&v.id, &v.moref, &v.iu, &v.bu, &v.payload); err != nil {
+				rows.Close()
 				return nil, nil, err
 			}
+			raw = append(raw, v)
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		rows.Close()
+		for _, v := range raw {
 			var vm vsphere.VM
-			if err := json.Unmarshal(payload, &vm); err != nil {
-				vrows.Close()
+			if err := json.Unmarshal(v.payload, &vm); err != nil {
 				return nil, nil, err
 			}
-			vm.ID = moref
-			vm.InstanceUUID = iu
-			vm.BIOSUUID = bu
-			snaps, err := s.loadSnapshots(ctx, vmID)
+			vm.ID = v.moref
+			vm.InstanceUUID = v.iu
+			vm.BIOSUUID = v.bu
+			snaps, err := s.loadSnapshots(ctx, v.id)
 			if err != nil {
-				vrows.Close()
 				return nil, nil, err
 			}
 			byContext[id] = append(byContext[id], storedVM{observation: Observation{VCenterID: contexts[id].VCenterID, Context: contexts[id].Name, VM: vm}, snapshots: snaps, seen: contexts[id].FinishedAt})
 		}
-		vrows.Close()
 	}
 	return byContext, contexts, nil
 }

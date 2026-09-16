@@ -195,7 +195,11 @@ var rules = []Rule{
 					continue
 				}
 				var host vsphere.Host
-				if !assessment.DecodeResource(resource, &host) || host.ConnectionState == "connected" {
+				// An empty ConnectionState is missing evidence, not a
+				// reported disconnect: a source that never collects this
+				// field (an imported RVTools workbook, say) must not read as
+				// every host in the estate being down.
+				if !assessment.DecodeResource(resource, &host) || host.ConnectionState == "" || host.ConnectionState == "connected" {
 					continue
 				}
 				obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
@@ -282,7 +286,11 @@ var rules = []Rule{
 		Eval: func(in Input, emit func(Finding)) {
 			for _, item := range in.Data.VMs {
 				vm := item.Observation.VM
-				if vm.IsTemplate || vm.PowerState != "poweredOn" || vm.ToolsState == "guestToolsRunning" {
+				// An empty ToolsState is missing evidence, not a reported
+				// stopped state: a source that never collects Tools status
+				// (an imported RVTools workbook, say) must not read as every
+				// powered-on VM having Tools down.
+				if vm.IsTemplate || vm.PowerState != "poweredOn" || vm.ToolsState == "" || vm.ToolsState == "guestToolsRunning" {
 					continue
 				}
 				emit(Finding{Rule: "tools-not-running", Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation),

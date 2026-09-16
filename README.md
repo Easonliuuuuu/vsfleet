@@ -44,7 +44,7 @@ Managing multiple VMware vCenters traditionally requires juggling browser tabs, 
 - 🔒 **Strict Read-Only Safety**: Guaranteed zero mutation. Never powers VMs on or off, reverts snapshots, modifies networks, or alters inventory.
 - 🔀 **Independent Proxy Routing**: Route each context independently through direct TCP, SOCKS5, HTTP, or HTTPS CONNECT proxies.
 - 🔑 **Secure Credential Handling**: Zero plaintext passwords in `config.toml`. Resolves credentials dynamically via native OS keyrings, interactive prompts, or unattended sources.
-- 📊 **Historical Drift & RVTools-Compatible Exports**: Capture immutable local SQLite snapshots, track drift over time, and export 19-sheet Excel workbooks for migration sizing.
+- 📊 **Historical Drift & RVTools-Compatible Exports**: Capture immutable local SQLite snapshots, track drift over time, and export 23-sheet Excel workbooks for migration sizing.
 - 🌐 **Distributed-Network Readiness**: Compare cross-cluster VLAN mappings, policy, MTU, host coverage, and affected VMs before migration.
 - 🖥️ **Interactive TUI + Scriptable JSON**: Fast Bubble Tea terminal UI with local workstation handoffs (SSH, web browser, clipboard) alongside stable JSON for automation.
 
@@ -213,11 +213,11 @@ vsfleet assessment export --format csv --file ./audit-csv/
   ```
 
 <details>
-<summary><strong>Supported Worksheet Layouts (19 sheets)</strong></summary>
+<summary><strong>Supported Worksheet Layouts (23 sheets)</strong></summary>
 
-vsfleet renders the following 19 worksheet layouts:
+vsfleet renders the following 23 worksheet layouts:
 
-`vInfo` &bull; `vCPU` &bull; `vMemory` &bull; `vDisk` &bull; `vPartition` &bull; `vNetwork` &bull; `vTools` &bull; `vHost` &bull; `vHBA` &bull; `vNIC` &bull; `vSwitch` &bull; `vPort` &bull; `vSC+VMK` &bull; `vMultiPath` &bull; `vCluster` &bull; `vRP` &bull; `vDatastore` &bull; `vSnapshot` &bull; `vHealth`
+`vInfo` &bull; `vCPU` &bull; `vMemory` &bull; `vDisk` &bull; `vPartition` &bull; `vNetwork` &bull; `vCD` &bull; `vUSB` &bull; `vTools` &bull; `vHost` &bull; `vHBA` &bull; `vNIC` &bull; `vSwitch` &bull; `vPort` &bull; `dvSwitch` &bull; `dvPort` &bull; `vSC+VMK` &bull; `vMultiPath` &bull; `vCluster` &bull; `vRP` &bull; `vDatastore` &bull; `vSnapshot` &bull; `vHealth`
 
 - **Guest Filesystem Usage (`vPartition`)**: Measures guest usage via VMware Tools. VMs with no running Tools contribute no rows, and `vsfleetCoverage` reports answering status.
 - **Host Configuration Sheets**: HBAs, multipath LUN aggregates, physical NICs, standard virtual switches, standard port groups, and VMkernel adapters are pulled directly from host properties without querying separate manager endpoints.

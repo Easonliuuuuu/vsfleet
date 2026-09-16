@@ -259,6 +259,7 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context, b
 				for _, vm := range part.Templates {
 					r.VMs = append(r.VMs, Observation{VCenterID: r.VCenterID, Context: cc.Name, VM: vm})
 				}
+				collection.TagsStatus, collection.CustomAttributesStatus = metadataStatuses(part.VMs, part.Templates)
 			}
 			r.Collections = append(r.Collections, collection)
 		case vsphere.GroupHosts:
@@ -298,6 +299,7 @@ func resourceCollection[T any](kind, vcenter, contextName string, values []T, er
 	if len(values) == 0 {
 		collection.Status = "empty"
 	}
+	collection.TagsStatus, collection.CustomAttributesStatus = metadataStatuses(values)
 	for _, value := range values {
 		payload, err := json.Marshal(value)
 		if err != nil {
@@ -318,8 +320,97 @@ func resourceCollection[T any](kind, vcenter, contextName string, values []T, er
 			id, name = v.ID, v.Name
 		case vsphere.Network:
 			id, name = v.ID, v.Name
+		case vsphere.VApp:
+			id, name = v.ID, v.Name
 		}
 		collection.Resources = append(collection.Resources, ResourceObservation{VCenterID: vcenter, Context: contextName, Kind: kind, ID: id, Name: name, Payload: payload})
 	}
 	return collection
+}
+
+func metadataStatuses(values ...any) (string, string) {
+	if len(values) == 0 {
+		return "unavailable", "unavailable"
+	}
+	var tagStatus, customStatus string
+	var seen bool
+	var visit func(any)
+	visit = func(value any) {
+		switch v := value.(type) {
+		case []vsphere.VM:
+			for _, item := range v {
+				visit(item)
+			}
+		case []vsphere.Host:
+			for _, item := range v {
+				visit(item)
+			}
+		case []vsphere.Cluster:
+			for _, item := range v {
+				visit(item)
+			}
+		case []vsphere.VApp:
+			for _, item := range v {
+				visit(item)
+			}
+		case []vsphere.Datastore:
+			for _, item := range v {
+				visit(item)
+			}
+		case []vsphere.Network:
+			for _, item := range v {
+				visit(item)
+			}
+		case []vsphere.ResourcePool:
+			for _, item := range v {
+				visit(item)
+			}
+		case []vsphere.DVSwitch:
+			for _, item := range v {
+				visit(item)
+			}
+		case vsphere.VM:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		case vsphere.Host:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		case vsphere.Cluster:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		case vsphere.VApp:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		case vsphere.Datastore:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		case vsphere.Network:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		case vsphere.ResourcePool:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		case vsphere.DVSwitch:
+			if !seen {
+				tagStatus, customStatus, seen = v.Metadata.TagsStatus, v.Metadata.CustomAttributesStatus, true
+			}
+		}
+	}
+	for _, value := range values {
+		visit(value)
+	}
+	if tagStatus == "" {
+		tagStatus = "unavailable"
+	}
+	if customStatus == "" {
+		customStatus = "unavailable"
+	}
+	return tagStatus, customStatus
 }

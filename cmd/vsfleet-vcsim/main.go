@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/vmware/govmomi/simulator"
+	_ "github.com/vmware/govmomi/vapi/simulator"
 )
 
 func main() {
@@ -63,6 +64,7 @@ func main() {
 	}
 
 	model.Service.Listen = &url.URL{Host: *listen, User: url.UserPassword(*username, *password)}
+	model.Service.RegisterEndpoints = true
 	model.Service.TLS = new(tls.Config)
 	server := model.Service.NewServer()
 	defer server.Close()

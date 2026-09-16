@@ -165,7 +165,7 @@ func loadExportContexts(ctx context.Context, tx *sql.Tx, runID int64) ([]Context
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
-	collectionRows, err := tx.QueryContext(ctx, `SELECT context_run_id,kind,started_at,finished_at,status,error,item_count FROM context_collections WHERE context_run_id IN (SELECT id FROM context_runs WHERE run_id=?) ORDER BY context_run_id,kind`, runID)
+	collectionRows, err := tx.QueryContext(ctx, `SELECT context_run_id,kind,started_at,finished_at,status,error,item_count,tags_status,tags_error,custom_attributes_status,custom_attributes_error FROM context_collections WHERE context_run_id IN (SELECT id FROM context_runs WHERE run_id=?) ORDER BY context_run_id,kind`, runID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -174,7 +174,7 @@ func loadExportContexts(ctx context.Context, tx *sql.Tx, runID int64) ([]Context
 		var contextID int64
 		var c CollectionRun
 		var start, finish sql.NullInt64
-		if err := collectionRows.Scan(&contextID, &c.Kind, &start, &finish, &c.Status, &c.Error, &c.ItemCount); err != nil {
+		if err := collectionRows.Scan(&contextID, &c.Kind, &start, &finish, &c.Status, &c.Error, &c.ItemCount, &c.TagsStatus, &c.TagsError, &c.CustomAttributesStatus, &c.CustomAttributesError); err != nil {
 			return nil, nil, err
 		}
 		c.StartedAt, c.FinishedAt = fromMillis(start), fromMillis(finish)

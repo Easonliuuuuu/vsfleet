@@ -10,6 +10,8 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
+	"github.com/easonliuuuuu/vsfleet/internal/query"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 type healthExitError struct{ findings int }
@@ -33,6 +35,7 @@ type healthFlags struct {
 	disabled                           []string
 	minimumSeverity, category          string
 	failOnFindings, listRules, wide    bool
+	where                              []string
 }
 
 func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
@@ -45,6 +48,7 @@ func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
 	cmd.Flags().StringVar(&f.category, "category", "", "limit findings to a category: migration, availability, security, capacity, or hygiene")
 	cmd.Flags().BoolVar(&f.failOnFindings, "fail-on-findings", false, "exit 2 when a reported finding meets --severity")
 	cmd.Flags().BoolVar(&f.wide, "wide", false, "include recommendations and structured evidence")
+	cmd.Flags().StringArrayVar(&f.where, "where", nil, "structured predicate on the finding's object (repeatable)")
 	if listRules {
 		cmd.Flags().BoolVar(&f.listRules, "list-rules", false, "list health rules and exit")
 	}
@@ -155,7 +159,44 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, args []string, flags heal
 		return health.Report{}, err
 	}
 	report := health.Evaluate(data, health.Options{Thresholds: health.Thresholds{SnapshotAge: age, DatastoreFreePct: flags.minDatastoreFree, DatastoreFreeBytes: minDatastoreFreeBytes, GuestDiskFreePct: flags.minGuestDiskFree}, Disabled: disabledIDs})
+	filter, err := query.Parse(flags.where, []vsphere.Kind{vsphere.KindVM, vsphere.KindHost, vsphere.KindDatastore})
+	if err != nil {
+		return health.Report{}, fmt.Errorf("--where: %w", err)
+	}
+	if !filter.Empty() {
+		report = filterHealthByObject(report, data, filter)
+	}
 	return filterHealthReport(report, severity, category), nil
+}
+
+func filterHealthByObject(report health.Report, data assessment.ExportData, filter query.Filter) health.Report {
+	keep := make([]health.Finding, 0, len(report.Findings))
+	for _, finding := range report.Findings {
+		matched := false
+		for _, vm := range data.VMs {
+			if finding.Object.Kind != "vm" || finding.Object.Context != vm.Observation.Context || finding.Object.ID != vm.Observation.VM.ID {
+				continue
+			}
+			subject, err := query.SubjectFromObject(vsphere.KindVM, vm.Observation.VM)
+			matched = err == nil && filter.Match(subject)
+			break
+		}
+		if !matched {
+			for _, resource := range data.Resources {
+				if finding.Object.Kind != resource.Kind || finding.Object.Context != resource.Context || finding.Object.ID != resource.ID {
+					continue
+				}
+				subject, err := query.SubjectFromJSON(vsphere.Kind(resource.Kind), resource.Payload)
+				matched = err == nil && filter.Match(subject)
+				break
+			}
+		}
+		if matched {
+			keep = append(keep, finding)
+		}
+	}
+	report.Findings = keep
+	return report
 }
 
 func loadRunExportData(cmd *cobra.Command, a *App, args []string) (assessment.ExportData, error) {
@@ -284,13 +325,13 @@ func printHealthTable(a *App, report health.Report, wide bool) {
 	fmt.Fprintf(a.out(), "Assessment %d: %d finding(s) (%d info, %d warning, %d critical)\n", report.RunID, report.Counts.Total, report.Counts.Info, report.Counts.Warning, report.Counts.Critical)
 	headers := []string{"SEVERITY", "CATEGORY", "RULE", "OBJECT", "CONTEXT", "MESSAGE"}
 	if wide {
-		headers = append(headers, "RECOMMENDATION", "EVIDENCE")
+		headers = append(headers, "RECOMMENDATION", "EVIDENCE", "TAGS", "CUSTOM ATTRIBUTES")
 	}
 	t := newTable(a.out(), headers...)
 	for _, finding := range report.Findings {
 		row := []string{string(finding.Severity), string(finding.Category), finding.Rule, finding.Object.Kind + "/" + finding.Object.Name, finding.Object.Context, finding.Message}
 		if wide {
-			row = append(row, finding.Recommendation, renderEvidence(finding.Evidence))
+			row = append(row, finding.Recommendation, renderEvidence(finding.Evidence), dash(metadataTags(finding.Object.Metadata)), dash(metadataAttributes(finding.Object.Metadata)))
 		}
 		t.row(row...)
 	}

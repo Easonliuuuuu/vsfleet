@@ -23,6 +23,7 @@ configuration, history database, and output options shown below.
 | `vsfleet dependencies <kind> <name> [run]` | Show what a stored subject depends on |
 | `vsfleet blast-radius <kind> <name> [run]` | Show stored subjects affected by a dependency |
 | `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
+| `vsfleet assessment inventory [run]` | Query inventory stored in an assessment |
 | `vsfleet assessment orphans [run]` | Explain estate-wide browsed VMDK orphan evidence |
 | `vsfleet assessment capacity [run]` | Attribute datastore growth and project free-space thresholds |
 | `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
@@ -41,16 +42,41 @@ configuration, history database, and output options shown below.
 ## Inventory and search
 
 Supported resource kinds are `vm`, `template`, `host`, `cluster`, `vapp`,
-`datastore`, and `network`. Inventory commands accept `--filter` / `-f`:
+`datastore`, and `network`. Inventory commands accept `--filter` / `-f`,
+repeatable `--where`, and opt-in `--wide` metadata columns:
 
 ```sh
 vsfleet host list --context prod --filter esxi-07
 vsfleet datastore list --all-contexts -f nvme
 vsfleet vapp list --all-contexts
+vsfleet vm list --where 'tag=Production' --where 'cpu>=8' --wide
+vsfleet datastore list --where 'free_percent<15'
 
 vsfleet search ubuntu --all-contexts
+vsfleet search --tag migration-wave-2 --wide
 vsfleet search nvme --kind datastore --limit 20
 ```
+
+`--where` uses `field operator value`, with `=`, `!=`, `<`, `<=`, `>` and
+`>=`. Repeat the flag to AND predicates. Values may be quoted when they contain
+spaces. Built-in fields are case-insensitive; metadata values are exact and
+case-sensitive. Use `tag=Production` for any category,
+`tag.Environment=Production` for a category-qualified tag, and
+`custom.environment=prod` (or `custom.#123=prod`) for custom attributes.
+Numeric comparisons are numeric rather than lexical. Missing or unavailable
+metadata never matches, including a negative predicate.
+
+Stored captures are queried offline with the same evaluator:
+
+```sh
+vsfleet assessment inventory latest --where 'custom.environment=prod' --wide
+vsfleet assessment findings latest --where 'tag=PCI' -o json
+```
+
+JSON inventory, search, and findings output includes normalized metadata,
+source status, and object/context provenance. A vCenter that does not expose a
+metadata source remains usable; scalar inventory is retained and the affected
+source is reported as unavailable.
 
 Results from healthy contexts remain available when another context fails. The
 failure is reported separately with its context and diagnostic information.

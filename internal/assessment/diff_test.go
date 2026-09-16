@@ -45,3 +45,32 @@ func TestCompareVMsDetectsMigrationConfigurationChange(t *testing.T) {
 		t.Fatalf("migration configuration change=%+v", changes)
 	}
 }
+
+func TestChangedFieldsReportsMetadataByStableIdentity(t *testing.T) {
+	base := vsphere.VM{Metadata: vsphere.Metadata{
+		TagsStatus: "available", CustomAttributesStatus: "available",
+		Tags:             []vsphere.Tag{{ID: "tag-a", CategoryID: "cat-a", Category: "Environment", Name: "Production"}},
+		CustomAttributes: []vsphere.CustomAttribute{{Key: 7, Name: "owner", Value: "platform"}},
+	}}
+	target := base
+	target.Metadata.Tags = []vsphere.Tag{{ID: "tag-a", CategoryID: "cat-a", Category: "Environment", Name: "Production"}, {ID: "tag-b", CategoryID: "cat-b", Category: "Environment", Name: "Production"}}
+	target.Metadata.CustomAttributes = []vsphere.CustomAttribute{{Key: 7, Name: "owner", Value: "compute"}}
+	fields := changedFields(base, target, false)
+	if len(fields) != 2 {
+		t.Fatalf("metadata fields=%+v", fields)
+	}
+	if fields[0].Field != "metadata.custom_attributes[7]" || fields[0].Before != "owner=platform" || fields[0].After != "owner=compute" {
+		t.Fatalf("custom attribute change=%+v", fields[0])
+	}
+	if fields[1].Field != "metadata.tags[cat-b/tag-b]" || fields[1].After != "Environment/Production" {
+		t.Fatalf("tag change=%+v", fields[1])
+	}
+}
+
+func TestChangedFieldsDoesNotInferUnavailableMetadataChanges(t *testing.T) {
+	base := vsphere.VM{Metadata: vsphere.Metadata{TagsStatus: "unavailable"}}
+	target := vsphere.VM{Metadata: vsphere.Metadata{TagsStatus: "available", Tags: []vsphere.Tag{{ID: "tag", Name: "Production"}}}}
+	if fields := changedFields(base, target, false); len(fields) != 0 {
+		t.Fatalf("unavailable metadata should remain unknown, got %+v", fields)
+	}
+}

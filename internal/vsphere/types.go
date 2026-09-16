@@ -66,11 +66,43 @@ type Location struct {
 	Path string `json:"path"`
 }
 
+// Metadata is the normalized operator-owned metadata attached to an
+// inventory object. Status is kept separately for tags and custom attributes
+// because vCenter installations commonly expose one source but not the other.
+// An unavailable source is never equivalent to an empty source.
+type Metadata struct {
+	Tags                   []Tag             `json:"tags"`
+	CustomAttributes       []CustomAttribute `json:"custom_attributes"`
+	TagsStatus             string            `json:"tags_status"`
+	TagsError              string            `json:"tags_error,omitempty"`
+	CustomAttributesStatus string            `json:"custom_attributes_status"`
+	CustomAttributesError  string            `json:"custom_attributes_error,omitempty"`
+}
+
+// Tag is a tag attachment with enough identity to distinguish same-named
+// tags in different categories.
+type Tag struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	CategoryID string `json:"category_id"`
+	Category   string `json:"category"`
+}
+
+// CustomAttribute is a vSphere custom field value. Key remains stable when a
+// field is renamed, so historical comparisons do not mistake a rename for a
+// remove/add pair.
+type CustomAttribute struct {
+	Key   int32  `json:"key"`
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 // VM is a virtual machine or, when IsTemplate is set, a template. vSphere
 // models both with the same managed object, and so does this package: the
 // template views filter on IsTemplate rather than using a parallel type.
 type VM struct {
 	Location
+	Metadata           Metadata `json:"metadata"`
 	ID                 string   `json:"id"`
 	InstanceUUID       string   `json:"instance_uuid,omitempty"`
 	BIOSUUID           string   `json:"bios_uuid,omitempty"`
@@ -311,6 +343,7 @@ type VMSnapshot struct {
 // Host is an ESXi host.
 type Host struct {
 	Location
+	Metadata        Metadata        `json:"metadata"`
 	ID              string          `json:"id"`
 	Name            string          `json:"name"`
 	Cluster         string          `json:"cluster"`
@@ -411,6 +444,7 @@ type HostPortGroup struct {
 // this read-only profile.
 type DVSwitch struct {
 	Location
+	Metadata               Metadata      `json:"metadata"`
 	ID                     string        `json:"id"`
 	Name                   string        `json:"name"`
 	UUID                   string        `json:"uuid,omitempty"`
@@ -494,16 +528,17 @@ type HostMultipath struct {
 // in vSphere and are reported here with Standalone set.
 type Cluster struct {
 	Location
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Standalone    bool   `json:"standalone"`
-	Hosts         int    `json:"hosts"`
-	EffectiveHost int    `json:"effective_hosts"`
-	CPUCores      int32  `json:"cpu_cores"`
-	TotalCPUMHz   int64  `json:"total_cpu_mhz"`
-	TotalMemoryMB int64  `json:"total_memory_mb"`
-	DRSEnabled    bool   `json:"drs_enabled"`
-	HAEnabled     bool   `json:"ha_enabled"`
+	Metadata      Metadata `json:"metadata"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Standalone    bool     `json:"standalone"`
+	Hosts         int      `json:"hosts"`
+	EffectiveHost int      `json:"effective_hosts"`
+	CPUCores      int32    `json:"cpu_cores"`
+	TotalCPUMHz   int64    `json:"total_cpu_mhz"`
+	TotalMemoryMB int64    `json:"total_memory_mb"`
+	DRSEnabled    bool     `json:"drs_enabled"`
+	HAEnabled     bool     `json:"ha_enabled"`
 }
 
 // ResourcePool is a vSphere resource-pool configuration record. It is
@@ -511,6 +546,7 @@ type Cluster struct {
 // browsable inventory vocabulary in AllKinds.
 type ResourcePool struct {
 	Location
+	Metadata            Metadata `json:"metadata"`
 	ID                  string   `json:"id"`
 	Name                string   `json:"name"`
 	Root                bool     `json:"root"`
@@ -539,6 +575,7 @@ type ResourcePool struct {
 // separately so a detail view never mistakes descendants for direct members.
 type VApp struct {
 	Location
+	Metadata               Metadata `json:"metadata"`
 	ID                     string   `json:"id"`
 	Name                   string   `json:"name"`
 	Status                 string   `json:"status"`
@@ -560,6 +597,7 @@ type VApp struct {
 // Datastore is a backing store for VM files.
 type Datastore struct {
 	Location
+	Metadata        Metadata         `json:"metadata"`
 	ID              string           `json:"id"`
 	Name            string           `json:"name"`
 	Type            string           `json:"type"`
@@ -680,12 +718,13 @@ func (d Datastore) UsedPercent() float64 {
 // Network is a port group or network the VMs attach to.
 type Network struct {
 	Location
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Type       string `json:"type"`
-	Switch     string `json:"switch,omitempty"`
-	VLAN       string `json:"vlan,omitempty"`
-	Accessible bool   `json:"accessible"`
+	Metadata   Metadata `json:"metadata"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Type       string   `json:"type"`
+	Switch     string   `json:"switch,omitempty"`
+	VLAN       string   `json:"vlan,omitempty"`
+	Accessible bool     `json:"accessible"`
 }
 
 // Inventory is everything enumerated from one vCenter at one moment.

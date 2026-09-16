@@ -10,7 +10,7 @@ import (
 
 var computeResourceKinds = []string{"ComputeResource", "ClusterComputeResource"}
 
-var clusterProps = []string{"name", "parent", "summary", "host"}
+var clusterProps = []string{"name", "parent", "summary", "host", "customValue"}
 
 // ListClusters returns the clusters in a vCenter. A host that is not in a
 // cluster appears as a standalone compute resource and is reported with
@@ -33,6 +33,13 @@ func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error
 		return nil, err
 	}
 	out := make([]Cluster, 0, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
+	for i := range raw {
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
 	for i := range raw {
 		m := &raw[i]
 		cl := Cluster{
@@ -57,6 +64,7 @@ func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error
 			cl.DRSEnabled = st.drs
 			cl.HAEnabled = st.ha
 		}
+		cl.Metadata = metadata[m.Self]
 		out = append(out, cl)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })

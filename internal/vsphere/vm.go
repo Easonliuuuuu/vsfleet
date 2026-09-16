@@ -14,6 +14,7 @@ import (
 // a detail pane and a search result are built from. All of them are scalars
 // or short lists, so their cost per VM is roughly constant.
 var vmSummaryProps = []string{
+	"customValue",
 	"name",
 	"parent",
 	"config.template",
@@ -112,7 +113,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 		if err := retrieve(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, &raw); err != nil {
 			return nil, err
 		}
-		return newVMs(c, idx, raw), nil
+		return newVMs(ctx, c, idx, raw), nil
 	}
 	var out []VM
 	err := retrievePages(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, pageSize, func(page []types.ObjectContent) error {
@@ -120,7 +121,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 		if err := mo.LoadObjectContent(page, &raw); err != nil {
 			return err
 		}
-		vms := newVMs(c, idx, raw)
+		vms := newVMs(ctx, c, idx, raw)
 		out = append(out, vms...)
 		if onPage != nil {
 			onPage(vms)
@@ -134,10 +135,19 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 	return out, nil
 }
 
-func newVMs(c *Client, idx *index, raw []mo.VirtualMachine) []VM {
+func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine) []VM {
 	out := make([]VM, 0, len(raw))
+	refs := make([]types.ManagedObjectReference, 0, len(raw))
+	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
 	for i := range raw {
-		out = append(out, newVM(c, idx, &raw[i]))
+		refs = append(refs, raw[i].Self)
+		values[raw[i].Self] = raw[i].CustomValue
+	}
+	metadata := c.collectMetadata(ctx, refs, values)
+	for i := range raw {
+		vm := newVM(c, idx, &raw[i])
+		vm.Metadata = metadata[raw[i].Self]
+		out = append(out, vm)
 	}
 	sortVMs(out)
 	return out

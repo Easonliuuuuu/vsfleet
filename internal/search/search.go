@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -22,10 +23,12 @@ import (
 type Result struct {
 	Context     string
 	Kind        vsphere.Kind
+	ID          string
 	Name        string
 	Datacenter  string
 	Path        string
 	Description string
+	Metadata    vsphere.Metadata
 }
 
 // ContextError records that one vCenter could not be searched. Results from
@@ -56,6 +59,7 @@ type Options struct {
 	Timeout time.Duration
 	// Concurrency bounds how many vCenters are queried at once.
 	Concurrency int
+	Filter      query.Filter
 }
 
 func (o Options) wants(k vsphere.Kind) bool {
@@ -152,44 +156,69 @@ func searchOne(ctx context.Context, mgr *session.Manager, cc *config.Context, ne
 // that a cached inventory can be searched without touching the network.
 func Match(inv *vsphere.Inventory, needle string, opts Options) []Result {
 	var out []Result
-	add := func(kind vsphere.Kind, name, dc, path, desc string) {
+	add := func(kind vsphere.Kind, id, name, dc, path, desc string, object any) {
 		if !opts.wants(kind) {
 			return
 		}
 		if needle != "" && !strings.Contains(strings.ToLower(name), needle) {
 			return
 		}
+		subject, err := query.SubjectFromObject(kind, object)
+		if err != nil || !opts.Filter.Match(subject) {
+			return
+		}
 		out = append(out, Result{
 			Context:     inv.Context,
 			Kind:        kind,
+			ID:          id,
 			Name:        name,
 			Datacenter:  dc,
 			Path:        path,
 			Description: desc,
+			Metadata:    objectMetadata(object),
 		})
 	}
 	for _, vm := range inv.VMs {
-		add(vsphere.KindVM, vm.Name, vm.Datacenter, vm.Path, vm.PowerState)
+		add(vsphere.KindVM, vm.ID, vm.Name, vm.Datacenter, vm.Path, vm.PowerState, vm)
 	}
 	for _, vm := range inv.Templates {
-		add(vsphere.KindTemplate, vm.Name, vm.Datacenter, vm.Path, vm.GuestOS)
+		add(vsphere.KindTemplate, vm.ID, vm.Name, vm.Datacenter, vm.Path, vm.GuestOS, vm)
 	}
 	for _, h := range inv.Hosts {
-		add(vsphere.KindHost, h.Name, h.Datacenter, h.Path, h.ConnectionState)
+		add(vsphere.KindHost, h.ID, h.Name, h.Datacenter, h.Path, h.ConnectionState, h)
 	}
 	for _, c := range inv.Clusters {
-		add(vsphere.KindCluster, c.Name, c.Datacenter, c.Path, pluralHosts(c.Hosts))
+		add(vsphere.KindCluster, c.ID, c.Name, c.Datacenter, c.Path, pluralHosts(c.Hosts), c)
 	}
 	for _, v := range inv.VApps {
-		add(vsphere.KindVApp, v.Name, v.Datacenter, v.Path, v.Status)
+		add(vsphere.KindVApp, v.ID, v.Name, v.Datacenter, v.Path, v.Status, v)
 	}
 	for _, d := range inv.Datastores {
-		add(vsphere.KindDatastore, d.Name, d.Datacenter, d.Path, d.Type)
+		add(vsphere.KindDatastore, d.ID, d.Name, d.Datacenter, d.Path, d.Type, d)
 	}
 	for _, n := range inv.Networks {
-		add(vsphere.KindNetwork, n.Name, n.Datacenter, n.Path, n.Type)
+		add(vsphere.KindNetwork, n.ID, n.Name, n.Datacenter, n.Path, n.Type, n)
 	}
 	return out
+}
+
+func objectMetadata(object any) vsphere.Metadata {
+	switch v := object.(type) {
+	case vsphere.VM:
+		return v.Metadata
+	case vsphere.Host:
+		return v.Metadata
+	case vsphere.Cluster:
+		return v.Metadata
+	case vsphere.VApp:
+		return v.Metadata
+	case vsphere.Datastore:
+		return v.Metadata
+	case vsphere.Network:
+		return v.Metadata
+	default:
+		return vsphere.Metadata{}
+	}
 }
 
 func pluralHosts(n int) string {

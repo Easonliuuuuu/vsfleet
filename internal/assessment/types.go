@@ -29,10 +29,10 @@ type RunStatus string
 // value in schema 12–14 rows was UPT compatibility mislabeled and is no longer
 // read.
 // All keep the payload backward-compatible with older ledger rows:
-// a reader of an older run sees the field absent, which is what it is. Health
-// rules that need the version-6 evidence must therefore remain not-evaluated
-// for runs captured before this schema.
-const CurrentInventorySchemaVersion = "15"
+// a reader of an older run sees the field absent, which is what it is. The
+// metadata fields introduced in schema 16 are optional evidence, so consumers
+// must continue to treat older captures as metadata-unavailable.
+const CurrentInventorySchemaVersion = "16"
 
 const (
 	RunRunning  RunStatus = "running"
@@ -75,12 +75,16 @@ type ContextRun struct {
 // context. Keeping this separate from ContextRun lets a run remain useful when
 // an account can read VMs but not hosts, clusters, or datastores.
 type CollectionRun struct {
-	Kind       string    `json:"kind"`
-	StartedAt  time.Time `json:"started_at"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
-	Status     string    `json:"status"`
-	Error      string    `json:"error,omitempty"`
-	ItemCount  int       `json:"item_count"`
+	Kind                   string    `json:"kind"`
+	StartedAt              time.Time `json:"started_at"`
+	FinishedAt             time.Time `json:"finished_at,omitempty"`
+	Status                 string    `json:"status"`
+	Error                  string    `json:"error,omitempty"`
+	ItemCount              int       `json:"item_count"`
+	TagsStatus             string    `json:"tags_status,omitempty"`
+	TagsError              string    `json:"tags_error,omitempty"`
+	CustomAttributesStatus string    `json:"custom_attributes_status,omitempty"`
+	CustomAttributesError  string    `json:"custom_attributes_error,omitempty"`
 }
 
 // ResourceObservation is the durable, versioned representation used for
@@ -198,11 +202,15 @@ type CollectionProgress struct {
 }
 
 type CollectionResult struct {
-	Kind      string
-	Status    string
-	Error     string
-	ItemCount int
-	Resources []ResourceObservation
+	Kind                   string
+	Status                 string
+	Error                  string
+	ItemCount              int
+	Resources              []ResourceObservation
+	TagsStatus             string
+	TagsError              string
+	CustomAttributesStatus string
+	CustomAttributesError  string
 }
 
 type VMHistoryEntry struct {

@@ -164,20 +164,32 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return fmt.Errorf("read history schema version: %w", err)
 	}
-	if version > 4 {
+	if version > 5 {
 		return fmt.Errorf("history schema version %d is newer than this build understands", version)
 	}
+	if version == 5 {
+		return s.migrateV3(ctx)
+	}
 	if version == 4 {
-		return nil
+		if err := s.migrateV3(ctx); err != nil {
+			return err
+		}
+		return s.migrateV5(ctx)
 	}
 	if version == 3 {
-		return s.migrateV4(ctx)
+		if err := s.migrateV4(ctx); err != nil {
+			return err
+		}
+		return s.migrateV5(ctx)
 	}
 	if version == 2 {
 		if err := s.migrateV3(ctx); err != nil {
 			return err
 		}
-		return s.migrateV4(ctx)
+		if err := s.migrateV4(ctx); err != nil {
+			return err
+		}
+		return s.migrateV5(ctx)
 	}
 	if version == 1 {
 		stmts := []string{
@@ -207,7 +219,10 @@ func (s *Store) migrate(ctx context.Context) error {
 		if err := s.migrateV3(ctx); err != nil {
 			return err
 		}
-		return s.migrateV4(ctx)
+		if err := s.migrateV4(ctx); err != nil {
+			return err
+		}
+		return s.migrateV5(ctx)
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -284,7 +299,10 @@ func (s *Store) migrate(ctx context.Context) error {
 	if err := s.migrateV3(ctx); err != nil {
 		return err
 	}
-	return s.migrateV4(ctx)
+	if err := s.migrateV4(ctx); err != nil {
+		return err
+	}
+	return s.migrateV5(ctx)
 }
 
 // migrateV3 adds per-resource collection status and durable infrastructure
@@ -296,6 +314,59 @@ func (s *Store) migrateV3(ctx context.Context) error {
 		return fmt.Errorf("read history schema version: %w", err)
 	}
 	if version >= 3 {
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin history v3 compatibility migration: %w", err)
+		}
+		stmts := []string{
+			`ALTER TABLE runs ADD COLUMN requested_collections INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE runs ADD COLUMN successful_collections INTEGER NOT NULL DEFAULT 0`,
+			`ALTER TABLE capture_lease ADD COLUMN operation TEXT NOT NULL DEFAULT 'capture'`,
+			`CREATE TABLE IF NOT EXISTS context_collections (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				context_run_id INTEGER NOT NULL REFERENCES context_runs(id) ON DELETE CASCADE,
+				kind TEXT NOT NULL,
+				started_at INTEGER NOT NULL,
+				finished_at INTEGER,
+				status TEXT NOT NULL,
+				error TEXT NOT NULL DEFAULT '',
+				item_count INTEGER NOT NULL DEFAULT 0,
+				UNIQUE(context_run_id, kind)
+			)`,
+			`CREATE TABLE IF NOT EXISTS resource_observations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				collection_id INTEGER NOT NULL REFERENCES context_collections(id) ON DELETE CASCADE,
+				kind TEXT NOT NULL,
+				moref TEXT NOT NULL,
+				name TEXT NOT NULL,
+				payload BLOB NOT NULL,
+				cpu_capacity REAL,
+				cpu_used REAL,
+				memory_capacity REAL,
+				memory_used REAL,
+				storage_capacity REAL,
+				storage_free REAL,
+				UNIQUE(collection_id, moref)
+			)`,
+			`ALTER TABLE resource_observations ADD COLUMN cpu_capacity REAL`,
+			`ALTER TABLE resource_observations ADD COLUMN cpu_used REAL`,
+			`ALTER TABLE resource_observations ADD COLUMN memory_capacity REAL`,
+			`ALTER TABLE resource_observations ADD COLUMN memory_used REAL`,
+			`ALTER TABLE resource_observations ADD COLUMN storage_capacity REAL`,
+			`ALTER TABLE resource_observations ADD COLUMN storage_free REAL`,
+			`CREATE INDEX IF NOT EXISTS collection_kind ON context_collections(kind, status)`,
+			`CREATE INDEX IF NOT EXISTS resource_kind_identity ON resource_observations(kind, moref)`,
+			`CREATE INDEX IF NOT EXISTS resource_name ON resource_observations(name COLLATE NOCASE)`,
+		}
+		for _, stmt := range stmts {
+			if _, err := tx.ExecContext(ctx, stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+				_ = tx.Rollback()
+				return fmt.Errorf("migrate history v3 compatibility schema: %w", err)
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit history v3 compatibility migration: %w", err)
+		}
 		return nil
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -418,6 +489,37 @@ func (s *Store) migrateV4(ctx context.Context) error {
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit history v4 migration: %w", err)
+	}
+	return nil
+}
+
+// migrateV5 records metadata-source coverage per collection. The additive
+// columns are safe to apply repeatedly while a database is being developed.
+func (s *Store) migrateV5(ctx context.Context) error {
+	var version int
+	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
+		return fmt.Errorf("read history schema version: %w", err)
+	}
+	if version > 4 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin history v5 migration: %w", err)
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE context_collections ADD COLUMN tags_status TEXT NOT NULL DEFAULT 'unavailable'`,
+		`ALTER TABLE context_collections ADD COLUMN tags_error TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE context_collections ADD COLUMN custom_attributes_status TEXT NOT NULL DEFAULT 'unavailable'`,
+		`ALTER TABLE context_collections ADD COLUMN custom_attributes_error TEXT NOT NULL DEFAULT ''`,
+	} {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil && !strings.Contains(strings.ToLower(err.Error()), "duplicate column") {
+			_ = tx.Rollback()
+			return fmt.Errorf("migrate history database to v5: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit history v5 migration: %w", err)
 	}
 	return nil
 }
@@ -746,7 +848,14 @@ func (s *Store) saveContext(ctx context.Context, runID int64, result ContextResu
 		if itemCount == 0 && len(collection.Resources) > 0 {
 			itemCount = len(collection.Resources)
 		}
-		_, err = tx.ExecContext(ctx, `INSERT INTO context_collections(context_run_id,kind,started_at,finished_at,status,error,item_count) VALUES(?,?,?,?,?,?,?) ON CONFLICT(context_run_id,kind) DO UPDATE SET finished_at=excluded.finished_at,status=excluded.status,error=excluded.error,item_count=excluded.item_count`, contextRunID, kind, now.UnixMilli(), now.UnixMilli(), status, collection.Error, itemCount)
+		tagsStatus, customStatus := collection.TagsStatus, collection.CustomAttributesStatus
+		if tagsStatus == "" {
+			tagsStatus = "unavailable"
+		}
+		if customStatus == "" {
+			customStatus = "unavailable"
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO context_collections(context_run_id,kind,started_at,finished_at,status,error,item_count,tags_status,tags_error,custom_attributes_status,custom_attributes_error) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(context_run_id,kind) DO UPDATE SET finished_at=excluded.finished_at,status=excluded.status,error=excluded.error,item_count=excluded.item_count,tags_status=excluded.tags_status,tags_error=excluded.tags_error,custom_attributes_status=excluded.custom_attributes_status,custom_attributes_error=excluded.custom_attributes_error`, contextRunID, kind, now.UnixMilli(), now.UnixMilli(), status, collection.Error, itemCount, tagsStatus, collection.TagsError, customStatus, collection.CustomAttributesError)
 		if err != nil {
 			_ = tx.Rollback()
 			return err
@@ -1183,13 +1292,13 @@ func (s *Store) loadVMs(ctx context.Context, runID int64) (map[int64][]storedVM,
 	if err := rows.Err(); err != nil {
 		return nil, nil, err
 	}
-	collectionRows, err := s.db.QueryContext(ctx, `SELECT cc.context_run_id,cc.kind,cc.started_at,cc.finished_at,cc.status,cc.error,cc.item_count FROM context_collections cc JOIN context_runs cr ON cr.id=cc.context_run_id WHERE cr.run_id=?`, runID)
+	collectionRows, err := s.db.QueryContext(ctx, `SELECT cc.context_run_id,cc.kind,cc.started_at,cc.finished_at,cc.status,cc.error,cc.item_count,cc.tags_status,cc.tags_error,cc.custom_attributes_status,cc.custom_attributes_error FROM context_collections cc JOIN context_runs cr ON cr.id=cc.context_run_id WHERE cr.run_id=?`, runID)
 	if err == nil {
 		for collectionRows.Next() {
 			var contextID int64
 			var c CollectionRun
 			var start, finish sql.NullInt64
-			if scanErr := collectionRows.Scan(&contextID, &c.Kind, &start, &finish, &c.Status, &c.Error, &c.ItemCount); scanErr != nil {
+			if scanErr := collectionRows.Scan(&contextID, &c.Kind, &start, &finish, &c.Status, &c.Error, &c.ItemCount, &c.TagsStatus, &c.TagsError, &c.CustomAttributesStatus, &c.CustomAttributesError); scanErr != nil {
 				collectionRows.Close()
 				return nil, nil, scanErr
 			}

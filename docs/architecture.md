@@ -139,10 +139,13 @@ SQLite read transaction and passes it to the `internal/report` writer. It never
 loads configuration or credentials and never creates a session. Inventory
 schema version 3 (distinct from the ledger's own schema version above) adds
 the VMware Tools version and version status to VM payloads, backing the
-`vTools` tab; version 8 adds persisted resource-pool observations for the
+`vTools` tab; version 6 adds normalized CD-ROM and USB device observations,
+backing the `vCD` and `vUSB` export tabs; version 8 adds persisted
+resource-pool observations for the
 `vRP` export tab; version 9 adds host storage and network sub-objects for the
 `vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, and `vMultiPath` tabs. Older rows still populate the `vTools` running-status column,
 with the version columns left blank and the gap noted on `vsfleetCoverage`; runs
+before version 6 mark `vCD` and `vUSB` as not recorded, runs
 before version 8 mark `vRP` as not recorded, and runs before version 9 mark the
 six host configuration tabs as not recorded. Version 10 adds persisted
 distributed virtual switch and port-group observations for `dvSwitch` and
@@ -153,7 +156,7 @@ the `Local disk` column to `vMultiPath`; absent locality is preserved as an
 unknown value for conservative health evaluation. A shared
 `rvtoolsSheets` compatibility-sheet builder canonicalizes and validates the run
 once and returns every supported worksheet (`vInfo`, `vCPU`, `vMemory`,
-per-VM `vDisk`/`vNetwork`,
+per-VM `vDisk`/`vPartition`/`vNetwork`/`vCD`/`vUSB`,
 `vTools`, `vHost`, `vHBA`, `vNIC`, `vSwitch`, `vPort`, `vSC+VMK`, `vMultiPath`,
 `dvSwitch`, `dvPort`, `vRP`, `vDatastore`, `vSnapshot`, `vHealth`,
 `vsfleetCoverage`) in

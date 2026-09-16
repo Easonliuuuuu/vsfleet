@@ -41,6 +41,8 @@ var (
 	diskHeaders         = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "SharedBus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	networkHeaders      = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	toolsHeaders        = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
+	cdHeaders           = append([]string{"VM", "Powerstate", "Template", "Device", "Device Key", "Connected", "Starts Connected", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeaders...)
+	usbHeaders          = append([]string{"VM", "Powerstate", "Template", "Device", "Device Key", "Connected", "Vendor ID", "Product ID", "Family", "Speed", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeaders...)
 	partitionHeaders    = append([]string{"VM", "Powerstate", "Template", "Disk Key", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
 	hostHeaders         = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	hbaHeaders          = append([]string{"Device", "Bus", "Status", "Model", "Driver", "PCI", "Storage protocol", "WWNN", "WWPN", "iSCSI name", "iSCSI alias", "Type"}, hostTailHeaders...)
@@ -87,6 +89,8 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 		{name: "vDisk", headers: diskHeaders, rows: diskRows(data)},
 		{name: "vPartition", headers: partitionHeaders, rows: partitionRows(data)},
 		{name: "vNetwork", headers: networkHeaders, rows: networkRows(data)},
+		{name: "vCD", headers: cdHeaders, rows: cdRows(data)},
+		{name: "vUSB", headers: usbHeaders, rows: usbRows(data)},
 		{name: "vTools", headers: toolsHeaders, rows: toolsRows(data)},
 		{name: "vHost", headers: hostHeaders, rows: hostRows(data)},
 		{name: "vHBA", headers: hbaHeaders, rows: hbaRows(data)},
@@ -106,7 +110,7 @@ func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sh
 	}, nil
 }
 
-// WriteRVTools writes the twenty-one RVTools-compatible sheets plus the
+// WriteRVTools writes the twenty-three RVTools-compatible sheets plus the
 // vsfleetCoverage extension sheet. vHealth is derived from the supplied
 // report; callers evaluate it before entering the renderer. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
@@ -452,6 +456,43 @@ func networkRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
+func cdRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range data.VMs {
+		obs, vm := item.Observation, item.Observation.VM
+		for _, cd := range vm.CDROMs {
+			row := []any{
+				vm.Name, vm.PowerState, vm.IsTemplate, cd.Label, cd.Key,
+				optionalBool(cd.Connected), optionalBool(cd.StartsConnected), cd.BackingType,
+				cd.BackingPath, cd.BackingDevice, cd.BackingHost, cd.BackingDatastore,
+				cd.BackingObjectID, optionalBool(cd.UseAutoDetect), cd.Controller,
+				cd.ControllerLabel, optionalInt32(cd.UnitNumber),
+			}
+			rows = append(rows, append(row, vmTail(data, obs)...))
+		}
+	}
+	return rows
+}
+
+func usbRows(data assessment.ExportData) [][]any {
+	rows := make([][]any, 0)
+	for _, item := range data.VMs {
+		obs, vm := item.Observation, item.Observation.VM
+		for _, usb := range vm.USBs {
+			row := []any{
+				vm.Name, vm.PowerState, vm.IsTemplate, usb.Label, usb.Key,
+				optionalBool(usb.Connected), optionalInt32NonZero(usb.Vendor), optionalInt32NonZero(usb.Product),
+				strings.Join(usb.Family, ", "), strings.Join(usb.Speed, ", "), usb.BackingType,
+				usb.BackingPath, usb.BackingDevice, usb.BackingHost, usb.BackingDatastore,
+				usb.BackingObjectID, optionalBool(usb.UseAutoDetect), usb.Controller,
+				usb.ControllerLabel, optionalInt32(usb.UnitNumber),
+			}
+			rows = append(rows, append(row, vmTail(data, obs)...))
+		}
+	}
+	return rows
+}
+
 func optionalBool(value *bool) any {
 	if value == nil {
 		return nil
@@ -464,6 +505,13 @@ func optionalInt32(value *int32) any {
 		return nil
 	}
 	return *value
+}
+
+func optionalInt32NonZero(value int32) any {
+	if value == 0 {
+		return nil
+	}
+	return value
 }
 
 func optionalInt64(value *int64) any {
@@ -752,10 +800,14 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 	counts := make(map[string]int)
 	diskCounts := make(map[string]int)
 	networkCounts := make(map[string]int)
+	cdCounts := make(map[string]int)
+	usbCounts := make(map[string]int)
 	for _, item := range data.VMs {
 		counts[item.Observation.Context]++
 		diskCounts[item.Observation.Context] += len(item.Observation.VM.Disks)
 		networkCounts[item.Observation.Context] += len(item.Observation.VM.NICs)
+		cdCounts[item.Observation.Context] += len(item.Observation.VM.CDROMs)
+		usbCounts[item.Observation.Context] += len(item.Observation.VM.USBs)
 	}
 	snapshotCounts := make(map[string]int)
 	for _, item := range data.VMs {
@@ -810,8 +862,9 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			}
 		}
 	}
-	rows := make([][]any, 0, len(data.Contexts)*21)
+	rows := make([][]any, 0, len(data.Contexts)*23)
 	devicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 2)
+	attachedDevicesRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 6)
 	toolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 3)
 	partitionsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 4)
 	poolsRecorded := inventoryAtLeast(data.Run.InventorySchemaVersion, 8)
@@ -820,6 +873,10 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 	if !devicesRecorded {
 		diskCounts = make(map[string]int)
 		networkCounts = make(map[string]int)
+	}
+	if !attachedDevicesRecorded {
+		cdCounts = make(map[string]int)
+		usbCounts = make(map[string]int)
 	}
 	if !partitionsRecorded {
 		partitionCounts = make(map[string]int)
@@ -844,6 +901,8 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			{kind: "vdisk", sheet: "vDisk", count: diskCounts[c.Name]},
 			{kind: "vpartition", sheet: "vPartition", count: partitionCounts[c.Name]},
 			{kind: "vnetwork", sheet: "vNetwork", count: networkCounts[c.Name]},
+			{kind: "vcd", sheet: "vCD", count: cdCounts[c.Name]},
+			{kind: "vusb", sheet: "vUSB", count: usbCounts[c.Name]},
 			{kind: "vtools", sheet: "vTools", count: counts[c.Name]},
 			{kind: "host", sheet: "vHost", count: resources[c.Name]["host"]},
 			{kind: "host", sheet: "vHBA", count: hostConfigCounts[c.Name]["vHBA"], hostConfig: true},
@@ -873,6 +932,9 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			case (spec.kind == "vdisk" || spec.kind == "vnetwork") && !devicesRecorded:
 				status = "not recorded"
 				message = "capture predates per-VM device inventory"
+			case (spec.kind == "vcd" || spec.kind == "vusb") && !attachedDevicesRecorded:
+				status = "not recorded"
+				message = "capture predates CD-ROM and USB device inventory"
 			case spec.kind == "vpartition" && !partitionsRecorded:
 				status = "not recorded"
 				message = "capture predates guest partition inventory"
@@ -907,7 +969,7 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 			// Disks and NICs ride along with the VM capture rather than
 			// being their own collection pass, so their coverage mirrors the
 			// VM collection's status.
-			case spec.kind == "vm" || spec.kind == "snapshot" || spec.kind == "vcpu" || spec.kind == "vmemory" || spec.kind == "vtools" || spec.kind == "vdisk" || spec.kind == "vnetwork":
+			case spec.kind == "vm" || spec.kind == "snapshot" || spec.kind == "vcpu" || spec.kind == "vmemory" || spec.kind == "vtools" || spec.kind == "vdisk" || spec.kind == "vnetwork" || spec.kind == "vcd" || spec.kind == "vusb":
 				status = c.VMStatus
 				if status == "" {
 					status = "not recorded"
@@ -1075,17 +1137,45 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 		data.VMs[i].Snapshots = append([]vsphere.VMSnapshot(nil), data.VMs[i].Snapshots...)
 		data.VMs[i].Observation.VM.Disks = append([]vsphere.VMDisk(nil), data.VMs[i].Observation.VM.Disks...)
 		data.VMs[i].Observation.VM.NICs = append([]vsphere.VMNIC(nil), data.VMs[i].Observation.VM.NICs...)
+		data.VMs[i].Observation.VM.CDROMs = append([]vsphere.VMCDROM(nil), data.VMs[i].Observation.VM.CDROMs...)
+		data.VMs[i].Observation.VM.USBs = append([]vsphere.VMUSB(nil), data.VMs[i].Observation.VM.USBs...)
 		for n := range data.VMs[i].Observation.VM.NICs {
 			data.VMs[i].Observation.VM.NICs[n].IPv4 = append([]string(nil), data.VMs[i].Observation.VM.NICs[n].IPv4...)
 			data.VMs[i].Observation.VM.NICs[n].IPv6 = append([]string(nil), data.VMs[i].Observation.VM.NICs[n].IPv6...)
 			sort.Strings(data.VMs[i].Observation.VM.NICs[n].IPv4)
 			sort.Strings(data.VMs[i].Observation.VM.NICs[n].IPv6)
 		}
+		for n := range data.VMs[i].Observation.VM.USBs {
+			data.VMs[i].Observation.VM.USBs[n].Family = append([]string(nil), data.VMs[i].Observation.VM.USBs[n].Family...)
+			data.VMs[i].Observation.VM.USBs[n].Speed = append([]string(nil), data.VMs[i].Observation.VM.USBs[n].Speed...)
+			sort.Strings(data.VMs[i].Observation.VM.USBs[n].Family)
+			sort.Strings(data.VMs[i].Observation.VM.USBs[n].Speed)
+		}
 		sort.SliceStable(data.VMs[i].Observation.VM.Disks, func(a, b int) bool {
 			return data.VMs[i].Observation.VM.Disks[a].Key < data.VMs[i].Observation.VM.Disks[b].Key
 		})
 		sort.SliceStable(data.VMs[i].Observation.VM.NICs, func(a, b int) bool {
 			return data.VMs[i].Observation.VM.NICs[a].Key < data.VMs[i].Observation.VM.NICs[b].Key
+		})
+		sort.SliceStable(data.VMs[i].Observation.VM.CDROMs, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.CDROMs[a], data.VMs[i].Observation.VM.CDROMs[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			if strings.ToLower(x.Label) != strings.ToLower(y.Label) {
+				return strings.ToLower(x.Label) < strings.ToLower(y.Label)
+			}
+			return x.BackingPath < y.BackingPath
+		})
+		sort.SliceStable(data.VMs[i].Observation.VM.USBs, func(a, b int) bool {
+			x, y := data.VMs[i].Observation.VM.USBs[a], data.VMs[i].Observation.VM.USBs[b]
+			if x.Key != y.Key {
+				return x.Key < y.Key
+			}
+			if strings.ToLower(x.Label) != strings.ToLower(y.Label) {
+				return strings.ToLower(x.Label) < strings.ToLower(y.Label)
+			}
+			return x.BackingPath < y.BackingPath
 		})
 		sort.SliceStable(data.VMs[i].Snapshots, func(a, b int) bool {
 			x, y := data.VMs[i].Snapshots[a], data.VMs[i].Snapshots[b]

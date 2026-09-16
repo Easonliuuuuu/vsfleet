@@ -265,11 +265,11 @@ force unknown. `--fail-on-blockers` returns exit code 2 for a blocked result.
 
 ### RVTools file interoperability
 
-The `rvtools` export profile renders twenty-one worksheet layouts used by RVTools
+The `rvtools` export profile renders twenty-three worksheet layouts used by RVTools
 exports, so a downstream tool that reads those worksheet names and columns can
 consume the corresponding parts of a vsfleet export:
 
-`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vTools` ·
+`vInfo` · `vCPU` · `vMemory` · `vDisk` · `vPartition` · `vNetwork` · `vCD` · `vUSB` · `vTools` ·
 `vHost` · `vHBA` · `vNIC` · `vSwitch` · `vPort` · `dvSwitch` · `dvPort` ·
 `vSC+VMK` · `vMultiPath` · `vCluster` · `vRP` · `vDatastore` · `vSnapshot` ·
 `vHealth`

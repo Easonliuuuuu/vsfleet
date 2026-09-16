@@ -1162,7 +1162,7 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 			if x.Key != y.Key {
 				return x.Key < y.Key
 			}
-			if strings.ToLower(x.Label) != strings.ToLower(y.Label) {
+			if !strings.EqualFold(x.Label, y.Label) {
 				return strings.ToLower(x.Label) < strings.ToLower(y.Label)
 			}
 			return x.BackingPath < y.BackingPath
@@ -1172,7 +1172,7 @@ func canonicalData(data assessment.ExportData) assessment.ExportData {
 			if x.Key != y.Key {
 				return x.Key < y.Key
 			}
-			if strings.ToLower(x.Label) != strings.ToLower(y.Label) {
+			if !strings.EqualFold(x.Label, y.Label) {
 				return strings.ToLower(x.Label) < strings.ToLower(y.Label)
 			}
 			return x.BackingPath < y.BackingPath

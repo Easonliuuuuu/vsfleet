@@ -36,6 +36,19 @@ func (c *Client) listHosts(ctx context.Context, idx *index) ([]Host, error) {
 	return c.listHostsWith(ctx, idx, false)
 }
 
+// ListHostsWithConfig returns the ESXi hosts in a vCenter together with the
+// storage and network subresources (HBAs, pNICs, standard switches, port
+// groups, VMkernel adapters, multipath LUNs) config.storageDevice and
+// config.network carry. It costs more per host than ListHosts, so callers
+// that only need summary fields should use that instead.
+func (c *Client) ListHostsWithConfig(ctx context.Context) ([]Host, error) {
+	idx, err := newIndex(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	return c.listHostsWith(ctx, idx, true)
+}
+
 func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool) ([]Host, error) {
 	var raw []mo.HostSystem
 	props := hostProps

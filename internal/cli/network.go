@@ -33,7 +33,7 @@ Reads stored evidence only and never contacts a vCenter.`),
 			if err != nil {
 				return err
 			}
-			comparison := network.Compare(data, args[0], args[1], a.ContextNames)
+			comparison := network.Compare(data, args[0], args[1], a.StoredContextNames())
 			printNetworkBlindness(a.errOut(), comparison.Blind)
 			if a.json() {
 				return writeJSON(a.out(), comparison)
@@ -68,7 +68,7 @@ evidence in full. Reads stored evidence only and never contacts a vCenter.`),
 			if err != nil {
 				return err
 			}
-			readiness := network.Verdict(network.Compare(data, source, target, a.ContextNames))
+			readiness := network.Verdict(network.Compare(data, source, target, a.StoredContextNames()))
 			printNetworkBlindness(a.errOut(), readiness.Blind)
 			if a.json() {
 				if err := writeJSON(a.out(), readiness); err != nil {

@@ -262,7 +262,7 @@ vCenter.`), Example: `  # Every recorded change for a VM
 		if err != nil {
 			return err
 		}
-		events, err := s.TimelineForContexts(cmd.Context(), args[0], a.ContextNames, allObservations, includeRuntime)
+		events, err := s.TimelineForContexts(cmd.Context(), args[0], a.StoredContextNames(), allObservations, includeRuntime)
 		if err != nil {
 			return err
 		}

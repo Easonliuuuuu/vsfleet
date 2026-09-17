@@ -125,11 +125,11 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, args []string, flags heal
 	if err != nil {
 		return health.Report{}, fmt.Errorf("--max-snapshot-age: %w", err)
 	}
-	if flags.minDatastoreFree < 0 || flags.minDatastoreFree > 100 {
-		return health.Report{}, fmt.Errorf("--min-datastore-free must be between 0 and 100")
+	if err := validatePercent("--min-datastore-free", flags.minDatastoreFree); err != nil {
+		return health.Report{}, err
 	}
-	if flags.minGuestDiskFree < 0 || flags.minGuestDiskFree > 100 {
-		return health.Report{}, fmt.Errorf("--min-guest-disk-free must be between 0 and 100")
+	if err := validatePercent("--min-guest-disk-free", flags.minGuestDiskFree); err != nil {
+		return health.Report{}, err
 	}
 	minDatastoreFreeBytes, err := parseHumanBytes(flags.minDatastoreFreeBytes)
 	if err != nil {
@@ -212,7 +212,7 @@ func loadRunExportData(cmd *cobra.Command, a *App, args []string) (assessment.Ex
 	if err != nil {
 		return assessment.ExportData{}, err
 	}
-	return s.LoadExportDataForContexts(cmd.Context(), runID, a.ContextNames)
+	return s.LoadExportDataForContexts(cmd.Context(), runID, a.StoredContextNames())
 }
 
 func printHealthRules(a *App) error {

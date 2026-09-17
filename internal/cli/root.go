@@ -168,6 +168,19 @@ func (a *App) Contexts() ([]*config.Context, error) {
 	return cfg.Resolve(a.ContextNames, a.AllContexts)
 }
 
+// StoredContextNames returns the raw context-name selector for commands that
+// scope stored/history evidence (assessment reports, trends, topology, ...)
+// rather than resolving live contexts. It applies the same --all-contexts
+// precedence as Contexts: when --all-contexts is set, any --context values
+// are ignored so the full stored scope is used, instead of being validated
+// or narrowed by --context.
+func (a *App) StoredContextNames() []string {
+	if a.AllContexts {
+		return nil
+	}
+	return a.ContextNames
+}
+
 // SingleContext resolves exactly one context, for commands that cannot span
 // several vCenters.
 func (a *App) SingleContext(name string) (*config.Context, error) {

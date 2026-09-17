@@ -77,7 +77,7 @@ history has accumulated rather than against a single capture.`),
 				}
 				flags.to = strconv.FormatInt(id, 10)
 			}
-			opts, err := flags.trendFlags.options(cmd.Context(), s, a.ContextNames)
+			opts, err := flags.trendFlags.options(cmd.Context(), s, a)
 			if err != nil {
 				return err
 			}
@@ -95,8 +95,8 @@ history has accumulated rather than against a single capture.`),
 				}
 				opts.Since = base.Add(-duration)
 			}
-			if flags.minFree < 0 || flags.minFree > 100 {
-				return fmt.Errorf("--min-free must be between 0 and 100")
+			if err := validatePercent("--min-free", flags.minFree); err != nil {
+				return err
 			}
 			minFreeBytes, parseErr := parseHumanBytes(flags.minFreeBytes)
 			if parseErr != nil {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -134,7 +135,7 @@ func newAssessmentInventoryCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		data, err := s.LoadExportDataForContexts(cmd.Context(), runID, a.ContextNames)
+		data, err := s.LoadExportDataForContexts(cmd.Context(), runID, a.StoredContextNames())
 		if err != nil {
 			return err
 		}
@@ -347,7 +348,7 @@ func newAssessmentExportCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		data, err := s.LoadExportDataForContexts(cmd.Context(), runID, a.ContextNames)
+		data, err := s.LoadExportDataForContexts(cmd.Context(), runID, a.StoredContextNames())
 		if err != nil {
 			return err
 		}
@@ -579,10 +580,20 @@ func (f *trendFlags) add(cmd *cobra.Command) {
 	cmd.Flags().StringSliceVar(&f.contexts, "context", nil, "limit trend data to context(s)")
 }
 
-func (f trendFlags) options(ctx context.Context, s *assessment.Store, fallbackContexts []string) (assessment.TrendOptions, error) {
-	contexts := f.contexts
-	if len(contexts) == 0 {
-		contexts = fallbackContexts
+// options resolves trend scope with the same --all-contexts precedence as
+// every other stored-evidence command: --all-contexts wins outright, even
+// over an explicit trend-local --context, since a raw --context value must
+// not keep narrowing or validating the stored scope once --all-contexts is
+// present.
+func (f trendFlags) options(ctx context.Context, s *assessment.Store, a *App) (assessment.TrendOptions, error) {
+	var contexts []string
+	switch {
+	case a.AllContexts:
+		contexts = nil
+	case len(f.contexts) > 0:
+		contexts = f.contexts
+	default:
+		contexts = a.ContextNames
 	}
 	opts := assessment.TrendOptions{Limit: f.limit, IncludePartial: f.includePartial, Contexts: contexts}
 	var err error
@@ -615,7 +626,7 @@ func newAssessmentChurnTrendCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		opts, err := flags.options(cmd.Context(), s, a.ContextNames)
+		opts, err := flags.options(cmd.Context(), s, a)
 		if err != nil {
 			return err
 		}
@@ -652,7 +663,7 @@ func newAssessmentSnapshotTrendCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		opts, err := flags.options(cmd.Context(), s, a.ContextNames)
+		opts, err := flags.options(cmd.Context(), s, a)
 		if err != nil {
 			return err
 		}
@@ -699,7 +710,7 @@ func newAssessmentCapacityTrendCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		opts, err := flags.options(cmd.Context(), s, a.ContextNames)
+		opts, err := flags.options(cmd.Context(), s, a)
 		if err != nil {
 			return err
 		}
@@ -758,7 +769,7 @@ func newAssessmentReportCommand(a *App) *cobra.Command {
 		if err != nil {
 			return fmt.Errorf("--older-than: %w", err)
 		}
-		report, err := s.ReportForContexts(cmd.Context(), runID, age, a.ContextNames)
+		report, err := s.ReportForContexts(cmd.Context(), runID, age, a.StoredContextNames())
 		if err != nil {
 			return err
 		}
@@ -1101,7 +1112,7 @@ structural changes.`), Example: `  # The two most recent captures
 		if err != nil {
 			return err
 		}
-		d, err := s.DiffForContexts(cmd.Context(), base, target, runtime, a.ContextNames)
+		d, err := s.DiffForContexts(cmd.Context(), base, target, runtime, a.StoredContextNames())
 		if err != nil {
 			return err
 		}
@@ -1182,12 +1193,14 @@ func newAssessmentSnapshotsCommand(a *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+		} else if _, err := s.GetRun(cmd.Context(), at); err != nil {
+			return err
 		}
 		olderDuration, err := parseHumanDuration(older)
 		if err != nil {
 			return fmt.Errorf("--older-than: %w", err)
 		}
-		ages, err := s.SnapshotAgesForContexts(cmd.Context(), at, olderDuration, a.ContextNames)
+		ages, err := s.SnapshotAgesForContexts(cmd.Context(), at, olderDuration, a.StoredContextNames())
 		if err != nil {
 			return err
 		}
@@ -1387,6 +1400,17 @@ func parseHumanDuration(value string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid duration %q", value)
 	}
 	return total, nil
+}
+
+// validatePercent rejects a flag value that is not a finite percentage in
+// [0, 100], including NaN and +/-Inf, which ordinary range comparisons let
+// through silently. flag is the flag's own name (e.g. "--min-free") for the
+// error message.
+func validatePercent(flag string, value float64) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 100 {
+		return fmt.Errorf("%s must be between 0 and 100", flag)
+	}
+	return nil
 }
 
 func parseHumanBytes(value string) (float64, error) {

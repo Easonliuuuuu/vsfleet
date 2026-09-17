@@ -47,7 +47,7 @@ anything off — the decision, and the action, stay with the operator.`),
 			if err != nil {
 				return err
 			}
-			result := decommission.Evaluate(data, args[0], a.ContextNames)
+			result := decommission.Evaluate(data, args[0], a.StoredContextNames())
 			if a.json() {
 				if err := writeJSON(a.out(), result); err != nil {
 					return err

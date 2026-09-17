@@ -106,17 +106,15 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if err != nil {
 		return err
 	}
-	if depth < 1 {
-		depth = 1
-	}
-	if depth > 5 {
-		depth = 5
+	if depth < 1 || depth > 5 {
+		return fmt.Errorf("--depth must be between 1 and 5")
 	}
 	data, err := loadRunExportData(cmd, a, args[2:])
 	if err != nil {
 		return err
 	}
-	if len(a.ContextNames) > 0 {
+	storedContextNames := a.StoredContextNames()
+	if len(storedContextNames) > 0 {
 		if s, sErr := a.History(); sErr == nil {
 			if full, fErr := s.LoadExportData(cmd.Context(), data.Run.ID); fErr == nil {
 				data.Contexts = full.Contexts
@@ -124,7 +122,7 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 		}
 	}
 	graph := topology.Build(data)
-	subjects := graph.Resolve(kind, args[1], a.ContextNames)
+	subjects := graph.Resolve(kind, args[1], storedContextNames)
 	result := topology.Result{
 		SchemaVersion: 1,
 		RunID:         data.Run.ID,
@@ -149,12 +147,12 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if len(result.Subjects) == 0 {
 		// Keep a machine-readable unknown result rather than turning an absent
 		// object into a successful empty answer.
-		result.Subjects = append(result.Subjects, graph.Unknown(kind, args[1], a.ContextNames))
+		result.Subjects = append(result.Subjects, graph.Unknown(kind, args[1], storedContextNames))
 	}
 	result.CheckedContexts, result.Blind = topologyResultCoverage(result.Subjects)
 	if len(result.CheckedContexts) == 0 {
-		if len(a.ContextNames) > 0 {
-			result.CheckedContexts = append([]string(nil), a.ContextNames...)
+		if len(storedContextNames) > 0 {
+			result.CheckedContexts = append([]string(nil), storedContextNames...)
 		} else {
 			for _, contextRun := range data.Contexts {
 				result.CheckedContexts = append(result.CheckedContexts, contextRun.Name)

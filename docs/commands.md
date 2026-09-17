@@ -31,6 +31,12 @@ configuration, history database, and output options shown below.
 | `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
+| `vsfleet <kind> show <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail |
+| `vsfleet host hba\|pnic\|vswitch\|portgroup\|vmkernel\|multipath list [--host <name>]` | List one host storage/network subresource, across every host or narrowed to one |
+| `vsfleet dvswitch list` | List distributed virtual switches |
+| `vsfleet dvportgroup list [--switch <name>]` | List distributed port groups, across every switch or narrowed to one |
+| `vsfleet resourcepool list` | List resource pools |
+| `vsfleet snapshot list [--vm <name>]` | List VM snapshots, across every VM or narrowed to one |
 | `vsfleet datastore files list <datastore> [path]` | List one datastore directory |
 | `vsfleet datastore files find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
@@ -42,8 +48,9 @@ configuration, history database, and output options shown below.
 ## Inventory and search
 
 Supported resource kinds are `vm`, `template`, `host`, `cluster`, `vapp`,
-`datastore`, and `network`. Inventory commands accept `--filter` / `-f`,
-repeatable `--where`, and opt-in `--wide` metadata columns:
+`datastore`, `network`, `dvswitch`, and `resourcepool`. Inventory commands
+accept `--filter` / `-f`, repeatable `--where`, and opt-in `--wide` metadata
+columns:
 
 ```sh
 vsfleet host list --context prod --filter esxi-07
@@ -80,6 +87,41 @@ source is reported as unavailable.
 
 Results from healthy contexts remain available when another context fails. The
 failure is reported separately with its context and diagnostic information.
+
+## Object detail and infrastructure subresources
+
+`vsfleet <kind> show <name>` prints one object's full collected evidence —
+identity, provenance and configuration — rather than a list row. The name may
+match more than one object across contexts; when it does, `show` reports the
+ambiguity and lists the candidates instead of guessing, and `--context`
+narrows it to one:
+
+```sh
+vsfleet vm show web-01
+vsfleet vm show 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52   # by instance UUID
+vsfleet host show esxi-01 --context prod
+vsfleet datastore show nvme-01 -o json
+```
+
+Host storage and network evidence that is already collected for assessments —
+HBAs, physical NICs, standard switches, port groups, VMkernel adapters and
+multipath LUNs — is queryable directly, across every host on the context or
+narrowed to one with `--host`:
+
+```sh
+vsfleet host hba list --host esxi-01
+vsfleet host vswitch list
+vsfleet host multipath list --host esxi-01 -o json
+```
+
+Distributed switch, resource pool and snapshot evidence work the same way:
+
+```sh
+vsfleet dvswitch list
+vsfleet dvportgroup list --switch dvs-prod
+vsfleet resourcepool list --wide
+vsfleet snapshot list --vm web-01
+```
 
 ## Datastore file browsing
 

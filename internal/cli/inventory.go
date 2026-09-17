@@ -226,20 +226,45 @@ func objectMetadata(value any) (vsphere.Metadata, bool) {
 // share the same shape so that "vsfleet <kind> list" is predictable.
 func newInventoryCommands(a *App) []*cobra.Command {
 	vm := group("vm", []string{"vms", "virtualmachine"}, "Virtual machines", newVMListCommand(a))
+	vm.AddCommand(newVMShowCommand(a))
 	vm.AddCommand(newVMHistoryCommand(a))
 	vm.AddCommand(newVMDecommissionCheckCommand(a))
+	tmpl := group("template", []string{"templates", "tpl"}, "VM templates", newTemplateListCommand(a))
+	tmpl.AddCommand(newTemplateShowCommand(a))
+	host := group("host", []string{"hosts", "esxi"}, "ESXi hosts", newHostListCommand(a))
+	host.AddCommand(newHostShowCommand(a))
+	host.AddCommand(hostSubgroup("hba", []string{"hbas"}, "Host bus adapters", "host hba", newHostHBAListCommand(a)))
+	host.AddCommand(hostSubgroup("multipath", []string{"multipaths", "mp"}, "Host/LUN multipath aggregates", "host multipath", newHostMultipathListCommand(a)))
+	host.AddCommand(hostSubgroup("pnic", []string{"pnics"}, "Physical NICs", "host pnic", newHostPNICListCommand(a)))
+	host.AddCommand(hostSubgroup("vswitch", []string{"vswitches", "vss"}, "Standard virtual switches", "host vswitch", newHostVSwitchListCommand(a)))
+	host.AddCommand(hostSubgroup("portgroup", []string{"portgroups", "pg"}, "Standard-switch port groups", "host portgroup", newHostPortGroupListCommand(a)))
+	host.AddCommand(hostSubgroup("vmkernel", []string{"vmkernels", "vmk", "vmks"}, "VMkernel adapters", "host vmkernel", newHostVMKernelListCommand(a)))
+	cluster := group("cluster", []string{"clusters"}, "Compute clusters", newClusterListCommand(a))
+	cluster.AddCommand(newClusterShowCommand(a))
+	vapp := group("vapp", []string{"vapps", "virtualapp"}, "vSphere vApps", newVAppListCommand(a))
+	vapp.AddCommand(newVAppShowCommand(a))
 	netw := group("network", []string{"networks", "portgroup"}, "Networks and port groups", newNetworkListCommand(a))
+	netw.AddCommand(newNetworkShowCommand(a))
 	netw.AddCommand(newNetworkCompareCommand(a))
 	ds := group("datastore", []string{"datastores", "ds"}, "Datastores", newDatastoreListCommand(a))
+	ds.AddCommand(newDatastoreShowCommand(a))
 	ds.AddCommand(newDatastoreFilesCommand(a))
+	dvswitch := group("dvswitch", []string{"dvswitches", "vds"}, "Distributed virtual switches", newDVSwitchListCommand(a))
+	dvportgroup := group("dvportgroup", []string{"dvportgroups", "dvpg"}, "Distributed port groups", newDVPortGroupListCommand(a))
+	resourcepool := group("resourcepool", []string{"resourcepools", "rp"}, "Resource pools", newResourcePoolListCommand(a))
+	snapshot := group("snapshot", []string{"snapshots", "snap"}, "VM snapshots", newSnapshotListCommand(a))
 	return []*cobra.Command{
 		vm,
-		group("template", []string{"templates", "tpl"}, "VM templates", newTemplateListCommand(a)),
-		group("host", []string{"hosts", "esxi"}, "ESXi hosts", newHostListCommand(a)),
-		group("cluster", []string{"clusters"}, "Compute clusters", newClusterListCommand(a)),
-		group("vapp", []string{"vapps", "virtualapp"}, "vSphere vApps", newVAppListCommand(a)),
+		tmpl,
+		host,
+		cluster,
+		vapp,
 		ds,
 		netw,
+		dvswitch,
+		dvportgroup,
+		resourcepool,
+		snapshot,
 	}
 }
 

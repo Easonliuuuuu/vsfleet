@@ -18,10 +18,30 @@ scripts/testbed test partial-failure
 The scenario layer asserts user-visible semantics, model observations, and
 read-only/credential-safety invariants. Four stable screens also have
 ANSI-normalized render contracts at `60x20`, `100x30`, and `140x40`. Goldens
-are changed only with the explicit `--update-goldens` flag. Native TUI fuzz
-seeds run with the normal Go suite; longer fuzz campaigns are scheduled
-separately. A future Linux PTY tier will validate the actual process and
-terminal boundary.
+are changed only with the explicit `--update-goldens` flag.
+
+## Linux PTY process tests
+
+The tagged PTY suite is deliberately separate from the model-boundary
+scenarios. It builds and runs the actual connected `cmd/vsfleet-testbed`
+binary with terminal input, output, resize events, signals, loopback simulator
+endpoints, and isolated on-disk state:
+
+```sh
+scripts/testbed pty --results-dir /tmp/vsfleet-pty
+```
+
+The six journeys launch inventory and quit, cancel a credential prompt and
+continue, browse and recursively search a datastore, traverse and leave every
+History pane, resize from `60x20` to `140x40`, and interrupt an active capture
+with Ctrl-C. They assert semantic output and clean exit behavior, not complete
+terminal byte snapshots. On failure, CI uploads redacted process output, an
+ANSI-normalized transcript, an event log, result metadata, and the isolated
+testbed state.
+
+Native TUI fuzz seeds run with the normal Go suite; longer fuzz campaigns are
+scheduled separately. Neither the headless scenarios nor PTY tests prove
+behavior against a real vSphere deployment.
 
 ## Unit and package tests
 

@@ -66,10 +66,31 @@ func TestStartCreatesAuthenticatedRoutesAndHistory(t *testing.T) {
 			t.Fatalf("index %s: %v", name, err)
 		}
 		part := client.FetchGroup(ctx, idx, vsphere.GroupVMs)
-		_ = client.Close(ctx)
 		if len(part.VMs) == 0 {
 			t.Fatalf("%s returned no VMs", name)
 		}
+		if name == "prod-vc" {
+			datastores := client.FetchGroup(ctx, idx, vsphere.GroupDatastores)
+			if len(datastores.Datastores) == 0 {
+				t.Fatal("prod-vc returned no datastores")
+			}
+			first := datastores.Datastores[0]
+			listing, err := client.FindInDatastore(ctx, first.ID, first.Name, "*.vmdk")
+			if err != nil {
+				t.Fatalf("find connected datastore fixture: %v", err)
+			}
+			found := false
+			for _, entry := range listing.Entries {
+				if strings.HasSuffix(entry.Path, "database01/deep/database01.vmdk") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("connected datastore fixture missing from %+v", listing.Entries)
+			}
+		}
+		_ = client.Close(ctx)
 	}
 }
 

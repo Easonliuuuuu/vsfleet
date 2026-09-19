@@ -183,12 +183,39 @@ func (l *Lab) startVCenter(name string, port int, cfg modelConfig) (runningVCent
 		return runningVCenter{}, fmt.Errorf("create %s simulator: %w", name, err)
 	}
 	l.models = append(l.models, m)
+	if err := seedDatastoreTrees(m); err != nil {
+		return runningVCenter{}, fmt.Errorf("seed %s datastore fixtures: %w", name, err)
+	}
 	m.Service.TLS = new(tls.Config)
 	m.Service.Listen = &url.URL{Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), User: url.UserPassword(FixtureUsername, FixturePassword)}
 	s := m.Service.NewServer()
 	l.servers = append(l.servers, s)
 	cert := s.Certificate()
 	return runningVCenter{endpoint: "https://" + s.URL.Host, address: s.URL.Host, thumbprint: vsphere.ThumbprintSHA256(cert)}, nil
+}
+
+// seedDatastoreTrees gives the connected lab one small, deterministic file
+// hierarchy per datastore. The PTY journey and an interactive sandbox then
+// exercise the real HostDatastoreBrowser path instead of stopping at an empty
+// simulator datastore.
+func seedDatastoreTrees(m *simulator.Model) error {
+	for _, entity := range m.Service.Context.Map.All("Datastore") {
+		datastore, ok := entity.(*simulator.Datastore)
+		if !ok || datastore.Summary.Url == "" {
+			continue
+		}
+		nested := filepath.Join(datastore.Summary.Url, "database01", "deep")
+		if err := os.MkdirAll(nested, 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(nested, "database01.vmdk"), []byte("synthetic vmdk\n"), 0o600); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(datastore.Summary.Url, "README.txt"), []byte("synthetic testbed datastore\n"), 0o600); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func newContext(name, endpoint, thumbprint string, route config.TransportConfig) *config.Context {

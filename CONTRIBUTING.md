@@ -130,11 +130,13 @@ harness:
 ```bash
 scripts/testbed list
 scripts/testbed test
+scripts/testbed pty
 scripts/testbed sandbox partial-failure
 ```
 
 See [docs/testbed.md](docs/testbed.md) for presentation versus connected
-profiles, retained failure artifacts, and the explicit golden-update command.
+profiles, retained failure artifacts, Linux PTY journeys, and the explicit
+golden-update command.
 
 ### Modifying Demo Fixtures
 

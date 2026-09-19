@@ -124,6 +124,18 @@ hosts, clusters, vApps, datastores, and networks.
 * `dr-site`: Represents an intentionally unreachable site (proxy connection
   refused), allowing you to test partial failure handling and diagnostics.
 
+For repeatable checks shared with CI, use the repository-owned scenario
+harness:
+
+```bash
+scripts/testbed list
+scripts/testbed test
+scripts/testbed sandbox partial-failure
+```
+
+See [docs/testbed.md](docs/testbed.md) for presentation versus connected
+profiles, retained failure artifacts, and the explicit golden-update command.
+
 ### Modifying Demo Fixtures
 
 When adding support for new resource kinds or states, add sample data to

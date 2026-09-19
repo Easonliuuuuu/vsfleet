@@ -1,0 +1,30 @@
+vsfleet  DEMO · SAMPLE DATA  all 3 vCenters  ·  2 connected · 1 failed                    sort: name
+ 1 VMs 6   2 Templates 4   3 Hosts 4   4 Clusters 4   5 Datastores 4   6 Networks 4   7 vApps 6
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  VCENTER         NAME                POWER        CPU     MEM  IP ADDRESS        HOST              
+● prod-vc         api-01              on             4     16G  10.20.0.11        esxi-01           
+● prod-vc         postgres-01         on             8     32G  10.20.0.21        esxi-02           
+○ prod-vc         build-runner-03     off            8     24G  -                 esxi-03           
+● edge-vc         api-01              on             4     16G  10.42.0.11        esxi-01           
+● edge-vc         postgres-01         on             8     32G  10.42.0.21        esxi-02           
+○ edge-vc         build-runner-03     off            8     24G  -                 esxi-03           
+✕ dr-site: proxy <dynamic>: connection refused
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+dr-site: proxy <dynamic>: connection refused
+1-7 kind  H history  c contexts  a all  / filter  r reload  ? help  q quit

@@ -95,6 +95,29 @@ jobs:
           version: latest
           install-go: false
 
+  tui-scenarios:
+    name: TUI scenario harness
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+      - name: Run deterministic semantic scenarios
+        run: go run ./cmd/vsfleet-harness test --results-dir "${{ runner.temp }}/vsfleet-scenarios"
+      - name: Upload scenario diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tui-scenario-results-${{ matrix.os }}
+          path: ${{ runner.temp }}/vsfleet-scenarios
+          if-no-files-found: ignore
+
   docker-build:
     name: Docker build and smoke test
     runs-on: ubuntu-latest

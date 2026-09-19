@@ -1,0 +1,20 @@
+vsfleet  DEMO · SAMPLE DATA  all 3 vCenters  ·  2 connected…
+ 1 VM 6 2 Tpl 4 3 Host 4 4 Clus 4 5 DS 4 6 Net 4 7 vApp 6
+────────────────────────────────────────────────────────────
+  VCENTER         NAME              POWER        CPU     MEM
+● prod-vc         api-01            on             4     16G
+● prod-vc         postgres-01       on             8     32G
+○ prod-vc         build-runner-03   off            8     24G
+● edge-vc         api-01            on             4     16G
+● edge-vc         postgres-01       on             8     32G
+○ edge-vc         build-runner-03   off            8     24G
+✕ dr-site: proxy <dynamic>: connection refused
+
+
+
+
+
+
+
+dr-site: proxy <dynamic>: connection refused
+1-7 kind  H history  c contexts  a all  / filter  r reload …

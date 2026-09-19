@@ -37,6 +37,9 @@ func main() {
 		fatal(err)
 	}
 	defer lab.Close(context.Background())
+	if scenario := os.Getenv("VSFLEET_TESTBED_SCENARIO"); scenario != "" {
+		fmt.Fprintf(os.Stderr, "Scenario: %s\n", scenario)
+	}
 
 	coord := tui.NewPromptCoordinator()
 	keyring := credentials.NewStatic(credentials.SchemeKeyring, map[string]credentials.Credential{})

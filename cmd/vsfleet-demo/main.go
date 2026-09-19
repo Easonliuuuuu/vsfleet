@@ -25,6 +25,9 @@ func main() {
 		os.Exit(1)
 	}
 	defer cleanup()
+	if scenario := os.Getenv("VSFLEET_TESTBED_SCENARIO"); scenario != "" {
+		fmt.Fprintf(os.Stderr, "Scenario: %s\n", scenario)
+	}
 
 	_, err = tui.Run(ctx, backend, opts)
 	if err != nil {

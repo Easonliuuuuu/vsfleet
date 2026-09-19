@@ -1,7 +1,27 @@
 # Testing
 
-vsfleet has three complementary test tiers. Each tier answers a different
-question, so passing one is not evidence that the others are unnecessary.
+vsfleet has complementary test tiers. Each tier answers a different question,
+so passing one is not evidence that the others are unnecessary. The synthetic
+lab and scenario harness are described in [testbed.md](testbed.md).
+
+## Synthetic TUI scenarios
+
+The repository-owned `scripts/testbed` harness drives the Bubble Tea model with
+the same deterministic fixtures that developers can inspect in sandbox mode:
+
+```sh
+scripts/testbed list
+scripts/testbed test
+scripts/testbed test partial-failure
+```
+
+The scenario layer asserts user-visible semantics, model observations, and
+read-only/credential-safety invariants. Four stable screens also have
+ANSI-normalized render contracts at `60x20`, `100x30`, and `140x40`. Goldens
+are changed only with the explicit `--update-goldens` flag. Native TUI fuzz
+seeds run with the normal Go suite; longer fuzz campaigns are scheduled
+separately. A future Linux PTY tier will validate the actual process and
+terminal boundary.
 
 ## Unit and package tests
 

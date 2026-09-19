@@ -263,3 +263,9 @@ The TUI maintains a quiet background refresh model:
    Integration tests run against `govmomi/simulator` and in-memory proxy
    listeners, allowing complete end-to-end tests in CI without external
    infrastructure.
+4. **Repository-Owned TUI Scenario Harness (`scripts/testbed`)**:
+   Deterministic named scenarios drive the real Bubble Tea model headlessly,
+   retain semantic failure artifacts, and expose the same setup through a
+   developer sandbox. Critical screens have selective ANSI-normalized goldens;
+   native Go fuzz targets cover key/resize sequences, stale replies, and
+   bounded rendering.

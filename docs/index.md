@@ -75,6 +75,7 @@ This is an interoperability profile, not RVTools or a replacement for it — see
 | Configure credentials, routes, and TLS | [Configuration](configuration.md) |
 | Diagnose a failed connection | [Troubleshooting](troubleshooting.md) |
 | Understand the system design | [Architecture](architecture.md) |
+| Develop and verify the TUI without a vCenter | [Synthetic Testbed](testbed.md) |
 
 ## Feature comparison
 

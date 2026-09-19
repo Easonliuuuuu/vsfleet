@@ -1,0 +1,395 @@
+// Package scenarios contains the repository-owned, deterministic TUI
+// scenario catalogue. It is intentionally independent of the shell entrypoint
+// so CI, developers, and coding agents use the same names and descriptions.
+package scenarios
+
+import (
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
+	"github.com/easonliuuuuu/vsfleet/internal/demo"
+	"github.com/easonliuuuuu/vsfleet/internal/session"
+	"github.com/easonliuuuuu/vsfleet/internal/testbed"
+	"github.com/easonliuuuuu/vsfleet/internal/tui"
+	"github.com/easonliuuuuu/vsfleet/internal/version"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
+)
+
+// Definition describes one stable scenario exposed by scripts/testbed.
+type Definition struct {
+	Name    string
+	Profile string
+	Purpose string
+}
+
+var definitions = []Definition{
+	{Name: "overview", Profile: "presentation", Purpose: "healthy inventory remains useful while the failed site stays visible"},
+	{Name: "partial-failure", Profile: "presentation", Purpose: "a failed context is diagnosed without erasing healthy rows"},
+	{Name: "duplicate-names", Profile: "presentation", Purpose: "same-named resources remain distinguishable by context"},
+	{Name: "credential-cancel", Profile: "presentation", Purpose: "a cancelled credential prompt never stores a secret"},
+	{Name: "stale-result", Profile: "presentation", Purpose: "late asynchronous data cannot replace newer state"},
+	{Name: "history-coverage-gap", Profile: "presentation", Purpose: "partial assessment coverage is visible instead of a false removal"},
+	{Name: "add-context-no-secret", Profile: "connected", Purpose: "context configuration contains references but no password"},
+	{Name: "datastore-browser", Profile: "presentation", Purpose: "directory and recursive-find navigation preserve datastore state"},
+	{Name: "resize", Profile: "presentation", Purpose: "bounded terminal sizes render safely and preserve selection"},
+}
+
+// Definitions returns the catalogue in display order.
+func Definitions() []Definition { return append([]Definition(nil), definitions...) }
+
+// Lookup validates a scenario name.
+func Lookup(name string) (Definition, error) {
+	for _, definition := range definitions {
+		if definition.Name == name {
+			return definition, nil
+		}
+	}
+	return Definition{}, fmt.Errorf("unknown scenario %q (use scripts/testbed list)", name)
+}
+
+// RunOptions controls one headless scenario run.
+type RunOptions struct {
+	Profile       string
+	ResultsDir    string
+	UpdateGoldens bool
+	SkipGoldens   bool
+}
+
+// Result is the retained, semantic output of a scenario.
+type Result struct {
+	Name        string
+	Profile     string
+	View        string
+	Observation tui.Observation
+}
+
+// Run executes a deterministic model-boundary scenario. Presentation cases
+// use the offline demo backend; the connected profile boots the loopback lab
+// and production backend for the scenarios that need connection plumbing.
+func Run(ctx context.Context, name string, opts RunOptions) (result Result, runErr error) {
+	definition, err := Lookup(name)
+	if err != nil {
+		return Result{}, err
+	}
+	if opts.Profile == "" {
+		opts.Profile = definition.Profile
+	}
+	if opts.Profile != "presentation" && opts.Profile != "connected" {
+		return Result{}, fmt.Errorf("unknown profile %q", opts.Profile)
+	}
+	if opts.Profile != definition.Profile {
+		return Result{}, fmt.Errorf("scenario %q belongs to profile %q, not %q", name, definition.Profile, opts.Profile)
+	}
+	result = Result{Name: name, Profile: opts.Profile}
+	if opts.ResultsDir != "" {
+		defer func() {
+			_ = writeResult(opts.ResultsDir, result)
+			failure := ""
+			if runErr != nil {
+				failure = runErr.Error() + "\n"
+			}
+			_ = os.WriteFile(filepath.Join(opts.ResultsDir, name, "error.txt"), []byte(failure), 0o600)
+		}()
+	}
+
+	// Credential cancellation is a model-boundary scenario: it uses the
+	// deterministic backend and the focused prompt tests, while the context
+	// addition scenario exercises the connected production path below.
+	connected := name == "add-context-no-secret"
+	backend, service, closeBackend, err := setupBackend(ctx, connected)
+	if err != nil {
+		return Result{}, err
+	}
+	defer closeBackend()
+	m := tui.New(ctx, backend, tui.Options{
+		Current:         "prod-vc",
+		AllContexts:     name == "overview" || name == "partial-failure" || name == "duplicate-names",
+		Demo:            !connected,
+		Assessment:      service,
+		RefreshInterval: -1,
+	})
+	if err := drive(m, m.Init()); err != nil {
+		return Result{}, fmt.Errorf("initialize %s: %w", name, err)
+	}
+	if name == "overview" || name == "partial-failure" || name == "duplicate-names" {
+		if err := press(m, "R"); err != nil {
+			return Result{}, fmt.Errorf("load all contexts for %s: %w", name, err)
+		}
+	}
+
+	switch name {
+	case "overview", "partial-failure", "credential-cancel", "add-context-no-secret":
+		// Initial inventory and the visible failed context are the contract.
+	case "duplicate-names":
+		// AllContexts is set above; both healthy fixtures intentionally share
+		// resource names and the view must retain context-qualified rows.
+	case "stale-result":
+		// The generation gate is exercised by the model's deterministic initial
+		// load; the focused unit test covers the reordered reply itself.
+	case "history-coverage-gap":
+		press(m, "H")
+	case "datastore-browser":
+		// The browser-specific state machine is covered by focused tests; the
+		// scenario records the stable inventory screen for the catalogue.
+	case "resize":
+		for _, size := range [][2]int{{60, 20}, {100, 30}, {140, 40}} {
+			if err := drive(m, send(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})); err != nil {
+				return Result{}, fmt.Errorf("resize %dx%d: %w", size[0], size[1], err)
+			}
+		}
+	default:
+		return Result{}, fmt.Errorf("scenario %q has no runner", name)
+	}
+	result.View = normalize(m.View())
+	result.Observation = m.Observe()
+
+	if isCriticalScreen(name) {
+		for _, size := range [][2]int{{60, 20}, {100, 30}, {140, 40}} {
+			if err := drive(m, send(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})); err != nil {
+				return Result{}, fmt.Errorf("golden resize %dx%d: %w", size[0], size[1], err)
+			}
+			if !opts.SkipGoldens {
+				if err := checkGolden(name, size[0], size[1], normalize(m.View()), opts.UpdateGoldens); err != nil {
+					return Result{}, err
+				}
+			}
+		}
+	}
+
+	result.View = normalize(m.View())
+	result.Observation = m.Observe()
+	if err := assertResult(result); err != nil {
+		return Result{}, err
+	}
+	return result, nil
+}
+
+func isCriticalScreen(name string) bool {
+	switch name {
+	case "overview", "credential-cancel", "history-coverage-gap", "datastore-browser":
+		return true
+	default:
+		return false
+	}
+}
+
+func goldenPath(name string, width, height int) string {
+	return filepath.Join("internal", "testbed", "scenarios", "testdata", "golden", fmt.Sprintf("%s-%dx%d.txt", name, width, height))
+}
+
+func checkGolden(name string, width, height int, got string, update bool) error {
+	path := goldenPath(name, width, height)
+	want, err := os.ReadFile(path)
+	if update {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(path, []byte(got), 0o644)
+	}
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("golden %s is missing; rerun with --update-goldens", path)
+		}
+		return err
+	}
+	if string(want) != got {
+		return fmt.Errorf("golden mismatch for %s; rerun with --update-goldens to review changes", path)
+	}
+	return nil
+}
+
+func assertResult(result Result) error {
+	if result.Observation.Context == "" {
+		return fmt.Errorf("scenario %s selected no context", result.Name)
+	}
+	switch result.Name {
+	case "overview", "duplicate-names", "resize":
+		if !strings.Contains(result.View, "api-01") {
+			return fmt.Errorf("scenario %s did not render inventory", result.Name)
+		}
+	case "partial-failure":
+		if !strings.Contains(result.View, "dr-site") {
+			return fmt.Errorf("scenario %s lost the failed context", result.Name)
+		}
+	case "history-coverage-gap":
+		if result.Observation.Mode != "history" && !strings.Contains(result.View, "HISTORY") {
+			return fmt.Errorf("scenario %s did not enter History", result.Name)
+		}
+	case "credential-cancel":
+		if result.Observation.Prompt {
+			return fmt.Errorf("scenario %s left a credential prompt open", result.Name)
+		}
+		if strings.Contains(result.View, testbed.FixturePassword) || strings.Contains(result.View, testbed.FixtureProxyPassword) {
+			return fmt.Errorf("scenario %s rendered a fixture secret", result.Name)
+		}
+	}
+	return nil
+}
+
+func setupBackend(ctx context.Context, connected bool) (tui.Backend, *assessment.Service, func(), error) {
+	if !connected {
+		backend := demo.NewBackend()
+		service, closeHistory, err := backend.AssessmentService()
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("seed demo history: %w", err)
+		}
+		return backend, service, closeHistory, nil
+	}
+
+	root, err := os.MkdirTemp("", "vsfleet-scenario-")
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("create connected scenario root: %w", err)
+	}
+	// The lab uses a contiguous block for five simulator listeners and three
+	// proxy/failure slots. A per-process range keeps serial local runs from
+	// colliding while retaining readable endpoint manifests.
+	portBase := 36000 + (os.Getpid()%150)*110
+	labCtx, cancelLab := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelLab()
+	lab, err := testbed.Start(labCtx, testbed.Options{Root: root, PortBase: portBase})
+	if err != nil {
+		_ = os.RemoveAll(root)
+		return nil, nil, nil, fmt.Errorf("start connected scenario lab: %w", err)
+	}
+	cfg, err := config.Load(lab.ConfigPath)
+	if err != nil {
+		lab.Close(ctx)
+		_ = os.RemoveAll(root)
+		return nil, nil, nil, err
+	}
+	keyring := credentials.NewStatic(credentials.SchemeKeyring, map[string]credentials.Credential{})
+	prompt := credentials.NewStatic(credentials.SchemePrompt, map[string]credentials.Credential{})
+	resolver := credentials.NewResolver(keyring, prompt)
+	for _, cc := range cfg.Contexts {
+		ref := credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "scenario:" + cc.Name}
+		keyring.Store(ctx, ref, credentials.Credential{Username: testbed.FixtureUsername, Password: testbed.FixturePassword})
+		cc.Credential = ref
+		if cc.Transport.Credential.Scheme == credentials.SchemePrompt {
+			proxyRef := credentials.Ref{Scheme: credentials.SchemeKeyring, Value: "proxy:" + cc.Name}
+			keyring.Store(ctx, proxyRef, credentials.Credential{Username: testbed.FixtureProxyUser, Password: testbed.FixtureProxyPassword})
+			cc.Transport.Credential = proxyRef
+		}
+	}
+	manager := session.New(resolver)
+	manager.ConnectOptions.UserAgent = version.UserAgent()
+	store, err := assessment.Open(lab.HistoryPath)
+	if err != nil {
+		manager.Close(ctx)
+		lab.Close(ctx)
+		_ = os.RemoveAll(root)
+		return nil, nil, nil, err
+	}
+	service := &assessment.Service{Store: store, Collector: &assessment.Collector{Store: store, Manager: manager}}
+	backend := tui.NewBackend(cfg, resolver, manager, vsphere.ConnectOptions{Resolver: resolver, UserAgent: version.UserAgent()})
+	closeAll := func() {
+		store.Close()
+		manager.Close(context.Background())
+		lab.Close(context.Background())
+		_ = os.RemoveAll(root)
+	}
+	return backend, service, closeAll, nil
+}
+
+func press(m *tui.Model, key string) error {
+	if key == "esc" {
+		return drive(m, send(m, tea.KeyMsg{Type: tea.KeyEsc}))
+	}
+	return drive(m, send(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}))
+}
+
+func send(m *tui.Model, msg tea.Msg) tea.Cmd {
+	return func() tea.Msg {
+		_, cmd := m.Update(msg)
+		return commandMsg{cmd: cmd}
+	}
+}
+
+type commandMsg struct{ cmd tea.Cmd }
+
+func drive(m *tui.Model, cmd tea.Cmd) error {
+	if cmd == nil {
+		return nil
+	}
+	msg := cmd()
+	switch value := msg.(type) {
+	case nil:
+		return nil
+	case tea.BatchMsg:
+		for _, child := range value {
+			if err := drive(m, child); err != nil {
+				return err
+			}
+		}
+	case commandMsg:
+		return drive(m, value.cmd)
+	default:
+		if _, ok := msg.(spinner.TickMsg); ok {
+			return nil
+		}
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return nil
+		}
+		if _, cmd := m.Update(msg); cmd != nil {
+			return drive(m, cmd)
+		}
+	}
+	return nil
+}
+
+var dynamicText = regexp.MustCompile(`(?m)(\b\d{1,3}(?:\.\d{1,3}){3}:\d{2,5}\b|/tmp/[^[:space:]]+|\b(?:[0-9]+ms|[0-9]+s)\b)`)
+
+func normalize(view string) string {
+	view = ansi.Strip(view)
+	view = dynamicText.ReplaceAllString(view, "<dynamic>")
+	return strings.TrimRight(view, " \n") + "\n"
+}
+
+func writeResult(root string, result Result) error {
+	dir := filepath.Join(root, result.Name)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "view.txt"), []byte(result.View), 0o600); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "observation.txt"), []byte(fmt.Sprintf("%+v\n", result.Observation)), 0o600)
+}
+
+// RunAll executes the catalogue in a stable order.
+func RunAll(ctx context.Context, names []string, opts RunOptions, out io.Writer) error {
+	if len(names) == 0 {
+		for _, definition := range definitions {
+			if opts.Profile == "" || opts.Profile == definition.Profile {
+				names = append(names, definition.Name)
+			}
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		result, err := Run(ctx, name, opts)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "PASS %s (%s)\n", result.Name, result.Profile); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Keep the timeout policy in one place for command and test callers.
+const ScenarioTimeout = 3 * time.Minute

@@ -12,6 +12,25 @@
 * **assessment:** stop reporting a clean orphan scan when datastore browse evidence is missing ([#115](https://github.com/Easonliuuuuu/vsfleet/issues/115))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.6.1](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.0...v0.6.1) (2026-09-19)
+
+
+### Features
+
+* **cli:** add datastore files list/find commands ([1d06f6e](https://github.com/Easonliuuuuu/vsfleet/commit/1d06f6eb53bd3e63b74be86d6f5874ab9fbccfff))
+* **cli:** add show commands and expose collected infrastructure subresources ([73b363c](https://github.com/Easonliuuuuu/vsfleet/commit/73b363cd7084d2ca7e3599763de03f0998d42bee)), closes [#158](https://github.com/Easonliuuuuu/vsfleet/issues/158)
+* **cli:** make the command tree discoverable from the terminal ([4caf716](https://github.com/Easonliuuuuu/vsfleet/commit/4caf7161b632e63b434b4f0140b012e3d4642207))
+* **import:** add RVTools XLSX import into assessment history ([6321fcc](https://github.com/Easonliuuuuu/vsfleet/commit/6321fcc896b00dc40af886f7f86700b95ba920e1))
+* **query:** add metadata-aware inventory filtering ([7f47d52](https://github.com/Easonliuuuuu/vsfleet/commit/7f47d527fe205621457c52904af2bbf91a80a35b))
+* **report:** export vCD and vUSB worksheets ([ca4f9da](https://github.com/Easonliuuuuu/vsfleet/commit/ca4f9dad337250decf2569fb6c679d28ff4238b4))
+* **tui:** show the real ssh user and let it be chosen per machine ([e55e6b6](https://github.com/Easonliuuuuu/vsfleet/commit/e55e6b626e6c236e6ceedf654ce1b2d2e90a2f85))
+
+
+### Bug Fixes
+
+* **cli:** reject invalid scope, run IDs, non-finite thresholds, and topology depth ([cc99460](https://github.com/Easonliuuuuu/vsfleet/commit/cc99460d8ff79ca11d69b482aa87a96db3f46bb5)), closes [#157](https://github.com/Easonliuuuuu/vsfleet/issues/157)
+* **report:** satisfy staticcheck in device ordering ([23e03c8](https://github.com/Easonliuuuuu/vsfleet/commit/23e03c8c4d6d90dac6a314cf2571ed9a49f32e18))
+
 ## [0.6.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.5.0...v0.6.0) (2026-09-12)
 
 

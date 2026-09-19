@@ -118,6 +118,26 @@ jobs:
           path: ${{ runner.temp }}/vsfleet-scenarios
           if-no-files-found: ignore
 
+  tui-pty:
+    name: TUI real-terminal PTY journeys
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+      - name: Run actual testbed process in a PTY
+        run: scripts/testbed pty --results-dir "${{ runner.temp }}/vsfleet-pty"
+      - name: Upload PTY failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tui-pty-results
+          path: ${{ runner.temp }}/vsfleet-pty
+          if-no-files-found: error
+
   docker-build:
     name: Docker build and smoke test
     runs-on: ubuntu-latest

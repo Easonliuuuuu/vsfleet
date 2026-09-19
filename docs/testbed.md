@@ -25,6 +25,7 @@ scripts/testbed verify
 scripts/testbed list
 scripts/testbed test
 scripts/testbed test overview
+scripts/testbed pty
 scripts/testbed sandbox datastore-browser
 ```
 
@@ -65,14 +66,33 @@ flag:
 scripts/testbed test --update-goldens
 ```
 
+## Real-terminal PTY validation
+
+On Linux, `scripts/testbed pty` builds and launches the actual connected
+`cmd/vsfleet-testbed` process inside a pseudo-terminal. Its six journeys cover
+clean inventory startup and exit, credential cancellation, recursive datastore
+browsing, History pane cleanup, narrow-to-wide resizing, and Ctrl-C while a
+capture is active. Assertions follow semantic screen text and process exit
+status rather than snapshotting terminal byte streams.
+
+Use `--results-dir PATH` to choose where each journey retains its redacted raw
+process output, ANSI-normalized transcript, input/resize event log, result
+metadata, and isolated testbed state:
+
+```sh
+scripts/testbed pty --results-dir /tmp/vsfleet-pty
+```
+
+The connected lab seeds a small synthetic datastore tree for this journey and
+interactive sandbox use. PTY artifacts replace fixture passwords with
+`[REDACTED]`; they never read operator configuration or keyrings.
+
 ## Verification ladder
 
 The testbed is one layer in the full verification ladder. Run
 `docs/testing.md` for the distinction between unit/race tests, synthetic
-scenarios, in-process and out-of-process vcsim, Kubernetes, and future real
-vSphere acceptance. The small PTY suite is intentionally tracked separately
-because it validates the process/terminal boundary rather than the model
-boundary.
+scenarios, the Linux PTY process boundary, in-process and out-of-process vcsim,
+Kubernetes, and future real-vSphere acceptance.
 
 ## Safety invariants
 

@@ -269,3 +269,8 @@ The TUI maintains a quiet background refresh model:
    developer sandbox. Critical screens have selective ANSI-normalized goldens;
    native Go fuzz targets cover key/resize sequences, stale replies, and
    bounded rendering.
+5. **Linux PTY Process Journeys (`internal/testbed/pty`)**:
+   A small tagged suite launches the connected developer testbed as an actual
+   terminal process. It validates input decoding, alternate-screen rendering,
+   resize delivery, Ctrl-C cleanup, and exit status while retaining redacted
+   failure artifacts and isolated state.

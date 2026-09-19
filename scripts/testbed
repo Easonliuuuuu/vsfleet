@@ -17,7 +17,7 @@ usage() {
   cat <<'EOF'
 Usage: scripts/testbed <command> [options]
 
-Commands: prepare, shell-hook, launch, verify, list, test, sandbox
+Commands: prepare, shell-hook, launch, verify, list, test, pty, sandbox
 
 Build a VSFleet testbed launcher.
 
@@ -50,6 +50,7 @@ if (($#)); then
     verify) mode="verify"; shift ;;
     list) shift; cd "$script_repo"; exec go run ./cmd/vsfleet-harness list "$@" ;;
     test) shift; cd "$script_repo"; exec go run ./cmd/vsfleet-harness test "$@" ;;
+    pty) mode="pty"; shift ;;
     sandbox)
       shift
       (($#)) || die "sandbox requires SCENARIO"
@@ -107,7 +108,7 @@ while (($#)); do
 done
 
 case "$mode" in
-  companion-local|shell-hook|launch|verify) ;;
+  companion-local|shell-hook|launch|verify|pty) ;;
   *) die "unknown mode '$mode'" ;;
 esac
 case "$profile" in
@@ -126,10 +127,23 @@ repo="$(cd "$repo" && pwd -P)"
 [[ -f "$repo/go.mod" ]] || die "$repo does not contain go.mod"
 [[ -d "$repo/cmd/vsfleet-demo" ]] || die "$repo does not contain cmd/vsfleet-demo"
 [[ -f "$repo/internal/demo/backend.go" ]] || die "$repo does not contain internal/demo/backend.go"
-if [[ "$profile" == "connected" ]]; then
+if [[ "$profile" == "connected" || "$mode" == "pty" ]]; then
   [[ -d "$repo/cmd/vsfleet-testbed" ]] || die "$repo does not contain cmd/vsfleet-testbed"
 fi
 grep -qx "module $MODULE" "$repo/go.mod" || die "$repo is not the expected VSFleet module"
+
+if [[ "$mode" == "pty" ]]; then
+  [[ "$(go env GOOS)" == "linux" ]] || die "PTY validation is supported on Linux only"
+  if [[ -z "$results_dir" ]]; then
+    results_dir="${TMPDIR:-/tmp}/vsfleet-pty-$(id -u)"
+  fi
+  mkdir -p "$results_dir"
+  results_dir="$(cd "$results_dir" && pwd -P)"
+  printf 'testbed: running Linux PTY journeys; artifacts: %s\n' "$results_dir" >&2
+  export VSFLEET_PTY_RESULTS_DIR="$results_dir"
+  cd "$repo"
+  exec go test -tags pty ./internal/testbed/pty -run '^TestPTYJourneys$' -v -count=1 -timeout 10m
+fi
 
 if [[ -z "$output_dir" ]]; then
   output_dir="${TMPDIR:-/tmp}/vsfleet-testbed-$(id -u)"
@@ -158,10 +172,24 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$mode" == "verify" ]]; then
+  scenario_results="${TMPDIR:-/tmp}/vsfleet-scenarios-$(id -u)"
+  pty_results="${TMPDIR:-/tmp}/vsfleet-pty-$(id -u)"
+  if [[ -n "$results_dir" ]]; then
+    mkdir -p "$results_dir"
+    results_dir="$(cd "$results_dir" && pwd -P)"
+    scenario_results="$results_dir/scenarios"
+    pty_results="$results_dir/pty"
+  fi
   printf 'testbed: running go test ./...\n' >&2
   (cd "$repo" && go test ./...)
   printf 'testbed: running deterministic TUI scenarios\n' >&2
-  (cd "$repo" && go run ./cmd/vsfleet-harness test --results-dir "${TMPDIR:-/tmp}/vsfleet-scenarios-$(id -u)")
+  (cd "$repo" && go run ./cmd/vsfleet-harness test --results-dir "$scenario_results")
+  if [[ "$(go env GOOS)" == "linux" ]]; then
+    printf 'testbed: running real-terminal PTY journeys\n' >&2
+    (cd "$repo" && VSFLEET_PTY_RESULTS_DIR="$pty_results" go test -tags pty ./internal/testbed/pty -run '^TestPTYJourneys$' -v -count=1 -timeout 10m)
+  else
+    printf 'testbed: skipping Linux-only PTY journeys on %s\n' "$(go env GOOS)" >&2
+  fi
   if [[ "$profile" == "connected" ]]; then
     printf 'testbed: building connected simulator launcher\n' >&2
     connected_tmp="$(mktemp "$bin_dir/.vsfleet-connected.XXXXXX")"

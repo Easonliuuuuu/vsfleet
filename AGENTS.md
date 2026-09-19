@@ -5,6 +5,7 @@ Use the checked-in testbed interface for synthetic UI work:
 ```sh
 scripts/testbed list
 scripts/testbed test
+scripts/testbed pty
 scripts/testbed sandbox overview
 ```
 

@@ -257,6 +257,7 @@ The full operator guide is published at **[easonliuuuuu.github.io/vsfleet](https
 | 📖 **[Operator Recipes](https://easonliuuuuu.github.io/vsfleet/recipes/)** | Real-world workflows, audit recipes, and pipeline integrations |
 | 🔧 **[Troubleshooting](https://easonliuuuuu.github.io/vsfleet/troubleshooting/)** | Connectivity diagnostics (`vsfleet doctor`), common issues, and fixes |
 | 🏛️ **[Architecture](https://easonliuuuuu.github.io/vsfleet/architecture/)** | Concurrency engine, session caching, and security invariants |
+| 🧪 **[Synthetic Testbed](https://easonliuuuuu.github.io/vsfleet/testbed/)** | Deterministic sandbox, scenarios, render contracts, and fuzzing |
 
 ---
 

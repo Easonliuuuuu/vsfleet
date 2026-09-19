@@ -1,0 +1,40 @@
+vsfleet  DEMO · SAMPLE DATA  ◆ prod-vc  ·  1 connected                                                                            sort: name
+ 1 VMs 3   2 Templates 2   3 Hosts 2   4 Clusters 2   5 Datastores 2   6 Networks 2   7 vApps 3
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  NAME                                                        POWER        CPU     MEM  IP ADDRESS        HOST                DATACENTER    
+● api-01                                                      on             4     16G  10.20.0.11        esxi-01             Taipei        
+● postgres-01                                                 on             8     32G  10.20.0.21        esxi-02             Taipei        
+○ build-runner-03                                             off            8     24G  -                 esxi-03             Taipei        
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+prod-vc · 3 VMs, 2 templates, 2 hosts, 2 clusters, 3 vApps, 2 datastores, 2 networks
+1-7 kind  H history  c contexts  a all  / filter  r reload  ? help  q quit

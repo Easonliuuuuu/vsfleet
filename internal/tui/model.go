@@ -506,6 +506,57 @@ type Snapshot struct {
 	SSHUsers map[string]string
 }
 
+// Observation is the stable, non-persistent view of model state used by the
+// repository-owned scenario harness. Snapshot intentionally remains small
+// because it is persisted between runs; Observation is diagnostic and may
+// grow as new scenario assertions need a semantic signal.
+type Observation struct {
+	Mode          string
+	Context       string
+	Kind          string
+	Busy          bool
+	Prompt        bool
+	HistoryPane   string
+	DatastorePath string
+}
+
+// Observe returns semantic state for deterministic tests and diagnostics.
+func (m *Model) Observe() Observation {
+	mode := map[mode]string{
+		modeBrowse: "browse", modeDetail: "detail", modeVAppDetail: "vapp-detail",
+		modeVAppVMDetail: "vapp-vm-detail", modeDoctor: "doctor", modeHelp: "help",
+		modeForm: "form", modeConfirmDelete: "confirm-delete", modeContexts: "contexts",
+		modeSearch: "search", modeChanges: "history", modeChangeDetail: "history-detail",
+		modeHistoryRuns: "history", modeHistoryTimeline: "history-timeline",
+		modeHistoryTimelineDetail: "history-timeline-detail", modeHistoryRunEdit: "history-edit",
+		modeDatastoreFiles: "datastore", modeDatastoreEntry: "datastore-entry", modeDatastoreFind: "datastore-find",
+	}[m.mode]
+	if mode == "" {
+		mode = "unknown"
+	}
+	obs := Observation{Mode: mode, Kind: string(m.kind), Busy: m.busy()}
+	if m.credPrompt != nil {
+		obs.Prompt = true
+	}
+	if m.current() != nil {
+		obs.Context = m.current().cc.Name
+	}
+	switch m.historyPane {
+	case historyPaneChanges:
+		obs.HistoryPane = "changes"
+	case historyPaneTrends:
+		obs.HistoryPane = "trends"
+	case historyPaneRuns:
+		obs.HistoryPane = "runs"
+	case historyPaneHealth:
+		obs.HistoryPane = "health"
+	}
+	if m.ds != nil {
+		obs.DatastorePath = m.ds.path
+	}
+	return obs
+}
+
 // Snapshot reports the interface's current position, for the caller to
 // persist once the program exits.
 func (m *Model) Snapshot() Snapshot {

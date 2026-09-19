@@ -1,0 +1,4 @@
+go test fuzz v1
+[]byte("hjkl?q")
+uint8(60)
+uint8(20)

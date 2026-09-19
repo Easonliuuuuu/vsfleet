@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly SCRIPT_VERSION="1"
+readonly SCRIPT_VERSION="2"
 readonly MODULE="github.com/easonliuuuuu/vsfleet"
 
 mode="companion-local"
 profile="presentation"
 repo=""
 output_dir=""
+scenario=""
+results_dir=""
+update_goldens=0
+script_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 
 usage() {
   cat <<'EOF'
-Usage: make-testbed.sh [options]
+Usage: scripts/testbed <command> [options]
+
+Commands: prepare, shell-hook, launch, verify, list, test, sandbox
 
 Build a VSFleet testbed launcher.
 
@@ -22,6 +28,9 @@ Options:
   --mode shell-hook       Build and print only shell code suitable for eval
   --mode launch           Build and launch the TUI in the current terminal
   --mode verify           Run the Go suite, build, and print instructions
+  --scenario NAME         Scenario passed to launch or sandbox
+  --results-dir PATH      Retain scenario diagnostics beneath PATH
+  --update-goldens        Explicitly rewrite render goldens during test
   --repo PATH             VSFleet checkout (default: current repository)
   --output-dir PATH       Isolated output directory
   -h, --help              Show this help
@@ -32,6 +41,24 @@ die() {
   printf 'testbed: %s\n' "$*" >&2
   exit 1
 }
+
+if (($#)); then
+  case "$1" in
+    prepare) mode="companion-local"; shift ;;
+    shell-hook) mode="shell-hook"; shift ;;
+    launch) mode="launch"; shift ;;
+    verify) mode="verify"; shift ;;
+    list) shift; cd "$script_repo"; exec go run ./cmd/vsfleet-harness list "$@" ;;
+    test) shift; cd "$script_repo"; exec go run ./cmd/vsfleet-harness test "$@" ;;
+    sandbox)
+      shift
+      (($#)) || die "sandbox requires SCENARIO"
+      scenario="$1"
+      shift
+      mode="launch"
+      ;;
+  esac
+fi
 
 while (($#)); do
   case "$1" in
@@ -54,6 +81,20 @@ while (($#)); do
       (($# >= 2)) || die "--output-dir requires a path"
       output_dir="$2"
       shift 2
+      ;;
+    --scenario)
+      (($# >= 2)) || die "--scenario requires a value"
+      scenario="$2"
+      shift 2
+      ;;
+    --results-dir)
+      (($# >= 2)) || die "--results-dir requires a path"
+      results_dir="$2"
+      shift 2
+      ;;
+    --update-goldens)
+      update_goldens=1
+      shift
       ;;
     -h|--help)
       usage
@@ -78,7 +119,7 @@ command -v go >/dev/null 2>&1 || die "Go is required"
 
 if [[ -z "$repo" ]]; then
   repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-  [[ -n "$repo" ]] || die "use --repo to name the VSFleet checkout"
+  [[ -n "$repo" ]] || repo="$script_repo"
 fi
 repo="$(cd "$repo" && pwd -P)"
 
@@ -119,6 +160,8 @@ trap cleanup EXIT
 if [[ "$mode" == "verify" ]]; then
   printf 'testbed: running go test ./...\n' >&2
   (cd "$repo" && go test ./...)
+  printf 'testbed: running deterministic TUI scenarios\n' >&2
+  (cd "$repo" && go run ./cmd/vsfleet-harness test --results-dir "${TMPDIR:-/tmp}/vsfleet-scenarios-$(id -u)")
   if [[ "$profile" == "connected" ]]; then
     printf 'testbed: building connected simulator launcher\n' >&2
     connected_tmp="$(mktemp "$bin_dir/.vsfleet-connected.XXXXXX")"
@@ -149,6 +192,9 @@ fi
 
 if [[ "$mode" == "launch" ]]; then
   [[ -t 0 && -t 1 ]] || die "launch mode requires an interactive terminal"
+  if [[ -n "$scenario" ]]; then
+    export VSFLEET_TESTBED_SCENARIO="$scenario"
+  fi
   if [[ "$profile" == "connected" ]]; then
     export VSFLEET_TESTBED_ROOT="$output_dir"
   fi

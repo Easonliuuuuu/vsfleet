@@ -172,6 +172,7 @@ func printVMDetail(out io.Writer, v vsphere.VM) {
 	f.add("CPU", i32toa(v.CPU))
 	f.add("Memory", humanMB(v.MemoryMB))
 	f.add("IP address", v.IPAddress)
+	f.add("DNS name", v.GuestHostName)
 	f.add("Host", v.Host)
 	f.add("Cluster", v.Cluster)
 	f.add("Folder", v.Folder)

@@ -2,6 +2,7 @@ package vsphere
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/vmware/govmomi/vim25/mo"
@@ -283,5 +284,42 @@ func TestVMPartitionUsedBytes(t *testing.T) {
 				t.Errorf("UsedBytes() = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// guest.hostName is chosen by whoever controls the guest and is later handed
+// to ssh(1), so only plain DNS-style names may survive collection.
+func TestGuestHostName(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"ubuntu2204", "ubuntu2204"},
+		{"web-01.corp.example.com", "web-01.corp.example.com"},
+		{"  web-01.corp.example.com.  ", "web-01.corp.example.com"},
+		{"db_1.lab", "db_1.lab"},
+		{"", ""},
+		{"-oProxyCommand=touch", ""},
+		{"-web", ""},
+		{"web-", ""},
+		{"a..b", ""},
+		{"has space", ""},
+		{"evil\x1b[2J", ""},
+		{"user@host", ""},
+		{strings.Repeat("a", 64), ""},
+		{strings.Repeat("a.", 130), ""},
+	} {
+		if got := guestHostName(tc.in); got != tc.want {
+			t.Errorf("guestHostName(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestNewVMCopiesGuestHostName(t *testing.T) {
+	m := &mo.VirtualMachine{Guest: &types.GuestInfo{HostName: "ubuntu2204", IpAddress: "192.0.2.10"}}
+	vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, m)
+	if vm.GuestHostName != "ubuntu2204" || vm.IPAddress != "192.0.2.10" {
+		t.Errorf("hostname/ip = %q/%q", vm.GuestHostName, vm.IPAddress)
+	}
+	m.Guest.HostName = "-oProxyCommand=x"
+	if vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, m); vm.GuestHostName != "" {
+		t.Errorf("unsafe hostname kept: %q", vm.GuestHostName)
 	}
 }

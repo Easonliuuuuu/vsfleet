@@ -27,6 +27,11 @@ type State struct {
 	Context string `json:"context,omitempty"`
 	Kind    string `json:"kind,omitempty"`
 	Sort    string `json:"sort,omitempty"`
+	// SSHUsers holds the login typed into the TUI's SSH prompt for each
+	// machine, keyed "<context>/<moref>". It lives here rather than in
+	// config.toml because it is scratch state written by the program, not
+	// something a person edits, and losing it costs one retyped user name.
+	SSHUsers map[string]string `json:"ssh_users,omitempty"`
 }
 
 // DefaultPath returns the state file path, honouring VSFLEET_STATE and then the

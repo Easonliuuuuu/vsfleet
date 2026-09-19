@@ -53,6 +53,8 @@ func (m *Model) View() string {
 	// priority ahead of m.mode instead of being one more case inside it.
 	case m.credPrompt != nil:
 		body = strings.Join(m.viewCredPrompt(), "\n")
+	case m.sshPrompt != nil:
+		body = strings.Join(m.viewSSHPrompt(), "\n")
 	case m.mode == modeDetail:
 		body = strings.Join(m.viewDetail(), "\n")
 	case m.mode == modeVAppDetail:
@@ -914,12 +916,17 @@ func (m *Model) viewCredPrompt() []string {
 // stacked one action per line when they do not, so no action is silently
 // clipped at 80 columns.
 func (m *Model) credPromptKeys() []string {
-	t := m.theme
-	hints := [][2]string{
+	return m.overlayKeys([][2]string{
 		{"enter", "continue"},
 		{"esc", "cancel this load"},
 		{"ctrl+c", "quit"},
-	}
+	})
+}
+
+// overlayKeys lays hints out inline when they fit and stacked otherwise; it is
+// shared by every overlay that owns the keyboard.
+func (m *Model) overlayKeys(hints [][2]string) []string {
+	t := m.theme
 	single := "  "
 	for i, h := range hints {
 		if i > 0 {

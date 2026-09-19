@@ -481,8 +481,8 @@ func sampleInventory(name, datacenter, subnet string) *vsphere.Inventory {
 	return &vsphere.Inventory{
 		Context: name,
 		VMs: []vsphere.VM{
-			{Location: loc("vm", "api-01"), ID: name + "-vm-1", Name: "api-01", PowerState: "poweredOn", CPU: 4, MemoryMB: 16384, GuestOS: "Ubuntu Linux (64-bit)", IPAddress: subnet + ".11", Host: "esxi-01", Cluster: "compute-a", Folder: "/Applications", Datastores: []string{"nvme-01"}, StorageGB: 80, Annotation: "customer API"},
-			{Location: loc("vm", "postgres-01"), ID: name + "-vm-2", Name: "postgres-01", PowerState: "poweredOn", CPU: 8, MemoryMB: 32768, GuestOS: "Ubuntu Linux (64-bit)", IPAddress: subnet + ".21", Host: "esxi-02", Cluster: "compute-a", Folder: "/Databases", Datastores: []string{"san-01"}, StorageGB: 512, Annotation: "primary database"},
+			{Location: loc("vm", "api-01"), ID: name + "-vm-1", Name: "api-01", PowerState: "poweredOn", CPU: 4, MemoryMB: 16384, GuestOS: "Ubuntu Linux (64-bit)", IPAddress: subnet + ".11", GuestHostName: "api-01." + name + ".example.test", Host: "esxi-01", Cluster: "compute-a", Folder: "/Applications", Datastores: []string{"nvme-01"}, StorageGB: 80, Annotation: "customer API"},
+			{Location: loc("vm", "postgres-01"), ID: name + "-vm-2", Name: "postgres-01", PowerState: "poweredOn", CPU: 8, MemoryMB: 32768, GuestOS: "Ubuntu Linux (64-bit)", IPAddress: subnet + ".21", GuestHostName: "postgres-01." + name + ".example.test", Host: "esxi-02", Cluster: "compute-a", Folder: "/Databases", Datastores: []string{"san-01"}, StorageGB: 512, Annotation: "primary database"},
 			{Location: loc("vm", "build-runner-03"), ID: name + "-vm-3", Name: "build-runner-03", PowerState: "poweredOff", CPU: 8, MemoryMB: 24576, GuestOS: "VMware Photon OS (64-bit)", Host: "esxi-03", Cluster: "compute-b", Folder: "/Platform", Datastores: []string{"nvme-01"}, StorageGB: 120},
 		},
 		Templates: []vsphere.VM{

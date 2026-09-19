@@ -113,6 +113,9 @@ type actionTarget struct {
 	// ESXi host's registered name (there is no management IP in Host — see
 	// hostRow). Empty means SSH has nowhere to reach.
 	address string
+	// hostName is the DNS-style name the guest reports for itself, for the
+	// one kind that has one. SSH offers it beside address; see sshTargets.
+	hostName string
 	// path is a datastore-style path ("[datastore1]") for the one kind that
 	// has one; empty otherwise.
 	path string
@@ -474,6 +477,7 @@ func vmRow(vm vsphere.VM, withContext bool) row {
 			{"VMware Tools", humanize.Dash(vm.ToolsState)},
 			{"Tools version", humanize.Dash(vm.ToolsVersion)},
 			{"IP address", humanize.Dash(vm.IPAddress)},
+			{"DNS name", humanize.Dash(vm.GuestHostName)},
 			{"CPU", strconv.FormatInt(int64(vm.CPU), 10) + " vCPU"},
 			{"Memory", humanize.MB(vm.MemoryMB)},
 			{"Committed storage", humanize.GB(vm.StorageGB)},
@@ -485,7 +489,7 @@ func vmRow(vm vsphere.VM, withContext bool) row {
 			{"Inventory path", humanize.Dash(vm.Path)},
 			{"Managed object", vm.ID},
 		},
-		target: actionTarget{moref: vm.ID, morefKind: "VirtualMachine", address: vm.IPAddress, path: vm.Path},
+		target: actionTarget{moref: vm.ID, morefKind: "VirtualMachine", address: vm.IPAddress, hostName: vm.GuestHostName, path: vm.Path},
 		joins:  actionJoins{host: vm.Host, cluster: vm.Cluster, datastores: vm.Datastores, networks: nicNetworks(vm.NICs)},
 	}
 	if vm.Annotation != "" {

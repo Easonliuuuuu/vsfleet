@@ -3,13 +3,14 @@ package uistate
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
 func TestLoadOfMissingFileReturnsZeroValue(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	got := Load(path)
-	if got != (State{}) {
+	if !reflect.DeepEqual(got, State{}) {
 		t.Errorf("Load of a missing file returned %+v, want the zero value", got)
 	}
 }
@@ -22,7 +23,7 @@ func TestSaveThenLoadRoundTrips(t *testing.T) {
 		t.Fatalf("Save: %v", err)
 	}
 	got := Load(path)
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Load returned %+v, want %+v", got, want)
 	}
 }
@@ -38,7 +39,7 @@ func TestSaveOverwritesThePreviousState(t *testing.T) {
 	}
 	got := Load(path)
 	want := State{Context: "lab", Kind: "datastore", Sort: "status"}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Load returned %+v, want %+v", got, want)
 	}
 }
@@ -49,7 +50,7 @@ func TestLoadOfCorruptFileReturnsZeroValue(t *testing.T) {
 		t.Fatalf("write fixture: %v", err)
 	}
 	got := Load(path)
-	if got != (State{}) {
+	if !reflect.DeepEqual(got, State{}) {
 		t.Errorf("Load of a corrupt file returned %+v, want the zero value — a bad state file must never be fatal", got)
 	}
 }
@@ -87,7 +88,29 @@ func TestLoadAndSaveDefaultToTheEnvOverride(t *testing.T) {
 	if err := Save("", want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	if got := Load(""); got != want {
+	if got := Load(""); !reflect.DeepEqual(got, want) {
 		t.Errorf("Load returned %+v, want %+v", got, want)
+	}
+}
+
+// The SSH users typed in the TUI are remembered per machine and must survive
+// a restart, while a state file written before they existed must still load.
+func TestSSHUsersRoundTripAndOlderFilesStillLoad(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	want := State{Context: "prod", SSHUsers: map[string]string{"prod/vm-1": "tdclab", "lab/host-2": "root"}}
+	if err := Save(path, want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if got := Load(path); !reflect.DeepEqual(got, want) {
+		t.Errorf("Load returned %+v, want %+v", got, want)
+	}
+
+	old := filepath.Join(t.TempDir(), "old.json")
+	if err := os.WriteFile(old, []byte(`{"context":"prod","kind":"vm","sort":"name"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(old)
+	if got.Context != "prod" || len(got.SSHUsers) != 0 {
+		t.Errorf("older state file loaded as %+v", got)
 	}
 }

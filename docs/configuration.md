@@ -138,6 +138,10 @@ names. The older shared `user` setting remains the fallback for both kinds.
 When the applicable setting is empty, `ssh` resolves a user through
 `~/.ssh/config` and then the local username.
 
+A user typed into the TUI's **SSH as a different user…** prompt is remembered
+per machine and takes precedence over all of these; it is stored in
+`state.json`, not in this file.
+
 SSH through a proxied context follows the same route vsfleet itself uses —
 an unauthenticated SOCKS5 or HTTP CONNECT proxy becomes an `ssh -o
 ProxyCommand=...` argument automatically when a compatible `nc` is installed.

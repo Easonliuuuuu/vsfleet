@@ -29,6 +29,7 @@ var vmSummaryProps = []string{
 	"runtime.connectionState",
 	"runtime.host",
 	"guest.ipAddress",
+	"guest.hostName",
 	"guest.guestState",
 	"guest.toolsRunningStatus",
 	"guest.toolsVersion",
@@ -157,6 +158,32 @@ func sortVMs(vms []VM) {
 	sort.Slice(vms, func(i, j int) bool { return vms[i].Name < vms[j].Name })
 }
 
+// guestHostName accepts a Tools-reported host name only when it is a plain
+// DNS-style name. The value is chosen by whoever controls the guest, and it
+// ends up on a terminal and in an ssh(1) argument list, so anything that
+// could be read as an option ("-oProxyCommand=..."), contains whitespace or
+// control characters, or is not a legal name at all is dropped rather than
+// escaped: an empty result just means "no name to offer".
+func guestHostName(name string) string {
+	name = strings.TrimSuffix(strings.TrimSpace(name), ".")
+	if name == "" || len(name) > 253 {
+		return ""
+	}
+	for _, label := range strings.Split(name, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return ""
+		}
+		for _, r := range label {
+			switch {
+			case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+			default:
+				return ""
+			}
+		}
+	}
+	return name
+}
+
 func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 	loc := idx.locate(c, m.Self, m.Name)
 	if loc.Datacenter == "" && m.Parent != nil {
@@ -213,6 +240,7 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 	}
 	if g := m.Guest; g != nil {
 		vm.IPAddress = g.IpAddress
+		vm.GuestHostName = guestHostName(g.HostName)
 		vm.GuestState = g.GuestState
 		vm.ToolsState = g.ToolsRunningStatus
 		vm.ToolsVersion = g.ToolsVersion

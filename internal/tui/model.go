@@ -482,6 +482,10 @@ type Options struct {
 	// SSHUser is the backwards-compatible shared fallback for both target
 	// kinds. Per-kind values take precedence when set.
 	SSHUser string
+	// SSHUsers seeds the users typed into the SSH prompt in earlier runs,
+	// keyed "<context>/<moref>"; Snapshot hands the current set back for the
+	// caller to persist.
+	SSHUsers map[string]string
 	// Handoff is what the detail pane's actions use to reach the clipboard,
 	// the browser, and a terminal. Nil gets the real implementation; tests
 	// substitute a recording fake, the same seam Backend already is (see
@@ -497,12 +501,21 @@ type Snapshot struct {
 	Context string
 	Kind    string
 	Sort    string
+	// SSHUsers is every user remembered for a machine, keyed
+	// "<context>/<moref>".
+	SSHUsers map[string]string
 }
 
 // Snapshot reports the interface's current position, for the caller to
 // persist once the program exits.
 func (m *Model) Snapshot() Snapshot {
 	snap := Snapshot{Kind: string(m.kind), Sort: m.sortMode.label()}
+	if len(m.sshUsers) > 0 {
+		snap.SSHUsers = make(map[string]string, len(m.sshUsers))
+		for k, v := range m.sshUsers {
+			snap.SSHUsers[k] = v
+		}
+	}
 	if st := m.current(); st != nil {
 		snap.Context = st.cc.Name
 	}
@@ -630,6 +643,10 @@ type Model struct {
 	// shortcut — see handleCredPromptKey.
 	credCoord  *PromptCoordinator
 	credPrompt *credPromptState
+	// sshPrompt is the "SSH as a different user…" overlay, open while
+	// non-nil. It owns the keyboard like credPrompt does, but ranks below it;
+	// see handleKey.
+	sshPrompt *sshPromptState
 
 	// demo labels the header as sample data; see Options.Demo.
 	demo bool
@@ -659,6 +676,9 @@ type Model struct {
 	sshHostUser string
 	// sshUser is the backwards-compatible shared fallback.
 	sshUser string
+	// sshUsers are the users typed into the SSH prompt, per machine; see
+	// sshUserKey. Snapshot exports them so they outlive the process.
+	sshUsers map[string]string
 	// out is where a launched process's own I/O and the OSC 52 clipboard
 	// escape are written — the same stream Options.Out gives Bubble Tea.
 	out io.Writer
@@ -703,6 +723,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		sshVMUser:       opts.SSHVMUser,
 		sshHostUser:     opts.SSHHostUser,
 		sshUser:         opts.SSHUser,
+		sshUsers:        copySSHUsers(opts.SSHUsers),
 		handoff:         opts.Handoff,
 		out:             opts.Out,
 	}
@@ -1989,6 +2010,16 @@ func (m *Model) canCapture() bool {
 	return m.assessment != nil && m.assessment.CanCapture()
 }
 
+func copySSHUsers(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		if v != "" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// The credential overlay owns every key ahead of anything else, filter
 	// and form included: it can appear over any screen, since it answers a
@@ -2001,6 +2032,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if msg.Type == tea.KeyCtrlC {
 		m.quitting = true
 		return tea.Quit
+	}
+	// The SSH prompt owns the keyboard too, ahead of the filter, the form and
+	// every shortcut, for the same reason: a "q" typed into a user name must
+	// not quit. Ctrl+C above still does, and a credential request above still
+	// preempts it.
+	if m.sshPrompt != nil {
+		return m.handleSSHPromptKey(msg)
 	}
 	if m.filtering {
 		return m.handleFilterKey(msg)

@@ -46,8 +46,37 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # The in-process simulator suite lives in tests/ and exercises packages
+      # outside that directory. -coverpkg credits that work in the aggregate
+      # profile; without it Go reports only package-local coverage.
+      - name: Test with coverage
+        if: runner.os == 'Linux'
+        run: |
+          go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tee coverage-summary.txt
+          go tool cover -html=coverage.out -o coverage.html
+          {
+            echo '## Test coverage'
+            echo
+            echo '```text'
+            tail -n 1 coverage-summary.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Test
+        if: runner.os != 'Linux'
         run: go test -race ./...
+
+      - name: Upload coverage report
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.html
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Build
         run: go build ./...

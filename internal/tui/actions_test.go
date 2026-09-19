@@ -18,12 +18,16 @@ import (
 // the comment on sshCmd in commands.go for why tea.ExecProcess makes that
 // safe to call from this synchronous test harness in the first place.
 type fakeHandoff struct {
-	copied  []string
-	opened  []string
-	ssh     []SSHSpec
-	copyErr error
-	openErr error
-	sshErr  error
+	copied []string
+	opened []string
+	ssh    []SSHSpec
+	// resolved scripts ResolveUser by address; resolveCalls records the
+	// addresses it was asked about.
+	resolved     map[string]string
+	resolveCalls []string
+	copyErr      error
+	openErr      error
+	sshErr       error
 }
 
 func (f *fakeHandoff) Copy(v string) error {
@@ -36,6 +40,10 @@ func (f *fakeHandoff) OpenURL(u string) error {
 	return f.openErr
 }
 
+func (f *fakeHandoff) ResolveUser(address string) string {
+	f.resolveCalls = append(f.resolveCalls, address)
+	return f.resolved[address]
+}
 func (f *fakeHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	f.ssh = append(f.ssh, spec)
 	if f.sshErr != nil {
@@ -131,10 +139,11 @@ func TestManagedObjectFieldRunsSingleActionImmediately(t *testing.T) {
 	}
 }
 
-// TestIPFieldOpensPopupWithThreeActions checks the other half of that rule:
-// a VM's IP address offers SSH, a copyable ssh command, and Copy value, so
-// Enter there must open a popup rather than guessing which one is meant.
-func TestIPFieldOpensPopupWithThreeActions(t *testing.T) {
+// TestIPFieldOpensPopupWithSSHActions checks the other half of that rule:
+// a VM's IP address offers SSH, SSH as another user, a copyable ssh command,
+// and Copy value, so Enter there must open a popup rather than guessing which
+// one is meant.
+func TestIPFieldOpensPopupWithSSHActions(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 	r := findRow(t, m, vsphere.KindVM, "app-01")
 	idx := -1
@@ -149,7 +158,7 @@ func TestIPFieldOpensPopupWithThreeActions(t *testing.T) {
 	if m.actions == nil {
 		t.Fatal("expected the IP address field to open a popup")
 	}
-	wantLabels := []string{"SSH to " + r.target.address, "Copy ssh " + r.target.address, "Copy value"}
+	wantLabels := []string{"SSH to " + r.target.address, "SSH as a different user…", "Copy ssh " + r.target.address, "Copy value"}
 	for _, want := range wantLabels {
 		if _, ok := findAction(m.actions.items, want); !ok {
 			var got []string

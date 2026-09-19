@@ -1,13 +1,17 @@
 package tui
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
+	"unicode"
 
 	"github.com/atotto/clipboard"
 	"github.com/muesli/termenv"
@@ -34,6 +38,12 @@ type Handoff interface {
 	// set up (see run.go) is suspended and restored around it correctly —
 	// which also means this method is the entire testable surface of SSH.
 	SSH(spec SSHSpec) (*exec.Cmd, error)
+	// ResolveUser reports the remote user ssh(1) would pick for address
+	// given the operator's own ~/.ssh/config — "" when it cannot tell. It is
+	// for display only: the SSH command keeps an empty SSHSpec.User so
+	// ssh(1) stays the authority on the answer, and this is just a way to
+	// tell the operator what that answer will be before they connect.
+	ResolveUser(address string) string
 }
 
 // SSHSpec fully describes one SSH handoff before it becomes a command:
@@ -107,6 +117,12 @@ func (realHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	if spec.Address == "" {
 		return nil, errors.New("nothing to connect to")
 	}
+	if !validSSHHost(spec.Address) {
+		return nil, fmt.Errorf("refusing to ssh to %q", spec.Address)
+	}
+	if spec.User != "" && !validSSHUser(spec.User) {
+		return nil, fmt.Errorf("refusing to ssh as %q", spec.User)
+	}
 	if len(spec.ProxyArgs) > 0 {
 		if err := checkNetcat(); err != nil {
 			return nil, err
@@ -119,6 +135,52 @@ func (realHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	args := append([]string{}, spec.ProxyArgs...)
 	args = append(args, target)
 	return exec.Command("ssh", args...), nil
+}
+
+// ResolveUser asks ssh(1) itself, through "ssh -G", which prints the fully
+// resolved configuration for a destination — every Host and Match block
+// applied — without connecting. The timeout bounds a Match exec that hangs;
+// any failure, including no ssh on PATH, simply yields "".
+func (realHandoff) ResolveUser(address string) string {
+	if !validSSHHost(address) {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ssh", "-G", address).Output()
+	if err != nil {
+		return ""
+	}
+	return parseSSHUser(string(out))
+}
+
+// parseSSHUser finds the "user" line in "ssh -G" output.
+func parseSSHUser(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if user, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "user "); ok {
+			return strings.TrimSpace(user)
+		}
+	}
+	return ""
+}
+
+// validSSHHost and validSSHUser guard the two strings that reach ssh(1)'s
+// argument list. Either can originate with someone other than the operator —
+// a guest chooses its own reported name, and a remembered user is read back
+// from a file — and ssh(1) reads a leading "-" as an option, which would make
+// "-oProxyCommand=..." a way to run a command. Whitespace and control
+// characters have no place in either.
+func validSSHHost(s string) bool {
+	return safeSSHToken(s) && !strings.ContainsRune(s, '@')
+}
+
+func validSSHUser(s string) bool { return safeSSHToken(s) }
+
+func safeSSHToken(s string) bool {
+	if s == "" || strings.HasPrefix(s, "-") {
+		return false
+	}
+	return strings.IndexFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) < 0
 }
 
 // checkNetcat verifies the feature set required by the generated

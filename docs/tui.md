@@ -33,7 +33,7 @@ with several opens a short list to choose from.
 |---|---|
 | A VM's or host's own header | SSH, open in the vSphere/Host Client, copy the managed object reference |
 | A VM with an IP address | Add it as a vCenter context, or switch to its existing context |
-| A VM's IP address | SSH to it, copy an `ssh user@ip` command, copy the value |
+| A VM's IP address or DNS name | SSH to it, SSH as a different user, copy an `ssh user@host` command, copy the value |
 | A host, datastore, network, or cluster's own header | "Show VMs on this …" — narrows the VM table to exactly what belongs to it |
 | A datastore's own header | "Browse files" and "Find in datastore" — see below |
 | A VM's Host or Cluster field | Jump straight to that host's or cluster's own row |
@@ -46,9 +46,28 @@ SOCKS5 or HTTP route can still work. `vsfleet demo` disables every action that w
 a real process or browser, so the shape of the feature is visible without
 touching your workstation.
 
-SSH picks a default VM or ESXi user from `config.toml`'s `[ssh]` table (see
-[Configuration](configuration.md#ssh)) when set, otherwise it falls back to
-`~/.ssh/config` and your local username the way `ssh` always does. Failed SSH
+A VM's header offers SSH to both its DNS name (the name VMware Tools reports
+for the guest) and its IP address, name first. A name is the only thing a
+`Host` block in `~/.ssh/config` can match, so it is what lets your own ssh
+configuration supply the user, key, and jump host; the IP is kept because it
+works even when the guest's idea of its name does not resolve from your
+workstation. A name Tools reports as `localhost` is never offered.
+
+vSphere does not know who can log in to a guest: VMware Tools reports no
+account names, and the web console only shows a prompt the guest drew itself.
+So the action label always names the user `ssh` will connect as — the answer
+of `ssh -G`, which applies your `~/.ssh/config` without connecting — as in
+`SSH to tdclab@10.42.7.13`. When that is not the right user, choose
+**SSH as a different user…**, type one, and press `Enter`. The user is
+remembered for that machine (in `state.json`, alongside the last-viewed tab,
+not in `config.toml`) and used from then on; blank the field to forget it.
+Accepting the value `ssh` itself reported does not pin it, so `~/.ssh/config`
+stays in charge.
+
+The user vsfleet supplies is picked in this order: one you typed for that
+machine, the `[ssh]` table's `vm_user` or `host_user` (see
+[Configuration](configuration.md#ssh)), the shared `[ssh] user`, and otherwise
+none, leaving `ssh` to resolve it as it always does. Failed SSH
 sessions retain the final diagnostic line from OpenSSH in the footer, rather
 than reducing the cause to exit status 255. A jump
 ("Show VMs on this host") stays on the table until `Esc` clears it, which it

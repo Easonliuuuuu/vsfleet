@@ -119,12 +119,18 @@ type VM struct {
 	ToolsVersion       string   `json:"tools_version,omitempty"`
 	ToolsVersionStatus string   `json:"tools_version_status,omitempty"`
 	IPAddress          string   `json:"ip_address"`
-	Host               string   `json:"host"`
-	Cluster            string   `json:"cluster"`
-	Folder             string   `json:"folder"`
-	Datastores         []string `json:"datastores"`
-	StorageGB          float64  `json:"storage_gb"`
-	Annotation         string   `json:"annotation"`
+	// GuestHostName is the name VMware Tools reports for the guest (the
+	// "DNS Name" on the vSphere Summary tab). It is what the guest believes
+	// it is called, so it is not guaranteed to resolve from anywhere else,
+	// and it is empty when Tools is not running or reports something that is
+	// not a plain host name — see guestHostName.
+	GuestHostName string   `json:"guest_hostname,omitempty"`
+	Host          string   `json:"host"`
+	Cluster       string   `json:"cluster"`
+	Folder        string   `json:"folder"`
+	Datastores    []string `json:"datastores"`
+	StorageGB     float64  `json:"storage_gb"`
+	Annotation    string   `json:"annotation"`
 	// ConfigurationAvailable distinguishes a VM whose full configuration was
 	// collected from one for which vSphere returned only summary properties.
 	// Migration rules must treat false as missing evidence, not as an empty

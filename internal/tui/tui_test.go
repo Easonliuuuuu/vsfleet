@@ -254,6 +254,11 @@ func newTestModel(t *testing.T, b *fakeBackend, opts Options) *Model {
 		// tickRefresh below.
 		opts.RefreshInterval = -1
 	}
+	if opts.Handoff == nil {
+		// Never fall back to the real one: it would run "ssh -G" on the
+		// machine running the tests and put its own username in the labels.
+		opts.Handoff = &fakeHandoff{}
+	}
 	m := New(context.Background(), b, opts)
 	m.width, m.height = 140, 30
 	// A blinking cursor schedules a real half-second timer, and these tests run
@@ -1629,8 +1634,9 @@ func TestSavingANestedContextReturnsToTheMemberPane(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 	press(t, m, "7", "enter", "enter", "enter")
-	// The member header's actions are SSH, add-context, open, MoRef, copy.
-	press(t, m, "down", "enter")
+	// The member header's actions are SSH, SSH as a different user, add-context,
+	// open, MoRef, copy.
+	press(t, m, "down", "down", "enter")
 	settleForm(m)
 	if m.form == nil {
 		t.Fatal("adding a nested context did not open the form")

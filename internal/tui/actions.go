@@ -116,9 +116,11 @@ func (m *Model) hostClientAction(r row) action {
 	return action{label: "Open in Host Client", detail: url, run: func(m *Model) tea.Cmd { return m.openURLCmd(url) }}
 }
 
-// sshAction is "SSH to <address>", offered on a VM's or host's object header
-// and on a VM's IP address field alike — the target and the route are the
-// same question either place is asked from.
+// sshAction is "SSH to <user>@<address>", offered on a VM's or host's object
+// header and on a VM's IP address and DNS name fields alike — the target and
+// the route are the same question wherever it is asked from. The label names
+// the user ssh will really connect as, so it never reads as if the address
+// alone were enough; see sshShownUser.
 func (m *Model) sshAction(r row, address string) action {
 	label := "SSH to " + address
 	if address == "" {
@@ -131,11 +133,37 @@ func (m *Model) sshAction(r row, address string) action {
 	if reason != "" {
 		return action{label: label, disabled: reason}
 	}
-	return action{label: label, detail: sshCommand(spec), run: func(m *Model) tea.Cmd { return m.sshCmd(spec) }}
+	shown := spec
+	shown.User = m.sshShownUser(spec)
+	return action{label: "SSH to " + sshTarget(shown), detail: sshCommand(shown), run: func(m *Model) tea.Cmd { return m.sshCmd(spec) }}
+}
+
+// sshAsAction is "SSH as a different user…": it opens the username prompt
+// instead of connecting. vSphere cannot supply a guest's login — VMware
+// Tools reports no account names — so the operator is the only source of the
+// right one when neither vsfleet's config nor ~/.ssh/config has it.
+func (m *Model) sshAsAction(r row, address string) action {
+	const label = "SSH as a different user…"
+	if address == "" {
+		return action{label: label, disabled: "no address available"}
+	}
+	if m.demo {
+		return action{label: label, disabled: demoDisabledReason}
+	}
+	spec, reason := m.sshSpec(r, address)
+	if reason != "" {
+		return action{label: label, disabled: reason}
+	}
+	prefill, explicit := m.sshShownUser(spec), spec.User != ""
+	key := sshUserKey(r)
+	return action{label: label, detail: address, run: func(m *Model) tea.Cmd {
+		m.sshPrompt = newSSHPromptState(spec, key, prefill, explicit)
+		return nil
+	}}
 }
 
 func (m *Model) sshSpec(r row, address string) (SSHSpec, string) {
-	spec := SSHSpec{Address: address, User: m.sshUserFor(r.kind)}
+	spec := SSHSpec{Address: address, User: m.sshUserFor(r)}
 	if st := m.byName[r.context]; st != nil {
 		args, reason := proxyArgs(st.cc.Transport)
 		if reason != "" {
@@ -146,8 +174,17 @@ func (m *Model) sshSpec(r row, address string) (SSHSpec, string) {
 	return spec, ""
 }
 
-func (m *Model) sshUserFor(kind vsphere.Kind) string {
-	switch kind {
+// sshUserFor picks the user vsfleet itself supplies for row r, most specific
+// first: what the operator last typed for this exact machine, then the
+// configured per-kind default, then the shared one. Empty means vsfleet has
+// no opinion and ssh(1) resolves it.
+func (m *Model) sshUserFor(r row) string {
+	if key := sshUserKey(r); key != "" {
+		if u := m.sshUsers[key]; u != "" {
+			return u
+		}
+	}
+	switch r.kind {
 	case vsphere.KindHost:
 		if m.sshHostUser != "" {
 			return m.sshHostUser
@@ -160,22 +197,81 @@ func (m *Model) sshUserFor(kind vsphere.Kind) string {
 	return m.sshUser
 }
 
-// sshCommandCopyAction is "Copy ssh user@address" for a VM's IP field — the
-// string an operator pastes into a second tmux pane rather than handing this
-// program's own terminal over.
+// sshUserKey identifies one machine for remembering the user typed for it. A
+// moref is only unique within one vCenter, so the context is part of it.
+func sshUserKey(r row) string {
+	if r.target.moref == "" {
+		return ""
+	}
+	return r.context + "/" + r.target.moref
+}
+
+// sshShownUser is the user to display for spec: the one vsfleet supplies, or
+// else whatever ssh(1) would resolve on its own. Demo mode never asks —
+// "vsfleet demo" launches nothing, including ssh -G.
+func (m *Model) sshShownUser(spec SSHSpec) string {
+	if spec.User != "" || m.demo {
+		return spec.User
+	}
+	return m.handoff.ResolveUser(spec.Address)
+}
+
+// sshTargets lists what a VM can be reached at, name first: a name is the
+// only thing a Host block in ~/.ssh/config can match, while the IP is kept
+// because it cannot fail on a resolver that has never heard of the guest's
+// own idea of its name.
+func sshTargets(r row) []string {
+	var out []string
+	if h := r.target.hostName; h != "" && !isLoopbackName(h) {
+		out = append(out, h)
+	}
+	if a := r.target.address; a != "" && (len(out) == 0 || out[0] != a) {
+		out = append(out, a)
+	}
+	return out
+}
+
+// isLoopbackName spots the name an unconfigured guest reports for itself,
+// which would send ssh to the operator's own machine.
+func isLoopbackName(name string) bool {
+	name = strings.ToLower(name)
+	return name == "localhost" || strings.HasPrefix(name, "localhost.")
+}
+
+// vmSSHActions is every SSH entry for a VM's header: one per target, then the
+// prompt aimed at the first.
+func (m *Model) vmSSHActions(r row) []action {
+	targets := sshTargets(r)
+	out := make([]action, 0, len(targets)+1)
+	for _, t := range targets {
+		out = append(out, m.sshAction(r, t))
+	}
+	if len(targets) > 0 {
+		out = append(out, m.sshAsAction(r, targets[0]))
+	}
+	return out
+}
+
+// sshCommandCopyAction is "Copy ssh user@address" — the string an operator
+// pastes into a second tmux pane rather than handing this program's own
+// terminal over.
 func (m *Model) sshCommandCopyAction(r row, address string) action {
 	spec, _ := m.sshSpec(r, address)
+	spec.User = m.sshShownUser(spec)
 	cmd := sshCommand(spec)
 	return action{label: "Copy " + cmd, run: func(m *Model) tea.Cmd { return m.copyCmd(cmd) }}
 }
 
-func sshCommand(spec SSHSpec) string {
-	target := spec.Address
+func sshTarget(spec SSHSpec) string {
 	if spec.User != "" {
-		target = spec.User + "@" + spec.Address
+		return spec.User + "@" + spec.Address
 	}
+	return spec.Address
+}
+
+func sshCommand(spec SSHSpec) string {
 	args := append([]string{}, spec.ProxyArgs...)
-	args = append(args, target)
+	args = append(args, sshTarget(spec))
 	quoted := make([]string, len(args))
 	for i, arg := range args {
 		quoted[i] = shellQuote(arg)
@@ -297,9 +393,7 @@ func (m *Model) objectActions(r row) []action {
 	var out []action
 	switch r.kind {
 	case vsphere.KindVM:
-		if r.target.address != "" {
-			out = append(out, m.sshAction(r, r.target.address))
-		}
+		out = append(out, m.vmSSHActions(r)...)
 		out = append(out, m.addContextAction(r, r.target.address))
 		out = append(out, m.openAction(r))
 		out = append(out, copyNamed("Copy MoRef", r.target.moref))
@@ -308,6 +402,9 @@ func (m *Model) objectActions(r row) []action {
 		out = append(out, copyNamed("Copy MoRef", r.target.moref))
 	case vsphere.KindHost:
 		out = append(out, m.sshAction(r, r.target.address))
+		if r.target.address != "" {
+			out = append(out, m.sshAsAction(r, r.target.address))
+		}
 		out = append(out, m.hostClientAction(r))
 		out = append(out, m.openAction(r))
 		out = append(out, jumpAction("Show VMs on this host", vsphere.KindVM, "host", r.name))
@@ -343,7 +440,9 @@ func (m *Model) objectActions(r row) []action {
 func (m *Model) fieldActions(r row, f field) []action {
 	switch {
 	case r.kind == vsphere.KindVM && f.label == "IP address":
-		return []action{m.sshAction(r, f.value), m.sshCommandCopyAction(r, f.value), copyAction(f.value)}
+		return m.sshFieldActions(r, f.value)
+	case r.kind == vsphere.KindVM && f.label == "DNS name":
+		return m.sshFieldActions(r, f.value)
 	case r.kind == vsphere.KindVM && f.label == "Host":
 		return []action{jumpToNamed("Show this host", vsphere.KindHost, f.value), copyAction(f.value)}
 	case r.kind == vsphere.KindVM && f.label == "Cluster":
@@ -353,6 +452,10 @@ func (m *Model) fieldActions(r row, f field) []action {
 	default:
 		return []action{copyAction(f.value)}
 	}
+}
+
+func (m *Model) sshFieldActions(r row, address string) []action {
+	return []action{m.sshAction(r, address), m.sshAsAction(r, address), m.sshCommandCopyAction(r, address), copyAction(address)}
 }
 
 // runAction closes the popup (if one was open) and, unless the action

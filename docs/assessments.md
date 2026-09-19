@@ -263,6 +263,15 @@ evidence is blind. Confidence is explicit (`complete`, `partial`, or `unknown`):
 pre-schema-12 or reconstructed evidence is partial, while blind contexts always
 force unknown. `--fail-on-blockers` returns exit code 2 for a blocked result.
 
+### Importing an RVTools export
+
+The export profile has an inverse: `vsfleet import rvtools` reads an
+RVTools-compatible workbook back into assessment history so that `diff`,
+`vm history`, `trends` and `topology` can work on estates vsfleet did not
+capture itself. Missing worksheets and columns become explicit coverage gaps,
+never confirmed zeroes. See [Importing RVTools
+exports](commands.md#importing-rvtools-exports).
+
 ### RVTools file interoperability
 
 The `rvtools` export profile renders twenty-three worksheet layouts used by RVTools

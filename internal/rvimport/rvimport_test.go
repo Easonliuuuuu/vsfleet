@@ -136,12 +136,12 @@ func TestParseRecognizesMappedAndIgnoresUnmappedWorksheets(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	for _, want := range []string{sheetVInfo, sheetVCPU, sheetVMemory, sheetVDisk, sheetVNetwork, sheetVHost, sheetVCluster, sheetVDatastore} {
+	for _, want := range []string{sheetVInfo, sheetVCPU, sheetVMemory, sheetVDisk, sheetVPartition, sheetVNetwork, sheetVTools, sheetVHost, sheetVSwitch, sheetVPort, sheetDVSwitch, sheetDVPort, sheetVCluster, sheetVDatastore, sheetVSnapshot} {
 		if !contains(result.Report.RecognizedSheets, want) {
 			t.Errorf("recognized sheets = %v, want %q among them", result.Report.RecognizedSheets, want)
 		}
 	}
-	for _, want := range []string{"vTools", "vPartition", "vHBA", "vNIC", "vSwitch", "vPort", "dvSwitch", "dvPort", "vSC+VMK", "vMultiPath", "vRP", "vSnapshot", "vHealth", "vsfleetCoverage"} {
+	for _, want := range []string{"vHBA", "vNIC", "vSC+VMK", "vMultiPath", "vRP", "vCD", "vUSB", "vHealth", "vsfleetCoverage"} {
 		if !contains(result.Report.IgnoredSheets, want) {
 			t.Errorf("ignored sheets = %v, want %q among them", result.Report.IgnoredSheets, want)
 		}
@@ -203,7 +203,7 @@ func TestWritePersistsAnAtomicRunWithVMHostClusterDatastore(t *testing.T) {
 		t.Errorf("run.Source = %q, want %q", run.Source, importSource)
 	}
 	if run.Status != assessment.RunPartial {
-		t.Errorf("run.Status = %q, want %q (resourcepool/dvswitch/network are never collected by this profile)", run.Status, assessment.RunPartial)
+		t.Errorf("run.Status = %q, want %q (resourcepool and network are never collected by this profile)", run.Status, assessment.RunPartial)
 	}
 	if !strings.Contains(run.Note, "fixture.xlsx") || !strings.Contains(run.Note, ProfileVersion) {
 		t.Errorf("run note is missing provenance: %q", run.Note)

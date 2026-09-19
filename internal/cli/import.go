@@ -38,7 +38,7 @@ func newImportRVToolsCommand(a *App) *cobra.Command {
 	var (
 		label, note, capturedAt string
 		contextMap              []string
-		dryRun                  bool
+		dryRun, allowDuplicate  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "rvtools FILE",
@@ -47,20 +47,29 @@ func newImportRVToolsCommand(a *App) *cobra.Command {
 Adapt an RVTools-compatible XLSX export into a new stored assessment run.
 
 The workbook's own layout never reaches vsfleet's domain model directly: this
-reads vInfo, vCPU, vMemory, vDisk, vNetwork, vHost, vCluster and vDatastore by
-column name and normalizes what they carry. A worksheet or column this
-importer does not recognize is reported, not silently dropped, and a field
-the workbook does not carry is left absent rather than defaulted to a value
-that would read as confirmed evidence. RVTools has no standalone worksheet
-for resource pools, distributed switches, or networks in this profile, so
-those three collections are always recorded as not collected — an explicit
-gap, the same way a live capture records a denied query, never a silent one.
+reads vInfo, vCPU, vMemory, vDisk, vPartition, vNetwork, vTools, vSnapshot,
+vHost, vSwitch, vPort, vCluster, vDatastore, dvSwitch and dvPort by column
+name and normalizes what they carry. A worksheet or column this importer does
+not recognize is reported, not silently dropped.
+
+Imported evidence may reduce confidence, but a field the workbook does not
+carry never improves a verdict. A worksheet that is absent, or present without
+the capacity columns that make its rows trustworthy, is recorded as an
+unavailable collection — the same explicit gap a live capture records for a
+denied query — never as an empty one. A workbook with no vHost worksheet is not
+an estate with no hosts. Resource pools and networks are always recorded
+unavailable: vRP carries no pool membership and RVTools has no network
+identity to import; vHBA, vNIC, vSC+VMK and vMultiPath are not yet mapped.
 
 vCenter identity is reconstructed from the workbook's own "vsfleet Context" or
 "VI SDK Server" column, never by matching display names alone: two contexts
-with an identically named VM stay two VMs. --context-map renames a
-reconstructed context without touching today's configuration — an imported
-run's contexts are independent of config.toml.
+with an identically named VM stay two VMs, and an identity two rows share is
+reported as an ambiguity rather than resolved by guessing. --context-map
+renames a reconstructed context without touching today's configuration — an
+imported run's contexts are independent of config.toml.
+
+Importing the same file again creates another run, and warns that it did;
+--allow-duplicate silences the warning.
 
 The import is all-or-nothing: nothing is written until the whole workbook has
 been read, and a failure partway through deletes the run rather than leaving
@@ -75,7 +84,11 @@ it half-written.`),
   vsfleet import rvtools estate.xlsx --label pre-migration --captured-at 2026-01-01T00:00:00Z --context-map vc01.example.com=prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts := rvimport.Options{SourceLabel: filepath.Base(args[0]), Label: label, Note: note}
+			sha, err := rvimport.FileSHA256(args[0])
+			if err != nil {
+				return err
+			}
+			opts := rvimport.Options{SourceLabel: filepath.Base(args[0]), SourceSHA256: sha, Label: label, Note: note}
 			if strings.TrimSpace(capturedAt) != "" {
 				t, err := time.Parse(time.RFC3339, capturedAt)
 				if err != nil {
@@ -112,6 +125,15 @@ it half-written.`),
 			if err != nil {
 				return err
 			}
+			if !allowDuplicate {
+				prior, found, err := rvimport.FindDuplicate(cmd.Context(), store, sha)
+				if err != nil {
+					return err
+				}
+				if found {
+					fmt.Fprintf(a.errOut(), "%s this workbook was already imported as assessment %d; importing it again creates another run (--allow-duplicate silences this)\n", glyphFail, prior.ID)
+				}
+			}
 			run, err := result.Write(cmd.Context(), store, time.Now())
 			if err != nil {
 				return err
@@ -123,6 +145,7 @@ it half-written.`),
 	cmd.Flags().StringVar(&note, "note", "", "free-text note stored with the run, alongside this import's own provenance")
 	cmd.Flags().StringVar(&capturedAt, "captured-at", "", "RFC3339 time the workbook's data was captured (default: the workbook's own metadata, else import time)")
 	cmd.Flags().StringSliceVar(&contextMap, "context-map", nil, "rename a reconstructed context, KEY=NAME (repeatable); KEY is the vsfleet Context or VI SDK Server value the report names")
+	cmd.Flags().BoolVar(&allowDuplicate, "allow-duplicate", false, "do not warn when this exact workbook was already imported")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would be imported without writing to history")
 	return cmd
 }
@@ -137,24 +160,51 @@ func printImportReport(a *App, report rvimport.Report, run *assessment.Run) erro
 	}
 	out := a.out()
 	if run != nil {
-		fmt.Fprintf(out, "Imported assessment %d (%s)\n", run.ID, strings.ToUpper(string(run.Status)))
+		fmt.Fprintf(out, "Imported assessment %d (%s) from %s\n", run.ID, strings.ToUpper(string(run.Status)), report.SourceLabel)
 	} else {
 		fmt.Fprintln(out, "Dry run — nothing was written")
 	}
 	fmt.Fprintf(out, "Captured at: %s (%s)\n", report.CapturedAt.Local().Format("2006-01-02 15:04:05"), report.CapturedAtSource)
+	fmt.Fprintf(out, "Profile: %s, inventory schema %s\n", report.ProfileVersion, report.SchemaVersion)
 	fmt.Fprintf(out, "Recognized worksheets: %s\n", strings.Join(report.RecognizedSheets, ", "))
 	if len(report.IgnoredSheets) > 0 {
 		fmt.Fprintf(out, "Ignored worksheets: %s\n", strings.Join(report.IgnoredSheets, ", "))
 	}
-	if len(report.SkippedKinds) > 0 {
-		fmt.Fprintf(out, "Not collected by this profile: %s\n", strings.Join(report.SkippedKinds, ", "))
+	if run == nil {
+		// The per-column view is what a dry run is for: it is how a user learns,
+		// before writing anything, which columns were read and which were not.
+		fmt.Fprintln(out)
+		st := newTable(out, "WORKSHEET", "ROWS", "READ", "IGNORED", "MISSING")
+		for _, sh := range report.Sheets {
+			st.row(sh.Name, itoa(sh.Rows), itoa(len(sh.RecognizedColumns)), joinOrDash(sh.IgnoredColumns), joinOrDash(sh.MissingColumns))
+		}
+		st.flush()
 	}
 	fmt.Fprintln(out)
-	t := newTable(out, "CONTEXT", "ENDPOINT", "VMS", "HOSTS", "CLUSTERS", "DATASTORES")
+	t := newTable(out, "CONTEXT", "ENDPOINT", "VMS", "HOSTS", "CLUSTERS", "DATASTORES", "SNAPSHOTS", "DVSWITCHES")
 	for _, c := range report.Contexts {
-		t.row(c.Name, dash(c.Endpoint), itoa(c.VMCount), itoa(c.HostCount), itoa(c.ClusterCount), itoa(c.DatastoreCount))
+		t.row(c.Name, dash(c.Endpoint), itoa(c.VMCount), itoa(c.HostCount), itoa(c.ClusterCount), itoa(c.DatastoreCount), itoa(c.SnapshotCount), itoa(c.DVSwitchCount))
 	}
 	t.flush()
+	if run != nil && run.Status == assessment.RunPartial {
+		fmt.Fprintln(out, "\nThis run is partial by design (see the gaps below); trend commands need --include-partial to plot it.")
+	}
+	if len(report.Gaps) > 0 {
+		fmt.Fprintln(out, "\nCoverage gaps (recorded as unavailable, never as empty):")
+		for _, g := range report.Gaps {
+			scope := ""
+			if g.Context != "" {
+				scope = " [" + g.Context + "]"
+			}
+			fmt.Fprintf(out, "  %s%s: %s\n", g.Evidence, scope, g.Reason)
+		}
+	}
+	if len(report.Ambiguities) > 0 {
+		fmt.Fprintln(out, "\nIdentity ambiguities (kept separate, never merged):")
+		for _, amb := range report.Ambiguities {
+			fmt.Fprintf(out, "  %s [%s] %s: %s\n", amb.Sheet, amb.Context, amb.Identity, amb.Detail)
+		}
+	}
 	if len(report.Warnings) > 0 {
 		fmt.Fprintln(a.errOut())
 		for _, w := range report.Warnings {
@@ -162,4 +212,11 @@ func printImportReport(a *App, report rvimport.Report, run *assessment.Run) erro
 		}
 	}
 	return nil
+}
+
+func joinOrDash(values []string) string {
+	if len(values) == 0 {
+		return "-"
+	}
+	return strings.Join(values, ", ")
 }

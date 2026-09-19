@@ -246,22 +246,37 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context, b
 		case vsphere.GroupVMs:
 			itemCount := len(part.VMs) + len(part.Templates)
 			collection := CollectionResult{Kind: "vm", ItemCount: itemCount}
+			// snapshot is recorded as its own persisted kind, not because it is
+			// fetched separately (it rides along on the same VM property
+			// collection), but so coverage-gated consumers can tell "this run
+			// never looked at snapshots" (an import with no vSnapshot worksheet)
+			// apart from "this run looked and found none".
+			snapshotCollection := CollectionResult{Kind: "snapshot"}
 			if msg, failed := part.ErrorFor(vsphere.KindVM); failed {
 				collection.Status, collection.Error = "failed", msg
+				snapshotCollection.Status, snapshotCollection.Error = "failed", msg
 			} else {
 				collection.Status = "success"
 				if itemCount == 0 {
 					collection.Status = "empty"
 				}
+				snapshotCount := 0
 				for _, vm := range part.VMs {
 					r.VMs = append(r.VMs, Observation{VCenterID: r.VCenterID, Context: cc.Name, VM: vm})
+					snapshotCount += len(vm.Snapshots)
 				}
 				for _, vm := range part.Templates {
 					r.VMs = append(r.VMs, Observation{VCenterID: r.VCenterID, Context: cc.Name, VM: vm})
+					snapshotCount += len(vm.Snapshots)
 				}
 				collection.TagsStatus, collection.CustomAttributesStatus = metadataStatuses(part.VMs, part.Templates)
+				snapshotCollection.Status = "success"
+				if snapshotCount == 0 {
+					snapshotCollection.Status = "empty"
+				}
+				snapshotCollection.ItemCount = snapshotCount
 			}
-			r.Collections = append(r.Collections, collection)
+			r.Collections = append(r.Collections, collection, snapshotCollection)
 		case vsphere.GroupHosts:
 			r.Collections = append(r.Collections, resourceCollection("host", r.VCenterID, cc.Name, part.Hosts, part.ErrorFor))
 		case vsphere.GroupClusters:

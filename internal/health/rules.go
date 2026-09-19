@@ -265,7 +265,7 @@ var rules = []Rule{
 	},
 	{
 		ID: "snapshot-age", Category: CategoryHygiene, Severity: SeverityWarning,
-		Recommendation: "Remove or consolidate the snapshot after confirming it is no longer needed.", NeedsCollections: []string{"vm"},
+		Recommendation: "Remove or consolidate the snapshot after confirming it is no longer needed.", NeedsCollections: []string{"vm", "snapshot"},
 		Summary: "snapshot is at least the configured age", Needs: "VM snapshot inventory",
 		Eval: func(in Input, emit func(Finding)) {
 			evaluateRule("snapshot-age", in, Options{Thresholds: in.Thresholds}, emit)

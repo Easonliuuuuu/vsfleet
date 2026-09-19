@@ -26,7 +26,7 @@ func saveTestRun(t *testing.T, s *Store, when time.Time, vm vsphere.VM) Run {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveContext(context.Background(), r.ID, ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: []Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}}}, when.Add(time.Second)); err != nil {
+	if err := s.SaveContext(context.Background(), r.ID, ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: []Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}}, Collections: []CollectionResult{{Kind: "snapshot", Status: "success"}}}, when.Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	r, err = s.FinishRun(context.Background(), r.ID, when.Add(time.Second))
@@ -254,5 +254,66 @@ func TestPruneCascadesObservations(t *testing.T) {
 	}
 	if after != 0 {
 		t.Errorf("vm_observations = %d after pruning every run, want 0 (cascade did not fire)", after)
+	}
+}
+
+// TestDiffDoesNotCompareSnapshotsWhenEitherSideLacksTheEvidence guards the
+// coverage gap an imported workbook with no vSnapshot worksheet creates. A
+// context whose "vm" collection succeeded but whose "snapshot" collection was
+// never recorded must not have its snapshots read as evidence — and the run
+// that DID record them must not have its snapshots read as removed by the
+// other run's silence.
+func TestDiffDoesNotCompareSnapshotsWhenEitherSideLacksTheEvidence(t *testing.T) {
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	snap := []vsphere.VMSnapshot{{ID: "snap-1", Name: "untracked", CreateTime: base, PowerState: "poweredOn"}}
+
+	for _, tc := range []struct {
+		name                 string
+		baseSnap, targetSnap []CollectionResult
+	}{
+		{"target uncovered", []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}, nil},
+		{"base uncovered", nil, []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}},
+		{"target explicitly unavailable", []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}, []CollectionResult{{Kind: "snapshot", Status: "unavailable", Error: "no vSnapshot worksheet"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			var ids [2]int64
+			for i, collections := range [][]CollectionResult{tc.baseSnap, tc.targetSnap} {
+				when := base.Add(time.Duration(i) * time.Hour)
+				r, err := s.StartRun(context.Background(), "test", []*config.Context{testContext("prod")}, when)
+				if err != nil {
+					t.Fatal(err)
+				}
+				vm := testVM("billing", "vm-1", "instance-1", "bios-1", "esx-1")
+				vm.Snapshots = snap // every observation carries the snapshot; only coverage differs
+				if err := s.SaveContext(context.Background(), r.ID, ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", VMs: []Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}}, Collections: collections}, when.Add(time.Second)); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.FinishRun(context.Background(), r.ID, when.Add(time.Second)); err != nil {
+					t.Fatal(err)
+				}
+				ids[i] = r.ID
+			}
+			d, err := s.Diff(context.Background(), ids[0], ids[1], false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Counts.Snapshots != 0 {
+				t.Errorf("counts=%+v, want no snapshot lifecycle claimed when either side lacks the evidence", d.Counts)
+			}
+			found := false
+			for _, c := range d.Coverage {
+				if c.Context == "prod" && strings.Contains(c.Message, "snapshot") {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("coverage=%+v, want the snapshot coverage gap reported", d.Coverage)
+			}
+		})
 	}
 }

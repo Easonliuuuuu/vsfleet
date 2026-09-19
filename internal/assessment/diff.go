@@ -55,9 +55,20 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	// configured. Both sides feed it so a vCenter present in only one run
 	// still resolves by name rather than falling back to its raw ID.
 	vcNames := make(map[string]string)
+	// A vCenter with no snapshot evidence on EITHER side cannot have snapshot
+	// lifecycle compared on either: the covered side's snapshots would
+	// otherwise read as removed (or created) by the other side's silence.
+	snapshotBlind := make(map[string]bool)
+	for _, side := range []map[int64]ContextRun{bc, tc} {
+		for _, c := range side {
+			if c.VCenterID != "" && Successful(c.VMStatus) && !ContextComplete(c, []string{"snapshot"}) {
+				snapshotBlind[c.VCenterID] = true
+			}
+		}
+	}
 	for id, c := range bc {
 		if c.VCenterID != "" && Successful(c.VMStatus) {
-			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], bv[id]...)
+			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], withSnapshotCoverage(bv[id], c, "baseline", &d, snapshotBlind[c.VCenterID])...)
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
@@ -69,7 +80,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	}
 	for id, c := range tc {
 		if c.VCenterID != "" && Successful(c.VMStatus) {
-			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], tv[id]...)
+			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], withSnapshotCoverage(tv[id], c, "target", &d, snapshotBlind[c.VCenterID])...)
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
@@ -148,6 +159,30 @@ func vcLabel(names map[string]string, vc string) string {
 		return name
 	}
 	return vc
+}
+
+// withSnapshotCoverage strips snapshot evidence from a context's VMs when that
+// vCenter's "snapshot" collection was never recorded as successful in either
+// compared run — an imported run whose workbook carried no vSnapshot
+// worksheet, or a run captured before this collection kind existed. Without
+// this, an absent worksheet would read as "confirmed no snapshots" to every
+// snapshot lifecycle and age check. blind is true when either side lacks the
+// evidence; the warning is raised on the side that actually lacks it.
+func withSnapshotCoverage(vms []storedVM, c ContextRun, scope string, d *Diff, blind bool) []storedVM {
+	if !blind {
+		return vms
+	}
+	if !ContextComplete(c, []string{"snapshot"}) {
+		msg := fmt.Sprintf("%s: snapshot evidence was not collected in %s (%s); snapshot changes are not compared", c.Name, scope, CoverageReason([]ContextRun{c}, c.Name, []string{"snapshot"}))
+		d.Warnings = append(d.Warnings, msg)
+		d.Coverage = append(d.Coverage, CoverageIssue{Scope: scope, Context: c.Name, Message: msg})
+	}
+	out := make([]storedVM, len(vms))
+	for i, v := range vms {
+		v.snapshots = nil
+		out[i] = v
+	}
+	return out
 }
 
 // Successful reports whether a collection answered the question, including
@@ -484,7 +519,7 @@ func (s *Store) snapshotAges(ctx context.Context, runID int64, olderThan time.Du
 	type key struct{ vc, vm, snap string }
 	wanted := make(map[key]SnapshotAge)
 	for id, c := range targetContexts {
-		if !Successful(c.VMStatus) {
+		if !Successful(c.VMStatus) || !ContextComplete(c, []string{"snapshot"}) {
 			continue
 		}
 		for _, v := range targetVMs[id] {

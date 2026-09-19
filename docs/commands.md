@@ -162,18 +162,104 @@ vsfleet vm history web-01
 vsfleet assessment diff pre-migration wave-1
 ```
 
-This first profile reads `vInfo`, `vCPU`, `vMemory`, `vDisk`, `vNetwork`,
-`vHost`, `vCluster` and `vDatastore` by column name, not position, so a
-workbook with extra or reordered columns still imports; anything else is
-reported as an ignored worksheet or column rather than silently dropped.
-RVTools has no standalone worksheet for resource pools, distributed switches,
-or networks, so those three collections are always recorded as not
-collected — visible in `vsfleet assessment list` as a `partial` run and in
-`vsfleet assessment findings` as rules not evaluated, the same honest gap a
-live capture records for a denied query. A field the workbook does not carry
-is left absent, never defaulted to a value that would read as confirmed
-evidence; an imported run's `assessment list` row shows `rvtools-import` as
-its source, so it is never mistaken for a live capture.
+An imported run's `assessment list` row shows `rvtools-import` as its source,
+and its note records the source filename, a SHA-256 fingerprint of the file,
+the capture time and where it came from, the parser profile
+(`rvtools-v2`) and the worksheets recognized and ignored. It is never mistaken
+for a live capture.
+
+### What is read
+
+Worksheets are matched by name and columns by header, never by position, so a
+workbook with extra or reordered columns still imports:
+
+| Worksheet | Becomes |
+|---|---|
+| `vInfo` | VMs and their identity (required) |
+| `vCPU`, `vMemory` | VM CPU and memory, when `vInfo` lacks the column; a disagreement with `vInfo` is warned about and `vInfo` wins |
+| `vDisk`, `vNetwork`, `vTools`, `vPartition`, `vSnapshot` | per-VM disks, NICs, Tools state, guest filesystems and snapshots |
+| `vHost`, `vCluster`, `vDatastore` | the host, cluster and datastore collections |
+| `vSwitch`, `vPort` | host virtual switches and port groups, joined to the host by `Object ID` |
+| `dvSwitch`, `dvPort` | distributed switches and their port groups |
+
+Everything else is listed as an ignored worksheet, and the dry run lists the
+recognized, ignored and missing columns of each worksheet that was read.
+
+### Missing evidence is never good news
+
+The one rule every mapping answers to: imported evidence may reduce
+confidence, but the lack of a workbook field must never improve a verdict.
+
+- A worksheet that is **absent** — or present without the capacity columns that
+  make its rows trustworthy (`# Cores`, `# Memory` and `Speed` for `vHost`;
+  `NumCpuCores`, `TotalCpu` and `TotalMemory` for `vCluster`; `Capacity MiB`
+  and `Free MiB` for `vDatastore`) — is recorded as an **unavailable**
+  collection, the same explicit gap a live capture records for a denied
+  query. It is never recorded as *empty*: a workbook with no `vHost` tab is
+  not an estate with no hosts. A worksheet that is present with no rows *is*
+  an answer, and is recorded as empty.
+- A VM column that is missing (`CPUs`, `Memory`, `In Use MiB`) is reported as a
+  coverage gap; the count is unknown, not zero.
+- Health rules that need evidence the workbook never carries report
+  unknown / not-evaluated instead of passing. The import claims only the
+  inventory schema level its worksheets back: `2` by default, `3` with
+  `vTools`, `4` with `vPartition`, `5` with `vPartition`'s `Disk Key` column.
+- Resource pools and networks are **always** recorded unavailable. `vRP`
+  carries pool configuration but only a VM *count*, never which VMs belong to a
+  pool, so importing it would make every pool look empty; RVTools carries no
+  managed-object ID for a network, so importing one would rest on a display
+  name alone. `vHBA`, `vNIC`, `vSC+VMK` and `vMultiPath` (host storage and
+  physical networking detail) are not yet mapped.
+- With no `VI SDK UUID` column the endpoint stands in as the vCenter identity,
+  as it does for a live capture, and the import says so.
+
+### Identity
+
+VMs are matched by managed-object ID, then instance UUID, then BIOS UUID; a
+display name is used only when a row carries nothing stronger. Two vCenters
+with an identically named VM stay two VMs, and a VM keeps its history across a
+rename. An identity that two rows share is reported as an ambiguity and is
+never resolved by guessing: both rows are kept, rows that reference the
+ambiguous identity are not attached to either, and a repeated host, cluster,
+datastore or distributed-switch `Object ID` makes that collection unavailable
+for the context. Host networking rows join to their host by `Object ID` only,
+and distributed port groups join to their switch by context, datacenter and
+name — refused when that is not unique.
+
+`--context-map KEY=NAME` renames a reconstructed context without touching
+`config.toml`; an imported run's contexts are independent of it.
+
+### Trends and partial runs
+
+Because resource pools and networks are never importable, an imported run is
+always `partial`. `assessment diff`, `vm history`, `findings` and `topology`
+use it as-is, and say what they could not verify; the trend commands exclude
+partial runs unless asked, so plot imported history with `--include-partial`:
+
+```sh
+vsfleet assessment trends snapshots --include-partial
+vsfleet assessment trends capacity --include-partial
+```
+
+### Capture time
+
+In order: `--captured-at`, the workbook's own document properties, then import
+time. The run says which was used, and the run — and so history, diff and
+trends — is stamped with the capture time, not the day of import (which is
+recorded in the run's note). A filename is never parsed for a date.
+
+### Repeating an import
+
+Importing the same file again creates another run. It is detected by
+fingerprint, warned about on stderr with the earlier run's ID, and never
+blocked; `--allow-duplicate` silences the warning.
+
+### Safety
+
+Import is local file processing. The workbook is untrusted input: it is
+size-limited before it is opened, decompression is bounded, worksheet row
+counts are capped, no formula is evaluated and no external link is followed.
+A failure at any point leaves no run behind.
 
 ## Topology and dependencies
 

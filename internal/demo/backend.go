@@ -337,6 +337,7 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		{Kind: "datastore", Status: "success", ItemCount: len(inv.Datastores), Resources: demoResources(cc.Name, "demo-prod-vc", "datastore", inv.Datastores)},
 		{Kind: "dvswitch", Status: "success", ItemCount: len(inv.DVSwitches), Resources: demoResources(cc.Name, "demo-prod-vc", "dvswitch", inv.DVSwitches)},
 		{Kind: "network", Status: "success", ItemCount: len(inv.Networks), Resources: demoResources(cc.Name, "demo-prod-vc", "network", inv.Networks)},
+		{Kind: "snapshot", Status: snapshotStatus(observations), ItemCount: snapshotTotal(observations)},
 	}
 	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: cc.Name, VCenterID: "demo-prod-vc", Status: "success", VMs: observations, Collections: collections}, now.Add(time.Minute)); err != nil {
 		closeStore()
@@ -356,13 +357,14 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		{Kind: "datastore", Status: "success", ItemCount: len(edgeInv.Datastores), Resources: demoResources(edge.Name, "demo-edge-vc", "datastore", edgeInv.Datastores)},
 		{Kind: "dvswitch", Status: "success", ItemCount: len(edgeInv.DVSwitches), Resources: demoResources(edge.Name, "demo-edge-vc", "dvswitch", edgeInv.DVSwitches)},
 		{Kind: "network", Status: "success", ItemCount: len(edgeInv.Networks), Resources: demoResources(edge.Name, "demo-edge-vc", "network", edgeInv.Networks)},
+		{Kind: "snapshot", Status: snapshotStatus(edgeObservations), ItemCount: snapshotTotal(edgeObservations)},
 	}
 	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: edge.Name, VCenterID: "demo-edge-vc", Status: "success", VMs: edgeObservations, Collections: edgeCollections}, now.Add(time.Minute)); err != nil {
 		closeStore()
 		return nil, nil, err
 	}
 	dr := b.contexts[2]
-	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: dr.Name, VCenterID: "demo-dr-site", Status: "failed", Error: "proxy 10.24.0.8:3128: connection refused", Collections: []assessment.CollectionResult{{Kind: "vm", Status: "failed", Error: "proxy connection refused"}, {Kind: "host", Status: "failed"}, {Kind: "cluster", Status: "failed"}, {Kind: "resourcepool", Status: "failed"}, {Kind: "dvswitch", Status: "failed"}, {Kind: "datastore", Status: "failed"}, {Kind: "network", Status: "failed"}}}, now.Add(time.Minute)); err != nil {
+	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: dr.Name, VCenterID: "demo-dr-site", Status: "failed", Error: "proxy 10.24.0.8:3128: connection refused", Collections: []assessment.CollectionResult{{Kind: "vm", Status: "failed", Error: "proxy connection refused"}, {Kind: "host", Status: "failed"}, {Kind: "cluster", Status: "failed"}, {Kind: "resourcepool", Status: "failed"}, {Kind: "dvswitch", Status: "failed"}, {Kind: "datastore", Status: "failed"}, {Kind: "network", Status: "failed"}, {Kind: "snapshot", Status: "failed"}}}, now.Add(time.Minute)); err != nil {
 		closeStore()
 		return nil, nil, err
 	}
@@ -584,4 +586,21 @@ func failedDiagnosis(cc *config.Context) *vsphere.Diagnosis {
 			{Name: "API access", Status: vsphere.CheckSkip},
 		},
 	}
+}
+
+// snapshotTotal counts the snapshots the demo VMs carry, so the demo ledger
+// records the snapshot collection the way a live capture does.
+func snapshotTotal(observations []assessment.Observation) int {
+	n := 0
+	for _, o := range observations {
+		n += len(o.VM.Snapshots)
+	}
+	return n
+}
+
+func snapshotStatus(observations []assessment.Observation) string {
+	if snapshotTotal(observations) == 0 {
+		return "empty"
+	}
+	return "success"
 }

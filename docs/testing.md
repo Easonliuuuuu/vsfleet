@@ -15,7 +15,19 @@ go vet ./...
 ```
 
 These tests are fast and run on every operating system in the normal CI
-`build` job.
+`build` job. The Linux run also publishes a whole-suite coverage report:
+
+```sh
+go test -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out ./...
+go tool cover -func=coverage.out
+go tool cover -html=coverage.out -o coverage.html
+```
+
+`-coverpkg=./...` is deliberate: the in-process simulator tests below are in
+the separate `tests` package and exercise the real CLI plus its internal
+packages. A package-local profile would not credit that coverage. CI reports
+the result and retains the raw profile and HTML report as artifacts; it does
+not enforce a percentage threshold.
 
 ## In-process simulator tests
 

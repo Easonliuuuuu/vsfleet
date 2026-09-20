@@ -138,12 +138,12 @@ func (m *Model) sshAction(r row, address string) action {
 	return action{label: "SSH to " + sshTarget(shown), detail: sshCommand(shown), run: func(m *Model) tea.Cmd { return m.sshCmd(spec) }}
 }
 
-// sshAsAction is "SSH as a different user…": it opens the username prompt
-// instead of connecting. vSphere cannot supply a guest's login — VMware
-// Tools reports no account names — so the operator is the only source of the
-// right one when neither vsfleet's config nor ~/.ssh/config has it.
+// sshAsAction opens the combined username and identity picker instead of
+// connecting immediately. vSphere cannot supply a guest's login — VMware
+// Tools reports no account names — and a nonstandard private-key path is not
+// part of OpenSSH's default search list.
 func (m *Model) sshAsAction(r row, address string) action {
-	const label = "SSH as a different user…"
+	const label = "SSH with a different user or key…"
 	if address == "" {
 		return action{label: label, disabled: "no address available"}
 	}
@@ -157,13 +157,12 @@ func (m *Model) sshAsAction(r row, address string) action {
 	prefill, explicit := m.sshShownUser(spec), spec.User != ""
 	key := sshUserKey(r)
 	return action{label: label, detail: address, run: func(m *Model) tea.Cmd {
-		m.sshPrompt = newSSHPromptState(spec, key, prefill, explicit)
-		return nil
+		return m.openSSHPrompt(spec, key, prefill, explicit, sshIdentityKey(r))
 	}}
 }
 
 func (m *Model) sshSpec(r row, address string) (SSHSpec, string) {
-	spec := SSHSpec{Address: address, User: m.sshUserFor(r)}
+	spec := SSHSpec{Address: address, User: m.sshUserFor(r), IdentityFile: m.sshIdentityFor(r)}
 	if st := m.byName[r.context]; st != nil {
 		args, reason := proxyArgs(st.cc.Transport)
 		if reason != "" {
@@ -197,6 +196,13 @@ func (m *Model) sshUserFor(r row) string {
 	return m.sshUser
 }
 
+func (m *Model) sshIdentityFor(r row) string {
+	if key := sshIdentityKey(r); key != "" {
+		return m.sshIdentityFiles[key]
+	}
+	return ""
+}
+
 // sshUserKey identifies one machine for remembering the user typed for it. A
 // moref is only unique within one vCenter, so the context is part of it.
 func sshUserKey(r row) string {
@@ -205,6 +211,8 @@ func sshUserKey(r row) string {
 	}
 	return r.context + "/" + r.target.moref
 }
+
+func sshIdentityKey(r row) string { return sshUserKey(r) }
 
 // sshShownUser is the user to display for spec: the one vsfleet supplies, or
 // else whatever ssh(1) would resolve on its own. Demo mode never asks —
@@ -270,13 +278,29 @@ func sshTarget(spec SSHSpec) string {
 }
 
 func sshCommand(spec SSHSpec) string {
-	args := append([]string{}, spec.ProxyArgs...)
-	args = append(args, sshTarget(spec))
+	args := sshArgs(spec)
 	quoted := make([]string, len(args))
 	for i, arg := range args {
 		quoted[i] = shellQuote(arg)
 	}
 	return "ssh " + strings.Join(quoted, " ")
+}
+
+func sshArgs(spec SSHSpec) []string {
+	args := append([]string{}, spec.ProxyArgs...)
+	args = append(args, "-o", "ConnectTimeout=15")
+	if spec.IdentityFile != "" {
+		args = append(args,
+			"-i", spec.IdentityFile,
+			"-o", "IdentitiesOnly=yes",
+			"-o", "PubkeyAuthentication=yes",
+			"-o", "PreferredAuthentications=publickey",
+			"-o", "PasswordAuthentication=no",
+			"-o", "KbdInteractiveAuthentication=no",
+			"-o", "BatchMode=no",
+		)
+	}
+	return append(args, sshTarget(spec))
 }
 
 func shellQuote(value string) string {

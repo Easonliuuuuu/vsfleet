@@ -138,9 +138,11 @@ names. The older shared `user` setting remains the fallback for both kinds.
 When the applicable setting is empty, `ssh` resolves a user through
 `~/.ssh/config` and then the local username.
 
-A user typed into the TUI's **SSH as a different user…** prompt is remembered
-per machine and takes precedence over all of these; it is stored in
-`state.json`, not in this file.
+A user and private-key path selected in the TUI's **SSH with a different user
+or key…** overlay are remembered per machine and take precedence over these
+defaults; they are stored in `state.json`, not in this file. Selecting OpenSSH
+default leaves `~/.ssh/config` and `ssh-agent` in control. An explicitly
+selected identity uses public-key authentication only.
 
 SSH through a proxied context follows the same route vsfleet itself uses —
 an unauthenticated SOCKS5 or HTTP CONNECT proxy becomes an `ssh -o

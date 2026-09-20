@@ -31,13 +31,13 @@ endpoints, and isolated on-disk state:
 scripts/testbed pty --results-dir /tmp/vsfleet-pty
 ```
 
-The six journeys launch inventory and quit, cancel a credential prompt and
-continue, browse and recursively search a datastore, traverse and leave every
-History pane, resize from `60x20` to `140x40`, and interrupt an active capture
-with Ctrl-C. They assert semantic output and clean exit behavior, not complete
-terminal byte snapshots. On failure, CI uploads redacted process output, an
-ANSI-normalized transcript, an event log, result metadata, and the isolated
-testbed state.
+The eight journeys launch inventory and quit, prove SSH failure restoration and
+Ctrl-C cancellation, cancel a credential prompt and continue, browse and
+recursively search a datastore, traverse and leave every History pane, resize
+from `60x20` to `140x40`, and interrupt an active capture. They assert semantic
+output and clean exit behavior, not complete terminal byte snapshots. On
+failure, CI uploads redacted process output, an ANSI-normalized transcript, an
+event log, result metadata, and the isolated testbed state.
 
 Native TUI fuzz seeds run with the normal Go suite; longer fuzz campaigns are
 scheduled separately. Neither the headless scenarios nor PTY tests prove

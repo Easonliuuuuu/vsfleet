@@ -97,7 +97,7 @@ func TestLoadAndSaveDefaultToTheEnvOverride(t *testing.T) {
 // a restart, while a state file written before they existed must still load.
 func TestSSHUsersRoundTripAndOlderFilesStillLoad(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	want := State{Context: "prod", SSHUsers: map[string]string{"prod/vm-1": "tdclab", "lab/host-2": "root"}}
+	want := State{Context: "prod", SSHUsers: map[string]string{"prod/vm-1": "tdclab", "lab/host-2": "root"}, SSHIdentityFiles: map[string]string{"prod/vm-1": "/home/eason/.ssh/id_devops"}}
 	if err := Save(path, want); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestSSHUsersRoundTripAndOlderFilesStillLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := Load(old)
-	if got.Context != "prod" || len(got.SSHUsers) != 0 {
+	if got.Context != "prod" || len(got.SSHUsers) != 0 || len(got.SSHIdentityFiles) != 0 {
 		t.Errorf("older state file loaded as %+v", got)
 	}
 }

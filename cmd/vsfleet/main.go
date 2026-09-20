@@ -11,7 +11,10 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Bubble Tea owns Ctrl-C while the TUI is active. During an SSH handoff
+	// the child must own it, so do not cancel the application's context on
+	// SIGINT; SIGTERM remains the process-level shutdown signal.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 	os.Exit(cli.Execute(ctx))
 }

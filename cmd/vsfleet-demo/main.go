@@ -16,7 +16,9 @@ import (
 )
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Ctrl-C belongs to Bubble Tea or an interactive handoff child; only
+	// SIGTERM should cancel the outer application context.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 
 	backend, opts, cleanup, err := setupDemo()

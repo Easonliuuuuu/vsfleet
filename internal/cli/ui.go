@@ -130,21 +130,22 @@ func runUI(a *App, cmd *cobra.Command) error {
 		Kind:        remembered.Kind,
 		Sort:        remembered.Sort,
 
-		RefreshInterval: a.RefreshInterval,
-		Credentials:     coordinator,
-		In:              a.in(),
-		Out:             a.out(),
-		Assessment:      assessmentService,
-		SSHUser:         cfg.SSH.User,
-		SSHVMUser:       cfg.SSH.VMUser,
-		SSHHostUser:     cfg.SSH.HostUser,
-		SSHUsers:        remembered.SSHUsers,
+		RefreshInterval:  a.RefreshInterval,
+		Credentials:      coordinator,
+		In:               a.in(),
+		Out:              a.out(),
+		Assessment:       assessmentService,
+		SSHUser:          cfg.SSH.User,
+		SSHVMUser:        cfg.SSH.VMUser,
+		SSHHostUser:      cfg.SSH.HostUser,
+		SSHUsers:         remembered.SSHUsers,
+		SSHIdentityFiles: remembered.SSHIdentityFiles,
 	})
 	// A clean run is the only one worth remembering: a program that never
 	// really started (no TTY, say) has nothing truthful to say about where
 	// the cursor was.
 	if runErr == nil {
-		if err := uistate.Save("", uistate.State{Context: snap.Context, Kind: snap.Kind, Sort: snap.Sort, SSHUsers: snap.SSHUsers}); err != nil {
+		if err := uistate.Save("", uistate.State{Context: snap.Context, Kind: snap.Kind, Sort: snap.Sort, SSHUsers: snap.SSHUsers, SSHIdentityFiles: snap.SSHIdentityFiles}); err != nil {
 			fmt.Fprintf(a.errOut(), "warning: could not remember the last screen (%v)\n", err)
 		}
 	}

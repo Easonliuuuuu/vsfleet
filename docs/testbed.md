@@ -69,11 +69,12 @@ scripts/testbed test --update-goldens
 ## Real-terminal PTY validation
 
 On Linux, `scripts/testbed pty` builds and launches the actual connected
-`cmd/vsfleet-testbed` process inside a pseudo-terminal. Its six journeys cover
-clean inventory startup and exit, credential cancellation, recursive datastore
-browsing, History pane cleanup, narrow-to-wide resizing, and Ctrl-C while a
-capture is active. Assertions follow semantic screen text and process exit
-status rather than snapshotting terminal byte streams.
+`cmd/vsfleet-testbed` process inside a pseudo-terminal. Its eight journeys cover
+clean inventory startup and exit, SSH failure and cancellation, credential
+cancellation, recursive datastore browsing, History pane cleanup, narrow-to-wide
+resizing, and Ctrl-C while a capture is active. Assertions follow semantic
+screen text and process exit status rather than snapshotting terminal byte
+streams.
 
 Use `--results-dir PATH` to choose where each journey retains its redacted raw
 process output, ANSI-normalized transcript, input/resize event log, result

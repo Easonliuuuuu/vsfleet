@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,19 +21,20 @@ func labels(items []action) []string {
 	return out
 }
 
-// openSSHPrompt runs "SSH as a different user…" for r's first target and
+// openSSHPrompt runs "SSH with a different user or key…" for r's first target and
 // silences the field's blink timer, which a synchronous harness would block on.
 func openSSHPrompt(t *testing.T, m *Model, r row) {
 	t.Helper()
-	a, ok := findAction(m.actionsFor(r, 0), "SSH as a different user…")
+	a, ok := findAction(m.actionsFor(r, 0), "SSH with a different user or key…")
 	if !ok || a.disabled != "" {
 		t.Fatalf("no usable prompt action: %v", labels(m.actionsFor(r, 0)))
 	}
-	a.run(m)
+	drive(t, m, a.run(m))
 	if m.sshPrompt == nil {
 		t.Fatal("the action did not open the prompt")
 	}
 	m.sshPrompt.input.Cursor.SetMode(cursor.CursorStatic)
+	m.sshPrompt.pathInput.Cursor.SetMode(cursor.CursorStatic)
 }
 
 // vSphere cannot say who a guest's login is, so the label has to say who ssh
@@ -42,7 +45,7 @@ func TestSSHLabelShowsTheUserSSHWouldResolve(t *testing.T) {
 	r := findRow(t, m, vsphere.KindVM, "app-01")
 
 	a := m.sshAction(r, r.target.address)
-	if a.label != "SSH to tdclab@10.20.0.11" || a.detail != "ssh tdclab@10.20.0.11" {
+	if a.label != "SSH to tdclab@10.20.0.11" || a.detail != "ssh -o ConnectTimeout=15 tdclab@10.20.0.11" {
 		t.Fatalf("label/detail = %q / %q", a.label, a.detail)
 	}
 	a.run(m)
@@ -79,7 +82,7 @@ func TestVMOffersItsNameAndItsIP(t *testing.T) {
 	r := findRow(t, m, vsphere.KindVM, "app-01")
 
 	r.target.hostName = "app-01.lab.example"
-	want := []string{"SSH to app-01.lab.example", "SSH to 10.20.0.11", "SSH as a different user…"}
+	want := []string{"SSH to app-01.lab.example", "SSH to 10.20.0.11", "SSH with a different user or key…"}
 	if got := labels(m.vmSSHActions(r)); !reflect.DeepEqual(got, want) {
 		t.Errorf("actions = %v, want %v", got, want)
 	}
@@ -137,8 +140,11 @@ func TestSSHPromptConnectsAsTheTypedUserAndRemembersIt(t *testing.T) {
 	if !strings.Contains(m.View(), "SSH to 10.20.0.11") {
 		t.Errorf("the overlay should name its target:\n%s", m.View())
 	}
+	if cmd := m.handleSSHPromptKey(tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil {
+		t.Fatal("the first Enter should move to identity selection")
+	}
 	if cmd := m.handleSSHPromptKey(tea.KeyMsg{Type: tea.KeyEnter}); cmd == nil {
-		t.Fatal("Enter should start the ssh session")
+		t.Fatal("the second Enter should start the ssh session")
 	}
 	if m.sshPrompt != nil {
 		t.Error("the prompt should close on Enter")
@@ -175,7 +181,7 @@ func TestSSHPromptLeavesAnUntouchedResolvedUserToSSH(t *testing.T) {
 	if got := m.sshPrompt.input.Value(); got != "eason" {
 		t.Fatalf("prefill = %q, want the resolved user", got)
 	}
-	press(t, m, "enter")
+	press(t, m, "enter", "enter")
 	if len(fake.ssh) != 1 || fake.ssh[0].User != "" || len(m.Snapshot().SSHUsers) != 0 {
 		t.Errorf("resolved user was pinned: ssh=%+v users=%v", fake.ssh, m.Snapshot().SSHUsers)
 	}
@@ -193,7 +199,7 @@ func TestSSHPromptBlankForgetsARememberedUser(t *testing.T) {
 	for range "tdclab" {
 		drive(t, m, discard(m.Update(tea.KeyMsg{Type: tea.KeyBackspace})))
 	}
-	press(t, m, "enter")
+	press(t, m, "enter", "enter")
 	if len(fake.ssh) != 1 || fake.ssh[0].User != "" || len(m.Snapshot().SSHUsers) != 0 {
 		t.Errorf("ssh=%+v users=%v", fake.ssh, m.Snapshot().SSHUsers)
 	}
@@ -204,7 +210,7 @@ func TestSSHPromptRefusesAUserSSHWouldReadAsAnOption(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Handoff: fake})
 	openSSHPrompt(t, m, findRow(t, m, vsphere.KindVM, "app-01"))
 	typeText(t, m, "-oProxyCommand=x")
-	press(t, m, "enter")
+	press(t, m, "enter", "enter")
 	if m.sshPrompt == nil || m.sshPrompt.err == "" || len(fake.ssh) != 0 {
 		t.Fatalf("an option-shaped user must be refused in place: prompt=%+v ssh=%v", m.sshPrompt, fake.ssh)
 	}
@@ -287,5 +293,63 @@ func TestParseSSHUser(t *testing.T) {
 	}
 	if got := parseSSHUser("port 22\n"); got != "" {
 		t.Errorf("got %q for output with no user line", got)
+	}
+}
+
+func TestParseSSHIdentityFiles(t *testing.T) {
+	out := "identityfile ~/.ssh/id_rsa\nidentityfile /tmp/id_devops\nidentityfile %d/.ssh/id_ed25519\n"
+	got := parseSSHIdentityFiles(out)
+	want := []string{"~/.ssh/id_rsa", "/tmp/id_devops"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("identity files = %v, want %v", got, want)
+	}
+}
+
+func TestExplicitSSHIdentityBuildsPublicKeyOnlyCommand(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "id_devops")
+	if err := os.WriteFile(path, []byte("synthetic key path\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd, err := (realHandoff{}).SSH(SSHSpec{Address: "host.example", User: "ubuntu", IdentityFile: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(cmd.Args, " ")
+	for _, want := range []string{
+		"-o ConnectTimeout=15", "-i " + path, "-o IdentitiesOnly=yes",
+		"-o PreferredAuthentications=publickey", "-o PasswordAuthentication=no",
+		"-o KbdInteractiveAuthentication=no", "ubuntu@host.example",
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("SSH args %q do not contain %q", args, want)
+		}
+	}
+}
+
+func TestSSHPromptRemembersSelectedIdentity(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "id_devops")
+	if err := os.WriteFile(path, []byte("synthetic key path\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fake := &fakeHandoff{identities: []SSHIdentity{{Path: path}}}
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Handoff: fake})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	openSSHPrompt(t, m, r)
+	// Discovery selects OpenSSH default initially; move to the discovered key.
+	press(t, m, "enter", "down", "enter")
+	if len(fake.ssh) != 1 || fake.ssh[0].IdentityFile != path {
+		t.Fatalf("ssh specs = %+v", fake.ssh)
+	}
+	if got := m.Snapshot().SSHIdentityFiles[sshIdentityKey(r)]; got != path {
+		t.Fatalf("remembered identity = %q, want %q", got, path)
+	}
+}
+
+func TestSSHPromptEnterOnUsernameDoesNotConnect(t *testing.T) {
+	fake := &fakeHandoff{}
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Handoff: fake})
+	openSSHPrompt(t, m, findRow(t, m, vsphere.KindVM, "app-01"))
+	if cmd := m.handleSSHPromptKey(tea.KeyMsg{Type: tea.KeyEnter}); cmd != nil || len(fake.ssh) != 0 || m.sshPrompt.focus != sshFocusIdentity {
+		t.Fatalf("username Enter launched SSH: cmd=%v ssh=%v focus=%v", cmd, fake.ssh, m.sshPrompt.focus)
 	}
 }

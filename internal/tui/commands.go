@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -537,6 +537,12 @@ type handoffResultMsg struct {
 	err  error
 }
 
+type sshIdentitiesMsg struct {
+	prompt     *sshPromptState
+	identities []SSHIdentity
+	err        error
+}
+
 // copyCmd writes value to the clipboard through m.handoff. It never blocks
 // the interface: OSC 52 and the local clipboard command both return long
 // before an operator could notice.
@@ -557,24 +563,45 @@ func (m *Model) openURLCmd(url string) tea.Cmd {
 	}
 }
 
-// sshCmd hands the whole terminal to an SSH session through
-// tea.ExecProcess, which suspends Bubble Tea's alternate screen around it
-// and restores it on return — the interface resumes exactly where it left
-// off once the operator disconnects.
+// sshCmd hands the whole terminal to an SSH session through a small
+// tea.ExecCommand adapter. It keeps OpenSSH's stderr visible while retaining
+// its final diagnostic, and prints a clear handoff line after Bubble Tea has
+// released the alternate screen.
 func (m *Model) sshCmd(spec SSHSpec) tea.Cmd {
 	cmd, err := m.handoff.SSH(spec)
 	if err != nil {
 		return func() tea.Msg { return handoffResultMsg{verb: "ssh", err: err} }
 	}
 	diagnostic := &tailBuffer{max: 8 * 1024}
-	stderr := cmd.Stderr
-	if stderr == nil {
-		stderr = os.Stderr
-	}
-	cmd.Stderr = io.MultiWriter(stderr, diagnostic)
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+	process := &sshExecCommand{cmd: cmd, diagnostic: diagnostic, banner: "Connecting: " + sshCommand(spec) + " (Ctrl-C to cancel)"}
+	return tea.Exec(process, func(err error) tea.Msg {
 		return handoffResultMsg{verb: "ssh session ended", err: sshFailure(err, diagnostic.String())}
 	})
+}
+
+type sshExecCommand struct {
+	cmd        *exec.Cmd
+	stdin      io.Reader
+	stdout     io.Writer
+	stderr     io.Writer
+	diagnostic *tailBuffer
+	banner     string
+}
+
+func (c *sshExecCommand) SetStdin(r io.Reader)  { c.stdin = r }
+func (c *sshExecCommand) SetStdout(w io.Writer) { c.stdout = w }
+func (c *sshExecCommand) SetStderr(w io.Writer) {
+	c.stderr = io.MultiWriter(w, c.diagnostic)
+}
+
+func (c *sshExecCommand) Run() error {
+	if c.stdout != nil && c.banner != "" {
+		_, _ = fmt.Fprintln(c.stdout, c.banner)
+	}
+	c.cmd.Stdin = c.stdin
+	c.cmd.Stdout = c.stdout
+	c.cmd.Stderr = c.stderr
+	return c.cmd.Run()
 }
 
 // sshFailure retains the final useful line from SSH's stderr. Bubble Tea

@@ -28,6 +28,8 @@ type fakeHandoff struct {
 	copyErr      error
 	openErr      error
 	sshErr       error
+	identities   []SSHIdentity
+	identityErr  error
 }
 
 func (f *fakeHandoff) Copy(v string) error {
@@ -43,6 +45,9 @@ func (f *fakeHandoff) OpenURL(u string) error {
 func (f *fakeHandoff) ResolveUser(address string) string {
 	f.resolveCalls = append(f.resolveCalls, address)
 	return f.resolved[address]
+}
+func (f *fakeHandoff) DiscoverSSHIdentities(address string) ([]SSHIdentity, error) {
+	return append([]SSHIdentity(nil), f.identities...), f.identityErr
 }
 func (f *fakeHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	f.ssh = append(f.ssh, spec)
@@ -158,7 +163,7 @@ func TestIPFieldOpensPopupWithSSHActions(t *testing.T) {
 	if m.actions == nil {
 		t.Fatal("expected the IP address field to open a popup")
 	}
-	wantLabels := []string{"SSH to " + r.target.address, "SSH as a different user…", "Copy ssh " + r.target.address, "Copy value"}
+	wantLabels := []string{"SSH to " + r.target.address, "SSH with a different user or key…", "Copy ssh -o ConnectTimeout=15 " + r.target.address, "Copy value"}
 	for _, want := range wantLabels {
 		if _, ok := findAction(m.actions.items, want); !ok {
 			var got []string

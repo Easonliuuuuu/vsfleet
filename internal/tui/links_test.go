@@ -88,7 +88,7 @@ func TestSSHCommandIncludesProxyAndQuotesOption(t *testing.T) {
 			"-o", "ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p",
 		},
 	})
-	want := "ssh -o 'ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p' ubuntu@10.20.0.11"
+	want := "ssh -o 'ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p' -o ConnectTimeout=15 ubuntu@10.20.0.11"
 	if got != want {
 		t.Fatalf("sshCommand() = %q, want %q", got, want)
 	}

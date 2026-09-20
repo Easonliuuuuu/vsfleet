@@ -486,6 +486,10 @@ type Options struct {
 	// keyed "<context>/<moref>"; Snapshot hands the current set back for the
 	// caller to persist.
 	SSHUsers map[string]string
+	// SSHIdentityFiles seeds the private-key paths selected for machines in
+	// earlier runs, keyed "<context>/<moref>"; Snapshot hands the current set
+	// back for the caller to persist.
+	SSHIdentityFiles map[string]string
 	// Handoff is what the detail pane's actions use to reach the clipboard,
 	// the browser, and a terminal. Nil gets the real implementation; tests
 	// substitute a recording fake, the same seam Backend already is (see
@@ -504,6 +508,9 @@ type Snapshot struct {
 	// SSHUsers is every user remembered for a machine, keyed
 	// "<context>/<moref>".
 	SSHUsers map[string]string
+	// SSHIdentityFiles is every private-key path remembered for a machine,
+	// keyed "<context>/<moref>".
+	SSHIdentityFiles map[string]string
 }
 
 // Observation is the stable, non-persistent view of model state used by the
@@ -565,6 +572,12 @@ func (m *Model) Snapshot() Snapshot {
 		snap.SSHUsers = make(map[string]string, len(m.sshUsers))
 		for k, v := range m.sshUsers {
 			snap.SSHUsers[k] = v
+		}
+	}
+	if len(m.sshIdentityFiles) > 0 {
+		snap.SSHIdentityFiles = make(map[string]string, len(m.sshIdentityFiles))
+		for k, v := range m.sshIdentityFiles {
+			snap.SSHIdentityFiles[k] = v
 		}
 	}
 	if st := m.current(); st != nil {
@@ -694,7 +707,7 @@ type Model struct {
 	// shortcut — see handleCredPromptKey.
 	credCoord  *PromptCoordinator
 	credPrompt *credPromptState
-	// sshPrompt is the "SSH as a different user…" overlay, open while
+	// sshPrompt is the combined SSH user and identity overlay, open while
 	// non-nil. It owns the keyboard like credPrompt does, but ranks below it;
 	// see handleKey.
 	sshPrompt *sshPromptState
@@ -730,6 +743,9 @@ type Model struct {
 	// sshUsers are the users typed into the SSH prompt, per machine; see
 	// sshUserKey. Snapshot exports them so they outlive the process.
 	sshUsers map[string]string
+	// sshIdentityFiles are the private-key paths selected for a machine, per
+	// machine, keyed by context and managed object reference.
+	sshIdentityFiles map[string]string
 	// out is where a launched process's own I/O and the OSC 52 clipboard
 	// escape are written — the same stream Options.Out gives Bubble Tea.
 	out io.Writer
@@ -767,16 +783,17 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		width:        100,
 		height:       30,
 
-		refreshInterval: refreshInterval(opts.RefreshInterval),
-		credCoord:       opts.Credentials,
-		assessment:      opts.Assessment,
-		demo:            opts.Demo,
-		sshVMUser:       opts.SSHVMUser,
-		sshHostUser:     opts.SSHHostUser,
-		sshUser:         opts.SSHUser,
-		sshUsers:        copySSHUsers(opts.SSHUsers),
-		handoff:         opts.Handoff,
-		out:             opts.Out,
+		refreshInterval:  refreshInterval(opts.RefreshInterval),
+		credCoord:        opts.Credentials,
+		assessment:       opts.Assessment,
+		demo:             opts.Demo,
+		sshVMUser:        opts.SSHVMUser,
+		sshHostUser:      opts.SSHHostUser,
+		sshUser:          opts.SSHUser,
+		sshUsers:         copySSHUsers(opts.SSHUsers),
+		sshIdentityFiles: copySSHIdentityFiles(opts.SSHIdentityFiles),
+		handoff:          opts.Handoff,
+		out:              opts.Out,
 	}
 	if m.handoff == nil {
 		m.handoff = realHandoff{}
@@ -1461,6 +1478,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case sshIdentitiesMsg:
+		return m, m.applySSHIdentities(msg)
+
 	case credRequestMsg:
 		// A second concurrent ask cannot arrive here: the coordinator only
 		// hands out another request after this one is resolved and the
@@ -2065,6 +2085,16 @@ func copySSHUsers(in map[string]string) map[string]string {
 	out := make(map[string]string, len(in))
 	for k, v := range in {
 		if v != "" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func copySSHIdentityFiles(in map[string]string) map[string]string {
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		if strings.TrimSpace(v) != "" {
 			out[k] = v
 		}
 	}

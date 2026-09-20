@@ -1634,7 +1634,8 @@ func TestSavingANestedContextReturnsToTheMemberPane(t *testing.T) {
 	b := twoHealthy()
 	m := newTestModel(t, b, Options{Current: "prod"})
 	press(t, m, "7", "enter", "enter", "enter")
-	// The member header's actions are SSH, SSH as a different user, add-context,
+	// The member header's actions are SSH, SSH with a different user or key,
+	// add-context,
 	// open, MoRef, copy.
 	press(t, m, "down", "down", "enter")
 	settleForm(m)

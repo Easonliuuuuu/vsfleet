@@ -37,7 +37,7 @@ via_moref = "vm-1234"
 
 [contexts.transport]
 type = "socks5"
-proxy_address = "127.0.0.1:1080"
+address = "127.0.0.1:1080"
 remote_dns = true
 
 [contexts.tls]
@@ -149,6 +149,56 @@ an unauthenticated SOCKS5 or HTTP CONNECT proxy becomes an `ssh -o
 ProxyCommand=...` argument automatically when a compatible `nc` is installed.
 HTTPS and authenticated proxies are declined because their credentials or TLS
 handshake cannot safely be represented by the generated command.
+
+### SSH routes
+
+A context's transport describes how vsfleet reaches the **vCenter**. A VM's
+guest address is a different destination: vCenter reports it, but that does not
+mean your workstation can reach it the same way. `[[ssh.routes]]` describes the
+route to SSH targets separately, chosen by context and destination network:
+
+```toml
+[ssh]
+vm_user = "devops"
+
+[[ssh.routes]]
+context = "tdc-1f"
+cidr = "172.31.7.0/24"
+type = "http"
+proxy_address = "100.109.21.17:8080"
+```
+
+Here the vCenter behind `tdc-1f` may stay `direct`; only SSH to guests in
+`172.31.7.0/24` goes through the HTTP CONNECT proxy, exactly as if you had run
+`ssh -o 'ProxyCommand=nc -X connect -x 100.109.21.17:8080 %h %p'`. The rendered
+command in the detail pane shows the route in use. Your remembered user and
+identity for the machine are unaffected.
+
+| Key | Meaning |
+|---|---|
+| `context` | Required. The context the route applies to; guests in another context never match. |
+| `cidr` | Required. The destination network, normalized on load (`172.31.7.5/24` becomes `172.31.7.0/24`). |
+| `type` | `direct`, `socks5` or `http`. `direct` overrides a proxied context for that network. |
+| `proxy_address` | `host:port` of the proxy. Required for `socks5` and `http`; not allowed for `direct`. |
+
+Selection is deterministic and never probes the network:
+
+1. The route for the selected context whose `cidr` contains the VM's IP address
+   applies; when several match, the **longest prefix** wins.
+2. With no match, SSH inherits the context's own transport, as before.
+3. With neither, `ssh` connects normally and `~/.ssh/config` decides.
+
+Routes match the guest IP vSphere reports, whether you connect by DNS name or
+by address, and are never chosen by resolving a hostname. ESXi hosts are known
+by name rather than IP, so they keep following the context's transport. A route
+only adds a `ProxyCommand` when it is a proxy type; it does not replace
+`~/.ssh/config`. There is no fallback between routes: a connection that fails
+through its route fails, rather than being retried through another proxy.
+
+`https` and authenticated proxies are rejected in routes for the reason above,
+and routes carry no credentials. Duplicate rules for the same context and
+network are an error unless identical, and `vsfleet` refuses to start on an
+invalid route.
 
 ## TLS policies
 

@@ -163,13 +163,25 @@ func (m *Model) sshAsAction(r row, address string) action {
 
 func (m *Model) sshSpec(r row, address string) (SSHSpec, string) {
 	spec := SSHSpec{Address: address, User: m.sshUserFor(r), IdentityFile: m.sshIdentityFor(r)}
-	if st := m.byName[r.context]; st != nil {
-		args, reason := proxyArgs(st.cc.Transport)
-		if reason != "" {
-			return spec, reason
+	// Most specific first: an explicit SSH route for this context and the
+	// machine's IP, else the context's own transport, else whatever ssh(1)
+	// resolves. The route is matched on the row's IP rather than on address,
+	// which may be the guest's DNS name — otherwise the route would silently
+	// not apply to the first action offered on most VMs, and matching a name
+	// would need a lookup just to draw the menu.
+	transport, routed := config.ResolveSSHRoute(m.sshRoutes, r.context, r.target.address)
+	if !routed {
+		st := m.byName[r.context]
+		if st == nil {
+			return spec, ""
 		}
-		spec.ProxyArgs = args
+		transport = st.cc.Transport
 	}
+	args, reason := proxyArgs(transport)
+	if reason != "" {
+		return spec, reason
+	}
+	spec.ProxyArgs = args
 	return spec, ""
 }
 

@@ -50,6 +50,11 @@ type SSHConfig struct {
 	VMUser string `toml:"vm_user,omitempty" json:"vm_user,omitempty"`
 	// HostUser is the default remote username for ESXi host addresses.
 	HostUser string `toml:"host_user,omitempty" json:"host_user,omitempty"`
+	// Routes choose how the workstation reaches an SSH target from its
+	// context and destination CIDR, independently of how vsfleet reaches
+	// the vCenter. No matching route leaves the context's own transport in
+	// charge; see SSHRoute.
+	Routes []SSHRoute `toml:"routes,omitempty" json:"routes,omitempty"`
 }
 
 // DefaultPath returns the configuration file path, honouring VSFLEET_CONFIG and
@@ -97,6 +102,9 @@ func Load(path string) (*Config, error) {
 	for _, c := range cfg.Contexts {
 		c.Normalize()
 	}
+	for i := range cfg.SSH.Routes {
+		cfg.SSH.Routes[i].Normalize()
+	}
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -124,7 +132,7 @@ func (c *Config) Validate() error {
 	if c.CurrentContext != "" && !seen[c.CurrentContext] {
 		return fmt.Errorf("current_context %q does not name a configured context", c.CurrentContext)
 	}
-	return nil
+	return c.SSH.validate(seen)
 }
 
 // Context returns the context with the given name. An empty name returns the

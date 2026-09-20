@@ -372,17 +372,19 @@ func countSegment(t theme, n int, label string, style lipgloss.Style) string {
 func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	if m.historyPane != historyPaneChanges {
 		switch {
-		case m.historyPane == historyPaneHealth && key.Matches(msg, m.keys.Up):
+		case (m.historyPane == historyPaneHealth || m.historyPane == historyPaneTrends) && key.Matches(msg, m.keys.Up):
 			m.offset = max(0, m.offset-1)
 			return nil
-		case m.historyPane == historyPaneHealth && key.Matches(msg, m.keys.Down):
+		case (m.historyPane == historyPaneHealth || m.historyPane == historyPaneTrends) && key.Matches(msg, m.keys.Down):
 			m.offset++
 			return nil
 		case key.Matches(msg, m.keys.PrevPane):
 			m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
+			m.offset = 0
 			return nil
 		case key.Matches(msg, m.keys.NextPane):
 			m.historyPane = (m.historyPane + 1) % historyPaneCount
+			m.offset = 0
 			return nil
 		case key.Matches(msg, m.keys.Capture):
 			// Capture is the hub's primary action, so it answers from every
@@ -1100,62 +1102,169 @@ func (m *Model) viewHistoryRunEdit() []string {
 
 func (m *Model) viewHistoryTrends() []string {
 	t := m.theme
-	lines := []string{t.title.Render("Trends"), "", t.dim.Render("  " + m.historyScopeLabel() + " · last 30 complete assessments · ↑/↓ details")}
+	sub := "last 30 complete assessments · ↑/↓ scroll"
+	if scope := m.historyScopeLabel(); scope != "" {
+		sub = scope + " · " + sub
+	}
+	head := []string{t.title.Render("Trends"), "", t.dim.Render("  " + sub)}
 	if m.historyTrendsErr != nil {
-		return append(lines, t.warn.Render("  "+m.historyTrendsErr.Error()))
+		return append(head, t.warn.Render("  "+m.historyTrendsErr.Error()))
 	}
 	if m.historyChurn == nil || m.historySnapshots == nil {
-		return append(lines, t.dim.Render("  loading history trends…"))
+		return append(head, t.dim.Render("  loading history trends…"))
 	}
-	var vmValues, snapshotValues []float64
-	for _, p := range m.historyChurn.Points {
+	lines := append(head, "")
+	lines = append(lines, m.trendCapacityLines()...)
+	lines = append(lines, m.trendDatastoreLines()...)
+	lines = append(lines, m.trendHistoryLines()...)
+	h := m.bodyHeight()
+	m.offset = clamp(m.offset, 0, max(0, len(lines)-h))
+	return scrollLines(lines, m.offset, h)
+}
+
+// trendCapacityLines is the estate's latest capacity, one row per resource
+// kind, so the numbers beside it read as "what the estate holds now".
+func (m *Model) trendCapacityLines() []string {
+	t := m.theme
+	if m.historyCapacity == nil {
+		return nil
+	}
+	var rows []string
+	for _, series := range m.historyCapacity.Series {
+		if series.Scope != "estate" || len(series.Points) == 0 {
+			continue
+		}
+		point := series.Points[len(series.Points)-1]
+		value := t.dim.Render("—")
+		if point.StorageCapacity != nil {
+			value = "storage " + tuiBytes(*point.StorageCapacity)
+		} else if point.CPUCapacity != nil {
+			value = "cpu " + humanize.MHz(int64(*point.CPUCapacity))
+		}
+		rows = append(rows, fmt.Sprintf("  %-12s %s", series.Kind, value))
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	return append(append([]string{t.header.Render("  CAPACITY NOW")}, rows...), "")
+}
+
+// trendDatastoreLines ranks datastores by how soon they run out, then by
+// growth. Datastores with neither are folded into one line: a wall of
+// "growth — projected unknown" rows says nothing and buries the ones that do.
+func (m *Model) trendDatastoreLines() []string {
+	t := m.theme
+	if m.historyCapacityReport == nil || len(m.historyCapacityReport.Datastores) == 0 {
+		return nil
+	}
+	var known, unknown []assessment.DatastoreCapacity
+	for _, ds := range m.historyCapacityReport.Datastores {
+		if ds.UsedGrowthBytes == nil && (ds.Projection == nil || ds.Projection.DaysRemaining == nil) {
+			unknown = append(unknown, ds)
+			continue
+		}
+		known = append(known, ds)
+	}
+	sort.SliceStable(known, func(i, j int) bool {
+		di, dj := known[i].Projection, known[j].Projection
+		hi := di != nil && di.DaysRemaining != nil
+		hj := dj != nil && dj.DaysRemaining != nil
+		switch {
+		case hi && hj:
+			return *di.DaysRemaining < *dj.DaysRemaining
+		case hi != hj:
+			return hi
+		}
+		gi, gj := known[i].UsedGrowthBytes, known[j].UsedGrowthBytes
+		return gi != nil && gj != nil && *gi > *gj
+	})
+	nameW := clamp(m.width-4-11-11, 16, 48)
+	out := []string{t.header.Render(fmt.Sprintf("  %-*s  %10s  %9s", nameW, "DATASTORE", "GROWTH", "RUNS OUT"))}
+	for _, ds := range known {
+		growth := t.dim.Render(fmt.Sprintf("%10s", "—"))
+		if ds.UsedGrowthBytes != nil {
+			sign := ""
+			if *ds.UsedGrowthBytes > 0 {
+				sign = "+"
+			}
+			growth = fmt.Sprintf("%10s", sign+tuiBytes(*ds.UsedGrowthBytes))
+		}
+		runway := t.dim.Render(fmt.Sprintf("%9s", "—"))
+		if ds.Projection != nil && ds.Projection.DaysRemaining != nil {
+			days := *ds.Projection.DaysRemaining
+			style := t.text
+			switch {
+			case days <= 7:
+				style = t.bad
+			case days <= 30:
+				style = t.warn
+			}
+			runway = style.Render(fmt.Sprintf("%9s", fmt.Sprintf("in %.0fd", days)))
+		}
+		out = append(out, fmt.Sprintf("  %-*s  %s  %s", nameW, middleTruncate(ds.Object.Name, nameW), growth, runway))
+	}
+	if len(unknown) > 0 {
+		noun := "datastores"
+		if len(unknown) == 1 {
+			noun = "datastore"
+		}
+		out = append(out, t.dim.Render(fmt.Sprintf("  + %d %s without enough history to show growth", len(unknown), noun)))
+	}
+	return append(out, "")
+}
+
+// trendHistoryLines is the per-assessment table, newest first so the current
+// state is at the top, under sparklines that read oldest to newest.
+func (m *Model) trendHistoryLines() []string {
+	t := m.theme
+	points := m.historyChurn.Points
+	var vmValues, snapValues []float64
+	for _, p := range points {
 		vmValues = append(vmValues, float64(p.VMCount))
 	}
 	for _, p := range m.historySnapshots.Points {
-		snapshotValues = append(snapshotValues, float64(p.Total))
+		snapValues = append(snapValues, float64(p.Total))
 	}
-	lines = append(lines,
-		fmt.Sprintf("  VMs       %s", tuiSparkline(vmValues)),
-		fmt.Sprintf("  snapshots %s", tuiSparkline(snapshotValues)),
+	latest := func(v []float64) string {
+		if len(v) == 0 {
+			return ""
+		}
+		return t.dim.Render(fmt.Sprintf("  now %.0f", v[len(v)-1]))
+	}
+	out := []string{
+		t.header.Render("  ASSESSMENT HISTORY") + t.dim.Render("  (sparklines: oldest → newest)"),
+		fmt.Sprintf("  %-10s %s%s", "VMs", tuiSparkline(vmValues), latest(vmValues)),
+		fmt.Sprintf("  %-10s %s%s", "snapshots", tuiSparkline(snapValues), latest(snapValues)),
 		"",
-		t.header.Render("  DATE        VMs   +  -  →  ~   snapshots  stale"),
-	)
-	if m.historyCapacity != nil {
-		for _, series := range m.historyCapacity.Series {
-			if series.Scope != "estate" || len(series.Points) == 0 {
-				continue
-			}
-			point := series.Points[len(series.Points)-1]
-			value := "—"
-			if point.StorageCapacity != nil {
-				value = "storage " + tuiBytes(*point.StorageCapacity)
-			} else if point.CPUCapacity != nil {
-				value = "cpu " + humanize.MHz(int64(*point.CPUCapacity))
-			}
-			lines = append(lines, fmt.Sprintf("  %-8s %s", series.Kind, value))
-		}
+		t.header.Render("  RUN    WHEN              VMS   NEW  GONE MOVED  EDIT  SNAPS STALE"),
 	}
-	if m.historyCapacityReport != nil {
-		for _, datastore := range m.historyCapacityReport.Datastores {
-			growth := "—"
-			if datastore.UsedGrowthBytes != nil {
-				growth = tuiBytes(*datastore.UsedGrowthBytes)
-			}
-			eta := "unknown"
-			if datastore.Projection != nil && datastore.Projection.DaysRemaining != nil {
-				eta = fmt.Sprintf("%.0fd", *datastore.Projection.DaysRemaining)
-			}
-			lines = append(lines, fmt.Sprintf("  %-18s growth %-10s projected %-8s", datastore.Object.Name, growth, eta))
-		}
-	}
-	for i, p := range m.historyChurn.Points {
+	for i := len(points) - 1; i >= 0; i-- {
+		p := points[i]
 		sp := assessment.SnapshotTrendPoint{}
-		if m.historySnapshots != nil && i < len(m.historySnapshots.Points) {
+		if i < len(m.historySnapshots.Points) {
 			sp = m.historySnapshots.Points[i]
 		}
-		lines = append(lines, fmt.Sprintf("  %-10s  %-4d %2d %2d %2d %2d      %-4d      %-4d", p.Run.StartedAt.Local().Format("2006-01-02"), p.VMCount, p.Appeared, p.Vanished, p.Moved, p.Modified, sp.Total, sp.Stale))
+		row := fmt.Sprintf("  %-6s %-16s %5d %5d %5d %5d %5d %6d %5d",
+			historyRunLabel(p.Run.ID), p.Run.StartedAt.Local().Format("2006-01-02 15:04"),
+			p.VMCount, p.Appeared, p.Vanished, p.Moved, p.Modified, sp.Total, sp.Stale)
+		if p.Appeared+p.Vanished+p.Moved+p.Modified == 0 {
+			row = t.dim.Render(row)
+		}
+		out = append(out, row)
 	}
-	return scrollLines(lines, 0, m.bodyHeight())
+	return out
+}
+
+// middleTruncate shortens a long identifier from the middle, keeping both the
+// distinguishing prefix and suffix that datastore names tend to differ in.
+func middleTruncate(s string, w int) string {
+	r := []rune(s)
+	if len(r) <= w || w < 5 {
+		return s
+	}
+	keep := w - 1
+	head := keep / 2
+	return string(r[:head]) + "…" + string(r[len(r)-(keep-head):])
 }
 
 func tuiBytes(value float64) string {

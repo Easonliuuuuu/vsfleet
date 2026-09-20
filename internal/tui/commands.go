@@ -160,9 +160,13 @@ func loadHistoryCoverageCmd(ctx context.Context, service *assessment.Service, ru
 	}
 }
 
-func loadHistoryDiffCmd(ctx context.Context, service *assessment.Service, base, target int64) tea.Cmd {
+// loadHistoryDiffCmd compares two runs over the vCenter(s) in scope. Passing
+// the scope through matters: a comparison presented under a single selected
+// vCenter must not count another vCenter's churn, and the estate-wide scope
+// passes nil, which is every context.
+func loadHistoryDiffCmd(ctx context.Context, service *assessment.Service, base, target int64, contexts []string) tea.Cmd {
 	return func() tea.Msg {
-		d, err := service.Diff(ctx, base, target, false)
+		d, err := service.DiffForContexts(ctx, base, target, false, contexts)
 		return historyDiffMsg{diff: &d, err: err}
 	}
 }
@@ -181,9 +185,14 @@ func loadHistoryTimelineCmd(ctx context.Context, service *assessment.Service, qu
 	}
 }
 
-func loadHistoryTrendsCmd(ctx context.Context, service *assessment.Service) tea.Cmd {
+// loadHistoryTrendsCmd reads the trend series for the vCenter(s) in scope. An
+// unscoped read would pool every stored vCenter into one line, so a single
+// selected vCenter would be shown someone else's VM count, and a run that
+// failed to reach it would read as a fleet-wide dip rather than as the missing
+// evidence it is.
+func loadHistoryTrendsCmd(ctx context.Context, service *assessment.Service, contexts []string) tea.Cmd {
 	return func() tea.Msg {
-		opts := assessment.TrendOptions{Limit: 30}
+		opts := assessment.TrendOptions{Limit: 30, Contexts: contexts}
 		churn, err := service.ChurnTrend(ctx, opts)
 		if err != nil {
 			return historyTrendsMsg{err: err}

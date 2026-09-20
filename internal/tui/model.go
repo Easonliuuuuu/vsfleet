@@ -647,6 +647,10 @@ type Model struct {
 	historyCapacityReport *assessment.CapacityReport
 	historyHealth         *health.Report
 	historyHealthErr      error
+	// historyTrendsErr is the Trends pane's own failure. Trends and Changes
+	// read different evidence under the same scope, so one pane having nothing
+	// to show must not put an error banner over the other pane's answer.
+	historyTrendsErr error
 	// historyCoverage is which vCenters each stored run actually reached,
 	// keyed by run ID then context name with the collection status as the
 	// value. The Changes pane draws it as a matrix under the run axis: a
@@ -1543,11 +1547,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case historyDiffMsg:
-		m.changeDiff, m.historyErr = msg.diff, msg.err
+		m.changeDiff, m.historyErr = msg.diff, m.historyScopeError(msg.err, "stored assessments")
 		m.changeCursor, m.changeOffset = 0, 0
 		return m, nil
 	case historyTrendsMsg:
-		m.historyErr = msg.err
+		m.historyTrendsErr = m.historyScopeError(msg.err, "complete assessments")
 		if msg.err == nil {
 			m.historyChurn = &msg.churn
 			m.historySnapshots = &msg.snapshots
@@ -1592,7 +1596,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setMessage(fmt.Sprintf("assessment %d saved (%s)", msg.run.ID, msg.run.Status), msg.run.Status == assessment.RunPartial)
-		return m, tea.Batch(loadHistoryRunsCmd(m.ctx, m.assessment), loadHistoryTrendsCmd(m.ctx, m.assessment), loadHistoryHealthCmd(m.ctx, m.assessment, 0, health.Options{Thresholds: health.DefaultThresholds()}))
+		return m, tea.Batch(loadHistoryRunsCmd(m.ctx, m.assessment), loadHistoryTrendsCmd(m.ctx, m.assessment, m.historyScope()), loadHistoryHealthCmd(m.ctx, m.assessment, 0, health.Options{Thresholds: health.DefaultThresholds()}))
 	case historyTimelineMsg:
 		m.timeline, m.historyErr = msg.events, msg.err
 		m.timelineCursor, m.timelineOffset = 0, 0

@@ -246,7 +246,7 @@ func (s *Store) contributingTrendRuns(ctx context.Context, opts TrendOptions) ([
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		return nil, fmt.Errorf("unknown assessment context(s): %s", strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("%w(s): %s", ErrUnknownStoredContext, strings.Join(unknown, ", "))
 	}
 
 	contributing := make([]Run, 0, len(eligible))

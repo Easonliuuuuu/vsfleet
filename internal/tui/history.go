@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -32,6 +33,7 @@ func (m *Model) enterChanges() tea.Cmd {
 	m.historyCoverage = nil
 	m.historyHealth = nil
 	m.historyHealthErr = nil
+	m.historyTrendsErr = nil
 	if m.assessment == nil {
 		m.historyErr = fmt.Errorf("historical assessments are unavailable")
 		m.historyHealthErr = fmt.Errorf("historical assessments are unavailable")
@@ -40,7 +42,7 @@ func (m *Model) enterChanges() tea.Cmd {
 	m.historyErr = nil
 	return tea.Batch(
 		loadHistoryRunsCmd(m.ctx, m.assessment),
-		loadHistoryTrendsCmd(m.ctx, m.assessment),
+		loadHistoryTrendsCmd(m.ctx, m.assessment, m.historyScope()),
 		loadHistoryHealthCmd(m.ctx, m.assessment, 0, health.Options{Thresholds: health.DefaultThresholds()}),
 	)
 }
@@ -80,7 +82,7 @@ func (m *Model) historyDiffCommand() tea.Cmd {
 	if m.baseRun == 0 || m.targetRun == 0 || m.baseRun == m.targetRun {
 		return nil
 	}
-	return loadHistoryDiffCmd(m.ctx, m.assessment, m.baseRun, m.targetRun)
+	return loadHistoryDiffCmd(m.ctx, m.assessment, m.baseRun, m.targetRun, m.historyScope())
 }
 
 func (m *Model) changeRows() []historyRow {
@@ -640,6 +642,56 @@ func (m *Model) captureContexts() []*config.Context {
 	return contexts
 }
 
+// historyScope is the stored-context filter the History panes read under: the
+// names of the vCenter(s) in scope, or nil for the all-vCenters view, which is
+// every stored context. It is deliberately the same scope "n" captures, so the
+// pane answers for the vCenter the operator is actually looking at.
+func (m *Model) historyScope() []string {
+	if m.allScope {
+		return nil
+	}
+	states := m.inScope()
+	names := make([]string, 0, len(states))
+	for _, st := range states {
+		if st.cc != nil && st.cc.Name != "" {
+			names = append(names, st.cc.Name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return names
+}
+
+// historyScopeLabel names that scope for a pane header, so a number is never
+// read against the wrong estate.
+func (m *Model) historyScopeLabel() string {
+	names := m.historyScope()
+	switch {
+	case len(names) == 0:
+		return "all vCenters"
+	case len(names) == 1:
+		return names[0]
+	default:
+		return fmt.Sprintf("%d vCenters", len(names))
+	}
+}
+
+// historyScopeError translates the store's "never recorded that context" error
+// into what it actually means here. The operator did not mistype a selector:
+// the vCenter they have selected simply has not been captured yet, which is an
+// empty pane to explain rather than a failure to report.
+func (m *Model) historyScopeError(err error, evidence string) error {
+	if err == nil || !errors.Is(err, assessment.ErrUnknownStoredContext) {
+		return err
+	}
+	msg := "no " + evidence + " for " + m.historyScopeLabel()
+	if m.canCapture() {
+		msg += " — press n to capture"
+	}
+	return fmt.Errorf("%s", msg)
+}
+
 // captureCommand starts a capture across the vCenter(s) in scope, ignoring
 // the keypress when history is unavailable, a capture is already running, or
 // scope is empty.
@@ -861,7 +913,10 @@ func (m *Model) changesHeaderLines() []string {
 
 func (m *Model) viewHistoryHealth() []string {
 	t := m.theme
-	lines := []string{t.title.Render("Health"), "", t.dim.Render("  read-only findings from the latest stored assessment")}
+	// Health is not scoped: its rules run over the whole stored assessment, so
+	// the header says so rather than letting it be read as the selected
+	// vCenter's verdict.
+	lines := []string{t.title.Render("Health"), "", t.dim.Render("  all vCenters · read-only findings from the latest stored assessment")}
 	if m.historyHealthErr != nil {
 		return append(lines, "  "+t.warn.Render(m.historyHealthErr.Error()))
 	}
@@ -1045,9 +1100,9 @@ func (m *Model) viewHistoryRunEdit() []string {
 
 func (m *Model) viewHistoryTrends() []string {
 	t := m.theme
-	lines := []string{t.title.Render("Trends"), "", t.dim.Render("  last 30 complete assessments · ↑/↓ details")}
-	if m.historyErr != nil {
-		return append(lines, t.warn.Render("  "+m.historyErr.Error()))
+	lines := []string{t.title.Render("Trends"), "", t.dim.Render("  " + m.historyScopeLabel() + " · last 30 complete assessments · ↑/↓ details")}
+	if m.historyTrendsErr != nil {
+		return append(lines, t.warn.Render("  "+m.historyTrendsErr.Error()))
 	}
 	if m.historyChurn == nil || m.historySnapshots == nil {
 		return append(lines, t.dim.Render("  loading history trends…"))

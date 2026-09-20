@@ -208,6 +208,10 @@ normal inventory remains available.
 3. Press `Tab` to search every vCenter and resource kind in cached inventory.
 4. Press `Tab` again or `Esc` to narrow back while preserving the query.
 
+While the query is still focused, `↑`/`↓` and `PgUp`/`PgDn` move the selection
+without pressing `Enter` first; `Enter` then stops typing and keeps the
+selection.
+
 ## Refresh and cache behavior
 
 - The selected context refreshes every 20 seconds by default.

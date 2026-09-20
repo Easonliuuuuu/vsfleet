@@ -514,6 +514,47 @@ func TestFocusedFilterControls(t *testing.T) {
 	}
 }
 
+func TestArrowKeysMoveSelectionWhileFilterIsFocused(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "/")
+	if got := len(m.rows()); got < 2 {
+		t.Fatalf("need at least two rows to move between, got %d", got)
+	}
+	press(t, m, "down")
+	if !m.filtering {
+		t.Fatal("down must not leave the focused filter")
+	}
+	if m.cursor != 1 {
+		t.Fatalf("down while filtering should move the cursor to 1, got %d", m.cursor)
+	}
+	press(t, m, "up")
+	if m.cursor != 0 {
+		t.Fatalf("up while filtering should move the cursor back to 0, got %d", m.cursor)
+	}
+	typeText(t, m, "j")
+	if got := m.filter.Value(); got != "j" {
+		t.Fatalf("letters must still type into the filter, got %q", got)
+	}
+}
+
+func TestArrowKeysMoveSelectionWhileSearchIsFocused(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+
+	press(t, m, "tab")
+	if m.mode != modeSearch || !m.filtering {
+		t.Fatalf("tab should open a focused search, mode=%v filtering=%v", m.mode, m.filtering)
+	}
+	typeText(t, m, "-") // matches every generated name, so there is a list to walk
+	if got := len(m.visibleRows()); got < 2 {
+		t.Fatalf("need at least two search results to move between, got %d", got)
+	}
+	press(t, m, "down")
+	if !m.filtering || m.cursor != 1 {
+		t.Fatalf("down should move within results while still typing, filtering=%v cursor=%d", m.filtering, m.cursor)
+	}
+}
+
 func TestFocusedFilterEscapeClearsLocalFilter(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 

@@ -2332,6 +2332,14 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 			m.filter.Blur()
 			m.filter.SetValue("")
 			return nil
+		case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown:
+			// Selection keys work while the query is still being typed, so a
+			// search needs no "enter" to lock it before the list can be walked.
+			if m.ds != nil {
+				n := len(m.visibleDSEntries())
+				m.ds.cursor = clamp(m.ds.cursor+filterMoveDelta(msg, max(1, m.bodyHeight()-6)), 0, max(0, n-1))
+			}
+			return nil
 		}
 		var cmd tea.Cmd
 		m.filter, cmd = m.filter.Update(msg)
@@ -2360,6 +2368,17 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 		m.filter.SetValue("")
 		m.clampCursor()
 		return nil
+	case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown:
+		if m.mode != modeBrowse && m.mode != modeSearch {
+			// Other panes keep their own cursors; leave the key to the input.
+			break
+		}
+		// Selection keys work while the query is still being typed, so a
+		// filter or search needs no "enter" to lock it before the results can
+		// be walked. Letters (j/k) stay text, which is why only the dedicated
+		// arrow and page keys are taken here.
+		m.move(filterMoveDelta(msg, m.tableHeight()))
+		return nil
 	}
 	var cmd tea.Cmd
 	m.filter, cmd = m.filter.Update(msg)
@@ -2368,6 +2387,22 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 	m.cursor = 0
 	m.offset = 0
 	return cmd
+}
+
+// filterMoveDelta is how far a selection key moves the cursor while the query
+// is focused.
+func filterMoveDelta(msg tea.KeyMsg, page int) int {
+	switch msg.Type {
+	case tea.KeyUp:
+		return -1
+	case tea.KeyDown:
+		return 1
+	case tea.KeyPgUp:
+		return -page
+	case tea.KeyPgDown:
+		return page
+	}
+	return 0
 }
 
 func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {

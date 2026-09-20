@@ -8,6 +8,6 @@ vsfleet  history  ·  Changes   ←/→ switch
   edge-vc   ●  
   prod-vc   ●  
 
-  no comparable assessments
+  fewer than two stored assessments — nothing to compare
 prod-vc · 3 VMs, 2 templates, 2 hosts, 2 clusters, 3 vApps, 2 datastores, 2 networks
 ←/→ move end  b baseline  t target  c clip to shared coverage  1-4 impact  tab next pane  esc back  q quit

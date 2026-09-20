@@ -3,6 +3,7 @@ package tui
 import (
 	"errors"
 	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 
@@ -453,5 +454,174 @@ func TestActionPopupFitsTerminalWidth(t *testing.T) {
 		if w := ansi.StringWidth(line); w > m.width {
 			t.Errorf("action popup line exceeds terminal width (%d > %d): %q", w, m.width, line)
 		}
+	}
+}
+
+// sshRouteModel builds a model over contexts a (given transport) and b, where
+// every VM is app-01 at 10.20.0.11 — the same guest IP in both, as two
+// isolated estates can have — and hands back what the fake handoff records.
+func sshRouteModel(t *testing.T, contexts []*config.Context, routes []config.SSHRoute, opts Options) (*Model, *fakeHandoff) {
+	t.Helper()
+	b := &fakeBackend{contexts: contexts, inventories: map[string]*vsphere.Inventory{}}
+	for _, c := range contexts {
+		inv := inventoryFor(c.Name)
+		inv.VMs[0].GuestHostName = "app-01.corp.local"
+		b.inventories[c.Name] = inv
+	}
+	fake := &fakeHandoff{}
+	opts.Handoff, opts.SSHRoutes = fake, routes
+	return newTestModel(t, b, opts), fake
+}
+
+func runSSH(t *testing.T, m *Model, fake *fakeHandoff, r row, target string) SSHSpec {
+	t.Helper()
+	n := len(fake.ssh)
+	a := m.sshAction(r, target)
+	if a.disabled != "" {
+		t.Fatalf("SSH to %s disabled: %s", target, a.disabled)
+	}
+	if a.run(m) == nil || len(fake.ssh) != n+1 {
+		t.Fatalf("SSH to %s did not launch", target)
+	}
+	return fake.ssh[n]
+}
+
+const httpProxyArg = "ProxyCommand=nc -X connect -x 100.109.21.17:8080 %h %p"
+
+func TestSSHRouteProxiesGuestOfDirectVCenter(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "100.109.21.17:8080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab", SSHVMUser: "devops"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+
+	// Both the DNS-name action and the IP action follow the route: it is
+	// matched on the guest's IP, not on whichever string ssh connects to.
+	for _, target := range sshTargets(r) {
+		spec := runSSH(t, m, fake, r, target)
+		if want := []string{"-o", httpProxyArg}; !slices.Equal(spec.ProxyArgs, want) {
+			t.Errorf("SSH to %s: ProxyArgs = %q, want %q", target, spec.ProxyArgs, want)
+		}
+		if spec.User != "devops" {
+			t.Errorf("SSH to %s: user = %q, want devops", target, spec.User)
+		}
+	}
+	if targets := sshTargets(r); len(targets) != 2 || targets[0] != "app-01.corp.local" {
+		t.Fatalf("fixture no longer offers a hostname first: %q", targets)
+	}
+	if cmd := sshCommand(SSHSpec{Address: "x", ProxyArgs: fake.ssh[0].ProxyArgs}); !strings.Contains(cmd, "'ProxyCommand=nc -X connect -x 100.109.21.17:8080 %h %p'") {
+		t.Errorf("proxy is not visible, shell-quoted, in the rendered command: %s", cmd)
+	}
+}
+
+func TestSSHRouteSOCKS5(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/16", Type: "socks5", ProxyAddress: "127.0.0.1:1080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	spec := runSSH(t, m, fake, r, r.target.address)
+	if want := []string{"-o", "ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p"}; !slices.Equal(spec.ProxyArgs, want) {
+		t.Errorf("ProxyArgs = %q, want %q", spec.ProxyArgs, want)
+	}
+}
+
+func TestSSHWithoutMatchingRouteInheritsContextTransport(t *testing.T) {
+	inherited := []string{"-o", "ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p"}
+	// A route for another network, and one for this network in another context.
+	routes := []config.SSHRoute{
+		{Context: "osaka", CIDR: "192.168.0.0/16", Type: "http", ProxyAddress: "100.109.21.17:8080"},
+		{Context: "elsewhere", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "100.109.21.17:8080"},
+	}
+	m, fake := sshRouteModel(t, []*config.Context{proxiedCtx("osaka", "https://vcsa.osaka.internal", "127.0.0.1:1080")}, routes, Options{Current: "osaka"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	if spec := runSSH(t, m, fake, r, r.target.address); !slices.Equal(spec.ProxyArgs, inherited) {
+		t.Errorf("ProxyArgs = %q, want the context's own route %q", spec.ProxyArgs, inherited)
+	}
+}
+
+func TestSSHDirectRouteOverridesContextProxy(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "osaka", CIDR: "10.20.0.0/24", Type: "direct"}}
+	m, fake := sshRouteModel(t, []*config.Context{proxiedCtx("osaka", "https://vcsa.osaka.internal", "127.0.0.1:1080")}, routes, Options{Current: "osaka"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	if spec := runSSH(t, m, fake, r, r.target.address); len(spec.ProxyArgs) != 0 {
+		t.Errorf("direct route should bypass the proxied context, got %q", spec.ProxyArgs)
+	}
+}
+
+func TestSSHRouteLongestPrefixAndContextIsolation(t *testing.T) {
+	routes := []config.SSHRoute{
+		{Context: "one", CIDR: "10.20.0.0/16", Type: "socks5", ProxyAddress: "wide:1"},
+		{Context: "one", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "narrow:1"},
+		{Context: "two", CIDR: "10.20.0.0/24", Type: "socks5", ProxyAddress: "other:1"},
+	}
+	contexts := []*config.Context{ctx("one", "https://vcsa.one.internal"), ctx("two", "https://vcsa.two.internal"), ctx("three", "https://vcsa.three.internal")}
+	want := map[string][]string{
+		"one":   {"-o", "ProxyCommand=nc -X connect -x narrow:1 %h %p"},
+		"two":   {"-o", "ProxyCommand=nc -X 5 -x other:1 %h %p"},
+		"three": nil,
+	}
+	// Each context holds the same guest IP; the same routes must resolve
+	// them independently.
+	for _, c := range contexts {
+		m, fake := sshRouteModel(t, contexts, routes, Options{Current: c.Name})
+		r := findRow(t, m, vsphere.KindVM, "app-01")
+		if r.context != c.Name || r.target.address != "10.20.0.11" {
+			t.Fatalf("expected app-01 at 10.20.0.11 in %s, got %s at %q", c.Name, r.context, r.target.address)
+		}
+		if spec := runSSH(t, m, fake, r, r.target.address); !slices.Equal(spec.ProxyArgs, want[c.Name]) {
+			t.Errorf("context %s: ProxyArgs = %q, want %q", c.Name, spec.ProxyArgs, want[c.Name])
+		}
+	}
+}
+
+func TestSSHRouteComposesWithRememberedIdentity(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "100.109.21.17:8080"}}
+	contexts := []*config.Context{ctx("lab", "https://vcsa.lab.internal")}
+	m, fake := sshRouteModel(t, contexts, routes, Options{
+		Current:          "lab",
+		SSHUsers:         map[string]string{"lab/lab-vm-1": "ops"},
+		SSHIdentityFiles: map[string]string{"lab/lab-vm-1": "/home/me/.ssh/id_devops"},
+	})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	spec := runSSH(t, m, fake, r, r.target.address)
+	if spec.User != "ops" || spec.IdentityFile != "/home/me/.ssh/id_devops" || !slices.Equal(spec.ProxyArgs, []string{"-o", httpProxyArg}) {
+		t.Errorf("route, user and identity should compose: %+v", spec)
+	}
+	args := sshArgs(spec)
+	if !slices.Contains(args, httpProxyArg) || !slices.Contains(args, "/home/me/.ssh/id_devops") {
+		t.Errorf("generated args lost the route or the identity: %q", args)
+	}
+}
+
+func TestSSHRouteNeverAppliesToHostnameTargets(t *testing.T) {
+	// An ESXi host is known by name, not IP. A route must not trigger a
+	// lookup to decide, so the host keeps its context's transport.
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "0.0.0.0/0", Type: "http", ProxyAddress: "100.109.21.17:8080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab"})
+	host := findRow(t, m, vsphere.KindHost, "esxi-01")
+	if spec := runSSH(t, m, fake, host, host.target.address); len(spec.ProxyArgs) != 0 {
+		t.Errorf("host named %q should not be routed by CIDR, got %q", host.target.address, spec.ProxyArgs)
+	}
+}
+
+func TestSSHRouteDoesNotBypassUnsupportedContextTransport(t *testing.T) {
+	// An unmatched target still hits proxyArgs' refusal of an authenticated
+	// proxy; a matching route is what opts a subnet out of it.
+	cc := proxiedCtx("osaka", "https://vcsa.osaka.internal", "127.0.0.1:1080")
+	cc.Transport.Username = "svc"
+	m, _ := sshRouteModel(t, []*config.Context{cc}, nil, Options{Current: "osaka"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	if a := m.sshAction(r, r.target.address); !strings.Contains(a.disabled, "authenticated proxy") {
+		t.Errorf("authenticated context proxy must stay explicitly unsupported, got %+v", a)
+	}
+}
+
+func TestDemoSSHRouteLaunchesNothing(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "100.109.21.17:8080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab", Demo: true})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	a := m.sshAction(r, r.target.address)
+	if a.disabled == "" || a.run != nil {
+		t.Errorf("demo mode must not offer a runnable SSH action: %+v", a)
+	}
+	if len(fake.ssh) != 0 {
+		t.Errorf("demo mode launched ssh: %+v", fake.ssh)
 	}
 }

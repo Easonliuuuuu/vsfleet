@@ -138,6 +138,7 @@ func runUI(a *App, cmd *cobra.Command) error {
 		SSHUser:          cfg.SSH.User,
 		SSHVMUser:        cfg.SSH.VMUser,
 		SSHHostUser:      cfg.SSH.HostUser,
+		SSHRoutes:        cfg.SSH.Routes,
 		SSHUsers:         remembered.SSHUsers,
 		SSHIdentityFiles: remembered.SSHIdentityFiles,
 	})

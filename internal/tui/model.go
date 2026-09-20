@@ -482,6 +482,10 @@ type Options struct {
 	// SSHUser is the backwards-compatible shared fallback for both target
 	// kinds. Per-kind values take precedence when set.
 	SSHUser string
+	// SSHRoutes route SSH handoffs by context and destination CIDR,
+	// independently of each context's vCenter transport. Nil leaves every
+	// handoff on its context's transport.
+	SSHRoutes []config.SSHRoute
 	// SSHUsers seeds the users typed into the SSH prompt in earlier runs,
 	// keyed "<context>/<moref>"; Snapshot hands the current set back for the
 	// caller to persist.
@@ -740,6 +744,8 @@ type Model struct {
 	sshHostUser string
 	// sshUser is the backwards-compatible shared fallback.
 	sshUser string
+	// sshRoutes are the configured SSH routes; see Options.SSHRoutes.
+	sshRoutes []config.SSHRoute
 	// sshUsers are the users typed into the SSH prompt, per machine; see
 	// sshUserKey. Snapshot exports them so they outlive the process.
 	sshUsers map[string]string
@@ -790,6 +796,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		sshVMUser:        opts.SSHVMUser,
 		sshHostUser:      opts.SSHHostUser,
 		sshUser:          opts.SSHUser,
+		sshRoutes:        append([]config.SSHRoute(nil), opts.SSHRoutes...),
 		sshUsers:         copySSHUsers(opts.SSHUsers),
 		sshIdentityFiles: copySSHIdentityFiles(opts.SSHIdentityFiles),
 		handoff:          opts.Handoff,

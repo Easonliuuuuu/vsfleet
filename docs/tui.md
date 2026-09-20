@@ -71,7 +71,10 @@ stays in charge.
 The user vsfleet supplies is picked in this order: one you typed for that
 machine, the `[ssh]` table's `vm_user` or `host_user` (see
 [Configuration](configuration.md#ssh)), the shared `[ssh] user`, and otherwise
-none, leaving `ssh` to resolve it as it always does. Failed SSH
+none, leaving `ssh` to resolve it as it always does. The route follows the
+guest's context and IP: a matching `[[ssh.routes]]` rule (see
+[SSH routes](configuration.md#ssh-routes)), else the context's own transport,
+else plain `ssh`. Failed SSH
 sessions use a 15-second initial connection timeout and retain the final
 diagnostic line from OpenSSH in the footer, rather than reducing the cause to
 exit status 255. An explicitly selected identity uses public-key

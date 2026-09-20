@@ -30,7 +30,9 @@ func main() {
 	portBase := flag.Int("port-base", 18443, "first loopback port for simulator endpoints")
 	flag.Parse()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// Ctrl-C belongs to Bubble Tea or an interactive handoff child; only
+	// SIGTERM should cancel the loopback lab and its TUI.
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer stop()
 	lab, err := testbed.Start(ctx, testbed.Options{Root: *root, PortBase: *portBase})
 	if err != nil {

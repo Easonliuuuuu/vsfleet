@@ -90,6 +90,53 @@ func TestPTYJourneys(t *testing.T) {
 		s.expectExitZero()
 	})
 
+	t.Run("SSH failure restores the TUI", func(t *testing.T) {
+		s := startSessionWithSSH(t, "ssh-failure", 30, 100, "fail")
+		s.authenticate()
+		mark := s.mark()
+		s.send("select hosts", "3")
+		s.waitFor(mark, "DC0_C0_H")
+		mark = s.mark()
+		s.send("open first host detail", "\r")
+		s.waitFor(mark, "Managed object")
+		mark = s.mark()
+		s.send("open VM actions", "\r")
+		s.waitFor(mark, "SSH to")
+		mark = s.mark()
+		s.send("start SSH", "\r")
+		s.waitFor(mark, "Permission denied", "ssh session ended failed")
+		mark = s.mark()
+		s.send("prove TUI restored", "?")
+		s.waitFor(mark, "Keys", "Resource kinds")
+		s.send("quit", "q")
+		s.expectExitZero()
+	})
+
+	t.Run("SSH hang cancels and restores the TUI", func(t *testing.T) {
+		s := startSessionWithSSH(t, "ssh-cancel", 30, 100, "hang")
+		s.authenticate()
+		mark := s.mark()
+		s.send("select hosts", "3")
+		s.waitFor(mark, "DC0_C0_H")
+		mark = s.mark()
+		s.send("open first host detail", "\r")
+		s.waitFor(mark, "Managed object")
+		mark = s.mark()
+		s.send("open VM actions", "\r")
+		s.waitFor(mark, "SSH to")
+		mark = s.mark()
+		s.send("start SSH", "\r")
+		s.waitFor(mark, "Connecting:")
+		mark = s.mark()
+		s.send("cancel SSH", "\x03")
+		s.waitFor(mark, "ssh session ended failed")
+		mark = s.mark()
+		s.send("prove TUI restored", "?")
+		s.waitFor(mark, "Keys", "Resource kinds")
+		s.send("quit", "q")
+		s.expectExitZero()
+	})
+
 	t.Run("cancel credential prompt and keep using UI", func(t *testing.T) {
 		s := startSession(t, "credential-cancel", 30, 100)
 		s.waitFor(0, "credentials required")
@@ -223,6 +270,10 @@ type terminalSession struct {
 }
 
 func startSession(t *testing.T, name string, rows, cols uint16) *terminalSession {
+	return startSessionWithSSH(t, name, rows, cols, "")
+}
+
+func startSessionWithSSH(t *testing.T, name string, rows, cols uint16, sshMode string) *terminalSession {
 	t.Helper()
 	dir := filepath.Join(resultsRoot, name)
 	if err := os.RemoveAll(dir); err != nil {
@@ -232,6 +283,9 @@ func startSession(t *testing.T, name string, rows, cols uint16) *terminalSession
 	if err := os.MkdirAll(state, 0o700); err != nil {
 		t.Fatalf("create journey state: %v", err)
 	}
+	if err := os.MkdirAll(filepath.Join(state, "home"), 0o700); err != nil {
+		t.Fatalf("create journey home: %v", err)
+	}
 	portBase, err := availablePortBase()
 	if err != nil {
 		t.Fatal(err)
@@ -240,6 +294,14 @@ func startSession(t *testing.T, name string, rows, cols uint16) *terminalSession
 	cmd := exec.Command(testbedBinary, "--root", state, "--port-base", strconv.Itoa(portBase))
 	cmd.Dir = repoRoot
 	cmd.Env = isolatedEnvironment(os.Environ(), state, name)
+	if sshMode != "" {
+		shimDir := filepath.Join(state, "ssh-bin")
+		if err := installSSHShim(shimDir, sshMode); err != nil {
+			t.Fatalf("install SSH shim: %v", err)
+		}
+		cmd.Env = prependEnv(cmd.Env, "PATH", shimDir)
+		cmd.Env = append(cmd.Env, "VSFLEET_TESTBED_SSH_MODE="+sshMode)
+	}
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
 	if err != nil {
 		t.Fatalf("start %s in PTY: %v", name, err)
@@ -266,6 +328,7 @@ func isolatedEnvironment(base []string, state, name string) []string {
 		"VSFLEET_CONFIG": true, "VSFLEET_HISTORY_DB": true,
 		"VSFLEET_TESTBED_ROOT": true, "VSFLEET_TESTBED_SCENARIO": true,
 		"XDG_CONFIG_HOME": true, "XDG_DATA_HOME": true, "XDG_CACHE_HOME": true,
+		"HOME": true, "SSH_AUTH_SOCK": true,
 	}
 	out := make([]string, 0, len(base)+7)
 	for _, item := range base {
@@ -279,11 +342,41 @@ func isolatedEnvironment(base []string, state, name string) []string {
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TZ=UTC",
+		"HOME="+filepath.Join(state, "home"),
 		"VSFLEET_TESTBED_SCENARIO=pty-"+name,
 		"XDG_CONFIG_HOME="+filepath.Join(state, "xdg-config"),
 		"XDG_DATA_HOME="+filepath.Join(state, "xdg-data"),
 		"XDG_CACHE_HOME="+filepath.Join(state, "xdg-cache"),
 	)
+}
+
+func prependEnv(env []string, key, value string) []string {
+	for i, item := range env {
+		if strings.HasPrefix(item, key+"=") {
+			env[i] = key + "=" + value + string(os.PathListSeparator) + strings.TrimPrefix(item, key+"=")
+			return env
+		}
+	}
+	return append(env, key+"="+value)
+}
+
+func installSSHShim(dir, mode string) error {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	shim := `#!/bin/sh
+if [ "$1" = "-G" ]; then
+  printf 'user testuser\n'
+  exit 0
+fi
+if [ "${VSFLEET_TESTBED_SSH_MODE:-}" = "hang" ]; then
+  trap 'exit 130' INT TERM
+  while :; do sleep 1; done
+fi
+printf 'Permission denied (publickey).\n' >&2
+exit 255
+`
+	return os.WriteFile(filepath.Join(dir, "ssh"), []byte(shim), 0o700)
 }
 
 func (s *terminalSession) authenticate() {

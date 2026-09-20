@@ -32,6 +32,9 @@ type State struct {
 	// config.toml because it is scratch state written by the program, not
 	// something a person edits, and losing it costs one retyped user name.
 	SSHUsers map[string]string `json:"ssh_users,omitempty"`
+	// SSHIdentityFiles holds the private-key path selected for each machine,
+	// keyed "<context>/<moref>". The file itself is never copied into state.
+	SSHIdentityFiles map[string]string `json:"ssh_identity_files,omitempty"`
 }
 
 // DefaultPath returns the state file path, honouring VSFLEET_STATE and then the

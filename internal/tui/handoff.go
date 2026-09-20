@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -34,10 +36,14 @@ type Handoff interface {
 	// OpenURL launches the operator's default browser on url.
 	OpenURL(url string) error
 	// SSH builds the command an ssh session to spec would run. It does not
-	// run it — tea.ExecProcess owns that, so the alternate screen Bubble Tea
+	// run it — the TUI execution adapter owns that, so the alternate screen Bubble Tea
 	// set up (see run.go) is suspended and restored around it correctly —
 	// which also means this method is the entire testable surface of SSH.
 	SSH(spec SSHSpec) (*exec.Cmd, error)
+	// DiscoverSSHIdentities returns existing private-key paths relevant to
+	// address. It never reads key material; paths come from ssh -G and the
+	// conventional top-level files in ~/.ssh.
+	DiscoverSSHIdentities(address string) ([]SSHIdentity, error)
 	// ResolveUser reports the remote user ssh(1) would pick for address
 	// given the operator's own ~/.ssh/config — "" when it cannot tell. It is
 	// for display only: the SSH command keeps an empty SSHSpec.User so
@@ -55,10 +61,18 @@ type SSHSpec struct {
 	Address string
 	// User is the configured default; empty leaves ssh(1) to pick one.
 	User string
+	// IdentityFile is an explicitly selected private-key path. Empty leaves
+	// OpenSSH to use its normal config and agent resolution.
+	IdentityFile string
 	// ProxyArgs are extra ssh(1) arguments — "-o", "ProxyCommand=..." — that
 	// route the connection through the same bastion vsfleet itself uses to
 	// reach this context. Empty means a direct route.
 	ProxyArgs []string
+}
+
+// SSHIdentity is a private-key path offered by the identity picker.
+type SSHIdentity struct {
+	Path string
 }
 
 // realHandoff is the production Handoff: a real clipboard, a real browser, a
@@ -111,8 +125,8 @@ func (realHandoff) OpenURL(url string) error {
 	return nil
 }
 
-// SSH builds the ssh(1) invocation for spec, inheriting the program's own
-// stdio so tea.ExecProcess can hand the whole terminal to it.
+// SSH builds the ssh(1) invocation for spec. The TUI execution adapter owns
+// its stdio and terminal handoff.
 func (realHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	if spec.Address == "" {
 		return nil, errors.New("nothing to connect to")
@@ -123,18 +137,71 @@ func (realHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	if spec.User != "" && !validSSHUser(spec.User) {
 		return nil, fmt.Errorf("refusing to ssh as %q", spec.User)
 	}
+	if spec.IdentityFile != "" {
+		path, err := expandSSHPath(spec.IdentityFile)
+		if err != nil {
+			return nil, err
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("SSH identity %q: %w", displaySSHPath(path), err)
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("SSH identity %q is not a regular file", displaySSHPath(path))
+		}
+		spec.IdentityFile = path
+	}
 	if len(spec.ProxyArgs) > 0 {
 		if err := checkNetcat(); err != nil {
 			return nil, err
 		}
 	}
-	target := spec.Address
-	if spec.User != "" {
-		target = spec.User + "@" + spec.Address
+	return exec.Command("ssh", sshArgs(spec)...), nil
+}
+
+// DiscoverSSHIdentities asks ssh for target-specific IdentityFile entries and
+// supplements them with conventional private-key names in ~/.ssh. A failure
+// to resolve ssh configuration is returned alongside any local candidates so
+// the picker still offers manual entry and the OpenSSH default.
+func (realHandoff) DiscoverSSHIdentities(address string) ([]SSHIdentity, error) {
+	if !validSSHHost(address) {
+		return nil, fmt.Errorf("refusing to inspect SSH configuration for %q", address)
 	}
-	args := append([]string{}, spec.ProxyArgs...)
-	args = append(args, target)
-	return exec.Command("ssh", args...), nil
+	var identities []SSHIdentity
+	var firstErr error
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ssh", "-G", address).Output()
+	if err != nil {
+		firstErr = err
+	} else {
+		for _, path := range parseSSHIdentityFiles(string(out)) {
+			if expanded, ok := existingSSHIdentity(path); ok {
+				identities = appendUniqueSSHIdentity(identities, expanded)
+			}
+		}
+	}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		entries, readErr := os.ReadDir(filepath.Join(home, ".ssh"))
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) && firstErr == nil {
+			firstErr = readErr
+		}
+		var local []string
+		for _, entry := range entries {
+			if entry.IsDir() || !conventionalSSHIdentity(entry.Name()) {
+				continue
+			}
+			local = append(local, filepath.Join(home, ".ssh", entry.Name()))
+		}
+		sort.Strings(local)
+		for _, path := range local {
+			if expanded, ok := existingSSHIdentity(path); ok {
+				identities = appendUniqueSSHIdentity(identities, expanded)
+			}
+		}
+	}
+	return identities, firstErr
 }
 
 // ResolveUser asks ssh(1) itself, through "ssh -G", which prints the fully
@@ -162,6 +229,83 @@ func parseSSHUser(out string) string {
 		}
 	}
 	return ""
+}
+
+func parseSSHIdentityFiles(out string) []string {
+	var paths []string
+	for _, line := range strings.Split(out, "\n") {
+		if path, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "identityfile "); ok {
+			path = strings.TrimSpace(path)
+			if path != "" && !strings.Contains(path, "%") {
+				paths = append(paths, path)
+			}
+		}
+	}
+	return paths
+}
+
+func appendUniqueSSHIdentity(items []SSHIdentity, path string) []SSHIdentity {
+	path, err := expandSSHPath(path)
+	if err != nil {
+		return items
+	}
+	for _, item := range items {
+		if item.Path == path {
+			return items
+		}
+	}
+	return append(items, SSHIdentity{Path: path})
+}
+
+func existingSSHIdentity(path string) (string, bool) {
+	expanded, err := expandSSHPath(path)
+	if err != nil {
+		return "", false
+	}
+	info, err := os.Stat(expanded)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", false
+	}
+	return expanded, true
+}
+
+func conventionalSSHIdentity(name string) bool {
+	if strings.HasSuffix(name, ".pub") || strings.HasSuffix(name, "-cert.pub") {
+		return false
+	}
+	return strings.HasPrefix(name, "id_") || strings.HasSuffix(name, ".pem") || strings.HasSuffix(name, ".key")
+}
+
+func expandSSHPath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", errors.New("SSH identity path is empty")
+	}
+	if path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\\`) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("locate home directory: %w", err)
+		}
+		if path == "~" {
+			path = home
+		} else {
+			path = filepath.Join(home, path[2:])
+		}
+	}
+	if strings.HasPrefix(path, "~") {
+		return "", fmt.Errorf("SSH identity path %q uses an unsupported home expansion", path)
+	}
+	return filepath.Clean(path), nil
+}
+
+func displaySSHPath(path string) string {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		if rel, relErr := filepath.Rel(home, path); relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "~/" + filepath.ToSlash(rel)
+		}
+	}
+	return path
 }
 
 // validSSHHost and validSSHUser guard the two strings that reach ssh(1)'s

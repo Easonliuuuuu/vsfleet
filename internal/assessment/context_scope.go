@@ -1,10 +1,19 @@
 package assessment
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 )
+
+// ErrUnknownStoredContext reports a selector naming a vCenter that no run in
+// the window ever recorded. It is a distinct error because a caller that
+// derives its selectors from live configuration — the TUI, whose scope is
+// whichever vCenter the operator has selected — is asking about a context
+// that is simply not captured yet, which is an empty result to explain rather
+// than a mistake to report.
+var ErrUnknownStoredContext = errors.New("unknown assessment context")
 
 // NormalizeContextSelectors canonicalizes stored-assessment selectors. Empty
 // selectors are rejected so a typo cannot silently widen a query.
@@ -48,7 +57,7 @@ func ValidateStoredContexts(selectors []string, runs ...[]ContextRun) ([]string,
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		return nil, fmt.Errorf("unknown assessment context(s): %s", strings.Join(unknown, ", "))
+		return nil, fmt.Errorf("%w(s): %s", ErrUnknownStoredContext, strings.Join(unknown, ", "))
 	}
 	return wanted, nil
 }

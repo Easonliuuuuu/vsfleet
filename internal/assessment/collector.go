@@ -34,6 +34,9 @@ func (s *Service) Resources(ctx context.Context, runID int64, kind string) ([]Re
 func (s *Service) Diff(ctx context.Context, base, target int64, runtime bool) (Diff, error) {
 	return s.Store.Diff(ctx, base, target, runtime)
 }
+func (s *Service) DiffForContexts(ctx context.Context, base, target int64, runtime bool, contexts []string) (Diff, error) {
+	return s.Store.DiffForContexts(ctx, base, target, runtime, contexts)
+}
 func (s *Service) SnapshotAges(ctx context.Context, run int64, older time.Duration) ([]SnapshotAge, error) {
 	return s.Store.SnapshotAges(ctx, run, older)
 }

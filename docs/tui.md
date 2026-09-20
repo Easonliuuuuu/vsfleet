@@ -162,10 +162,20 @@ member row is annotated with the context name.
 ## History workspace
 
 Press `H` to open the History hub, which contains Changes, Trends, Runs, and
-Health. Use `Tab`/`Shift+Tab` to switch panes. Health shows the migration
-verdict, categories, and default read-only findings for the latest stored
-assessment; `↑`/`↓` scroll the pane. Use `vsfleet health` when thresholds need
-tuning.
+Health. Use `Tab`/`Shift+Tab` to switch panes.
+
+Changes and Trends answer for the vCenter in scope — the selected context, or
+every configured context in the all-vCenters view — which is the same scope
+`n` captures. The Trends header names that scope, so a VM count is never read
+against the wrong estate, and a vCenter with nothing captured yet says so by
+name instead of showing another site's figures. The coverage matrix stays
+estate-wide by design: its job is to report which vCenters a run missed.
+
+Runs lists whole assessments, and Health judges the whole stored assessment;
+both are estate-wide whatever is selected, and Health's header says so. Health
+shows the migration verdict, categories, and default read-only findings for the
+latest stored assessment; `↑`/`↓` scroll the pane. Use `vsfleet health` when
+thresholds need tuning.
 
 Changes opens on the newest two assessments and puts the stored runs on a run
 axis at the top of the pane, oldest to newest, with the two ends of the

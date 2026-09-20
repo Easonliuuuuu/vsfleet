@@ -61,7 +61,7 @@ func TestScopeStreamRanksBlockersAboveChurn(t *testing.T) {
 	target := []assessment.Observation{vmObservation("aaa-renamed", 2, 4096)}
 	target[0].VM.Name = "aaa-renamed-now"
 	store := twoRunStore(t, base, target)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 
 	rows := m.scopeRows()
@@ -91,7 +91,7 @@ func TestScopeStreamRollsUpIdenticalChangesButNeverBlockers(t *testing.T) {
 		base = append(base, vmObservation("legacy-0"+strconv.Itoa(i), 2, 4096))
 	}
 	store := twoRunStore(t, base, target)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 
 	rows := m.scopeRows()
@@ -134,7 +134,7 @@ func TestScopeInspectorNamesGroupMembers(t *testing.T) {
 		target = append(target, vmObservation(name, 4, 4096))
 	}
 	store := twoRunStore(t, base, target)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 
 	rows := m.scopeRows()
@@ -158,7 +158,7 @@ func TestImpactFilterNarrowsAndClears(t *testing.T) {
 	base := []assessment.Observation{vmObservation("keeper", 2, 4096), vmObservation("doomed", 2, 4096)}
 	target := []assessment.Observation{vmObservation("keeper", 4, 4096), vmObservation("newcomer", 2, 4096)}
 	store := twoRunStore(t, base, target)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 
 	if got := len(m.scopeRows()); got != 3 {
@@ -229,7 +229,7 @@ func TestCoverageMatrixNamesTheDarkVCenterAndClipFixesIt(t *testing.T) {
 		when = when.Add(time.Hour)
 	}
 
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{AllContexts: true, Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 	if m.historyCoverage == nil {
 		t.Fatal("coverage was never loaded for the run axis")
@@ -383,7 +383,7 @@ func TestScopeStreamFitsEightyColumns(t *testing.T) {
 	base := []assessment.Observation{vmObservation("billing-primary-database", 2, 4096), vmObservation("doomed", 2, 4096)}
 	target := []assessment.Observation{vmObservation("billing-primary-database", 8, 65536)}
 	store := twoRunStore(t, base, target)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	m.width = 80
 	press(t, m, "H")
 	for _, line := range m.viewChanges() {

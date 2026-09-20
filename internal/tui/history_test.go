@@ -40,7 +40,7 @@ func TestChangesRunPickerSelectsAnotherBaseline(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 	if m.mode != modeChanges || m.targetRun == 0 || m.baseRun == 0 {
 		t.Fatalf("changes state: mode=%v base=%d target=%d", m.mode, m.baseRun, m.targetRun)
@@ -153,7 +153,7 @@ func TestComparisonBarNamesBothRunsAndCoverageGap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{AllContexts: true, Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 	if m.mode != modeChanges || m.baseRun != base.ID || m.targetRun != target.ID {
 		t.Fatalf("changes state: mode=%v base=%d target=%d", m.mode, m.baseRun, m.targetRun)
@@ -196,7 +196,7 @@ func TestSwapKeyExchangesBaselineAndTarget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 	base, target := m.baseRun, m.targetRun
 	press(t, m, "s")
@@ -258,7 +258,7 @@ func oneVMDiffStore(t *testing.T) *assessment.Store {
 // inspector now reads Before/After directly.
 func TestChangeDetailShowsFieldsForVanishedVM(t *testing.T) {
 	store := oneVMDiffStore(t)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
 	rows := m.changeRows()
 	if len(rows) != 1 || rows[0].change != "vanished" || rows[0].kind != "vm" {
@@ -279,7 +279,7 @@ func TestChangeDetailShowsFieldsForVanishedVM(t *testing.T) {
 // modeChangeDetail is still reached by Enter.
 func TestChangeDetailTimelineKeyOpensTimeline(t *testing.T) {
 	store := oneVMDiffStore(t)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	m.width = 80 // below the split threshold, so Enter opens the fallback mode
 	press(t, m, "H")
 	press(t, m, "enter")
@@ -343,7 +343,7 @@ func TestChangesScrollsListToFollowCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	m.height = 24 // tight enough that not all 20 rows fit at once
 	press(t, m, "H")
 	for i := 0; i < 15; i++ {
@@ -364,7 +364,7 @@ func TestChangesScrollsListToFollowCursor(t *testing.T) {
 // content — does nothing, because there is nothing left to open.
 func TestChangesSplitShowsInlineInspector(t *testing.T) {
 	store := oneVMDiffStore(t)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	// newTestModel sets width 140, comfortably above the split threshold.
 	press(t, m, "H")
 	view := strings.Join(m.viewChanges(), "\n")
@@ -422,7 +422,7 @@ func TestLeavingAnyHistoryPaneRestoresBrowseFilterState(t *testing.T) {
 // the way it always has.
 func TestChangesNarrowStillOpensFullScreenDetail(t *testing.T) {
 	store := oneVMDiffStore(t)
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	m.width = 80
 	press(t, m, "H")
 	press(t, m, "enter")

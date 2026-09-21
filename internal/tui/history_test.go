@@ -812,3 +812,37 @@ func TestCaptureErrorReplacesTheStickyProgressMessage(t *testing.T) {
 		t.Fatalf("the failure was not surfaced in the status line, got %q", m.message)
 	}
 }
+
+// TestRunsPaneAdvertisesItsActionsInTheFooter pins the fix for the Runs pane
+// being the one History pane whose key hints sat on a line above the list
+// instead of in the footer with every other pane's bindings. The pane answers
+// e/N/p, so the footer has to say so.
+func TestRunsPaneAdvertisesItsActionsInTheFooter(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.mode = modeChanges
+	m.historyPane = historyPaneRuns
+	m.runs = []assessment.Run{{ID: 1, Label: "baseline"}}
+
+	want := map[string]bool{"e": false, "N": false, "p": false}
+	for _, b := range defaultKeys().footerHints(m) {
+		if _, ok := want[b.Help().Key]; ok {
+			want[b.Help().Key] = true
+		}
+	}
+	for k, found := range want {
+		if !found {
+			t.Errorf("Runs pane footer omits %q, a key the pane handles", k)
+		}
+	}
+
+	// The hint line the footer replaced must not come back: two places naming
+	// the same keys is how they drifted apart in the first place.
+	for _, line := range m.viewHistoryHubRuns() {
+		plain := ansi.Strip(line)
+		for _, stale := range []string{"e label", "N note", "p pin", "n capture"} {
+			if strings.Contains(plain, stale) {
+				t.Errorf("Runs pane body still carries the inline hint %q", stale)
+			}
+		}
+	}
+}

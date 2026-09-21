@@ -175,12 +175,12 @@ func defaultKeys() keyMap {
 
 		Confirm:    key.NewBinding(key.WithHelp("y", "delete")),
 		ToggleKeep: key.NewBinding(key.WithHelp("c", "keep password")),
-		EditRun:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit label")),
+		EditRun:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "label")),
 		// "n" captures a new assessment everywhere in the history hub, so the
 		// note editor takes "N". The two used to share "n", which did whichever
 		// the focused pane happened to mean.
-		NoteRun: key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "edit note")),
-		PinRun:  key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "toggle pin")),
+		NoteRun: key.NewBinding(key.WithKeys("N"), key.WithHelp("N", "note")),
+		PinRun:  key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "pin")),
 
 		RunAction:    key.NewBinding(key.WithHelp("enter", "run")),
 		CancelAction: key.NewBinding(key.WithHelp("esc", "cancel")),
@@ -259,6 +259,12 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		capture := []key.Binding{k.Capture}
 		if !m.canCapture() {
 			capture = nil
+		}
+		if m.historyPane == historyPaneRuns {
+			// The Runs pane's per-run actions belong in the footer next to
+			// every other binding, the way the standalone run picker lists
+			// them, rather than on a hint line above the list.
+			return append(append([]key.Binding{k.Up, k.Down, k.EditRun, k.NoteRun, k.PinRun, k.NextPane}, capture...), k.Back, k.Help, k.Quit)
 		}
 		if m.historyPane != historyPaneChanges {
 			return append(append([]key.Binding{k.Up, k.Down, k.NextPane}, capture...), k.Back, k.Help, k.Quit)

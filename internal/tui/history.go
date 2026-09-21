@@ -1021,11 +1021,9 @@ func joinSideBySide(t theme, left, right []string, leftW, rightW, height int) []
 
 func (m *Model) viewHistoryHubRuns() []string {
 	t := m.theme
-	hint := "  newest first · e label · N note · p pin"
-	if m.canCapture() {
-		hint += " · n capture"
-	}
-	lines := []string{t.title.Render("Runs"), "", t.dim.Render(hint)}
+	// The key hints live in the footer with every other pane's bindings; this
+	// line only says how the list is ordered.
+	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first")}
 	for i, r := range m.runs {
 		label := r.Label
 		if label == "" {

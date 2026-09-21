@@ -3,3 +3,6 @@
 /vsfleet
 *.test
 *.out
+
+# Local demo recording script
+/docs/demo.tape

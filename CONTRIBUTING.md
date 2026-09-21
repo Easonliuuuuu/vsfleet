@@ -32,8 +32,6 @@ Any new feature or change must uphold our core invariants:
 
 * **Go:** Version 1.25 or newer.
 * **Git:** Version 2.25 or newer.
-* **Optional:** [VHS](https://github.com/charmbracelet/vhs) for regenerating
-  terminal demo GIFs.
 
 ---
 
@@ -92,7 +90,7 @@ features or work on the terminal interface.
 
 vsfleet includes a deterministic, synthetic presentation backend:
 * **Shipped command:** `vsfleet demo` (`internal/cli/demo.go`)
-* **Recording binary:** `cmd/vsfleet-demo`
+* **Presentation launcher:** `cmd/vsfleet-demo`
 * **Fixtures:** `internal/demo/backend.go`
 
 ### Launch the Demo TUI
@@ -104,7 +102,7 @@ go run ./cmd/vsfleet demo
 ```
 
 `cmd/vsfleet-demo` drives the identical backend without the surrounding command
-tree, which is what `docs/demo.tape` builds for VHS recordings:
+tree, and is what the `presentation` profile of `scripts/testbed` launches:
 
 ```bash
 go run ./cmd/vsfleet-demo
@@ -147,19 +145,6 @@ When adding support for new resource kinds or states, add sample data to
 * Free of real endpoints, secrets, or customer data.
 
 ---
-
-## Updating the README Demo
-
-The animated demo in the README is recorded using [VHS](https://github.com/charmbracelet/vhs).
-If you make visual changes to the TUI, regenerate both the GIF and the
-reduced-motion PNG:
-
-```bash
-vhs docs/demo.tape
-```
-
-This tape builds `cmd/vsfleet-demo` as a temporary binary, executes the scripted
-key strokes, and updates `docs/assets/vsfleet.gif` and `docs/assets/vsfleet.png`.
 
 ## Publishing Releases
 

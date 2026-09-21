@@ -181,11 +181,10 @@ gains a column that nothing describes.
 vsfleet/
 ├── cmd/
 │   ├── vsfleet/           # Production CLI & TUI entrypoint
-│   └── vsfleet-demo/      # Deterministic synthetic binary for VHS tapes & UI testing
+│   └── vsfleet-demo/      # Deterministic synthetic binary for the presentation testbed
 ├── docs/
-│   ├── assets/            # Demo recordings (.gif) and screenshots (.png)
-│   ├── architecture.md    # System design, invariants, and codemap (this document)
-│   └── demo.tape          # VHS tape definition for generating demo recordings
+│   ├── assets/            # README recording (.gif) and screenshot (.png)
+│   └── architecture.md    # System design, invariants, and codemap (this document)
 ├── internal/
 │   ├── assessment/        # SQLite run ledger, coverage-aware diffs, VM history
 │   ├── cli/               # Cobra command handlers (root, context, doctor, vm, search, etc.)

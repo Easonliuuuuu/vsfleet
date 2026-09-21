@@ -1,7 +1,6 @@
-// Command vsfleet-demo runs the TUI against deterministic sample data for
-// screenshots and presentations. The released vsfleet binary reaches the same
-// fixtures through "vsfleet demo"; this command exists so a recording can be
-// driven without building the whole command tree.
+// Command vsfleet-demo runs the TUI against deterministic sample data. It is
+// the launcher for the presentation profile of scripts/testbed. The released
+// vsfleet binary reaches the same fixtures through "vsfleet demo".
 package main
 
 import (

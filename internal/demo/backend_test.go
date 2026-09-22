@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/easonliuuuuu/vsfleet/internal/health"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 func TestNewBackendIncludesOrphanAndZombieFixtures(t *testing.T) {
@@ -20,11 +21,17 @@ func TestNewBackendIncludesOrphanAndZombieFixtures(t *testing.T) {
 	if !foundOrphan {
 		t.Fatal("demo inventory has no orphaned VM")
 	}
-	if len(inv.Datastores) == 0 || inv.Datastores[0].BrowseStatus != "success" {
-		t.Fatalf("demo datastore browse provenance=%+v", inv.Datastores)
+	var nvme *vsphere.Datastore
+	for i := range inv.Datastores {
+		if inv.Datastores[i].Name == "nvme-01" {
+			nvme = &inv.Datastores[i]
+		}
+	}
+	if nvme == nil || nvme.BrowseStatus != "success" {
+		t.Fatalf("demo datastore browse provenance=%+v", nvme)
 	}
 	foundZombie := false
-	for _, file := range inv.Datastores[0].Files {
+	for _, file := range nvme.Files {
 		if file.Path == "[nvme-01] lost+found/orphan.vmdk" {
 			foundZombie = true
 		}

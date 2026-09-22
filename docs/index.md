@@ -16,7 +16,9 @@ vsfleet demo
 ```
 
 The demo opens the interface on a synthetic three-vCenter estate — two healthy
-sites and one whose proxy refuses the connection. It reads no configuration,
+sites and one whose proxy refuses the connection. The main site is production-sized
+(about 1,000 VMs, 36 datastores, 24 vApps) and History holds five dated
+assessments. It reads no configuration,
 opens no keyring, dials nothing, and writes nothing back. Every screen is
 marked `DEMO · SAMPLE DATA`.
 

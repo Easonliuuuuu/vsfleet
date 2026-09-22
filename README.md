@@ -113,7 +113,7 @@ Explore the full terminal UI immediately with zero configuration and zero creden
 vsfleet demo
 ```
 
-`vsfleet demo` opens the interface on a synthetic three-vCenter estate: two healthy sites on different routes and one whose proxy refuses the connection. It reads no configuration, opens no keyring, dials nothing, and writes nothing back. Every screen is marked `DEMO · SAMPLE DATA`.
+`vsfleet demo` opens the interface on a synthetic three-vCenter estate: two healthy sites on different routes and one whose proxy refuses the connection. The main site is sized like a production vCenter — about 1,000 VMs across six clusters, 36 datastores, 24 vApps (some nested), resource pools and 30 networks — and the History pane holds five dated assessments, so drift, capacity and snapshot ageing have something to show. It reads no configuration, opens no keyring, dials nothing, and writes nothing back. Every screen is marked `DEMO · SAMPLE DATA`.
 
 ### 2. Connect your first vCenter
 

@@ -22,14 +22,21 @@ The estate is three vCenters: two healthy sites reached by different routes
 and one disaster-recovery site whose proxy refuses the connection. That last
 one is the point — healthy results stay usable while another vCenter is down.
 
+The main site is sized like production: about 1,000 VMs across six clusters,
+36 datastores, 24 vApps (some nested), resource pools and 30 networks. The
+second healthy site has about 180 VMs. Everything is generated
+deterministically, so every run shows the same estate.
+
 Nothing here touches your machine or your network. The demo reads no
 configuration file, opens no keyring, resolves no credentials, dials nothing,
 and writes nothing back: it does not remember the last screen the way a real
 run does. The header says DEMO on every screen so a screenshot cannot be
 mistaken for a live estate.
 
-The History pane includes one seeded, in-memory assessment with intentionally
-unhealthy orphaned-VM and zombie-VMDK evidence. Nothing is written to disk.`,
+The History pane holds five seeded, in-memory assessments, dated May to
+September, so diffs, trends, churn and capacity have real history. The newest
+includes intentionally unhealthy orphaned-VM and zombie-VMDK evidence. Nothing
+is written to disk.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDemo(a, cmd)

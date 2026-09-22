@@ -1,15 +1,20 @@
 vsfleet  history  ·  Changes   ←/→ switch
 ────────────────────────────────────────────────────────────
-  RUNS     #1  
-  pick         
-  no span
+  RUNS     #1   #2   #3   #4   #5  
+  pick                     b    T  
+  #4 → #5 · 28d0h · 2 runs
   —
   ←/→ move target · b/t pick end
   COVER    ● reached   ✕ not compared   · no record
-  dr-site   ✕  
-  edge-vc   ●  
-  prod-vc   ●  
+  dr-site   ✕    ✕    ✕    ✕    ✕  
+  edge-vc   ●    ●    ●    ●    ●  
+  prod-vc   ●    ●    ●    ●    ●  
+  b baseline  pre-migration  #4     08-09 08:00  partial   …
+  t target    september-aud… #5     09-06 08:00  partial   …
+  10 vanished   39 appeared   0 moved   0 modified   1 infr…
 
-  fewer than two stored assessments — nothing to compare
-prod-vc · 3 VMs, 2 templates, 2 hosts, 2 clusters, 3 vApps,…
+  IMPACT  OBJECT                       vCENTER WHAT MOVED   
+▎blocks  old-api-22                   prod-vc vanished     
+▎blocks  old-batch-17                 prod-vc vanished     
+prod-vc · 1000 VMs, 16 templates, 56 hosts, 6 clusters, 24 …
 ←/→ move end  b baseline  t target  c clip to shared covera…

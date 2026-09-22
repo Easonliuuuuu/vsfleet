@@ -1,20 +1,20 @@
 vsfleet  DEMO · SAMPLE DATA  all 3 vCenters  ·  2 connected…
- 1 VM 6 2 Tpl 4 3 Host 4 4 Clus 4 5 DS 4 6 Net 4 7 vApp 6
+ 1 VM   2 Tpl   3 Host   4 Clus   5 DS   6 Net   7 vApp
 ────────────────────────────────────────────────────────────
   VCENTER         NAME              POWER        CPU     MEM
-● prod-vc         api-01            on             4     16G
-● prod-vc         postgres-01       on             8     32G
-○ prod-vc         build-runner-03   off            8     24G
-● edge-vc         api-01            on             4     16G
-● edge-vc         postgres-01       on             8     32G
-○ edge-vc         build-runner-03   off            8     24G
+● prod-vc         ad-dc-01          on             2      8G
+● prod-vc         ad-dc-02          on             4     16G
+● prod-vc         ad-dc-03          on             4     16G
+● prod-vc         ad-dc-04          on             8     32G
+● prod-vc         ad-dc-05          on             2      8G
+● prod-vc         ad-dc-06          on             4     16G
+● prod-vc         api-01            on             8     32G
+● prod-vc         api-02            on             4     16G
+● prod-vc         api-03            on             4      8G
+● prod-vc         api-04            on             2      4G
+● prod-vc         api-05            on             8     32G
+◐ prod-vc         api-06            suspended      4     16G
+○ prod-vc         api-07            off            4      8G
 ✕ dr-site: proxy <dynamic>: connection refused
-
-
-
-
-
-
-
 dr-site: proxy <dynamic>: connection refused
 1-7 kind  H history  c contexts  a all  / filter  r reload …

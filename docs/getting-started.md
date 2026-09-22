@@ -65,7 +65,10 @@ vsfleet demo
 
 The demo is a synthetic three-vCenter estate: two healthy sites reached by
 different routes, and one disaster-recovery site whose proxy refuses the
-connection. It reads no configuration file, opens no keyring, resolves no
+connection. The main site is production-sized — about 1,000 VMs across six
+clusters, 36 datastores and 24 vApps — and History holds five dated
+assessments so drift, capacity and snapshot ageing are visible. It reads no
+configuration file, opens no keyring, resolves no
 credentials, dials nothing, and writes nothing back — so it does not remember
 the last screen the way a real run does. Every screen is marked
 `DEMO · SAMPLE DATA`.

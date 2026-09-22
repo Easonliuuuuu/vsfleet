@@ -846,3 +846,29 @@ func TestRunsPaneAdvertisesItsActionsInTheFooter(t *testing.T) {
 		}
 	}
 }
+
+// TestTrendsPaneKeepsScrollingHintsInTheFooter keeps the Trends subtitle
+// descriptive instead of duplicating key bindings above the data.
+func TestTrendsPaneKeepsScrollingHintsInTheFooter(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.mode = modeChanges
+	m.historyPane = historyPaneTrends
+
+	want := map[string]bool{"↑/k": false, "↓/j": false}
+	for _, b := range defaultKeys().footerHints(m) {
+		if _, ok := want[b.Help().Key]; ok {
+			want[b.Help().Key] = true
+		}
+	}
+	for k, found := range want {
+		if !found {
+			t.Errorf("Trends pane footer omits %q", k)
+		}
+	}
+
+	for _, line := range m.viewHistoryTrends() {
+		if strings.Contains(ansi.Strip(line), "scroll") {
+			t.Errorf("Trends body repeats the footer scrolling hint: %q", ansi.Strip(line))
+		}
+	}
+}

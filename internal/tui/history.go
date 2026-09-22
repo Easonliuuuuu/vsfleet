@@ -1100,7 +1100,9 @@ func (m *Model) viewHistoryRunEdit() []string {
 
 func (m *Model) viewHistoryTrends() []string {
 	t := m.theme
-	sub := "last 30 complete assessments · ↑/↓ scroll"
+	// Scrolling is advertised by the shared footer, alongside the rest of the
+	// History pane bindings. Keep this subtitle about the data being shown.
+	sub := "last 30 complete assessments"
 	if scope := m.historyScopeLabel(); scope != "" {
 		sub = scope + " · " + sub
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/testbed/scenarios"
 )
@@ -40,6 +41,12 @@ func list() {
 }
 
 func test(args []string) {
+	// Goldens are byte-compared, and History and the datastore browser print
+	// timestamps through time.Local. Without this the bytes depend on the
+	// timezone of whoever ran --update-goldens, so a golden written outside
+	// UTC never matches the one CI checks.
+	time.Local = time.UTC
+
 	flags := flag.NewFlagSet("test", flag.ExitOnError)
 	profile := flags.String("profile", "", "presentation or connected")
 	results := flags.String("results-dir", "", "directory for failure diagnostics")

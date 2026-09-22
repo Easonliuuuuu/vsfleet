@@ -7,8 +7,8 @@ vsfleet  history  ·  Changes   ←/→ switch
   dr-site   ✕    ✕    ✕    ✕    ✕  
   edge-vc   ●    ●    ●    ●    ●  
   prod-vc   ●    ●    ●    ●    ●  
-  b baseline  pre-migration        #4     Sun 09 Aug 08:00  partial   2/3 vCenters
-  t target    september-audit      #5     Sun 06 Sep 08:00  partial   2/3 vCenters +28d0h
+  b baseline  pre-migration        #4     Sun 09 Aug 00:00  partial   2/3 vCenters
+  t target    september-audit      #5     Sun 06 Sep 00:00  partial   2/3 vCenters +28d0h
   10 vanished   39 appeared   0 moved   0 modified   1 infra   28 snapshots
 
   IMPACT  OBJECT                       vCENTER       │ old-api-22                                                                           
@@ -17,7 +17,7 @@ vsfleet  history  ·  Changes   ←/→ switch
 ▎blocks  old-crm-04                   prod-vc        │   change   vanished                                                                  
 ▎blocks  old-jira-22                  prod-vc        │                                                                                      
 ▎blocks  old-mysql-20                 prod-vc        │   State                                                                              
-▎blocks  old-queue-18                 prod-vc        │   as of        #4 · 2026-08-09 08:00                                                 
+▎blocks  old-queue-18                 prod-vc        │   as of        #4 · 2026-08-09 00:00                                                 
 ▎blocks  old-vdi-eng-002              prod-vc        │   power        poweredOn                                                             
 ▎blocks  old-vdi-eng-042              prod-vc        │   host         esxi-a-09                                                             
 ▎blocks  old-vdi-fin-023              prod-vc        │   cluster      compute-a                                                             

@@ -5,12 +5,15 @@ package scenarios
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -258,9 +261,13 @@ func setupBackend(ctx context.Context, connected bool) (tui.Backend, *assessment
 		return nil, nil, nil, fmt.Errorf("create connected scenario root: %w", err)
 	}
 	// The lab uses a contiguous block for five simulator listeners and three
-	// proxy/failure slots. A per-process range keeps serial local runs from
-	// colliding while retaining readable endpoint manifests.
-	portBase := 36000 + (os.Getpid()%150)*110
+	// proxy/failure slots. Probe a per-process range first: Windows runners can
+	// reserve otherwise-valid fixed ports, which makes a static base flaky.
+	portBase, err := availablePortBase()
+	if err != nil {
+		_ = os.RemoveAll(root)
+		return nil, nil, nil, err
+	}
 	labCtx, cancelLab := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelLab()
 	lab, err := testbed.Start(labCtx, testbed.Options{Root: root, PortBase: portBase})
@@ -305,6 +312,38 @@ func setupBackend(ctx context.Context, connected bool) (tui.Backend, *assessment
 		_ = os.RemoveAll(root)
 	}
 	return backend, service, closeAll, nil
+}
+
+// availablePortBase finds a usable loopback range for the connected fixture.
+// The listeners are only a probe; Start owns the real listeners immediately
+// afterwards. Trying several bases avoids Windows' dynamic excluded-port
+// ranges without weakening the testbed's loopback-only boundary.
+func availablePortBase() (int, error) {
+	const (
+		firstPort = 20000
+		stride    = 200
+		attempts  = 120
+	)
+	for attempt := 0; attempt < attempts; attempt++ {
+		base := firstPort + ((os.Getpid()+attempt*211)%attempts)*stride
+		listeners := make([]net.Listener, 0, 8)
+		available := true
+		for _, offset := range []int{0, 1, 2, 3, 4, 100, 101, 102} {
+			listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(base+offset)))
+			if err != nil {
+				available = false
+				break
+			}
+			listeners = append(listeners, listener)
+		}
+		for _, listener := range listeners {
+			_ = listener.Close()
+		}
+		if available {
+			return base, nil
+		}
+	}
+	return 0, errors.New("could not reserve an available loopback port range for connected scenarios")
 }
 
 func press(m *tui.Model, key string) error {

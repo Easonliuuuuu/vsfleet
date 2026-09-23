@@ -120,3 +120,12 @@ kernel/storage semantics, real VMXNET3 or UPT behavior, SR-IOV/vGPU/RDM,
 patch-release quirks, or actual VM migration. k3s remains deferred until a
 concrete test requirement justifies adding it; containers are not a goal of
 this integration tier.
+
+## Real-vSphere acceptance
+
+The tiers above prove process isolation, CLI behavior, and simulator
+correctness, but not real VMware API semantics. [Nested vSphere
+Lab](testing-nested-vsphere.md) is the runbook for a personal, isolated lab
+that fills that gap: VMXNET3 UPT vs. actual passthrough, host CPU capacity
+semantics, local vs. shared storage behavior, real datastore-browser
+permissions, and DVS/DVPG detail.

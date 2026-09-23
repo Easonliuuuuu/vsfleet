@@ -56,5 +56,6 @@ nav:
   - Architecture: architecture.md
   - Testing: testing.md
   - Synthetic Testbed: testbed.md
+  - Nested vSphere Lab: testing-nested-vsphere.md
   - Contributing: https://github.com/Easonliuuuuu/vsfleet/blob/main/CONTRIBUTING.md
   - Security: https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md

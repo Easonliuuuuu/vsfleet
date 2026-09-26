@@ -15,6 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+
+	"github.com/easonliuuuuu/vsfleet/internal/config"
 )
 
 // EnvStatePath overrides the state file location, the same way
@@ -35,6 +38,65 @@ type State struct {
 	// SSHIdentityFiles holds the private-key path selected for each machine,
 	// keyed "<context>/<moref>". The file itself is never copied into state.
 	SSHIdentityFiles map[string]string `json:"ssh_identity_files,omitempty"`
+	// SSHDestinations holds the operator's chosen SSH destination for each
+	// machine, keyed "<context>/<moref>" the same way. See SSHDestination.
+	SSHDestinations map[string]SSHDestination `json:"ssh_destinations,omitempty"`
+}
+
+// SSHDestination is one machine's remembered SSH destination: either an
+// OpenSSH alias that already describes a complete route on its own, or an
+// override of the fallback route vsfleet would otherwise choose for the
+// machine's own guest DNS name or IP address (see internal/config.SSHRoute
+// for the estate-wide, deterministic form of that same choice). Exactly one
+// of the two is meaningful per value, selected by Kind.
+//
+// This deliberately carries no credential, key material, proxy password, or
+// command fragment — see Load, which drops any value it cannot prove is one
+// of the shapes below, so a hand-edited or corrupted state.json can never
+// smuggle an executable argument into a generated ssh(1) command line.
+type SSHDestination struct {
+	// Kind is "openssh_alias" or "route". Any other value — including one
+	// left over from a future version of this program — is dropped by Load
+	// rather than trusted.
+	Kind string `json:"kind"`
+	// Alias is the OpenSSH Host alias to connect through. Meaningful only
+	// when Kind is "openssh_alias"; ignored otherwise. It is re-validated
+	// against the machine's current guest IP before every use (see
+	// DiscoverSSHDestinations) rather than trusted from state alone — a
+	// stale alias is dropped and rediscovered, never used to silently
+	// connect somewhere else.
+	Alias string `json:"alias,omitempty"`
+	// Route is the per-VM fallback route override: "openssh" (add none of
+	// vsfleet's own ssh(1) arguments and let ~/.ssh/config decide),
+	// "direct", "http" or "socks5". Meaningful only when Kind is "route".
+	Route string `json:"route,omitempty"`
+	// ProxyAddress is the proxy's own host:port. Meaningful only when Route
+	// is "http" or "socks5"; it carries no credential, matching
+	// config.SSHRoute's own unauthenticated-proxy-only rule.
+	ProxyAddress string `json:"proxy_address,omitempty"`
+}
+
+// valid reports whether d is one of the shapes SSHDestination documents.
+// validAlias and validProxyAddress are the exact predicates
+// internal/tui/handoff.go and internal/config already apply to the same
+// strings before they reach an ssh(1) argument list; Load reuses them so a
+// state file can never carry something those callers would have refused.
+func (d SSHDestination) valid(validAlias, validProxyAddress func(string) bool) bool {
+	switch d.Kind {
+	case "openssh_alias":
+		return d.Alias != "" && validAlias(d.Alias) && d.Route == "" && d.ProxyAddress == ""
+	case "route":
+		switch d.Route {
+		case "openssh", "direct":
+			return d.Alias == "" && d.ProxyAddress == ""
+		case "http", "socks5":
+			return d.Alias == "" && validProxyAddress(d.ProxyAddress)
+		default:
+			return false
+		}
+	default:
+		return false
+	}
 }
 
 // DefaultPath returns the state file path, honouring VSFLEET_STATE and then the
@@ -69,7 +131,42 @@ func Load(path string) State {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return State{}
 	}
+	s.SSHDestinations = sanitizeSSHDestinations(s.SSHDestinations)
 	return s
+}
+
+// sanitizeSSHDestinations drops any entry a corrupt or hand-edited state
+// file might carry that Load must never hand back as trustworthy: an
+// unknown Kind, an alias or proxy address that would not itself pass the
+// same safety check applied just before it reaches an ssh(1) argument list.
+// A destination this program never wrote is treated exactly like one it
+// did not write at all — falling back only costs choosing it again.
+func sanitizeSSHDestinations(in map[string]SSHDestination) map[string]SSHDestination {
+	if len(in) == 0 {
+		return nil
+	}
+	clean := make(map[string]SSHDestination, len(in))
+	for k, d := range in {
+		if d.valid(validSSHAlias, config.ValidSSHProxyAddress) {
+			clean[k] = d
+		}
+	}
+	if len(clean) == 0 {
+		return nil
+	}
+	return clean
+}
+
+// validSSHAlias mirrors the safety rule internal/tui/handoff.go's
+// validSSHHost applies to every string that reaches an ssh(1) argument
+// list: never empty, never a leading "-" (which ssh(1) reads as an option),
+// never "@" (which would be read as a user), and no whitespace or control
+// character.
+func validSSHAlias(s string) bool {
+	if s == "" || strings.HasPrefix(s, "-") || strings.ContainsRune(s, '@') {
+		return false
+	}
+	return strings.IndexFunc(s, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) < 0
 }
 
 // Save writes the state atomically, mirroring how the configuration file is

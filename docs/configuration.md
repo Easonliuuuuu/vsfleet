@@ -138,11 +138,11 @@ names. The older shared `user` setting remains the fallback for both kinds.
 When the applicable setting is empty, `ssh` resolves a user through
 `~/.ssh/config` and then the local username.
 
-A user and private-key path selected in the TUI's **SSH with a different user
-or key…** overlay are remembered per machine and take precedence over these
-defaults; they are stored in `state.json`, not in this file. Selecting OpenSSH
-default leaves `~/.ssh/config` and `ssh-agent` in control. An explicitly
-selected identity uses public-key authentication only.
+A user and private-key path selected in the TUI's **SSH with a different
+destination, user or key…** overlay are remembered per machine and take
+precedence over these defaults; they are stored in `state.json`, not in this
+file. Selecting OpenSSH default leaves `~/.ssh/config` and `ssh-agent` in
+control. An explicitly selected identity uses public-key authentication only.
 
 SSH through a proxied context follows the same route vsfleet itself uses —
 an unauthenticated SOCKS5 or HTTP CONNECT proxy becomes an `ssh -o
@@ -199,6 +199,46 @@ through its route fails, rather than being retried through another proxy.
 and routes carry no credentials. Duplicate rules for the same context and
 network are an error unless identical, and `vsfleet` refuses to start on an
 invalid route.
+
+### Three complementary routing sources
+
+`[[ssh.routes]]` is one of three ways a VM's SSH handoff is routed, each
+suited to a different scope:
+
+```text
+OpenSSH alias
+    -> preferred when an operator's own ~/.ssh/config already describes a
+       complete, working route to the VM's guest IP — a Host block, its
+       ProxyJump, key, user and port, proven with a bounded "ssh -G" rather
+       than reconstructed inside vsfleet (see
+       "OpenSSH alias discovery" in tui.md)
+
+per-VM remembered route
+    -> an interactive, one-off choice (Automatic / OpenSSH default / Direct /
+       HTTP / SOCKS5) made in the TUI's destination picker and remembered in
+       state.json, for a single machine that needs something other than the
+       estate-wide default
+
+[[ssh.routes]]
+    -> deterministic context/CIDR policy for repeatable, estate-wide routing,
+       version-controlled alongside the rest of config.toml
+```
+
+vsfleet never infers a security route by trying one speculatively: an
+OpenSSH alias is used only once a bounded `ssh -G` proves its effective
+hostname matches the VM, and a per-VM route or `[[ssh.routes]]` rule is only
+ever an explicit choice — either typed into `config.toml` or picked in the
+TUI — never a guess. Full precedence is documented in
+[Destination and route](tui.md#destination-and-route).
+
+Per-VM destinations are stored in `state.json` alongside the remembered user
+and identity, keyed the same way (`<context>/<moref>`). An OpenSSH alias
+entry there is never trusted on its own: it is re-validated against the VM's
+current guest IP on every use, and dropped and rediscovered the moment it no
+longer matches, rather than risk connecting somewhere else. Neither entry
+ever carries a password, private key, proxy credential, or shell command
+fragment — only the alias name, or the route kind and the proxy's own
+`host:port`.
 
 ## TLS policies
 

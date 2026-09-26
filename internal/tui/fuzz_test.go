@@ -18,7 +18,11 @@ func FuzzTUIKeyResizeNeverPanics(f *testing.F) {
 		if len(keys) > 256 {
 			keys = keys[:256]
 		}
-		m := New(context.Background(), twoHealthy(), Options{Current: "prod", RefreshInterval: -1})
+		// An arbitrary key sequence can reach a VM's detail pane and open its
+		// SSH actions, same as newTestModel — the real Handoff would then run
+		// "ssh -G" and read ~/.ssh/config on whatever machine runs this fuzz
+		// target, which must stay hermetic.
+		m := New(context.Background(), twoHealthy(), Options{Current: "prod", RefreshInterval: -1, Handoff: &fakeHandoff{}})
 		m.width, m.height = 140, 40
 		drive(t, m, m.Init())
 		for _, key := range keys {
@@ -44,7 +48,7 @@ func FuzzStaleMessagesCannotReplaceNewerState(f *testing.F) {
 	f.Add(uint64(1), uint64(2))
 	f.Add(uint64(99), uint64(1))
 	f.Fuzz(func(t *testing.T, oldGeneration, newGeneration uint64) {
-		m := New(context.Background(), twoHealthy(), Options{Current: "prod", RefreshInterval: -1})
+		m := New(context.Background(), twoHealthy(), Options{Current: "prod", RefreshInterval: -1, Handoff: &fakeHandoff{}})
 		drive(t, m, m.Init())
 		st := m.current()
 		if st == nil {
@@ -78,7 +82,7 @@ func FuzzRenderIsBoundedAndDeterministic(f *testing.F) {
 		if h < 5 {
 			h = 5
 		}
-		m := New(context.Background(), twoHealthy(), Options{Current: "prod", RefreshInterval: -1})
+		m := New(context.Background(), twoHealthy(), Options{Current: "prod", RefreshInterval: -1, Handoff: &fakeHandoff{}})
 		drive(t, m, m.Init())
 		drive(t, m, discard(m.Update(tea.WindowSizeMsg{Width: w, Height: h})))
 		first, second := m.View(), m.View()

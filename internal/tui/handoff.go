@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/sshalias"
 )
 
 // Handoff is everything the detail pane's field-cursor actions need from the
@@ -50,6 +52,20 @@ type Handoff interface {
 	// ssh(1) stays the authority on the answer, and this is just a way to
 	// tell the operator what that answer will be before they connect.
 	ResolveUser(address string) string
+	// DiscoverSSHDestinations finds OpenSSH Host aliases that already reach
+	// targetIP. sshalias.Discover produces literal candidates from
+	// ~/.ssh/config and its Include files — text it never trusts on its
+	// own — and each candidate is independently confirmed with a bounded
+	// "ssh -G": only a candidate whose effective hostname equals targetIP is
+	// returned. remembered, if non-empty, is always included in that
+	// validation even when the parser did not surface it (the operator's
+	// config may have changed since it was chosen), and staleRemembered
+	// reports that it was checked and definitively no longer matches —
+	// never that the check merely failed or timed out, which the caller
+	// must not treat as proof of anything. err carries a non-fatal
+	// discovery problem (an unreadable config file, a discovery limit
+	// reached) alongside whatever candidates were still found.
+	DiscoverSSHDestinations(targetIP, remembered string) (aliases []string, staleRemembered bool, err error)
 }
 
 // SSHSpec fully describes one SSH handoff before it becomes a command:
@@ -66,8 +82,18 @@ type SSHSpec struct {
 	IdentityFile string
 	// ProxyArgs are extra ssh(1) arguments — "-o", "ProxyCommand=..." — that
 	// route the connection through the same bastion vsfleet itself uses to
-	// reach this context. Empty means a direct route.
+	// reach this context, or that force a per-VM route override. Empty means
+	// a direct route. Always empty when Alias is set — see Alias.
 	ProxyArgs []string
+	// Alias marks Address as an OpenSSH Host alias rather than a guest DNS
+	// name or IP: the alias already validated (see
+	// Handoff.DiscoverSSHDestinations) as reaching this machine, and OpenSSH
+	// itself — not vsfleet — owns its ProxyJump, ProxyCommand, Port and any
+	// other route it applies. SSH refuses a spec that sets both Alias and
+	// ProxyArgs, and sshArgs omits the ConnectTimeout option it otherwise
+	// adds, so the generated command stays as close as possible to plainly
+	// running "ssh <alias>".
+	Alias bool
 }
 
 // SSHIdentity is a private-key path offered by the identity picker.
@@ -136,6 +162,9 @@ func (realHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	}
 	if spec.User != "" && !validSSHUser(spec.User) {
 		return nil, fmt.Errorf("refusing to ssh as %q", spec.User)
+	}
+	if spec.Alias && len(spec.ProxyArgs) > 0 {
+		return nil, fmt.Errorf("refusing to combine OpenSSH alias %q with a vsfleet-generated route", spec.Address)
 	}
 	if spec.IdentityFile != "" {
 		path, err := expandSSHPath(spec.IdentityFile)
@@ -229,6 +258,91 @@ func parseSSHUser(out string) string {
 		}
 	}
 	return ""
+}
+
+// parseSSHHostname finds the "hostname" line in "ssh -G" output — the
+// effective destination address after every Host and Match block has been
+// applied. This, not the config text a Host block quotes, is what
+// DiscoverSSHDestinations trusts.
+func parseSSHHostname(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if host, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "hostname "); ok {
+			return strings.TrimSpace(host)
+		}
+	}
+	return ""
+}
+
+// sshDiscoveryBudget bounds the total time DiscoverSSHDestinations spends
+// running "ssh -G" across every candidate. A config with many candidates
+// stops being validated once the budget is spent rather than running one
+// more bounded call per candidate indefinitely — this is called
+// synchronously while building the detail pane's action list, so a slow
+// config must not make opening a VM feel unresponsive.
+const sshDiscoveryBudget = 5 * time.Second
+
+// DiscoverSSHDestinations implements Handoff.DiscoverSSHDestinations. See
+// that doc comment for the contract; this is the "candidate enumeration,
+// then bounded ssh -G" pipeline the issue's design section describes.
+func (realHandoff) DiscoverSSHDestinations(targetIP, remembered string) ([]string, bool, error) {
+	ip, err := netip.ParseAddr(strings.TrimSpace(targetIP))
+	if err != nil {
+		// Discovery only makes sense against a literal IP: a DNS name would
+		// need to be resolved first, and that is exactly the kind of
+		// network probe this feature promises never to add.
+		return nil, false, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, false, err
+	}
+	candidates, discErr := sshalias.Discover(home, ip, sshalias.DefaultLimits())
+	ordered := candidates
+	if remembered != "" {
+		ordered = append([]string{remembered}, candidates...)
+	}
+
+	budget, cancel := context.WithTimeout(context.Background(), sshDiscoveryBudget)
+	defer cancel()
+
+	var aliases []string
+	staleRemembered := false
+	seen := map[string]bool{}
+	for _, alias := range ordered {
+		if seen[alias] || !validSSHHost(alias) {
+			continue
+		}
+		seen[alias] = true
+		if budget.Err() != nil {
+			break
+		}
+		callCtx, callCancel := context.WithTimeout(budget, 2*time.Second)
+		cmd := exec.CommandContext(callCtx, "ssh", "-G", alias)
+		// A "Match exec" directive (see ssh_config(5)) can run a command
+		// that backgrounds a grandchild holding ssh's own stdout open;
+		// without WaitDelay, Output() would keep reading from that pipe
+		// long after ssh itself was killed for exceeding callCtx, and the
+		// timeout above would bound nothing. WaitDelay forces the pipes
+		// closed shortly after the process is signaled, so this call is
+		// bounded by callCtx regardless of what it runs.
+		cmd.WaitDelay = 500 * time.Millisecond
+		out, err := cmd.Output()
+		callCancel()
+		if err != nil {
+			// Transient — a timeout, or ssh(1) itself failing — proves
+			// nothing either way, so a remembered alias is not discarded
+			// over it; only a confirmed mismatch does that.
+			continue
+		}
+		hostAddr, parseErr := netip.ParseAddr(parseSSHHostname(string(out)))
+		switch {
+		case parseErr == nil && hostAddr.Unmap() == ip:
+			aliases = append(aliases, alias)
+		case alias == remembered:
+			staleRemembered = true
+		}
+	}
+	return aliases, staleRemembered, discErr
 }
 
 func parseSSHIdentityFiles(out string) []string {
@@ -352,6 +466,31 @@ func checkNetcat() error {
 // put it on this process's command line, visible to anyone who can run "ps"
 // on this machine, and that trade needs its own deliberate decision rather
 // than shipping as a side effect of this feature.
+// directSSHArgs forces a direct connection regardless of the operator's own
+// ~/.ssh/config, for the per-VM "Direct" route override — distinct from
+// leaving spec.ProxyArgs empty, which merely adds nothing of vsfleet's own
+// and still lets ~/.ssh/config apply its own ProxyJump or ProxyCommand.
+func directSSHArgs() []string {
+	return []string{"-o", "ProxyCommand=none", "-o", "ProxyJump=none"}
+}
+
+// routeOverrideArgs turns a per-VM remembered route override into extra
+// ssh(1) arguments, the same way proxyArgs turns a context's transport into
+// one. "openssh" reports no VSFleet-owned arguments at all — the deliberate
+// difference from "direct" is documented on directSSHArgs.
+func routeOverrideArgs(routeKind, proxyAddress string) (args []string, disabledReason string) {
+	switch routeKind {
+	case sshRouteOpenSSH, "":
+		return nil, ""
+	case sshRouteDirect:
+		return directSSHArgs(), ""
+	case config.TransportSOCKS5, config.TransportHTTPProxy:
+		return proxyArgs(config.TransportConfig{Type: routeKind, Address: proxyAddress})
+	default:
+		return nil, ""
+	}
+}
+
 func proxyArgs(t config.TransportConfig) (args []string, disabledReason string) {
 	if t.Username != "" {
 		return nil, "authenticated proxy — SSH does not support one yet"

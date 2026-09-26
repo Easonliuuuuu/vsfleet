@@ -20,6 +20,7 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
+	"github.com/easonliuuuuu/vsfleet/internal/uistate"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -494,6 +495,11 @@ type Options struct {
 	// earlier runs, keyed "<context>/<moref>"; Snapshot hands the current set
 	// back for the caller to persist.
 	SSHIdentityFiles map[string]string
+	// SSHDestinations seeds the SSH destination — an OpenSSH alias or a
+	// per-VM route override — chosen for machines in earlier runs, keyed
+	// "<context>/<moref>"; Snapshot hands the current set back for the
+	// caller to persist. See uistate.SSHDestination.
+	SSHDestinations map[string]uistate.SSHDestination
 	// Handoff is what the detail pane's actions use to reach the clipboard,
 	// the browser, and a terminal. Nil gets the real implementation; tests
 	// substitute a recording fake, the same seam Backend already is (see
@@ -515,6 +521,9 @@ type Snapshot struct {
 	// SSHIdentityFiles is every private-key path remembered for a machine,
 	// keyed "<context>/<moref>".
 	SSHIdentityFiles map[string]string
+	// SSHDestinations is every SSH destination remembered for a machine,
+	// keyed "<context>/<moref>".
+	SSHDestinations map[string]uistate.SSHDestination
 }
 
 // Observation is the stable, non-persistent view of model state used by the
@@ -582,6 +591,12 @@ func (m *Model) Snapshot() Snapshot {
 		snap.SSHIdentityFiles = make(map[string]string, len(m.sshIdentityFiles))
 		for k, v := range m.sshIdentityFiles {
 			snap.SSHIdentityFiles[k] = v
+		}
+	}
+	if len(m.sshDestinations) > 0 {
+		snap.SSHDestinations = make(map[string]uistate.SSHDestination, len(m.sshDestinations))
+		for k, v := range m.sshDestinations {
+			snap.SSHDestinations[k] = v
 		}
 	}
 	if st := m.current(); st != nil {
@@ -756,6 +771,16 @@ type Model struct {
 	// sshIdentityFiles are the private-key paths selected for a machine, per
 	// machine, keyed by context and managed object reference.
 	sshIdentityFiles map[string]string
+	// sshDestinations are the SSH destinations (an OpenSSH alias or a
+	// per-VM route override) remembered per machine, keyed by context and
+	// managed object reference; see sshUserKey. Snapshot exports them so
+	// they outlive the process.
+	sshDestinations map[string]uistate.SSHDestination
+	// sshDiscovery caches the most recent alias-discovery result so building
+	// one row's action menu — which calls into it from several places —
+	// runs "ssh -G" against each candidate at most once. It is invalidated
+	// simply by not matching the next row's key; see sshDestInfoFor.
+	sshDiscovery *sshDiscoveryCache
 	// out is where a launched process's own I/O and the OSC 52 clipboard
 	// escape are written — the same stream Options.Out gives Bubble Tea.
 	out io.Writer
@@ -803,6 +828,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		sshRoutes:        append([]config.SSHRoute(nil), opts.SSHRoutes...),
 		sshUsers:         copySSHUsers(opts.SSHUsers),
 		sshIdentityFiles: copySSHIdentityFiles(opts.SSHIdentityFiles),
+		sshDestinations:  copySSHDestinations(opts.SSHDestinations),
 		handoff:          opts.Handoff,
 		out:              opts.Out,
 	}
@@ -2108,6 +2134,14 @@ func copySSHIdentityFiles(in map[string]string) map[string]string {
 		if strings.TrimSpace(v) != "" {
 			out[k] = v
 		}
+	}
+	return out
+}
+
+func copySSHDestinations(in map[string]uistate.SSHDestination) map[string]uistate.SSHDestination {
+	out := make(map[string]uistate.SSHDestination, len(in))
+	for k, v := range in {
+		out[k] = v
 	}
 	return out
 }

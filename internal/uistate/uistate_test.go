@@ -114,3 +114,84 @@ func TestSSHUsersRoundTripAndOlderFilesStillLoad(t *testing.T) {
 		t.Errorf("older state file loaded as %+v", got)
 	}
 }
+
+// The remembered SSH destination — an OpenSSH alias or a per-VM route
+// override — round-trips the same way the user and identity maps do, and
+// the same MoRef in two different contexts is isolated.
+func TestSSHDestinationsRoundTripAndAreIsolatedByContext(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	want := State{
+		SSHDestinations: map[string]SSHDestination{
+			"tdc-1f/vm-1234": {Kind: "openssh_alias", Alias: "app-prod"},
+			"tdc-1f/vm-5678": {Kind: "route", Route: "http", ProxyAddress: "100.109.21.17:8080"},
+			"lab/vm-1234":    {Kind: "route", Route: "direct"},
+		},
+	}
+	if err := Save(path, want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got := Load(path)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("Load returned %+v, want %+v", got, want)
+	}
+	if got.SSHDestinations["tdc-1f/vm-1234"] == got.SSHDestinations["lab/vm-1234"] {
+		t.Errorf("same MoRef in two contexts should be independent, got identical entries")
+	}
+}
+
+// A renamed VM keeps its destination because the key is <context>/<moref>,
+// never the display name.
+func TestSSHDestinationsKeyIsContextAndMoRefNotName(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	want := State{SSHDestinations: map[string]SSHDestination{"prod/vm-42": {Kind: "openssh_alias", Alias: "app-prod"}}}
+	if err := Save(path, want); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got := Load(path)
+	if d, ok := got.SSHDestinations["prod/vm-42"]; !ok || d.Alias != "app-prod" {
+		t.Errorf("Load returned %+v, want the entry keyed prod/vm-42 to survive a rename", got)
+	}
+}
+
+// Load drops any destination it cannot prove is safe — an unknown kind, an
+// alias that looks like an ssh(1) option, or a proxy address that is not a
+// plain host:port — rather than handing back something a caller might trust
+// enough to put on an ssh(1) argument list.
+func TestLoadSanitizesUntrustworthySSHDestinations(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	raw := `{
+		"ssh_destinations": {
+			"prod/vm-1": {"kind": "openssh_alias", "alias": "app-prod"},
+			"prod/vm-2": {"kind": "openssh_alias", "alias": "-oProxyCommand=evil"},
+			"prod/vm-3": {"kind": "openssh_alias", "alias": "root@app-prod"},
+			"prod/vm-4": {"kind": "route", "route": "socks5", "proxy_address": "127.0.0.1:1080"},
+			"prod/vm-5": {"kind": "route", "route": "socks5", "proxy_address": "-x 127.0.0.1:1080"},
+			"prod/vm-6": {"kind": "shell_out", "alias": "app-prod"},
+			"prod/vm-7": {"kind": "route", "route": "sudo rm -rf /"}
+		}
+	}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(path)
+	want := map[string]SSHDestination{
+		"prod/vm-1": {Kind: "openssh_alias", Alias: "app-prod"},
+		"prod/vm-4": {Kind: "route", Route: "socks5", ProxyAddress: "127.0.0.1:1080"},
+	}
+	if !reflect.DeepEqual(got.SSHDestinations, want) {
+		t.Errorf("Load returned %+v, want only the safe entries %+v", got.SSHDestinations, want)
+	}
+}
+
+// A state file with no ssh_destinations key at all (every file written
+// before this feature existed) must still load cleanly.
+func TestLoadOfStateWithoutSSHDestinationsStillLoads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(path, []byte(`{"context":"prod"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := Load(path)
+	if got.Context != "prod" || got.SSHDestinations != nil {
+		t.Errorf("Load returned %+v", got)
+	}
+}

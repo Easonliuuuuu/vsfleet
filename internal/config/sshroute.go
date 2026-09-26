@@ -49,6 +49,21 @@ func (r *SSHRoute) Normalize() {
 	}
 }
 
+// ValidSSHProxyAddress reports whether addr is safe to interpolate into a
+// generated ProxyCommand: a plain host:port, never something ssh(1) or nc(1)
+// could read as an option, and never split into extra words. It is exported
+// so callers that accept a proxy address outside of [[ssh.routes]] — such as
+// the TUI's per-VM route override — can apply the same rule.
+func ValidSSHProxyAddress(addr string) bool {
+	if addr == "" || strings.HasPrefix(addr, "-") {
+		return false
+	}
+	if strings.IndexFunc(addr, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) }) >= 0 {
+		return false
+	}
+	return TransportConfig{Type: TransportSOCKS5, Address: addr}.validate() == nil
+}
+
 func (r SSHRoute) validate(i int) error {
 	prefix := fmt.Sprintf("ssh.routes[%d]", i)
 	if r.Context == "" {
@@ -66,9 +81,7 @@ func (r SSHRoute) validate(i int) error {
 		if r.ProxyAddress == "" {
 			return fmt.Errorf("%s: proxy_address is required for %s, e.g. 127.0.0.1:1080", prefix, r.Type)
 		}
-		// The address is interpolated into a ProxyCommand, so beyond
-		// host:port it must not be readable as an option or split into words.
-		if strings.HasPrefix(r.ProxyAddress, "-") || strings.IndexFunc(r.ProxyAddress, func(c rune) bool { return unicode.IsSpace(c) || unicode.IsControl(c) }) >= 0 {
+		if !ValidSSHProxyAddress(r.ProxyAddress) {
 			return fmt.Errorf("%s: proxy_address %q must be host:port", prefix, r.ProxyAddress)
 		}
 		if err := r.transport().validate(); err != nil {

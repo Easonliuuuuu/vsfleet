@@ -58,26 +58,78 @@ account names, and the web console only shows a prompt the guest drew itself.
 So the action label always names the user `ssh` will connect as — the answer
 of `ssh -G`, which applies your `~/.ssh/config` without connecting — as in
 `SSH to tdclab@10.42.7.13`. When that is not the right user or the VM uses a
-nonstandard key such as `~/.ssh/id_devops`, choose **SSH with a different user
-or key…**. The overlay offers the OpenSSH default, target-specific
-`IdentityFile` entries, conventional keys in `~/.ssh`, and a manual path.
-Tab switches between the username and identity list; Enter advances and then
-connects. The selected user and key path are remembered for that machine in
-`state.json`, alongside the last-viewed tab, not in `config.toml`. Choose
-OpenSSH default or blank the username to forget the corresponding override.
+nonstandard key such as `~/.ssh/id_devops`, choose **SSH with a different
+destination, user or key…**. The overlay adds a Destination and Route section
+ahead of the User and Identity pickers you already know; Tab cycles through
+whichever sections currently apply, and Enter advances each one and finally
+connects. The selected destination, route, user and key path are all
+remembered for that machine in `state.json`, alongside the last-viewed tab,
+not in `config.toml`. Choosing Automatic for Route or OpenSSH default for
+Identity, or blanking the username, forgets the corresponding override.
 Accepting the value `ssh` itself reported does not pin it, so `~/.ssh/config`
 stays in charge.
+
+### OpenSSH alias discovery
+
+Before offering a VM's raw DNS name or IP, vsfleet looks for an existing
+OpenSSH alias that already reaches it — a `Host app-prod` block whose
+`HostName` is the VM's guest IP. Reconstructing that block's `ProxyJump`,
+`Port`, key, and user inside vsfleet would be both incomplete and fragile, so
+when one is found, `ssh app-prod` is used verbatim instead: OpenSSH, not
+vsfleet, owns everything that alias's `Host` block applies.
+
+Discovery is deliberately conservative and never invents a route:
+
+1. `~/.ssh/config` and its `Include` files (followed recursively, bounded, and
+   read-only) are parsed for literal `Host` aliases sitting above a literal
+   `HostName` equal to the VM's IP. Wildcard, negated, and tokenized patterns
+   (`Host *`, `!host`, `HostName %h`) are skipped rather than guessed at, and
+   a `Match` block's `HostName` is never attributed to a `Host` alias.
+2. Every candidate that survives step 1 is independently confirmed with a
+   bounded `ssh -G <alias>` — the same call vsfleet already uses to resolve a
+   user (see above) — and only kept if the *effective* hostname it reports
+   equals the VM's IP. The config text alone is never trusted.
+
+If exactly one alias validates, it is offered first — "SSH to
+`user@app-prod` — OpenSSH alias" — and used without asking. If several
+validate and none is remembered yet, vsfleet does not choose between them:
+"Choose OpenSSH alias… (N matches)" opens the destination picker instead. A
+remembered alias is re-validated the same way on every use; if it no longer
+matches the VM's current IP it is dropped and rediscovered rather than kept,
+so a stale alias never silently connects somewhere else.
+
+### Destination and route
+
+The Destination list in the overlay shows every validated alias
+(`OpenSSH: app-prod`) followed by the VM's own `Guest DNS:` and `Guest IP:`
+targets. Choosing a native target reveals a Route section — a per-VM,
+one-off choice, not a `config.toml` edit:
+
+| Route | Effect |
+|---|---|
+| Automatic | The precedence below: a configured `[[ssh.routes]]` rule, then the context's own transport, then plain `ssh` |
+| OpenSSH default | Adds none of vsfleet's own arguments; `~/.ssh/config` decides everything, including its own `ProxyJump` for this address if it has one |
+| Direct | Forces a direct connection, overriding even `~/.ssh/config`'s own `ProxyJump`/`ProxyCommand` for this address |
+| HTTP CONNECT / SOCKS5 | Prompts for the proxy's `host:port` and routes through it, the same unauthenticated-only rule `[[ssh.routes]]` applies |
+
+An alias needs no Route section: it is a complete destination on its own.
+
+Routing precedence, most specific first: a remembered still-valid alias, a
+unique discovered alias, a remembered per-VM route override, a matching
+`[[ssh.routes]]` rule (see [SSH routes](configuration.md#ssh-routes)), the
+context's own transport, then plain `ssh`. vsfleet never tries a route
+speculatively — every step here either proves a destination works before
+using it, or is an explicit choice you made.
 
 The user vsfleet supplies is picked in this order: one you typed for that
 machine, the `[ssh]` table's `vm_user` or `host_user` (see
 [Configuration](configuration.md#ssh)), the shared `[ssh] user`, and otherwise
-none, leaving `ssh` to resolve it as it always does. The route follows the
-guest's context and IP: a matching `[[ssh.routes]]` rule (see
-[SSH routes](configuration.md#ssh-routes)), else the context's own transport,
-else plain `ssh`. Failed SSH
+none, leaving `ssh` to resolve it as it always does. Failed SSH
 sessions use a 15-second initial connection timeout and retain the final
 diagnostic line from OpenSSH in the footer, rather than reducing the cause to
-exit status 255. An explicitly selected identity uses public-key
+exit status 255 — except a connection made through an OpenSSH alias, which
+adds none of vsfleet's own options so the alias's own `Host` block decides
+timeouts too. An explicitly selected identity uses public-key
 authentication only, so a rejected key returns promptly instead of waiting at
 an unexpected password prompt. A jump
 ("Show VMs on this host") stays on the table until `Esc` clears it, which it

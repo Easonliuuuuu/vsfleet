@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/uistate"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -31,6 +32,13 @@ type fakeHandoff struct {
 	sshErr       error
 	identities   []SSHIdentity
 	identityErr  error
+	// destinations scripts DiscoverSSHDestinations by targetIP; destCalls
+	// records the (targetIP, remembered) pairs it was asked about.
+	destinations     map[string][]string
+	destStale        map[string]bool
+	destErr          error
+	destCalls        []string
+	destRememberedIn []string
 }
 
 func (f *fakeHandoff) Copy(v string) error {
@@ -49,6 +57,11 @@ func (f *fakeHandoff) ResolveUser(address string) string {
 }
 func (f *fakeHandoff) DiscoverSSHIdentities(address string) ([]SSHIdentity, error) {
 	return append([]SSHIdentity(nil), f.identities...), f.identityErr
+}
+func (f *fakeHandoff) DiscoverSSHDestinations(targetIP, remembered string) ([]string, bool, error) {
+	f.destCalls = append(f.destCalls, targetIP)
+	f.destRememberedIn = append(f.destRememberedIn, remembered)
+	return append([]string(nil), f.destinations[targetIP]...), f.destStale[targetIP], f.destErr
 }
 func (f *fakeHandoff) SSH(spec SSHSpec) (*exec.Cmd, error) {
 	f.ssh = append(f.ssh, spec)
@@ -164,7 +177,7 @@ func TestIPFieldOpensPopupWithSSHActions(t *testing.T) {
 	if m.actions == nil {
 		t.Fatal("expected the IP address field to open a popup")
 	}
-	wantLabels := []string{"SSH to " + r.target.address, "SSH with a different user or key…", "Copy ssh -o ConnectTimeout=15 " + r.target.address, "Copy value"}
+	wantLabels := []string{"SSH to " + r.target.address, "SSH with a different destination, user or key…", "Copy ssh -o ConnectTimeout=15 " + r.target.address, "Copy value"}
 	for _, want := range wantLabels {
 		if _, ok := findAction(m.actions.items, want); !ok {
 			var got []string
@@ -610,6 +623,152 @@ func TestSSHRouteDoesNotBypassUnsupportedContextTransport(t *testing.T) {
 	r := findRow(t, m, vsphere.KindVM, "app-01")
 	if a := m.sshAction(r, r.target.address); !strings.Contains(a.disabled, "authenticated proxy") {
 		t.Errorf("authenticated context proxy must stay explicitly unsupported, got %+v", a)
+	}
+}
+
+// A validated OpenSSH alias outranks a configured #178 route: it connects
+// through the alias with no vsfleet-generated ProxyCommand at all, and
+// OpenSSH ProxyJump. This is #187's central precedence rule.
+func TestSSHAliasPreferredOverConfiguredRoute(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "100.109.21.17:8080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab"})
+	fake.destinations = map[string][]string{"10.20.0.11": {"app-prod"}}
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+
+	actions := m.vmSSHActions(r)
+	if len(actions) == 0 || !strings.Contains(actions[0].label, "OpenSSH alias") {
+		t.Fatalf("expected the alias action first, got %v", labels(actions))
+	}
+	if cmd := actions[0].run(m); cmd == nil || len(fake.ssh) != 1 {
+		t.Fatalf("alias action did not launch: %+v", fake.ssh)
+	}
+	spec := fake.ssh[0]
+	if !spec.Alias || spec.Address != "app-prod" || len(spec.ProxyArgs) != 0 {
+		t.Errorf("spec = %+v, want the bare alias with no vsfleet route", spec)
+	}
+	key := sshUserKey(r)
+	if got := m.sshDestinations[key]; got.Kind != "openssh_alias" || got.Alias != "app-prod" {
+		t.Errorf("remembered destination = %+v", got)
+	}
+	if got := m.Snapshot().SSHDestinations[key]; got.Alias != "app-prod" {
+		t.Errorf("snapshot did not carry the remembered alias: %v", m.Snapshot().SSHDestinations)
+	}
+}
+
+// Several aliases and nothing remembered must never be chosen between
+// arbitrarily: the menu offers a chooser that opens the destination picker
+// instead of a direct connect action.
+func TestSSHMultipleAliasesOpensChooserRatherThanGuessing(t *testing.T) {
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, nil, Options{Current: "lab"})
+	fake.destinations = map[string][]string{"10.20.0.11": {"app-prod", "app-prod-via-bastion"}}
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+
+	actions := m.vmSSHActions(r)
+	if len(actions) == 0 || !strings.Contains(actions[0].label, "Choose OpenSSH alias") || !strings.Contains(actions[0].label, "2 matches") {
+		t.Fatalf("expected a chooser action first, got %v", labels(actions))
+	}
+	if cmd := actions[0].run(m); cmd == nil {
+		t.Fatal("chooser action did not run")
+	}
+	if m.sshPrompt == nil {
+		t.Fatal("chooser action should open the destination prompt")
+	}
+	var gotAliases []string
+	for _, d := range m.sshPrompt.destinations {
+		if d.kind == destAlias {
+			gotAliases = append(gotAliases, d.value)
+		}
+	}
+	if want := []string{"app-prod", "app-prod-via-bastion"}; !slices.Equal(gotAliases, want) {
+		t.Errorf("prompt destinations = %v, want %v", gotAliases, want)
+	}
+	if len(fake.ssh) != 0 {
+		t.Errorf("opening the chooser must not itself connect: %+v", fake.ssh)
+	}
+}
+
+// A remembered alias that no longer validates is dropped rather than kept
+// or trusted, and SSH falls back through the normal precedence instead of
+// silently connecting through the stale route.
+func TestSSHStaleRememberedAliasIsDroppedAndFallsBack(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "100.109.21.17:8080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	key := sshUserKey(r)
+	m.sshDestinations = map[string]uistate.SSHDestination{key: {Kind: "openssh_alias", Alias: "app-old"}}
+	// The fake reports no valid aliases this time, and that the remembered
+	// one is confirmed stale (it would report false if the check merely
+	// failed or timed out — see Handoff.DiscoverSSHDestinations).
+	fake.destStale = map[string]bool{"10.20.0.11": true}
+
+	actions := m.vmSSHActions(r)
+	if strings.Contains(labels(actions)[0], "OpenSSH") {
+		t.Fatalf("a stale alias must not still be offered: %v", labels(actions))
+	}
+	if _, ok := m.sshDestinations[key]; ok {
+		t.Errorf("stale remembered destination should have been dropped, got %+v", m.sshDestinations[key])
+	}
+	if len(fake.destRememberedIn) == 0 || fake.destRememberedIn[0] != "app-old" {
+		t.Errorf("discovery was not asked to re-check the remembered alias: %v", fake.destRememberedIn)
+	}
+	// It falls through to the configured #178 route, exactly as if nothing
+	// had ever been remembered.
+	spec := runSSH(t, m, fake, r, r.target.address)
+	if want := []string{"-o", httpProxyArg}; !slices.Equal(spec.ProxyArgs, want) {
+		t.Errorf("ProxyArgs = %q, want the fallback #178 route %q", spec.ProxyArgs, want)
+	}
+}
+
+// A per-VM route override (chosen through the destination prompt, or
+// remembered from an earlier session) outranks a configured #178 route —
+// it is more specific to this one machine.
+func TestSSHPerVMRouteOverrideBeatsConfiguredRoute(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/24", Type: "http", ProxyAddress: "100.109.21.17:8080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	key := sshUserKey(r)
+	m.sshDestinations = map[string]uistate.SSHDestination{key: {Kind: "route", Route: sshRouteDirect}}
+
+	spec := runSSH(t, m, fake, r, r.target.address)
+	joined := strings.Join(spec.ProxyArgs, " ")
+	if !strings.Contains(joined, "ProxyCommand=none") || !strings.Contains(joined, "ProxyJump=none") {
+		t.Errorf("ProxyArgs = %q, want the remembered Direct override, not the configured route", spec.ProxyArgs)
+	}
+}
+
+// Plain guest DNS/IP SSH, with neither an alias nor a remembered override,
+// keeps behaving exactly as it did before #187.
+func TestSSHWithNoAliasOrOverrideIsUnchanged(t *testing.T) {
+	routes := []config.SSHRoute{{Context: "lab", CIDR: "10.20.0.0/24", Type: "socks5", ProxyAddress: "127.0.0.1:1080"}}
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, routes, Options{Current: "lab"})
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+	spec := runSSH(t, m, fake, r, r.target.address)
+	if want := []string{"-o", "ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p"}; !slices.Equal(spec.ProxyArgs, want) {
+		t.Errorf("ProxyArgs = %q, want the unchanged #178 route %q", spec.ProxyArgs, want)
+	}
+	if spec.Alias {
+		t.Error("no alias was discovered; spec must not claim to be one")
+	}
+}
+
+// "vsfleet demo" dials nothing, including alias discovery.
+func TestDemoNeverRunsAliasDiscovery(t *testing.T) {
+	m, fake := sshRouteModel(t, []*config.Context{ctx("lab", "https://vcsa.lab.internal")}, nil, Options{Current: "lab", Demo: true})
+	fake.destinations = map[string][]string{"10.20.0.11": {"app-prod"}}
+	r := findRow(t, m, vsphere.KindVM, "app-01")
+
+	for _, a := range m.vmSSHActions(r) {
+		if strings.Contains(a.label, "OpenSSH") {
+			t.Errorf("demo mode must not offer an alias action: %v", labels(m.vmSSHActions(r)))
+		}
+	}
+	for _, a := range m.sshFieldActions(r, r.target.address) {
+		if strings.Contains(a.label, "OpenSSH") {
+			t.Errorf("demo mode must not offer an alias action on a field either: %v", labels(m.sshFieldActions(r, r.target.address)))
+		}
+	}
+	if len(fake.destCalls) != 0 {
+		t.Errorf("demo mode ran alias discovery: %v", fake.destCalls)
 	}
 }
 

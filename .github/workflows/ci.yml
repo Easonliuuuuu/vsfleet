@@ -73,7 +73,7 @@ jobs:
 
       - name: Upload coverage report
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
@@ -116,7 +116,7 @@ jobs:
         run: go run ./cmd/vsfleet-harness test --results-dir "${{ runner.temp }}/vsfleet-scenarios"
       - name: Upload scenario diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tui-scenario-results-${{ matrix.os }}
           path: ${{ runner.temp }}/vsfleet-scenarios
@@ -136,7 +136,7 @@ jobs:
         run: scripts/testbed pty --results-dir "${{ runner.temp }}/vsfleet-pty"
       - name: Upload PTY failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tui-pty-results
           path: ${{ runner.temp }}/vsfleet-pty
@@ -217,7 +217,7 @@ jobs:
           VSFLEET_K8S_DEBUG_DIR: ${{ runner.temp }}/kubernetes-debug
         run: ./scripts/test-kubernetes.sh
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: kubernetes-debug
@@ -248,7 +248,7 @@ jobs:
           VSFLEET_VCSIM_LOG_DIR: ${{ runner.temp }}/vcsim-logs
         run: go test -tags integration -race ./tests/... -timeout 20m
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: vcsim-logs

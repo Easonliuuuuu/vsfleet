@@ -18,6 +18,20 @@
 * **vsphere:** pass the connection test with the built-in ReadOnly role instead of requiring `Sessions.ValidateSession` ([#189](https://github.com/Easonliuuuuu/vsfleet/issues/189))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.6.2](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.1...v0.6.2) (2026-10-03)
+
+
+### Features
+
+* **tui:** add disk, network and contention pages to the VM dashboard ([9e85094](https://github.com/Easonliuuuuu/vsfleet/commit/9e8509443b285705ef3270e1c1aaa7f36b3f061c))
+* **tui:** refresh the open VM dashboard and label chart axes with times ([0f56e45](https://github.com/Easonliuuuuu/vsfleet/commit/0f56e45fec28531be22fbb40b3639bc1ac36eec7))
+* **tui:** turn the VM detail pane into a small performance dashboard ([4cb3fa8](https://github.com/Easonliuuuuu/vsfleet/commit/4cb3fa8b1a6c9b6d69fa13b5f91048ab66b2d476))
+
+
+### Bug Fixes
+
+* **tui:** improve VM dashboard wrapping and footer context ([6266a9d](https://github.com/Easonliuuuuu/vsfleet/commit/6266a9d9bf73e204cf458929ed05e5c8b758516a))
+
 ## [0.6.1](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.0...v0.6.1) (2026-10-02)
 
 

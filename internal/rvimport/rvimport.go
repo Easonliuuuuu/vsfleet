@@ -1067,7 +1067,9 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 
 	// Distributed switches. dvPort names its switch by display name, so the
 	// join is scoped to context and datacenter and refused when it is not
-	// unique — a distributed port group is never attached to a guess. Rows are
+	// unique — a distributed port group is never attached to a guess. RVTools'
+	// own dvPort sheet has no Datacenter column, so without one the join is
+	// scoped to the context alone. Rows are
 	// read even when the kind is already unavailable so the dry-run column
 	// report is complete; they are simply never stored.
 	if _, present := tables[sheetDVSwitch]; present {
@@ -1091,9 +1093,10 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 					warn("%s: row belongs to a context with no %s rows; skipped", sheetDVPort, sheetDVSwitch)
 					continue
 				}
+				datacenter, scoped := t.cell(row, "Datacenter"), t.has("Datacenter")
 				var match []*vsphere.DVSwitch
 				for _, sw := range c.dvswitches {
-					if sw.Name == t.cell(row, "DVS") && sw.Datacenter == t.cell(row, "Datacenter") {
+					if sw.Name == t.cell(row, "DVS") && (!scoped || sw.Datacenter == datacenter) {
 						match = append(match, sw)
 					}
 				}
@@ -1104,7 +1107,11 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 					warn("%s: port group %q names switch %q, which is not in %s; skipped", sheetDVPort, t.cell(row, "Port group"), t.cell(row, "DVS"), sheetDVSwitch)
 					c.setGap(kindDVSwitch, fmt.Sprintf("port group %q could not be attached to any distributed switch", t.cell(row, "Port group")))
 				default:
-					ambiguities.add(Ambiguity{Sheet: sheetDVPort, Context: c.name, Identity: t.cell(row, "DVS"), Detail: "more than one distributed switch shares this name and datacenter; port groups are not attached to either"})
+					detail := "more than one distributed switch shares this name and datacenter; port groups are not attached to either"
+					if !scoped {
+						detail = "more than one distributed switch shares this name and dvPort has no Datacenter column; port groups are not attached to any of them"
+					}
+					ambiguities.add(Ambiguity{Sheet: sheetDVPort, Context: c.name, Identity: t.cell(row, "DVS"), Detail: detail})
 					c.setGap(kindDVSwitch, fmt.Sprintf("distributed switch name %q is ambiguous", t.cell(row, "DVS")))
 				}
 			}

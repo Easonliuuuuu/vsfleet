@@ -58,9 +58,10 @@ func TestSyntheticRVTools48DVPortIdentity(t *testing.T) {
 					{"VM", "VM ID", "CPUs", "Memory", "VI SDK Server", "VI SDK UUID"},
 					{"Synthetic VM", "vm-1001", 2, 4096, endpoint, "synthetic-vc-uuid"},
 				}},
+				// Real RVTools dvSwitch sheets carry Datacenter; dvPort does not (#359).
 				{sheetDVSwitch, [][]any{
-					{"Switch", "Object ID", "VI SDK Server", "VI SDK UUID"},
-					{"Synthetic DVS", "dvs-1005", endpoint, "synthetic-vc-uuid"},
+					{"Switch", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID"},
+					{"Synthetic DVS", "dvs-1005", "DC-Synthetic", endpoint, "synthetic-vc-uuid"},
 				}},
 				{sheetDVPort, [][]any{headers, port}},
 			} {
@@ -111,6 +112,63 @@ func TestSyntheticRVTools48DVPortIdentity(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// Without a Datacenter column on dvPort, a switch name shared by two
+// datacenters in one vCenter cannot be resolved, so neither switch gets the
+// port group (#359).
+func TestSyntheticRVTools48DVPortSharedSwitchNameIsAmbiguous(t *testing.T) {
+	const endpoint = "vc-synthetic.example"
+	f := excelize.NewFile()
+	t.Cleanup(func() { _ = f.Close() })
+	for _, sheet := range []struct {
+		name string
+		rows [][]any
+	}{
+		{sheetVInfo, [][]any{
+			{"VM", "VM ID", "CPUs", "Memory", "VI SDK Server", "VI SDK UUID"},
+			{"Synthetic VM", "vm-1001", 2, 4096, endpoint, "synthetic-vc-uuid"},
+		}},
+		{sheetDVSwitch, [][]any{
+			{"Switch", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID"},
+			{"Synthetic DVS", "dvs-1005", "DC-Synthetic-A", endpoint, "synthetic-vc-uuid"},
+			{"Synthetic DVS", "dvs-2005", "DC-Synthetic-B", endpoint, "synthetic-vc-uuid"},
+		}},
+		{sheetDVPort, [][]any{
+			{"Port", "Switch", "Object ID", "VI SDK Server", "VI SDK UUID"},
+			{"Synthetic frontend", "Synthetic DVS", "dvportgroup-1006", endpoint, "synthetic-vc-uuid"},
+		}},
+	} {
+		if _, err := f.NewSheet(sheet.name); err != nil {
+			t.Fatal(err)
+		}
+		for i, row := range sheet.rows {
+			if err := f.SetSheetRow(sheet.name, fmt.Sprintf("A%d", i+1), &row); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	path := filepath.Join(t.TempDir(), "synthetic-rvtools-4.8.xlsx")
+	if err := f.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	result, run, store := importFixture(t, openFixture(t, path), Options{CapturedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)})
+	if col := collectionOf(t, store, run.ID, endpoint, kindDVSwitch); col.Status != "unavailable" {
+		t.Fatalf("dvswitch coverage = %+v, want unavailable", col)
+	}
+	if !hasGap(result.Report, kindDVSwitch) || result.Report.Contexts[0].DVSwitchCount != 0 {
+		t.Fatalf("shared switch name must leave a gap: report=%+v", result.Report)
+	}
+	if len(result.Report.Ambiguities) != 1 || result.Report.Ambiguities[0].Sheet != sheetDVPort || result.Report.Ambiguities[0].Identity != "Synthetic DVS" {
+		t.Fatalf("ambiguities = %+v, want one dvPort ambiguity for the shared switch name", result.Report.Ambiguities)
+	}
+	resources, err := store.Resources(context.Background(), run.ID, kindDVSwitch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resources) != 0 {
+		t.Fatalf("ambiguous switches must not be stored: %+v", resources)
 	}
 }
 

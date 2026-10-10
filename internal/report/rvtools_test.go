@@ -264,6 +264,66 @@ func TestWriteRVToolsSetsWorksheetDimensions(t *testing.T) {
 	}
 }
 
+// The worksheets are streamed (#331); this pins what streaming must keep from
+// the in-memory writer: a styled, frozen, filterable header row, column
+// widths and formats, and date cells that render as dates.
+func TestWriteRVToolsKeepsWorksheetPresentation(t *testing.T) {
+	data := sampleExportData(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+	var output bytes.Buffer
+	if err := WriteRVTools(&output, data, healthReport(data)); err != nil {
+		t.Fatal(err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	sheets, err := rvtoolsSheets(data, healthReport(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cellStyle := func(sheet, ref string) *excelize.Style {
+		t.Helper()
+		id, err := f.GetCellStyle(sheet, ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		style, err := f.GetStyle(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return style
+	}
+	filters := map[string]string{}
+	for _, name := range f.GetDefinedName() {
+		if name.Name == "_xlnm._FilterDatabase" {
+			filters[name.Scope] = name.RefersTo
+		}
+	}
+	for _, s := range sheets {
+		lastCol, _ := excelize.ColumnNumberToName(len(s.headers))
+		if want := fmt.Sprintf("'%s'!$A$1:$%s$%d", s.name, lastCol, len(s.rows)+1); filters[s.name] != want {
+			t.Errorf("%s auto filter=%q, want %q", s.name, filters[s.name], want)
+		}
+		panes, err := f.GetPanes(s.name)
+		if err != nil || !panes.Freeze || panes.YSplit != 1 || panes.TopLeftCell != "A2" {
+			t.Errorf("%s panes=%+v (%v), want the header row frozen", s.name, panes, err)
+		}
+		if header := cellStyle(s.name, lastCol+"1"); header.Font == nil || !header.Font.Bold || len(header.Fill.Color) == 0 || header.Fill.Color[0] != "1F4E78" {
+			t.Errorf("%s header style=%+v, want bold on the header fill", s.name, header)
+		}
+		if width, err := f.GetColWidth(s.name, "A"); err != nil || width < 12 || width > 32 {
+			t.Errorf("%s column A width=%v (%v), want 12 to 32", s.name, width, err)
+		}
+	}
+	if date := cellStyle("vSnapshot", "E2"); date.CustomNumFmt == nil || *date.CustomNumFmt != dateFormat {
+		t.Errorf("vSnapshot date style=%+v, want %q", date, dateFormat)
+	}
+	if plain := cellStyle("vSnapshot", "A2"); plain.CustomNumFmt != nil {
+		t.Errorf("vSnapshot VM cell style=%+v, want no date format", plain)
+	}
+}
+
 func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	data := sampleExportData(when)

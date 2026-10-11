@@ -194,6 +194,11 @@ type row struct {
 	marks map[string]fieldMark
 	// tree places a row in the grouped Networks tab; see network.go.
 	tree treeInfo
+	// folder is set on a folder row of the VMs or Templates tab's folder
+	// view, and is where enter on it leads; filed is the folder a VM or
+	// template row is filed in. See folders.go.
+	folder *folderSpot
+	filed  string
 }
 
 // columnsFor returns the columns for a kind. withContext adds the leading
@@ -606,6 +611,7 @@ func vmRow(vm vsphere.VM, withContext bool) row {
 		target: actionTarget{moref: vm.ID, morefKind: "VirtualMachine", address: vm.IPAddress, hostName: vm.GuestHostName, path: vm.Path},
 		joins:  actionJoins{host: vm.Host, cluster: vm.Cluster, datastores: vm.Datastores, networks: nicNetworks(vm.NICs)},
 		vm:     &vm,
+		filed:  vm.Folder,
 	}
 	if vm.Annotation != "" {
 		r.notes = append(r.notes, field{"Notes", vm.Annotation})
@@ -636,6 +642,7 @@ func templateRow(vm vsphere.VM, withContext bool) row {
 		key:     vm.Context + "/" + vm.ID,
 		context: vm.Context,
 		where:   vm.Location,
+		filed:   vm.Folder,
 		name:    vm.Name,
 		glyph:   glyphSkip,
 		status:  statusNone,

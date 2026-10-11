@@ -805,6 +805,11 @@ type Model struct {
 	netFlat    bool
 	netTopoGen uint64
 
+	// folderOn holds the tabs browsed by folder, and folderAt the folder
+	// each one is in; see folders.go.
+	folderOn map[vsphere.Kind]bool
+	folderAt map[vsphere.Kind]folderSpot
+
 	// cl is the open cluster pane's page, host cursor and folds; see
 	// cluster.go. hv is the open host pane's page and switch cursor; see
 	// hostnet.go.
@@ -1437,6 +1442,9 @@ func (m *Model) ensureSearch(query string) *searchState {
 func (m *Model) rows() []row {
 	if m.kind == vsphere.KindNetwork && !m.netFlat {
 		return m.networkTreeRows()
+	}
+	if m.folderView() {
+		return m.folderRows()
 	}
 	// append copies out of the per-context caches, so the filtering and
 	// sorting below rearrange this call's own slice and never the cached one.
@@ -2743,6 +2751,8 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 		case m.filter.Value() != "":
 			m.filter.SetValue("")
 			m.clampCursor()
+		case m.folderView():
+			m.folderUp()
 		}
 	case key.Matches(msg, m.keys.AllScope):
 		m.allScope = !m.allScope
@@ -2765,8 +2775,11 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 			m.toggleFold()
 		}
 	case key.Matches(msg, m.keys.NetView):
-		if m.kind == vsphere.KindNetwork {
+		switch {
+		case m.kind == vsphere.KindNetwork:
 			m.preserveCursor(func() { m.netFlat = !m.netFlat })
+		case foldersOffered(m.kind):
+			m.toggleFolderView()
 		}
 	case key.Matches(msg, m.keys.VLANMap):
 		if m.kind == vsphere.KindNetwork {
@@ -3002,6 +3015,10 @@ func (m *Model) open() tea.Cmd {
 	if !ok {
 		return nil
 	}
+	if r.folder != nil {
+		m.openFolder(*r.folder)
+		return nil
+	}
 	if m.mode == modeSearch {
 		// A search result can come from a different context and kind than the
 		// table behind the search. Make that result the real browse selection
@@ -3011,6 +3028,10 @@ func (m *Model) open() tea.Cmd {
 		m.allScope = false
 		m.kind = r.kind
 		m.cursor, m.offset = 0, 0
+		if m.folderView() {
+			// Esc from the pane lands in the result's own folder.
+			m.setFolder(spotOf(r))
+		}
 		for i, candidate := range m.rows() {
 			if candidate.key == r.key {
 				m.cursor = i
@@ -3140,7 +3161,7 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 		if key.Matches(msg, m.keys.PrevTab) {
 			delta = -1
 		}
-		m.move(delta)
+		m.stepPastFolders(delta)
 		m.detailCursor, m.detailY = 0, 0
 		return m.ensureVMPerf(false)
 	case key.Matches(msg, m.keys.PerfPage):

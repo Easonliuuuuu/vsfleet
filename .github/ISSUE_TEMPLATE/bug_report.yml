@@ -1,5 +1,6 @@
 name: Bug report
 description: Report behavior that is broken or unexpected.
+labels: ["bug"]
 body:
   - type: dropdown
     id: component
@@ -19,24 +20,63 @@ body:
         - other
     validations:
       required: true
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here; follow [SECURITY.md](https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md).
+        Remove credentials, hostnames, and inventory names you cannot share before submitting.
   - type: textarea
     id: behavior
     attributes:
       label: What happened?
-      description: Describe the actual behavior and what you expected.
+      description: Describe the actual behavior. Paste error output as text rather than a screenshot.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+      description: Describe the behavior you expected and why.
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
       label: Steps to reproduce
-      description: Include commands or a minimal example if available. Remove credentials and private inventory data.
+      description: List the commands, keys, or views that trigger the problem.
+      placeholder: |
+        1. vsfleet --context lab
+        2. Open the VMs view and press ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: VSFleet version
+      description: Output of `vsfleet --version`.
+      placeholder: vsfleet version 0.x.y
+    validations:
+      required: true
+  - type: input
+    id: vsphere
+    attributes:
+      label: vCenter or ESXi version
+      description: The vSphere version you connected to, or "none" for offline use.
+      placeholder: vCenter 8.0.3
+    validations:
+      required: false
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and terminal
+      placeholder: Ubuntu 24.04, GNOME Terminal
     validations:
       required: false
   - type: textarea
-    id: environment
+    id: diagnostics
     attributes:
-      label: Environment
-      description: Include the VSFleet version, operating system, and relevant setup.
+      label: Diagnostics
+      description: For connection problems, paste `vsfleet doctor` output after redacting it.
+      render: text
     validations:
       required: false

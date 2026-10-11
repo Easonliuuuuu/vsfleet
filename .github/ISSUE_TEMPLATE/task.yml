@@ -26,3 +26,12 @@ body:
       description: Describe the work and why it is needed.
     validations:
       required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: List the conditions that close this issue.
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: false

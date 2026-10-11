@@ -1,5 +1,6 @@
 name: Feature request
 description: Suggest a new capability or improvement.
+labels: ["enhancement"]
 body:
   - type: dropdown
     id: component
@@ -30,6 +31,13 @@ body:
     id: proposal
     attributes:
       label: Proposed change
-      description: Describe an approach if you have one.
+      description: Describe an approach if you have one. VSFleet is read-only against vSphere; proposals that change infrastructure are out of scope.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: Describe what you do today or other approaches you considered.
     validations:
       required: false

@@ -69,6 +69,19 @@ func zipEntries(t *testing.T, b []byte) map[string]string {
 	return out
 }
 
+// cellText joins every place a workbook can hold cell text: the shared
+// string table and each worksheet, whose streamed rows carry inline strings.
+func cellText(t *testing.T, b []byte) string {
+	t.Helper()
+	var text strings.Builder
+	for name, body := range zipEntries(t, b) {
+		if name == "xl/sharedStrings.xml" || strings.HasPrefix(name, "xl/worksheets/") {
+			text.WriteString(body)
+		}
+	}
+	return text.String()
+}
+
 func sheetRowsOf(t *testing.T, b []byte, name string) [][]string {
 	t.Helper()
 	f, err := excelize.OpenReader(bytes.NewReader(b))
@@ -293,11 +306,11 @@ func TestOrdinaryExportIsUnchangedByShareCode(t *testing.T) {
 }
 
 func TestSharedWithoutPseudonymizationKeepsValues(t *testing.T) {
-	out := writeShareBytes(t, shareEstate(), ShareOptions{Profile: ProfileSizingSummary})
-	if !strings.Contains(zipEntries(t, out)["xl/sharedStrings.xml"], "payroll-db01") {
+	out := cellText(t, writeShareBytes(t, shareEstate(), ShareOptions{Profile: ProfileSizingSummary}))
+	if !strings.Contains(out, "payroll-db01") {
 		t.Fatal("scoping alone must not rewrite values; the scan above would be vacuous")
 	}
-	if strings.Contains(zipEntries(t, out)["xl/sharedStrings.xml"], "192.0.2.20") {
+	if strings.Contains(out, "192.0.2.20") {
 		t.Fatal("the sizing profile must not carry IPs")
 	}
 }

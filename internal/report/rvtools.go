@@ -221,10 +221,7 @@ func writeWorkbook(w io.Writer, sheets []sheet, props excelize.DocProperties) er
 		}
 	}
 	for _, s := range sheets {
-		if err := applyColumnFormats(f, s, styles); err != nil {
-			return err
-		}
-		if err := writeSheet(f, s.name, s.headers, s.rows, s.dateCols, styles); err != nil {
+		if err := writeSheet(f, s, styles); err != nil {
 			return err
 		}
 	}
@@ -232,15 +229,7 @@ func writeWorkbook(w io.Writer, sheets []sheet, props excelize.DocProperties) er
 	if err != nil {
 		return err
 	}
-	normalized, err := normalizeZip(buf.Bytes())
-	if err != nil {
-		return err
-	}
-	n, err := w.Write(normalized)
-	if err == nil && n != len(normalized) {
-		return io.ErrShortWrite
-	}
-	return err
+	return normalizeZip(w, buf.Bytes())
 }
 
 // checkXLSXRows refuses a workbook Excel could not open, rather than writing
@@ -356,84 +345,80 @@ func newStyles(f *excelize.File) (styles, error) {
 	return styles{header: header, date: dateStyle, text: textStyle, count: countStyle}, nil
 }
 
-// applyColumnFormats gives a worksheet's fixed-format columns their number
-// format before rows are written, so every cell created in them inherits it.
-func applyColumnFormats(f *excelize.File, s sheet, st styles) error {
+// writeSheet streams one worksheet, so excelize never holds the rows as a
+// cell model: a large estate costs a temporary file rather than memory.
+// Everything the stream writer emits around the rows (auto filter, column
+// formats and widths, panes) is set before the first row.
+func writeSheet(f *excelize.File, s sheet, st styles) error {
+	lastCol, err := excelize.ColumnNumberToName(len(s.headers))
+	if err != nil {
+		return err
+	}
+	lastRow := len(s.rows) + 1
+	if err := f.AutoFilter(s.name, fmt.Sprintf("A1:%s%d", lastCol, lastRow), nil); err != nil {
+		return err
+	}
+	if err := f.SetSheetDimension(s.name, fmt.Sprintf("A1:%s%d", lastCol, lastRow)); err != nil {
+		return err
+	}
+	sw, err := f.NewStreamWriter(s.name)
+	if err != nil {
+		return err
+	}
 	for _, group := range []struct {
 		cols  []int
 		style int
 	}{{s.textCols, st.text}, {s.countCols, st.count}} {
 		for _, col := range group.cols {
-			name, err := excelize.ColumnNumberToName(col + 1)
-			if err != nil {
-				return err
-			}
-			if err := f.SetColStyle(s.name, name, group.style); err != nil {
+			if err := sw.SetColStyle(col+1, col+1, group.style); err != nil {
 				return err
 			}
 		}
 	}
-	return nil
-}
-
-func writeSheet(f *excelize.File, name string, headers []string, rows [][]any, dateCols []int, s styles) error {
-	header := make([]any, len(headers))
-	for i, h := range headers {
-		header[i] = h
-	}
-	if err := f.SetSheetRow(name, "A1", &header); err != nil {
-		return err
-	}
-	lastCol, err := excelize.ColumnNumberToName(len(headers))
-	if err != nil {
-		return err
-	}
-	if err := f.SetCellStyle(name, "A1", lastCol+"1", s.header); err != nil {
-		return err
-	}
-	for i, row := range rows {
-		rowNumber := i + 2
-		cell, err := excelize.CoordinatesToCellName(1, rowNumber)
-		if err != nil {
-			return err
-		}
-		if err := f.SetSheetRow(name, cell, &row); err != nil {
-			return err
-		}
-		for _, col := range dateCols {
-			if col < 0 || col >= len(row) || row[col] == nil {
-				continue
-			}
-			ref, err := excelize.CoordinatesToCellName(col+1, rowNumber)
-			if err != nil {
-				return err
-			}
-			if err := f.SetCellStyle(name, ref, ref, s.date); err != nil {
-				return err
-			}
-		}
-	}
-	lastRow := len(rows) + 1
-	if err := f.AutoFilter(name, fmt.Sprintf("A1:%s%d", lastCol, lastRow), nil); err != nil {
-		return err
-	}
-	if err := f.SetPanes(name, &excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft"}); err != nil {
-		return err
-	}
-	for i := range headers {
-		col, _ := excelize.ColumnNumberToName(i + 1)
-		width := float64(len(headers[i]) + 2)
+	for i, h := range s.headers {
+		width := float64(len(h) + 2)
 		if width < 12 {
 			width = 12
 		}
 		if width > 32 {
 			width = 32
 		}
-		if err := f.SetColWidth(name, col, col, width); err != nil {
+		if err := sw.SetColWidth(i+1, i+1, width); err != nil {
 			return err
 		}
 	}
-	return f.SetSheetDimension(name, fmt.Sprintf("A1:%s%d", lastCol, lastRow))
+	if err := sw.SetPanes(&excelize.Panes{Freeze: true, YSplit: 1, TopLeftCell: "A2", ActivePane: "bottomLeft"}); err != nil {
+		return err
+	}
+	header := make([]any, len(s.headers))
+	for i, h := range s.headers {
+		header[i] = excelize.Cell{StyleID: st.header, Value: h}
+	}
+	if err := sw.SetRow("A1", header); err != nil {
+		return err
+	}
+	// SetRow encodes a row before it returns, so one scratch row serves every
+	// date-styled row without touching the caller's.
+	var styled []any
+	for i, row := range s.rows {
+		if len(s.dateCols) > 0 {
+			styled = append(styled[:0], row...)
+			for _, col := range s.dateCols {
+				if col >= 0 && col < len(styled) && styled[col] != nil {
+					styled[col] = excelize.Cell{StyleID: st.date, Value: styled[col]}
+				}
+			}
+			row = styled
+		}
+		cell, err := excelize.CoordinatesToCellName(1, i+2)
+		if err != nil {
+			return err
+		}
+		if err := sw.SetRow(cell, row); err != nil {
+			return err
+		}
+	}
+	return sw.Flush()
 }
 
 func vmRows(data assessment.ExportData) [][]any {
@@ -1689,45 +1674,37 @@ func validateResources(resources []assessment.ResourceObservation) error {
 	return nil
 }
 
-func normalizeZip(input []byte) ([]byte, error) {
+// normalizeZip rewrites the archive in input to out with sorted entries and
+// fixed timestamps. Entries are copied one at a time, so no entry is ever
+// held decompressed in memory.
+func normalizeZip(out io.Writer, input []byte) error {
 	r, err := zip.NewReader(bytes.NewReader(input), int64(len(input)))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	files := append([]*zip.File(nil), r.File...)
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
-	var out bytes.Buffer
-	w := zip.NewWriter(&out)
+	w := zip.NewWriter(out)
 	epoch := time.Unix(0, 0).UTC()
 	for _, file := range files {
-		src, err := file.Open()
-		if err != nil {
+		if err := copyZipEntry(w, file, epoch); err != nil {
 			_ = w.Close()
-			return nil, err
-		}
-		contents, readErr := io.ReadAll(src)
-		closeErr := src.Close()
-		if readErr != nil {
-			_ = w.Close()
-			return nil, readErr
-		}
-		if closeErr != nil {
-			_ = w.Close()
-			return nil, closeErr
-		}
-		header := &zip.FileHeader{Name: file.Name, Method: zip.Deflate, Modified: epoch}
-		writer, err := w.CreateHeader(header)
-		if err != nil {
-			_ = w.Close()
-			return nil, err
-		}
-		if _, err := writer.Write(contents); err != nil {
-			_ = w.Close()
-			return nil, err
+			return err
 		}
 	}
-	if err := w.Close(); err != nil {
-		return nil, err
+	return w.Close()
+}
+
+func copyZipEntry(w *zip.Writer, file *zip.File, modified time.Time) error {
+	src, err := file.Open()
+	if err != nil {
+		return err
 	}
-	return out.Bytes(), nil
+	defer src.Close()
+	dst, err := w.CreateHeader(&zip.FileHeader{Name: file.Name, Method: zip.Deflate, Modified: modified})
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(dst, src)
+	return err
 }

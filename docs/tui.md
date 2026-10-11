@@ -61,8 +61,12 @@ folder; press `t` again for the plain list, which keeps the selected row.
   matches without their folders. A jump from another object, such as
   *Show VMs on this host*, lists every match wherever it is filed.
 
-A VM inside a vApp lists the vApp as its folder, so the vApp appears as one
-more level. Folders that hold no VMs or templates are not shown.
+vApps appear in their folder as they do in the vSphere client's VMs and
+Templates view: marked `▣` and labelled `vApp`, with the VMs they hold, at
+any depth, in the counts. `Enter` on a vApp opens its
+[vApp page](#contexts-and-vapps), with its start order and members, and
+`Esc` returns to the folder. A vApp with no VMs is still listed. Folders
+that hold no VMs or templates are not shown.
 
 ## Contexts and vApps
 

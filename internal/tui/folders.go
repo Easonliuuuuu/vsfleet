@@ -207,6 +207,17 @@ func (m *Model) folderRows() []row {
 		}
 		tally[name].add(r)
 	}
+	// A vApp is listed in its folder even with no VMs, as the vSphere
+	// client lists it.
+	vapps := m.folderVApps()
+	for vs := range vapps {
+		if vs.context != spot.context || vs.datacenter != spot.datacenter {
+			continue
+		}
+		if name, ok := strings.CutPrefix(vs.path, prefix); ok && !strings.Contains(name, "/") && tally[name] == nil {
+			tally[name] = &folderTally{}
+		}
+	}
 	names := make([]string, 0, len(tally))
 	for n := range tally {
 		names = append(names, n)
@@ -218,6 +229,10 @@ func (m *Model) folderRows() []row {
 	for _, n := range names {
 		child := spot
 		child.path = prefix + n
+		if v, ok := vapps[child]; ok {
+			out = append(out, m.vappFolderRow(child, v, tally[n], len(leaves) == 0))
+			continue
+		}
 		out = append(out, m.folderRow(child, n, tally[n], len(leaves) == 0))
 	}
 	m.sortMode.apply(leaves)
@@ -279,6 +294,50 @@ func foldersOnly(rows []row) bool {
 		}
 	}
 	return len(rows) > 0
+}
+
+// glyphVApp marks a vApp in the folder view. The vSphere client gives a vApp
+// its own icon, not a folder's, because it is an object with its own pages.
+const glyphVApp = "▣"
+
+// folderVApps maps each vApp in scope to its place in the VM folder tree, by
+// vCenter, datacenter and folder path ("/Apps/web-stack"). vApps hold VMs
+// only, so the Templates tab has none. A vApp read with a path outside the
+// VM folder tree has no place in it and is left out.
+func (m *Model) folderVApps() map[folderSpot]vsphere.VApp {
+	out := map[folderSpot]vsphere.VApp{}
+	if m.kind != vsphere.KindVM {
+		return out
+	}
+	for _, st := range m.inScope() {
+		if st.inv == nil {
+			continue
+		}
+		for _, v := range st.inv.VApps {
+			p, ok := strings.CutPrefix(v.Path, "/"+v.Datacenter+"/vm/")
+			if !ok {
+				continue
+			}
+			out[folderSpot{context: st.cc.Name, datacenter: v.Datacenter, path: "/" + p}] = v
+		}
+	}
+	return out
+}
+
+// vappFolderRow is the line for a vApp in its folder: marked as a vApp and
+// coloured by its state, and opening the vApp's own page rather than a level.
+func (m *Model) vappFolderRow(s folderSpot, v vsphere.VApp, t *folderTally, alone bool) row {
+	r := m.folderRow(s, v.Name, t, alone)
+	nameAt := 0
+	if m.showContext() {
+		nameAt = 1
+	}
+	r.cells[nameAt] = strings.Replace(r.cells[nameAt], v.Name+"/", v.Name+"  vApp", 1)
+	r.key = vappKey(s.context, v.ID)
+	r.kind = vsphere.KindVApp
+	r.glyph = glyphVApp
+	r.status = vappRow(v, false).status
+	return r
 }
 
 // folderRow is the line for a folder. Alone on its level it fills
@@ -366,10 +425,18 @@ func (m *Model) folderCrumb() string {
 	if m.showContext() {
 		parts = append([]string{spot.context}, parts...)
 	}
+	vapps := m.folderVApps()
+	at := spot
+	at.path = ""
 	for _, p := range strings.Split(strings.Trim(spot.path, "/"), "/") {
-		if p != "" {
-			parts = append(parts, p)
+		if p == "" {
+			continue
 		}
+		at.path += "/" + p
+		if _, ok := vapps[at]; ok {
+			p += " (vApp)"
+		}
+		parts = append(parts, p)
 	}
 	return strings.Join(parts, " › ")
 }

@@ -22,9 +22,13 @@ func (e *estate) vmByName(name string) *vsphere.VM {
 func vmRef(id string) string { return "VirtualMachine:" + id }
 
 // finishVApps groups generated VMs into the vApps the site declares. A VM
-// belongs to at most one vApp, and only to one in its own cluster.
+// belongs to at most one vApp, and only to one in its own cluster. Each vApp
+// is filed in the VM folder tree the way vCenter reports it: a top-level vApp
+// in the folder its first member came from, a nested one inside its parent,
+// and every member under its vApp.
 func (e *estate) finishVApps(s siteSpec, placed []placedVM, loc locFunc) {
 	byName := map[string]int{}
+	filed := map[string]string{}
 	for _, spec := range s.vapps {
 		var members []*vsphere.VM
 		n := 0
@@ -61,20 +65,26 @@ func (e *estate) finishVApps(s siteSpec, placed []placedVM, loc locFunc) {
 		if pickN(6, s.ctx, spec.name, "st") == 0 || spec.max == 0 {
 			v.Status = "stopped"
 		}
-		path := spec.cluster + "/Resources/" + spec.name
+		folder := "/"
+		if len(members) > 0 && members[0].Folder != "" {
+			folder = members[0].Folder
+		}
 		if spec.parent != "" {
 			pi := byName[spec.parent]
 			parent := &e.inv.VApps[pi]
-			path = strings.TrimPrefix(parent.Path, "/"+s.dc+"/host/") + "/" + spec.name
+			folder = filed[spec.parent]
 			v.ParentContainer, v.ParentVApp = spec.parent, spec.parent
 			parent.ChildVApps = append(parent.ChildVApps, spec.name)
 			parent.ChildVAppRefs = append(parent.ChildVAppRefs, "VirtualApp:"+id)
 			parent.ChildVAppCount++
 		}
-		v.Location = loc("host", path)
+		filed[spec.name] = strings.TrimSuffix(folder, "/") + "/" + spec.name
+		v.Location = loc("vm", strings.TrimPrefix(filed[spec.name], "/"))
 		for _, m := range members {
 			v.DirectVMs = append(v.DirectVMs, m.Name)
 			v.DirectVMRefs = append(v.DirectVMRefs, vmRef(m.ID))
+			m.Folder = filed[spec.name]
+			m.Path = "/" + s.dc + "/vm" + m.Folder + "/" + m.Name
 		}
 		v.DirectVMCount = len(members)
 		v.OverallStatus, v.ConfigStatus = "green", "green"

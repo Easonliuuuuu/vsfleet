@@ -13,9 +13,9 @@ import (
 // the vSphere client shows them: jump-01 at the top of Taipei; ops-01 in
 // /Prod beside its subfolders, web-01 and web-02 in /Prod/Customer-Facing-Web
 // and db-01 in /Prod/DB; api-01 in the vApp web-stack under /Apps, with
-// cache-01 in its nested vApp web-cache. Its one template is in
-// /Templates/Linux. dcs adds one VM filed at the top of each further
-// datacenter.
+// cache-01 in its nested vApp web-cache, and the vApp idle-vapp, with no
+// VMs, beside web-stack. Its one template is in /Templates/Linux. dcs adds one
+// VM filed at the top of each further datacenter.
 func filedModel(t *testing.T, dcs ...string) *Model {
 	t.Helper()
 	b := twoHealthy()
@@ -38,6 +38,17 @@ func filedModel(t *testing.T, dcs ...string) *Model {
 	}
 	inv.VMs[1].PowerState = "poweredOff"
 	inv.Templates[0].Folder = "/Templates/Linux"
+	vapp := func(id, name, folder string) vsphere.VApp {
+		return vsphere.VApp{
+			Location: vsphere.Location{Context: "prod", Datacenter: "Taipei", Path: "/Taipei/vm" + folder},
+			ID:       id, Name: name, Status: "started",
+		}
+	}
+	inv.VApps = append(inv.VApps,
+		vapp("resgroup-v1", "web-stack", "/Apps/web-stack"),
+		vapp("resgroup-v2", "web-cache", "/Apps/web-stack/web-cache"),
+		vapp("resgroup-v3", "idle-vapp", "/Apps/idle-vapp"),
+	)
 	for _, dc := range dcs {
 		inv.VMs = append(inv.VMs, vm(dc, "dr-"+strings.ToLower(dc), "/", "esxi-01"))
 	}
@@ -81,9 +92,8 @@ func TestFolderViewBrowsesOneLevelAtATime(t *testing.T) {
 		// t opens at the top: two datacenters in scope, so it lists them.
 		{[]string{"t"}, "Tainan,Taipei", "Tainan", "in all datacenters"},
 		{[]string{"j", "enter"}, "Apps,Prod,jump-01", "Apps", "in Taipei  ·"},
-		{[]string{"enter", "enter"}, "web-cache,api-01", "web-cache", "in Taipei › Apps › web-stack"},
+		{[]string{"enter"}, "idle-vapp,web-stack", "idle-vapp", "in Taipei › Apps"},
 		// esc climbs back and leaves the cursor on the folder it came from.
-		{[]string{"esc"}, "web-stack", "web-stack", "in Taipei › Apps"},
 		{[]string{"esc"}, "Apps,Prod,jump-01", "Apps", "in Taipei  ·"},
 		{[]string{"esc"}, "Tainan,Taipei", "Taipei", "in all datacenters"},
 		{[]string{"esc"}, "Tainan,Taipei", "Taipei", "in all datacenters"},
@@ -113,13 +123,13 @@ func TestFolderRowsFitTheirLevel(t *testing.T) {
 	press(t, m, "t")
 	requireFooter(t, m, []string{"t list"}, nil)
 
-	// A level of folders alone takes the folders' own columns: web-stack
-	// holds api-01 (on) and cache-01 (off), 2 vCPU and 4G each.
+	// A level of folders and vApps alone takes the folders' own columns:
+	// web-stack holds api-01 (on) and cache-01 (off), 2 vCPU and 4G each.
 	press(t, m, "enter")
 	if h := screenLine(t, m, "NAME"); !strings.Contains(h, "VMS") || !strings.Contains(h, "POWERED ON") || strings.Contains(h, "IP ADDRESS") {
 		t.Errorf("a level of folders keeps the VM headings: %q", h)
 	}
-	line := screenLine(t, m, "web-stack/")
+	line := screenLine(t, m, "web-stack  vApp")
 	if got := strings.Fields(line); strings.Join(got[len(got)-4:], " ") != "2 1 4 8G" {
 		t.Errorf("web-stack row = %q, want 2 VMs, 1 on, 4 vCPU, 8G", got)
 	}
@@ -227,5 +237,38 @@ func TestTemplatesBrowseByFolder(t *testing.T) {
 	}
 	if msg := ansi.Strip(m.viewMessage()); !strings.Contains(msg, "in Taipei › Templates › Linux") {
 		t.Errorf("message line is %q", msg)
+	}
+}
+
+// TestVAppsInTheFolderViewAreVApps pins the vSphere client's treatment: a
+// vApp sits in its folder with a vApp's own mark, enter opens the vApp's
+// page rather than a level, a vApp with no VMs is still listed, and the
+// message line names a vApp level as one.
+func TestVAppsInTheFolderViewAreVApps(t *testing.T) {
+	m := filedModel(t)
+	press(t, m, "t", "enter")
+	screenLine(t, m, "▣ web-stack  vApp")
+	if line := screenLine(t, m, "idle-vapp"); !strings.Contains(line, "▣ idle-vapp  vApp") {
+		t.Errorf("a vApp with no VMs is not marked as one: %q", line)
+	}
+
+	press(t, m, "j", "enter")
+	if m.mode != modeVAppDetail {
+		t.Fatalf("enter on web-stack: mode %v, want its vApp page", m.mode)
+	}
+	if v, _, ok := m.activeVApp(); !ok || v.Name != "web-stack" {
+		t.Fatalf("the vApp page is on %+v, want web-stack", v)
+	}
+	press(t, m, "esc")
+	if m.mode != modeBrowse || selected(t, m) != "web-stack" {
+		t.Errorf("esc from the vApp page: mode %v on %q, want the folder view on web-stack", m.mode, selected(t, m))
+	}
+
+	// A member reached from search lands inside its vApps.
+	press(t, m, "tab")
+	typeText(t, m, "cache-01")
+	press(t, m, "enter", "enter", "esc")
+	if msg := ansi.Strip(m.viewMessage()); !strings.Contains(msg, "in Taipei › Apps › web-stack (vApp) › web-cache (vApp)") {
+		t.Errorf("message line inside a nested vApp is %q", msg)
 	}
 }

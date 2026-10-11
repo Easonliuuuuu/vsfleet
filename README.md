@@ -3,6 +3,7 @@
 <p align="center">
   <a href="https://github.com/Easonliuuuuu/vsfleet/releases"><img src="https://img.shields.io/github/v/release/Easonliuuuuu/vsfleet?include_prereleases&amp;color=blue&amp;style=flat-square" alt="Latest release"></a>
   <a href="https://easonliuuuuu.github.io/vsfleet/getting-started/#release-status"><img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status: alpha"></a>
+  <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FEasonliuuuuu%2Fvsfleet%2Fpackage-status%2Fplatforms.json&amp;label=Linux%20%C2%B7%20macOS%20%C2%B7%20Windows&amp;style=flat-square" alt="Linux, macOS, and Windows builds and tests"></a>
   <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/winget-status.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FEasonliuuuuu%2Fvsfleet%2Fpackage-status%2Fwinget.json&amp;label=WinGet&amp;style=flat-square" alt="WinGet availability for the latest stable release"></a>
 </p>
 

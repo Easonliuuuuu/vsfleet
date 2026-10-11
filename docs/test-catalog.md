@@ -189,6 +189,22 @@ vcsim Deployments, `prod` and `edge`.
 This tier checks ConfigMap mounts, Secret-backed `file:` credentials, PVC
 ownership, and Service DNS.
 
+## Platform status badge
+
+The README platform badge reports the latest completed `build` matrix on
+`main`: native builds, vet, and tests with the race detector on Linux, macOS,
+and Windows. It turns green only when all three jobs succeed. A failure is
+red; cancelled, skipped, or unknown results are grey. Other CI jobs do not
+change this badge's result.
+
+The `platform-status` job publishes `platforms.json` on `package-status`
+after the matrix finishes, including failed runs, and commits only when the
+result changes. Pull requests and superseded CI runs do not publish badge
+data. The previous result remains visible while a new matrix runs, and
+badge caching can delay updates;
+click the badge to inspect CI runs on `main`. This status does not verify
+package installation or a live vCenter connection.
+
 ## Release snapshot and pins
 
 `release-snapshot` runs `goreleaser release --snapshot --skip=publish,sign`

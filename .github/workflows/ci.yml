@@ -89,6 +89,70 @@ jobs:
       - name: Build
         run: go build ./...
 
+  platform-status:
+    name: Publish platform build and test status
+    needs: build
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/github-script@v9
+        env:
+          MATRIX_RESULT: ${{ needs.build.result }}
+        with:
+          retries: 3
+          script: |
+            const repo = context.repo;
+            const { data } = await github.rest.actions.listWorkflowRuns({
+              ...repo, workflow_id: 'ci.yml', branch: 'main', event: 'push', per_page: 1,
+            });
+            if (data.workflow_runs[0]?.id !== context.runId) {
+              core.info('A newer CI run owns the platform badge.');
+              return;
+            }
+            const statuses = {
+              success: { message: 'passing', color: 'brightgreen' },
+              failure: { message: 'failing', color: 'red' },
+              cancelled: { message: 'cancelled', color: 'lightgrey' },
+              skipped: { message: 'skipped', color: 'lightgrey' },
+            };
+            const status = statuses[process.env.MATRIX_RESULT] || { message: 'unknown', color: 'lightgrey' };
+            const content = JSON.stringify({
+              schemaVersion: 1,
+              label: 'Linux · macOS · Windows',
+              ...status,
+              cacheSeconds: 300,
+            }, null, 2) + '\n';
+            const branch = 'package-status';
+            const path = 'platforms.json';
+            try {
+              await github.rest.git.getRef({ ...repo, ref: `heads/${branch}` });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({ ...repo, ref: `refs/heads/${branch}`, sha: context.sha });
+            }
+            let existing;
+            try {
+              const response = await github.rest.repos.getContent({ ...repo, path, ref: branch });
+              existing = response.data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (existing && Buffer.from(existing.content, 'base64').toString('utf8') === content) {
+              core.info('Platform badge is unchanged.');
+              return;
+            }
+            const author = { name: 'Eason Liu', email: 'easoneastin@gmail.com' };
+            await github.rest.repos.createOrUpdateFileContents({
+              ...repo, path, branch,
+              message: 'chore(release): update platform build and test status',
+              content: Buffer.from(content).toString('base64'),
+              ...(existing ? { sha: existing.sha } : {}),
+              author, committer: author,
+            });
+
   staticcheck:
     name: Staticcheck
     runs-on: ubuntu-latest

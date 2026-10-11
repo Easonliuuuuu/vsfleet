@@ -19,12 +19,12 @@ vsfleet  DEMO · SAMPLE DATA  ◆ prod-vc  ·  1 connected
   Host                esxi-mgmt-02                 │ ███████████████████████████████████████████████
   Cluster             mgmt                         │ 23:00                                     00:00
   Datacenter          Taipei                       │ 
-  Folder              /Infrastructure/Core         │ Disk               avg 866 KB/s · peak 1.5 MB/s
-  Datastores          local-esxi-mgmt-01           │ 
-  Inventory path      /Taipei/vm/Infrastructure/   │                                  ▂▄▆███▇▅▃▁   ▁
-                      Core/ad-dc-01                │ ▁                     ▂▄▆▆▆▆▅▄▄▅▇███████████▇██
-  Managed object      prod-vc-vm-906               │ █▇▄▂    ▁▂▄▄▄▄▃▁   ▂▄██████████████████████████
-                                                   │ ████▇▆▆▇█████████▇█████████████████████████████
+  Folder              /Infrastructure/Core/        │ Disk               avg 866 KB/s · peak 1.5 MB/s
+                      identity                     │ 
+  Datastores          local-esxi-mgmt-01           │                                  ▂▄▆███▇▅▃▁   ▁
+  Inventory path      /Taipei/vm/Infrastructure/   │ ▁                     ▂▄▆▆▆▆▅▄▄▅▇███████████▇██
+                      Core/identity/ad-dc-01       │ █▇▄▂    ▁▂▄▄▄▄▃▁   ▂▄██████████████████████████
+  Managed object      prod-vc-vm-906               │ ████▇▆▆▇█████████▇█████████████████████████████
                                                    │ 23:00                                     00:00
 
 ↑/k up  ↓/j down  enter open  </> range  h timeline  esc back  ? help  q quit

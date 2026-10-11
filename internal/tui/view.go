@@ -234,9 +234,9 @@ func (m *Model) viewMessage() string {
 	}
 	if m.mode == modeBrowse && m.folderView() && (m.message == "" || m.messageInventory) {
 		// Where you are outranks the load summary, but not an error.
-		hint := "  ·  esc up · t list"
+		hint := "  ·  enter opens · esc up"
 		if m.folderAtTop() {
-			hint = "  ·  enter opens a folder · t list"
+			hint = "  ·  enter opens a folder"
 		}
 		return truncate(t.accent.Render("in "+m.folderCrumb())+t.dim.Render(hint), m.width)
 	}
@@ -385,6 +385,9 @@ func (m *Model) viewBrowse() []string {
 func (m *Model) browseColumns() []column {
 	if m.kind == vsphere.KindNetwork && !m.netFlat {
 		return networkTreeColumns(m.showContext())
+	}
+	if m.folderView() && foldersOnly(m.rows()) {
+		return folderColumns(m.kind, m.showContext())
 	}
 	return columnsFor(m.kind, m.showContext())
 }
@@ -763,9 +766,9 @@ func (m *Model) renderRow(r row, cols []column, widths []int, selected bool) str
 		if widths[i] == 0 || i >= len(r.cells) {
 			continue
 		}
-		if r.folder != nil && r.cells[i] != "" {
-			// A folder row fills only its name, so the name and count may
-			// run on over the empty columns after it.
+		if r.folder != nil && i+1 < len(r.cells) && lastFilled(r.cells) == i {
+			// A folder row beside VMs fills only its name, so the name and
+			// count may run on over the empty columns after it.
 			span := widths[i]
 			for j := i + 1; j < len(cols); j++ {
 				if widths[j] > 0 {
@@ -790,6 +793,16 @@ func (m *Model) renderRow(r row, cols []column, widths []int, selected bool) str
 	// The glyph sits in its own gutter, outside the selection highlight, so a
 	// powered-off VM still reads as powered off while the cursor is on it.
 	return m.cursorMark(selected) + t.statusStyle(r.status).Render(r.glyph) + " " + line
+}
+
+// lastFilled is the index of the last non-empty cell, or -1.
+func lastFilled(cells []string) int {
+	for i := len(cells) - 1; i >= 0; i-- {
+		if cells[i] != "" {
+			return i
+		}
+	}
+	return -1
 }
 
 // viewDetail is one object, full width, every property the inventory carries.

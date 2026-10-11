@@ -325,6 +325,22 @@ func (k keyMap) helpSections(demo bool) []helpSection {
 	}
 }
 
+// viewToggle is the footer hint for t on a tab that has two views, named
+// for the view it switches to.
+func (k keyMap) viewToggle(m *Model) (key.Binding, bool) {
+	switch {
+	case foldersOffered(m.kind) && m.folderView():
+		return described(k.NetView, "t", "list"), true
+	case foldersOffered(m.kind):
+		return described(k.NetView, "t", "folders"), true
+	case m.kind == vsphere.KindNetwork && m.netFlat:
+		return described(k.NetView, "t", "tree"), true
+	case m.kind == vsphere.KindNetwork:
+		return described(k.NetView, "t", "list"), true
+	}
+	return key.Binding{}, false
+}
+
 // described is b with a different label, for a help section that has room to
 // say more than the footer does.
 func described(b key.Binding, keys, desc string) key.Binding {
@@ -596,8 +612,15 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	default:
 		// History comes before lower-priority browse hints so it remains
 		// discoverable even when a narrow terminal truncates the footer. Enter
-		// opening the selected row is conventional and remains in the help view.
-		return []key.Binding{k.Kind, k.History, k.Contexts, k.AllScopeBrief, k.Filter, k.Reload, k.Help, k.Quit}
+		// opening the selected row is conventional and remains in the help view,
+		// and the kind keys are printed on the tab bar itself.
+		hints := []key.Binding{k.History, k.Contexts, k.AllScopeBrief, k.Filter}
+		if m.mode == modeBrowse {
+			if b, ok := k.viewToggle(m); ok {
+				hints = append(hints, b)
+			}
+		}
+		return append(hints, k.Reload, k.Help, k.Quit)
 	}
 }
 

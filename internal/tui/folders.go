@@ -2,6 +2,7 @@ package tui
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
@@ -46,10 +47,10 @@ func (s folderSpot) holds(r row) bool {
 
 // rowFolder is the folder a VM or template row is filed in.
 func rowFolder(r row) string {
-	if r.filed == "" {
+	if r.filed == nil || r.filed.Folder == "" {
 		return "/"
 	}
-	return r.filed
+	return r.filed.Folder
 }
 
 // spotOf is the folder a row sits in.
@@ -67,22 +68,20 @@ func (m *Model) folderView() bool {
 	return foldersOffered(m.kind) && m.folderOn[m.kind]
 }
 
-// toggleFolderView switches the tab between folders and the plain list. The
-// folder view opens on the folder of the row under the cursor, so the
-// selection stays put either way.
+// toggleFolderView switches the tab between folders and the plain list.
+// Folders open at the top, so the first thing shown is the folders
+// themselves; going back to the list keeps the selected row.
 func (m *Model) toggleFolderView() {
 	if m.folderOn == nil {
 		m.folderOn = map[vsphere.Kind]bool{}
 	}
-	m.preserveCursor(func() {
-		on := !m.folderOn[m.kind]
-		if on {
-			if r, ok := m.currentRow(); ok {
-				m.setFolder(spotOf(r))
-			}
-		}
-		m.folderOn[m.kind] = on
-	})
+	if m.folderOn[m.kind] {
+		m.preserveCursor(func() { m.folderOn[m.kind] = false })
+		return
+	}
+	m.folderOn[m.kind] = true
+	m.setFolder(folderSpot{})
+	m.cursor, m.offset = 0, 0
 }
 
 func (m *Model) setFolder(s folderSpot) {
@@ -168,13 +167,17 @@ func (m *Model) folderRows() []row {
 	}
 
 	if spot.root() {
-		count := map[folderSpot]int{}
+		tally := map[folderSpot]*folderTally{}
 		for _, r := range all {
-			count[folderSpot{context: r.context, datacenter: r.where.Datacenter, path: "/"}]++
+			dc := folderSpot{context: r.context, datacenter: r.where.Datacenter, path: "/"}
+			if tally[dc] == nil {
+				tally[dc] = &folderTally{}
+			}
+			tally[dc].add(r)
 		}
 		var out []row
 		for _, dc := range folderDatacenters(all) {
-			out = append(out, m.folderRow(dc, humanize.Dash(dc.datacenter), count[dc]))
+			out = append(out, m.folderRow(dc, humanize.Dash(dc.datacenter), tally[dc], true))
 		}
 		return out
 	}
@@ -184,7 +187,7 @@ func (m *Model) folderRows() []row {
 		prefix += "/"
 	}
 	var leaves []row
-	count := map[string]int{}
+	tally := map[string]*folderTally{}
 	for _, r := range all {
 		if r.context != spot.context || r.where.Datacenter != spot.datacenter {
 			continue
@@ -199,10 +202,24 @@ func (m *Model) folderRows() []row {
 			continue
 		}
 		name, _, _ := strings.Cut(rest, "/")
-		count[name]++
+		if tally[name] == nil {
+			tally[name] = &folderTally{}
+		}
+		tally[name].add(r)
 	}
-	names := make([]string, 0, len(count))
-	for n := range count {
+	// A vApp is listed in its folder even with no VMs, as the vSphere
+	// client lists it.
+	vapps := m.folderVApps()
+	for vs := range vapps {
+		if vs.context != spot.context || vs.datacenter != spot.datacenter {
+			continue
+		}
+		if name, ok := strings.CutPrefix(vs.path, prefix); ok && !strings.Contains(name, "/") && tally[name] == nil {
+			tally[name] = &folderTally{}
+		}
+	}
+	names := make([]string, 0, len(tally))
+	for n := range tally {
 		names = append(names, n)
 	}
 	sort.Slice(names, func(i, j int) bool {
@@ -212,23 +229,139 @@ func (m *Model) folderRows() []row {
 	for _, n := range names {
 		child := spot
 		child.path = prefix + n
-		out = append(out, m.folderRow(child, n, count[n]))
+		if v, ok := vapps[child]; ok {
+			out = append(out, m.vappFolderRow(child, v, tally[n], len(leaves) == 0))
+			continue
+		}
+		out = append(out, m.folderRow(child, n, tally[n], len(leaves) == 0))
 	}
 	m.sortMode.apply(leaves)
 	return append(out, leaves...)
 }
 
-// folderRow is the line for a folder: its name and how many of the tab's
-// objects it holds, at any depth.
-func (m *Model) folderRow(s folderSpot, label string, n int) row {
-	withContext := m.showContext()
-	cells := make([]string, len(columnsFor(m.kind, withContext)))
-	nameAt := 0
+// folderTally is what a folder holds, at any depth.
+type folderTally struct {
+	n, on  int
+	cpu    int64
+	memMB  int64
+	diskGB float64
+}
+
+func (t *folderTally) add(r row) {
+	t.n++
+	v := r.filed
+	if v == nil {
+		return
+	}
+	if v.PowerState == "poweredOn" {
+		t.on++
+	}
+	t.cpu += int64(v.CPU)
+	t.memMB += v.MemoryMB
+	t.diskGB += v.StorageGB
+}
+
+// folderColumns are the table's columns on a level that holds only folders,
+// where the VM or template columns would all be empty.
+func folderColumns(kind vsphere.Kind, withContext bool) []column {
+	var cols []column
 	if withContext {
-		cells[0] = s.context
+		cols = append(cols, column{title: "VCENTER", width: 14})
+	}
+	cols = append(cols, column{title: "NAME"})
+	if kind == vsphere.KindTemplate {
+		return append(cols,
+			column{title: "TEMPLATES", width: 9, right: true},
+			column{title: "vCPU", width: 6, right: true},
+			column{title: "MEMORY", width: 8, right: true},
+			column{title: "DISK", width: 8, right: true},
+		)
+	}
+	return append(cols,
+		column{title: "VMS", width: 6, right: true},
+		column{title: "POWERED ON", width: 10, right: true},
+		column{title: "vCPU", width: 6, right: true},
+		column{title: "MEMORY", width: 8, right: true},
+	)
+}
+
+// foldersOnly reports whether the level on show holds folders and nothing
+// else, which is when the table takes folderColumns.
+func foldersOnly(rows []row) bool {
+	for _, r := range rows {
+		if r.folder == nil {
+			return false
+		}
+	}
+	return len(rows) > 0
+}
+
+// glyphVApp marks a vApp in the folder view. The vSphere client gives a vApp
+// its own icon, not a folder's, because it is an object with its own pages.
+const glyphVApp = "▣"
+
+// folderVApps maps each vApp in scope to its place in the VM folder tree, by
+// vCenter, datacenter and folder path ("/Apps/web-stack"). vApps hold VMs
+// only, so the Templates tab has none. A vApp read with a path outside the
+// VM folder tree has no place in it and is left out.
+func (m *Model) folderVApps() map[folderSpot]vsphere.VApp {
+	out := map[folderSpot]vsphere.VApp{}
+	if m.kind != vsphere.KindVM {
+		return out
+	}
+	for _, st := range m.inScope() {
+		if st.inv == nil {
+			continue
+		}
+		for _, v := range st.inv.VApps {
+			p, ok := strings.CutPrefix(v.Path, "/"+v.Datacenter+"/vm/")
+			if !ok {
+				continue
+			}
+			out[folderSpot{context: st.cc.Name, datacenter: v.Datacenter, path: "/" + p}] = v
+		}
+	}
+	return out
+}
+
+// vappFolderRow is the line for a vApp in its folder: marked as a vApp and
+// coloured by its state, and opening the vApp's own page rather than a level.
+func (m *Model) vappFolderRow(s folderSpot, v vsphere.VApp, t *folderTally, alone bool) row {
+	r := m.folderRow(s, v.Name, t, alone)
+	nameAt := 0
+	if m.showContext() {
 		nameAt = 1
 	}
-	cells[nameAt] = label + "/  " + kindCount(m.kind, n)
+	r.cells[nameAt] = strings.Replace(r.cells[nameAt], v.Name+"/", v.Name+"  vApp", 1)
+	r.key = vappKey(s.context, v.ID)
+	r.kind = vsphere.KindVApp
+	r.glyph = glyphVApp
+	r.status = vappRow(v, false).status
+	return r
+}
+
+// folderRow is the line for a folder. Alone on its level it fills
+// folderColumns; beside VMs or templates it fills only the name column,
+// with its count, and leaves the rest of the line to their columns.
+func (m *Model) folderRow(s folderSpot, label string, t *folderTally, alone bool) row {
+	withContext := m.showContext()
+	var cells []string
+	if withContext {
+		cells = append(cells, s.context)
+	}
+	switch {
+	case alone && m.kind == vsphere.KindTemplate:
+		cells = append(cells, label+"/", strconv.Itoa(t.n), strconv.FormatInt(t.cpu, 10),
+			humanize.MB(t.memMB), humanize.GB(t.diskGB))
+	case alone:
+		cells = append(cells, label+"/", strconv.Itoa(t.n), strconv.Itoa(t.on),
+			strconv.FormatInt(t.cpu, 10), humanize.MB(t.memMB))
+	default:
+		cells = append(cells, label+"/  "+kindCount(m.kind, t.n))
+		for len(cells) < len(columnsFor(m.kind, withContext)) {
+			cells = append(cells, "")
+		}
+	}
 	spot := s
 	return row{
 		key:     "folder\x00" + s.context + "\x00" + s.datacenter + "\x00" + s.path,
@@ -292,10 +425,18 @@ func (m *Model) folderCrumb() string {
 	if m.showContext() {
 		parts = append([]string{spot.context}, parts...)
 	}
+	vapps := m.folderVApps()
+	at := spot
+	at.path = ""
 	for _, p := range strings.Split(strings.Trim(spot.path, "/"), "/") {
-		if p != "" {
-			parts = append(parts, p)
+		if p == "" {
+			continue
 		}
+		at.path += "/" + p
+		if _, ok := vapps[at]; ok {
+			p += " (vApp)"
+		}
+		parts = append(parts, p)
 	}
 	return strings.Join(parts, " › ")
 }

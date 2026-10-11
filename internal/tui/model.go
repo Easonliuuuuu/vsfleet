@@ -3015,7 +3015,7 @@ func (m *Model) open() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if r.folder != nil {
+	if r.folder != nil && r.kind != vsphere.KindVApp {
 		m.openFolder(*r.folder)
 		return nil
 	}

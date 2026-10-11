@@ -3,6 +3,15 @@
 Install vsfleet, try the sample estate, then connect your first vCenter.
 Use a read-only vSphere account for live inventory.
 
+## Release status
+
+vsfleet is in alpha and has been used against real vCenter 8.0.3 labs. Its
+read-only guarantee holds in every release. Until 1.0, minor releases may
+change command flags, JSON output fields, export columns, and the snapshot
+database schema. Breaking changes are called out in the
+[changelog](https://github.com/Easonliuuuuu/vsfleet/blob/main/CHANGELOG.md);
+pin a version for automation.
+
 ## Install
 
 ### Homebrew (macOS and Linux)

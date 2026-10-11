@@ -102,6 +102,8 @@ func newFindingsCommand(a *App, use, short string) *cobra.Command {
 					reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
 				}
 				fmt.Fprintf(a.errOut(), "%s %s: %s\n", glyphFail, rule.Rule, reason)
+			} else if len(rule.Partial) > 0 {
+				fmt.Fprintf(a.errOut(), "%s %s: %s\n", glyphSkip, rule.Rule, rule.Reason)
 			}
 		}
 		if a.json() {
@@ -336,15 +338,22 @@ func printHealthTable(a *App, report health.Report, wide bool) {
 		t.row(row...)
 	}
 	t.flush()
-	unevaluated := make([]string, 0)
+	unevaluated, partial := make([]string, 0), make([]string, 0)
 	for _, rule := range report.Rules {
-		if rule.Status == "not-evaluated" || rule.Result == "unknown" {
+		switch {
+		case rule.Status == "not-evaluated" || rule.Result == "unknown":
 			unevaluated = append(unevaluated, rule.Rule)
+		case len(rule.Partial) > 0:
+			partial = append(partial, rule.Rule)
 		}
 	}
 	if len(unevaluated) > 0 {
 		sort.Strings(unevaluated)
 		fmt.Fprintf(a.out(), "Rules not evaluated: %s\n", strings.Join(unevaluated, ", "))
+	}
+	if len(partial) > 0 {
+		sort.Strings(partial)
+		fmt.Fprintf(a.out(), "Rules partly evaluated: %s\n", strings.Join(partial, ", "))
 	}
 }
 

@@ -18,8 +18,12 @@ Migration configuration evidence starts with schema 13:
 | Firmware/Secure Boot, CPU socket/core topology, CPU/memory reservations and limits, manual MACs, floppies, extension ownership | Informational advisory |
 
 `host-device-passthrough` requires PCI/vGPU or SR-IOV evidence; ordinary
-VMXNET3 UPT compatibility does not block. Missing VM configuration is
-`unknown`, even if no special device is present.
+VMXNET3 UPT compatibility does not block. Missing VM configuration keeps the
+verdict `unknown`, even if no special device is present. When some VMs in a
+context lack it, such as an inaccessible or orphaned VM that vCenter returns
+no configuration for, the rules still evaluate the other VMs and
+`Not evaluated` counts the VMs left out. A context is blind only when none of
+its VMs has the evidence, as in an RVTools import.
 
 ## VM decommission review
 

@@ -1,0 +1,48 @@
+name: Tracking issue
+description: Coordinate work that spans several issues or pull requests.
+title: "Tracking: "
+labels: ["tracking"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Choose the main area, or other if the work spans several. This choice controls the area label.
+      options:
+        - tui
+        - assessment
+        - compatibility
+        - vsphere
+        - docs
+        - workflows
+        - release
+        - config
+        - deps
+        - other
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Add each piece of work as a sub-issue after creating this issue. Discuss specific problems in their sub-issue, not here.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State the outcome and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: plan
+    attributes:
+      label: Plan
+      description: Describe the scope, how the work is split, and the order to do it in.
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: List the conditions that close this issue.
+    validations:
+      required: true

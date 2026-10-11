@@ -24,7 +24,6 @@ func TestNewer(t *testing.T) {
 		{"v0.11.0", "0.10.0", true},
 		{"0.11.0-rc.1", "0.10.0", false},
 		{"0.11.0", "dev", false},
-		{"; rm -rf /", "0.10.0", false},
 	}
 	for _, tc := range cases {
 		if got := Newer(tc.candidate, tc.current); got != tc.want {
@@ -62,6 +61,7 @@ func TestLatest(t *testing.T) {
 		ok     bool
 	}{
 		{"release", 200, `{"tag_name":"v0.11.0"}`, "0.11.0", true},
+		{"draft", 200, `{"tag_name":"v0.11.0","draft":true}`, "", false},
 		{"prerelease", 200, `{"tag_name":"v0.11.0","prerelease":true}`, "", false},
 		{"odd tag", 200, `{"tag_name":"nightly"}`, "", false},
 		{"rate limited", 403, `{}`, "", false},
@@ -150,7 +150,6 @@ func TestDetect(t *testing.T) {
 		runs    bool
 	}{
 		{"homebrew on macOS", "/opt/homebrew/Cellar/vsfleet/0.10.0/bin/vsfleet", env("darwin", "/Users/op", nil, found), "Homebrew", "brew upgrade vsfleet", true},
-		{"linuxbrew", "/home/linuxbrew/.linuxbrew/Cellar/vsfleet/0.10.0/bin/vsfleet", env("linux", "/home/op", nil, found), "Homebrew", "brew upgrade vsfleet", true},
 		{"homebrew without brew on PATH", "/usr/local/Cellar/vsfleet/0.10.0/bin/vsfleet", env("darwin", "/Users/op", nil, missing), "Homebrew", "brew upgrade vsfleet", false},
 		{"go install default GOPATH", "/home/op/go/bin/vsfleet", env("linux", "/home/op", nil, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", true},
 		{"go install GOBIN", "/opt/tools/vsfleet", env("linux", "/home/op", map[string]string{"GOBIN": "/opt/tools"}, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", true},

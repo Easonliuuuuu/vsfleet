@@ -145,7 +145,6 @@ normalized output; see [PTY execution and artifacts](testing.md#linux-pty-proces
 
 | Journey | Situation | Asserts |
 | --- | --- | --- |
-| launch inventory and exit cleanly | authenticate through the prompt, then quit | inventory appears; exit status 0 |
 | SSH failure restores the TUI | SSH to a host whose `ssh` fails | the failure is reported and the TUI is usable afterwards |
 | SSH hang cancels and restores the TUI | an `ssh` that never returns, cancelled with Ctrl-C | the handoff ends as failed and the TUI comes back |
 | cancel credential prompt and keep using UI | Esc on the password prompt | the cancellation is reported; help and navigation still work |

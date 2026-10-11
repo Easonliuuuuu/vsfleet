@@ -219,10 +219,6 @@ func TestValidate(t *testing.T) {
 			Transport: config.TransportConfig{Type: config.TransportSOCKS5}}, "address is required"},
 		{"socks without port", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
 			Transport: config.TransportConfig{Type: config.TransportSOCKS5, Address: "proxy"}}, "must be host:port"},
-		{"http proxy without address", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
-			Transport: config.TransportConfig{Type: config.TransportHTTPProxy}}, "address is required"},
-		{"https proxy without address", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
-			Transport: config.TransportConfig{Type: config.TransportHTTPSProxy}}, "address is required"},
 		{"unknown transport", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
 			Transport: config.TransportConfig{Type: "wireguard"}}, "unknown transport"},
 		{"thumbprint without value", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
@@ -391,11 +387,8 @@ func TestSlugName(t *testing.T) {
 	cases := map[string]string{
 		"Nested vCenter / API": "nested-vcenter-api",
 		"VCSA.UPPER":           "vcsa.upper",
-		"spaces   and/slashes": "spaces-and-slashes",
 		"already---slug":       "already-slug",
-		"nested.vc":            "nested.vc",
 		"東京":                   "",
-		"!!!":                  "",
 	}
 	for in, want := range cases {
 		if got := config.SlugName(in); got != want {

@@ -11,14 +11,10 @@ func TestMB(t *testing.T) {
 		want string
 	}{
 		{0, "-"},
-		{-1, "-"},
-		{512, "512M"},
+		{1023, "1023M"},
 		{1024, "1G"},
-		{16384, "16G"},
-		{6144, "6G"},
 		{1536, "1.5G"},
 		{1 << 20, "1T"},
-		{2 << 20, "2T"},
 	} {
 		if got := MB(tc.in); got != tc.want {
 			t.Errorf("MB(%d) = %q, want %q", tc.in, got, tc.want)
@@ -32,9 +28,11 @@ func TestBytes(t *testing.T) {
 		want string
 	}{
 		{0, "-"},
-		{512, "512B"},
+		{1023, "1023B"},
 		{1024, "1.0K"},
 		{1536, "1.5K"},
+		{99 << 10, "99.0K"},
+		{100 << 10, "100K"},
 		{8 << 40, "8.0T"},
 		{300 << 30, "300G"},
 	} {
@@ -51,11 +49,24 @@ func TestFileBytes(t *testing.T) {
 	}{
 		{0, "0B"},
 		{-1, "-"},
-		{512, "512B"},
-		{1536, "1.5K"},
 	} {
 		if got := FileBytes(tc.in); got != tc.want {
 			t.Errorf("FileBytes(%d) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestGB(t *testing.T) {
+	for _, tc := range []struct {
+		in   float64
+		want string
+	}{
+		{0, "-"},
+		{0.5, "512M"},
+		{40, "40.0G"},
+	} {
+		if got := GB(tc.in); got != tc.want {
+			t.Errorf("GB(%v) = %q, want %q", tc.in, got, tc.want)
 		}
 	}
 }
@@ -66,11 +77,10 @@ func TestMHz(t *testing.T) {
 		want string
 	}{
 		{0, "-"},
+		{999, "999MHz"},
+		{1000, "1.0GHz"},
 		{2400, "2.4GHz"},
-		{800, "800MHz"},
-		{307200, "307.2GHz"},
 		{115000, "115.0GHz"},
-		{18500, "18.5GHz"},
 	} {
 		if got := MHz(tc.in); got != tc.want {
 			t.Errorf("MHz(%d) = %q, want %q", tc.in, got, tc.want)

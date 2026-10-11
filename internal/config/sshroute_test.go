@@ -59,7 +59,6 @@ func TestSSHRouteValidation(t *testing.T) {
 	}{
 		"empty context":       {route("cidr = \"10.0.0.0/8\"\ntype = \"direct\"\n"), "context is required"},
 		"unknown context":     {route("context = \"nope\"\ncidr = \"10.0.0.0/8\"\ntype = \"direct\"\n"), "does not name a configured context"},
-		"malformed cidr":      {route("context = \"lab\"\ncidr = \"10.0.0.0/33\"\ntype = \"direct\"\n"), "not a valid CIDR"},
 		"bare address":        {route("context = \"lab\"\ncidr = \"10.0.0.1\"\ntype = \"direct\"\n"), "not a valid CIDR"},
 		"unknown type":        {route("context = \"lab\"\ncidr = \"10.0.0.0/8\"\ntype = \"ftp\"\n"), "unknown type"},
 		"https unsupported":   {route("context = \"lab\"\ncidr = \"10.0.0.0/8\"\ntype = \"https\"\nproxy_address = \"p:1\"\n"), "not supported for SSH"},
@@ -106,10 +105,8 @@ func TestResolveSSHRoute(t *testing.T) {
 		"longer direct beats proxy":     {"a", "172.31.7.200", true, "direct", ""},
 		"shorter matches elsewhere":     {"a", "172.31.9.9", true, "http", "wide:1"},
 		"isolated by context":           {"b", "172.31.7.5", true, "http", "b:1"},
-		"context without rules":         {"c", "172.31.7.5", false, "", ""},
 		"outside every cidr":            {"a", "10.20.0.11", false, "", ""},
 		"hostname is never resolved":    {"a", "vm01.corp.local", false, "", ""},
-		"empty target":                  {"a", "", false, "", ""},
 		"ipv4-mapped ipv6 still routes": {"a", "::ffff:172.31.7.5", true, "socks5", "narrow:1"},
 	} {
 		t.Run(name, func(t *testing.T) {

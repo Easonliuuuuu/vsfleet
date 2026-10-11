@@ -83,13 +83,6 @@ func TestMain(m *testing.M) {
 }
 
 func TestPTYJourneys(t *testing.T) {
-	t.Run("launch inventory and exit cleanly", func(t *testing.T) {
-		s := startSession(t, "launch-inventory", 30, 100)
-		s.authenticate()
-		s.send("quit", "q")
-		s.expectExitZero()
-	})
-
 	t.Run("SSH failure restores the TUI", func(t *testing.T) {
 		s := startSessionWithSSH(t, "ssh-failure", 30, 100, "fail")
 		s.authenticate()

@@ -1,11 +1,9 @@
 package demo
 
 import (
-	"context"
 	"encoding/json"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -150,26 +148,5 @@ func TestSharedNamesAcrossContexts(t *testing.T) {
 				t.Errorf("%s has no %s; the duplicate-names scenario needs the collision", ctx, name)
 			}
 		}
-	}
-}
-
-func TestHistoryHasFiveRunsThatDiffer(t *testing.T) {
-	start := time.Now()
-	service, closeStore, err := NewBackend().AssessmentService()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer closeStore()
-	t.Logf("seeded history in %s", time.Since(start))
-	runs, err := service.Store.Runs(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(runs) != 5 {
-		t.Fatalf("runs=%d, want 5", len(runs))
-	}
-	first, last := runs[len(runs)-1], runs[0]
-	if first.ID == last.ID {
-		t.Fatal("expected distinct runs")
 	}
 }

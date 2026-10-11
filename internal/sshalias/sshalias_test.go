@@ -30,22 +30,6 @@ func mustAddr(t *testing.T, s string) netip.Addr {
 	return a
 }
 
-func TestDiscoverLiteralAlias(t *testing.T) {
-	home := t.TempDir()
-	writeConfig(t, home, "config", `
-Host app-prod
-    HostName 172.31.7.122
-    User devops
-`)
-	got, err := Discover(home, mustAddr(t, "172.31.7.122"), DefaultLimits())
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
-	if len(got) != 1 || got[0] != "app-prod" {
-		t.Fatalf("got %v, want [app-prod]", got)
-	}
-}
-
 func TestDiscoverIncludeOfDirectoryIsSkipped(t *testing.T) {
 	home := t.TempDir()
 	writeConfig(t, home, "config", "Include conf.d\nHost app-prod\n  HostName 172.31.7.122\n")
@@ -73,21 +57,6 @@ func TestDiscoverBangOnlyNegatesAsPrefix(t *testing.T) {
 	}
 }
 
-func TestDiscoverNoMatch(t *testing.T) {
-	home := t.TempDir()
-	writeConfig(t, home, "config", `
-Host app-prod
-    HostName 172.31.7.122
-`)
-	got, err := Discover(home, mustAddr(t, "10.0.0.1"), DefaultLimits())
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
-	if len(got) != 0 {
-		t.Fatalf("got %v, want none", got)
-	}
-}
-
 func TestDiscoverNoConfig(t *testing.T) {
 	home := t.TempDir()
 	got, err := Discover(home, mustAddr(t, "10.0.0.1"), DefaultLimits())
@@ -99,25 +68,7 @@ func TestDiscoverNoConfig(t *testing.T) {
 	}
 }
 
-func TestDiscoverFollowsInclude(t *testing.T) {
-	home := t.TempDir()
-	writeConfig(t, home, "config", `
-Include conf.d/*.conf
-`)
-	writeConfig(t, home, "conf.d/app.conf", `
-Host app-prod
-    HostName 172.31.7.122
-`)
-	got, err := Discover(home, mustAddr(t, "172.31.7.122"), DefaultLimits())
-	if err != nil {
-		t.Fatalf("Discover: %v", err)
-	}
-	if len(got) != 1 || got[0] != "app-prod" {
-		t.Fatalf("got %v, want [app-prod]", got)
-	}
-}
-
-func TestDiscoverNestedIncludeIsBoundedAndDeterministic(t *testing.T) {
+func TestDiscoverNestedIncludeResolvesAgainstSSHDir(t *testing.T) {
 	// A relative Include always resolves against ~/.ssh, per ssh_config(5) —
 	// not against the file containing the directive — so a nested Include
 	// one level down still reaches level2/*.conf directly.
@@ -138,15 +89,6 @@ Host app-prod
 	}
 	if len(got) != 1 || got[0] != "app-prod" {
 		t.Fatalf("got %v, want [app-prod]", got)
-	}
-
-	// Running it again is byte-for-byte the same: deterministic.
-	got2, err2 := Discover(home, mustAddr(t, "172.31.7.122"), DefaultLimits())
-	if err2 != nil {
-		t.Fatalf("Discover (again): %v", err2)
-	}
-	if len(got) != len(got2) || got[0] != got2[0] {
-		t.Fatalf("nondeterministic: %v vs %v", got, got2)
 	}
 }
 

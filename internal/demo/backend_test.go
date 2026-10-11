@@ -41,12 +41,19 @@ func TestNewBackendIncludesOrphanAndZombieFixtures(t *testing.T) {
 	}
 }
 
-func TestAssessmentServiceSeedsNewHealthFindingsInMemory(t *testing.T) {
+func TestAssessmentServiceSeedsHistoryAndHealthFindingsInMemory(t *testing.T) {
 	service, closeStore, err := NewBackend().AssessmentService()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer closeStore()
+	runs, err := service.Store.Runs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 5 {
+		t.Fatalf("seeded runs = %d, want 5", len(runs))
+	}
 	runID, err := service.Store.ResolveRun(context.Background(), "latest")
 	if err != nil {
 		t.Fatal(err)

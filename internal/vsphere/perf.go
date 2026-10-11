@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/easonliuuuuu/vsfleet/internal/perf"
@@ -453,16 +452,7 @@ func chooseInterval(ctx context.Context, api perfAPI, opts PerfOptions) (types.P
 }
 
 func isDenied(err error) bool {
-	var fault types.AnyType
-	switch {
-	case soap.IsSoapFault(err):
-		fault = soap.ToSoapFault(err).VimFault()
-	case soap.IsVimFault(err):
-		fault = soap.ToVimFault(err)
-	default:
-		return false
-	}
-	switch fault.(type) {
+	switch vimFault(err).(type) {
 	case types.NoPermission, *types.NoPermission:
 		return true
 	}

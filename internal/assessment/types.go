@@ -43,8 +43,10 @@ type RunStatus string
 // observations, which readers must treat as "not recorded", never as "no
 // vApps". Schema 21 records the datastores each host mounts (Host.Datastores);
 // older runs have no mounts, which readers must treat as "not read", never as
-// "mounted nowhere".
-const CurrentInventorySchemaVersion = "21"
+// "mounted nowhere". Schema 22 marks VM NICs whose network was confirmed
+// deleted (VMNIC.NetworkMissing); older runs never set it, which readers must
+// treat as "not checked", never as "every network exists".
+const CurrentInventorySchemaVersion = "22"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20
@@ -52,6 +54,10 @@ const InventoryVAppSchema = 20
 // InventoryHostMountSchema is the first inventory schema that records the
 // datastores each host mounts.
 const InventoryHostMountSchema = 21
+
+// InventoryNetworkMissingSchema is the first inventory schema that marks VM
+// NICs backed by a deleted network.
+const InventoryNetworkMissingSchema = 22
 
 const (
 	RunRunning  RunStatus = "running"

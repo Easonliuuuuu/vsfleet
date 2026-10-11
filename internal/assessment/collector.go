@@ -336,7 +336,7 @@ func (c *Collector) captureContext(parent context.Context, cc *config.Context, b
 	if includeLicenses {
 		r.Collections = append(r.Collections, licenseCollection(opCtx, client, r.VCenterID, cc.Name))
 	}
-	markHiddenInventory(&r)
+	markHiddenInventory(&r, confirmDeletedNetworks(opCtx, client, unresolvedNetworks(&r)))
 	for _, collection := range r.Collections {
 		if collection.Status == "failed" {
 			r.Error = strings.TrimSpace(strings.Join([]string{r.Error, collection.Kind + ": " + collection.Error}, "; "))

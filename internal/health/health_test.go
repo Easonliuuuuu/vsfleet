@@ -471,7 +471,7 @@ func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
 	want := []string{
 		"bios-firmware", "cdrom-connected", "cluster-network-inconsistent", "custom-cpu-topology", "custom-resource-allocation", "datastore-host-coverage", "datastore-inaccessible", "datastore-space-low", "datastore-zombie-vmdk",
 		"dvportgroup-promiscuous", "dvswitch-host-coverage", "extension-managed-vm", "floppy-present", "guest-disk-space-low", "host-device-passthrough", "host-disconnected", "host-in-maintenance", "host-path-redundancy", "manual-mac-address", "portgroup-promiscuous",
-		"rdm-present", "secure-boot-enabled", "shared-disk", "snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected", "vm-inaccessible", "vm-orphaned", "vtpm-present",
+		"rdm-present", "secure-boot-enabled", "shared-disk", "snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected", "vm-inaccessible", "vm-network-missing", "vm-orphaned", "vtpm-present",
 	}
 	rules := Rules()
 	if len(rules) != len(want) {

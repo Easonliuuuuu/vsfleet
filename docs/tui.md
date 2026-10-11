@@ -14,10 +14,11 @@ Run `vsfleet` to browse inventory, switch vCenters, and inspect resources.
 | `a` | Toggle current/all contexts |
 | `/` | Filter table |
 | `Tab` | Widen filter to estate search |
-| `Esc` | Clear filter, restore view |
+| `Esc` | Clear filter, restore view, or go up a folder |
 | `r` / `R` | Reload current/all contexts |
 | `d` | Diagnose selected row's vCenter |
 | `space` / `t` on Networks | Fold switch / toggle tree and plain list |
+| `t` on VMs or Templates | Toggle [folders](#browsing-by-folder) and plain list |
 | `v` on Networks | Open [VLAN map](tui-network.md#vlan-map) |
 | `H` | Open History |
 | `?` / `q` | Help / quit |
@@ -40,6 +41,25 @@ and [networks and clusters](tui-network.md).
 
 While typing, `↑`/`↓` and `PgUp`/`PgDn` move the selection.
 `Enter` ends text entry and keeps that selection.
+
+## Browsing by folder
+
+Press `t` on the VMs or Templates tab to browse by folder, one level at a
+time, as in the vSphere client's VMs and Templates view. The view opens on
+the folder of the selected row. Press `t` again for the plain list. Each tab
+remembers its own folder.
+
+- `Enter` on a folder opens it; `Esc` goes up one level.
+- The message line shows where you are: `in Taipei › Prod › Web`.
+- Folder rows show how many VMs or templates they hold, at any depth:
+  `▹ Web/  2 VMs`.
+- With more than one datacenter in scope, the top level lists datacenters.
+- A filter searches the open folder and everything under it, and lists the
+  matches without their folders. A jump from another object, such as
+  *Show VMs on this host*, lists every match wherever it is filed.
+
+A VM inside a vApp lists the vApp as its folder, so the vApp appears as one
+more level. Folders that hold no VMs or templates are not shown.
 
 ## Contexts and vApps
 

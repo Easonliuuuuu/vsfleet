@@ -232,6 +232,14 @@ func (m *Model) viewMessage() string {
 		// every VM on this host or whether something failed to load.
 		return truncate(t.accent.Render("showing: "+m.jump.label)+t.dim.Render("  ·  esc clears"), m.width)
 	}
+	if m.mode == modeBrowse && m.folderView() && (m.message == "" || m.messageInventory) {
+		// Where you are outranks the load summary, but not an error.
+		hint := "  ·  esc up · t list"
+		if m.folderAtTop() {
+			hint = "  ·  enter opens a folder · t list"
+		}
+		return truncate(t.accent.Render("in "+m.folderCrumb())+t.dim.Render(hint), m.width)
+	}
 	if m.message == "" {
 		return ""
 	}
@@ -295,6 +303,9 @@ func (m *Model) filterHint() string {
 // filterScope names the vCenters the table's filter count is taken over, in
 // the words the header uses for the same thing.
 func (m *Model) filterScope() string {
+	if m.mode == modeBrowse && m.folderView() && m.jump == nil {
+		return m.folderCrumb()
+	}
 	if m.allScope {
 		return "all vCenters"
 	}
@@ -387,11 +398,15 @@ func (m *Model) fitColumns(cols []column, widths []int) {
 			continue
 		}
 		widest := ansi.StringWidth(c.title)
-		for _, st := range m.inScope() {
-			for _, r := range st.rowsFor(m.kind, m.showContext()) {
-				if i < len(r.cells) {
-					widest = max(widest, ansi.StringWidth(r.cells[i]))
-				}
+		measured := m.folderSource()
+		if m.folderView() {
+			// Folder rows are made per level, so the level on show is measured
+			// too: a folder's name and count must not be cut short.
+			measured = append(measured, m.rows()...)
+		}
+		for _, r := range measured {
+			if i < len(r.cells) {
+				widest = max(widest, ansi.StringWidth(r.cells[i]))
 			}
 		}
 		widths[i] = min(widths[i], widest)
@@ -701,6 +716,8 @@ func (m *Model) emptyMessage() string {
 		return fmt.Sprintf("no %s matching %q", tabTitle(m.kind), m.filter.Value())
 	case len(m.failuresInScope()) > 0:
 		return ""
+	case m.folderView() && m.jump == nil && len(m.folderSource()) > 0:
+		return "no " + tabTitle(m.kind) + " in " + m.folderCrumb()
 	case len(m.unloadedInScope()) > 0:
 		// "No VMs" would be false while the vCenters that would have them are
 		// named below, not loaded. With nothing loaded at all the lines below
@@ -745,6 +762,18 @@ func (m *Model) renderRow(r row, cols []column, widths []int, selected bool) str
 	for i, c := range cols {
 		if widths[i] == 0 || i >= len(r.cells) {
 			continue
+		}
+		if r.folder != nil && r.cells[i] != "" {
+			// A folder row fills only its name, so the name and count may
+			// run on over the empty columns after it.
+			span := widths[i]
+			for j := i + 1; j < len(cols); j++ {
+				if widths[j] > 0 {
+					span += cellGap + widths[j]
+				}
+			}
+			cells = append(cells, pad(r.cells[i], span, false))
+			break
 		}
 		if c.keepTail {
 			cells = append(cells, padTail(r.cells[i], widths[i]))

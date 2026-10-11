@@ -118,8 +118,9 @@ type keyMap struct {
 	Sort key.Binding
 	// Fold and NetView belong to the Networks tab: fold the switch under the
 	// cursor, and switch between port groups grouped by switch and the plain
-	// list. SwitchPage picks the switch workspace's page; it shares digits
-	// with Kind, which the workspace never handles.
+	// list. On the VMs and Templates tabs NetView switches between browsing
+	// by folder and the plain list. SwitchPage picks the switch workspace's
+	// page; it shares digits with Kind, which the workspace never handles.
 	Fold       key.Binding
 	NetView    key.Binding
 	SwitchPage key.Binding
@@ -255,7 +256,7 @@ func defaultKeys() keyMap {
 		PairClusters: key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "pair clusters")),
 		ClearPair:    key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "clear pair")),
 		PickCluster:  key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "choose")),
-		NetKeys:      key.NewBinding(key.WithHelp("space/t/v", "fold · list · VLANs")),
+		NetKeys:      key.NewBinding(key.WithHelp("space/t/v", "fold · list/folders · VLANs")),
 		Help:         key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
 		Quit:         key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 

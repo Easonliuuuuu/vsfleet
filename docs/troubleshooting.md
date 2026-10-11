@@ -9,6 +9,24 @@ vsfleet doctor prod
 vsfleet status
 ```
 
+## vsfleet is not found
+
+After installing with WinGet or Scoop, open a new terminal so it picks up the
+updated `PATH`, then run `vsfleet --version`.
+
+For `go install`, the binary goes to `go env GOBIN`, or to the `bin` directory
+under `go env GOPATH` when `GOBIN` is empty. Add that directory to your `PATH`.
+On Linux or macOS with the default Go paths:
+
+```sh
+export PATH="$(go env GOPATH)/bin:$PATH"
+vsfleet --version
+```
+
+Add the export to your shell startup file to keep it for new sessions. For a
+release archive, finish the `sudo install` step in
+[Getting started](getting-started.md#pre-built-release-binary).
+
 ## The eight-stage diagnostic pipeline
 
 `vsfleet doctor` checks the connection in order and reports the first failure:

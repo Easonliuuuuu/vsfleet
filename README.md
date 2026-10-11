@@ -67,18 +67,24 @@ Managing multiple VMware vCenters traditionally requires juggling browser tabs, 
 
 ## Installation
 
+Choose the installation method for your operating system:
+
+| Platform | Install |
+| --- | --- |
+| macOS or Linux with Homebrew | `brew install easonliuuuuu/tap/vsfleet` |
+| Windows 10/11 | `winget install --id Easonliuuuuu.vsfleet --exact` |
+| Debian or Ubuntu | [Download and install a `.deb` package](https://easonliuuuuu.github.io/vsfleet/getting-started/#linux-packages-debian-ubuntu-rhel-fedora) |
+| RHEL or Fedora | [Download and install an `.rpm` package](https://easonliuuuuu.github.io/vsfleet/getting-started/#linux-packages-debian-ubuntu-rhel-fedora) |
+
+Scoop, release archives, and `go install` are covered in [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/).
+
+For unattended CLI commands and CI, use the container image (Linux amd64 and arm64):
+
 ```sh
-# Homebrew (macOS and Linux)
-brew install easonliuuuuu/tap/vsfleet
-
-# WinGet (Windows 10/11)
-winget install vsfleet
-
-# Container (unattended commands and CI; linux/amd64 and arm64)
 docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest compatibility report --sheet vInfo -o json
 ```
 
-Scoop, `.deb` and `.rpm` packages, release archives, and `go install` are covered in [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/). The interactive TUI needs the native binary; see the [Containers guide](https://easonliuuuuu.github.io/vsfleet/containers/) for running the image.
+The interactive TUI needs the native binary; see the [Containers guide](https://easonliuuuuu.github.io/vsfleet/containers/) for running the image.
 
 ---
 
@@ -87,14 +93,17 @@ Scoop, `.deb` and `.rpm` packages, release archives, and `go install` are covere
 ### 1. Test drive without a vCenter
 
 ```sh
+vsfleet --version
 vsfleet demo
 ```
 
-Opens the TUI on a synthetic three-vCenter estate, with no configuration, credentials, or network access.
+Check the installation, then open the TUI on a synthetic three-vCenter estate, with no configuration, credentials, or network access. Press `?` for help and `q` to quit.
 
 ### 2. Connect your first vCenter
 
 Run `vsfleet`. With no contexts configured, it opens the interactive setup wizard, and you can add more vCenters from inside the TUI later.
+
+Name the context `prod` to follow the examples below, or substitute your chosen name. Use a read-only account; see [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/#first-context) for certificate and credential choices.
 
 ```sh
 # Open the TUI; the setup wizard starts when no contexts exist
@@ -120,22 +129,21 @@ vsfleet
 # List specific resources
 vsfleet vm list
 vsfleet host list --context prod
+vsfleet vm list --context prod -o json
 
 # Search across every configured vCenter at once
 vsfleet search ubuntu --all-contexts
 ```
 
-### 4. Capture, compare, and export
+### 4. Capture and export
 
 ```sh
-vsfleet assessment run --all-contexts --label q3-audit   # Capture state across all contexts
-vsfleet assessment diff q3-audit latest                  # What changed between two captures
-vsfleet assessment trends capacity                       # Compute and storage trends over time
-vsfleet assessment snapshots                             # Snapshot ages, oldest first
-vsfleet health latest                                    # Health findings on stored evidence
-vsfleet blast-radius datastore ds-prod-01                # What depends on a datastore
+vsfleet assessment run --all-contexts --label first-capture
+vsfleet assessment report latest
 vsfleet assessment export --format rvtools --file estate.xlsx
 ```
+
+The report and workbook read the saved capture. After taking another capture, [compare runs and inspect trends](https://easonliuuuuu.github.io/vsfleet/assessments/#compare-runs).
 
 > [!NOTE]
 > vsfleet is a personal project, not affiliated with or endorsed by Dell Technologies; its RVTools-compatible export is an independent interoperability implementation.

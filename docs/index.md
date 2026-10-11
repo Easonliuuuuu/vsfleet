@@ -16,6 +16,8 @@ healthy results when another vCenter fails.
 
 ## Start here
 
+[Install vsfleet](getting-started.md#install), then try the sample estate:
+
 ```sh
 vsfleet demo
 ```

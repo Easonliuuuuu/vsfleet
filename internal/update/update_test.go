@@ -150,9 +150,13 @@ func TestDetect(t *testing.T) {
 		runs    bool
 	}{
 		{"homebrew on macOS", "/opt/homebrew/Cellar/vsfleet/0.10.0/bin/vsfleet", env("darwin", "/Users/op", nil, found), "Homebrew", "brew upgrade vsfleet", true},
+		{"homebrew symlink left unresolved", "/opt/homebrew/bin/vsfleet", env("darwin", "/Users/op", nil, found), "Homebrew", "brew upgrade vsfleet", true},
+		{"linuxbrew symlink left unresolved", "/home/linuxbrew/.linuxbrew/bin/vsfleet", env("linux", "/home/op", nil, found), "Homebrew", "brew upgrade vsfleet", true},
 		{"homebrew without brew on PATH", "/usr/local/Cellar/vsfleet/0.10.0/bin/vsfleet", env("darwin", "/Users/op", nil, missing), "Homebrew", "brew upgrade vsfleet", false},
 		{"go install default GOPATH", "/home/op/go/bin/vsfleet", env("linux", "/home/op", nil, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", true},
 		{"go install GOBIN", "/opt/tools/vsfleet", env("linux", "/home/op", map[string]string{"GOBIN": "/opt/tools"}, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", true},
+		{"go install second GOPATH entry", "/home/op/work/bin/vsfleet", env("linux", "/home/op", map[string]string{"GOPATH": "/opt/go:/home/op/work"}, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", true},
+		{"go install Windows GOPATH list", `D:\work\bin\vsfleet.exe`, env("windows", `C:\Users\op`, map[string]string{"GOPATH": `C:\go;D:\work`}, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", false},
 		{"go install on Windows", `C:\Users\op\go\bin\vsfleet.exe`, env("windows", `C:\Users\op`, nil, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", false},
 		{"scoop", `C:\Users\op\scoop\apps\vsfleet\current\vsfleet.exe`, env("windows", `C:\Users\op`, nil, found), "Scoop", "scoop update vsfleet", false},
 		{"winget", `C:\Users\op\AppData\Local\Microsoft\WinGet\Packages\vsfleet_x\vsfleet.exe`, env("windows", `C:\Users\op`, nil, found), "winget", "winget upgrade vsfleet", false},

@@ -92,7 +92,11 @@ func TestLoadSanitizesUntrustworthySSHDestinations(t *testing.T) {
 			"prod/vm-4": {"kind": "route", "route": "socks5", "proxy_address": "127.0.0.1:1080"},
 			"prod/vm-5": {"kind": "route", "route": "socks5", "proxy_address": "-x 127.0.0.1:1080"},
 			"prod/vm-6": {"kind": "shell_out", "alias": "app-prod"},
-			"prod/vm-7": {"kind": "route", "route": "sudo rm -rf /"}
+			"prod/vm-7": {"kind": "route", "route": "sudo rm -rf /"},
+			"prod/vm-8": {"kind": "route", "route": "http", "proxy_address": "proxy.lab:3128"},
+			"prod/vm-9": {"kind": "openssh_alias", "alias": "app-prod", "route": "direct"},
+			"prod/vm-10": {"kind": "route", "route": "direct", "proxy_address": "127.0.0.1:1080"},
+			"prod/vm-11": {"kind": "route", "route": "openssh", "alias": "app-prod"}
 		}
 	}`
 	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
@@ -102,6 +106,7 @@ func TestLoadSanitizesUntrustworthySSHDestinations(t *testing.T) {
 	want := map[string]SSHDestination{
 		"prod/vm-1": {Kind: "openssh_alias", Alias: "app-prod"},
 		"prod/vm-4": {Kind: "route", Route: "socks5", ProxyAddress: "127.0.0.1:1080"},
+		"prod/vm-8": {Kind: "route", Route: "http", ProxyAddress: "proxy.lab:3128"},
 	}
 	if !reflect.DeepEqual(got.SSHDestinations, want) {
 		t.Errorf("Load returned %+v, want only the safe entries %+v", got.SSHDestinations, want)

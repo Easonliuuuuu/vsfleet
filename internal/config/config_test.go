@@ -213,8 +213,12 @@ func TestValidate(t *testing.T) {
 		want string
 	}{
 		{"no name", config.Context{Endpoint: "vc.local", Username: "u"}, "name is required"},
+		{"name with a space", config.Context{Name: "a b", Endpoint: "vc.local", Username: "u"}, "must not contain spaces or slashes"},
+		{"name with a slash", config.Context{Name: "a/b", Endpoint: "vc.local", Username: "u"}, "must not contain spaces or slashes"},
 		{"no username", config.Context{Name: "a", Endpoint: "vc.local"}, "username is required"},
 		{"bad scheme", config.Context{Name: "a", Endpoint: "ftp://vc.local", Username: "u"}, "must be http or https"},
+		{"direct with address", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
+			Transport: config.TransportConfig{Type: config.TransportDirect, Address: "proxy:1080"}}, "only meaningful for a proxy"},
 		{"socks without address", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
 			Transport: config.TransportConfig{Type: config.TransportSOCKS5}}, "address is required"},
 		{"socks without port", config.Context{Name: "a", Endpoint: "vc.local", Username: "u",
@@ -388,6 +392,7 @@ func TestSlugName(t *testing.T) {
 		"Nested vCenter / API": "nested-vcenter-api",
 		"VCSA.UPPER":           "vcsa.upper",
 		"already---slug":       "already-slug",
+		"api/":                 "api",
 		"東京":                   "",
 	}
 	for in, want := range cases {

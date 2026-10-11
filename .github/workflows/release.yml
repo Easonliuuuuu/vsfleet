@@ -32,6 +32,16 @@ jobs:
       packages: write
       id-token: write
     steps:
+      - name: Check WinGet publishing token
+        if: ${{ !contains(needs.release-please.outputs.tag_name, '-') }}
+        env:
+          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$WINGET_GITHUB_TOKEN" ]; then
+            echo '::error::Set WINGET_GITHUB_TOKEN before releasing; see CONTRIBUTING.md#release-publishing.'
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.release-please.outputs.tag_name }}
@@ -60,3 +70,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+
+      - name: Verify WinGet pull request
+        if: ${{ !contains(needs.release-please.outputs.tag_name, '-') }}
+        env:
+          GH_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          pr_url=$(gh api --method GET repos/microsoft/winget-pkgs/pulls \
+            -f "head=Easonliuuuuu:vsfleet-${RELEASE_TAG#v}" -f state=all \
+            --jq '[.[] | select(.state == "open" or .merged_at != null)][0].html_url // empty')
+          if [ -z "$pr_url" ]; then
+            echo '::error::GoReleaser did not open the WinGet PR; check its publishing logs.'
+            exit 1
+          fi
+          printf 'WinGet submission: %s\n' "$pr_url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Preserve WinGet manifests on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: winget-manifests
+          path: dist/winget
+          if-no-files-found: ignore

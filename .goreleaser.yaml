@@ -116,6 +116,40 @@ scoops:
       branch: main
       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
 
+winget:
+  - name: vsfleet
+    ids:
+      - vsfleet
+    package_identifier: Easonliuuuuu.vsfleet
+    publisher: Eason Liu
+    publisher_url: https://github.com/Easonliuuuuu
+    publisher_support_url: https://github.com/Easonliuuuuu/vsfleet/issues
+    homepage: https://github.com/Easonliuuuuu/vsfleet
+    short_description: Read-only vSphere estate assessment and diagnostics across every vCenter
+    license: MIT
+    license_url: https://github.com/Easonliuuuuu/vsfleet/blob/main/LICENSE
+    release_notes_url: "https://github.com/Easonliuuuuu/vsfleet/releases/tag/{{ .Tag }}"
+    tags:
+      - cli
+      - vsphere
+      - vcenter
+      - vmware
+    skip_upload: auto
+    commit_author:
+      name: Eason Liu
+      email: easoneastin@gmail.com
+    repository:
+      owner: Easonliuuuuu
+      name: winget-pkgs
+      branch: "vsfleet-{{ .Version }}"
+      token: "{{ .Env.WINGET_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+
 checksum:
   name_template: checksums.txt
 

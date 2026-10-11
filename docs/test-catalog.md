@@ -194,8 +194,8 @@ ownership, and Service DNS.
 `release-snapshot` runs `goreleaser release --snapshot --skip=publish,sign`
 with the release Go version and configuration. It strips the multi-platform
 `index,` annotation prefix because buildx rejects it for loaded per-platform
-images. It checks six OS/architecture archives, Linux binary `--version`,
-and amd64 image `--version`/`--help`.
+images. It checks six OS/architecture archives, three generated WinGet
+manifests, Linux binary `--version`, and amd64 image `--version`/`--help`.
 
 `scripts/check-release-pins.sh` fails when:
 

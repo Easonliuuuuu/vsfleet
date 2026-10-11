@@ -38,7 +38,7 @@ jobs:
           WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
         run: |
           if [ -z "$WINGET_GITHUB_TOKEN" ]; then
-            echo '::error::Set WINGET_GITHUB_TOKEN before releasing; see CONTRIBUTING.md#release-publishing.'
+            echo '::error::Set the WINGET_GITHUB_TOKEN Actions secret before releasing (fork-owner classic PAT with public_repo scope).'
             exit 1
           fi
 

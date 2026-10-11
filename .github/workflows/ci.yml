@@ -176,8 +176,9 @@ jobs:
           version: "~> v2"
           args: release --snapshot --clean --skip=publish,sign --config ${{ runner.temp }}/goreleaser-snapshot.yaml
         env:
-          # Homebrew and Scoop template this token even when nothing is pushed.
+          # Publishers template these tokens even when nothing is pushed.
           TAP_GITHUB_TOKEN: snapshot-unused
+          WINGET_GITHUB_TOKEN: snapshot-unused
 
       - name: Smoke test release binaries, packages, and image
         run: |
@@ -187,6 +188,9 @@ jobs:
           for arch in amd64 arm64; do
             compgen -G "dist/vsfleet_*_linux_${arch}.deb" >/dev/null || { echo "missing deb for $arch"; ls dist; exit 1; }
             compgen -G "dist/vsfleet_*_linux_${arch}.rpm" >/dev/null || { echo "missing rpm for $arch"; ls dist; exit 1; }
+          done
+          for suffix in .yaml .installer.yaml .locale.en-US.yaml; do
+            compgen -G "dist/winget/manifests/e/Easonliuuuuu/vsfleet/*/Easonliuuuuu.vsfleet${suffix}" >/dev/null || { echo "missing WinGet manifest $suffix"; exit 1; }
           done
           dist/vsfleet_linux_amd64_v1/vsfleet --version
           image="$(docker image ls --format '{{.Repository}}:{{.Tag}}' | grep '^ghcr.io/easonliuuuuu/vsfleet:' | grep -m1 amd64 || true)"

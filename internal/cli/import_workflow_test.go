@@ -51,20 +51,9 @@ func writeImportWorkbook(t *testing.T, mutate func(*assessment.ExportData)) stri
 	return path
 }
 
-func runImport(t *testing.T, dbPath string, args ...string) (string, string, error) {
-	t.Helper()
-	var out, errOut bytes.Buffer
-	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
-	root := NewRootCommand(a)
-	root.SetArgs(append([]string{"--history-db", dbPath, "import", "rvtools"}, args...))
-	defer func() { _ = a.Close(context.Background()) }()
-	err := root.ExecuteContext(context.Background())
-	return out.String(), errOut.String(), err
-}
-
 func TestImportDryRunWritesNothingAndReportsColumnsAndGaps(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "history.db")
-	out, _, err := runImport(t, dbPath, writeImportWorkbook(t, nil), "--dry-run", "--captured-at", "2026-01-01T00:00:00Z")
+	out, _, err := runCLI(t, dbPath, "import", "rvtools", writeImportWorkbook(t, nil), "--dry-run", "--captured-at", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -105,7 +94,7 @@ func TestImportTimezoneFlagInterpretsMetadataCaptureTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCapture := time.Date(2026, 9, 28, 11, 12, 23, 0, zone).Local().Format("2006-01-02 15:04:05")
-	out, _, err := runImport(t, filepath.Join(t.TempDir(), "history.db"), path, "--dry-run", "--timezone", "America/Los_Angeles")
+	out, _, err := runCLI(t, filepath.Join(t.TempDir(), "history.db"), "import", "rvtools", path, "--dry-run", "--timezone", "America/Los_Angeles")
 	if err != nil {
 		t.Fatalf("dry-run with --timezone: %v", err)
 	}
@@ -121,11 +110,11 @@ func TestImportedRunIsMarkedAndWorksWithStoredEvidenceCommands(t *testing.T) {
 	first := writeImportWorkbook(t, nil)
 	second := writeImportWorkbook(t, func(d *assessment.ExportData) { d.VMs[0].Observation.VM.Name = "web-01-renamed" })
 	for i, path := range []string{first, second} {
-		if _, _, err := runImport(t, dbPath, path, "--label", []string{"pre-migration", "wave-1"}[i], "--captured-at", []string{"2026-01-01T12:00:00Z", "2026-06-01T12:00:00Z"}[i]); err != nil {
+		if _, _, err := runCLI(t, dbPath, "import", "rvtools", path, "--label", []string{"pre-migration", "wave-1"}[i], "--captured-at", []string{"2026-01-01T12:00:00Z", "2026-06-01T12:00:00Z"}[i]); err != nil {
 			t.Fatalf("import %d: %v", i+1, err)
 		}
 	}
-	list, _, err := runAssessment(t, dbPath, "list")
+	list, _, err := runCLI(t, dbPath, "assessment", "list")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +133,7 @@ func TestImportedRunIsMarkedAndWorksWithStoredEvidenceCommands(t *testing.T) {
 		{"trends", "snapshots"},
 		{"trends", "capacity"},
 	} {
-		if _, _, err := runAssessment(t, dbPath, args...); err != nil {
+		if _, _, err := runCLI(t, dbPath, append([]string{"assessment"}, args...)...); err != nil {
 			t.Errorf("assessment %v on an imported run: %v", args, err)
 		}
 	}
@@ -153,20 +142,20 @@ func TestImportedRunIsMarkedAndWorksWithStoredEvidenceCommands(t *testing.T) {
 func TestRepeatImportWarnsButStillImportsAndCanBeSilenced(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 	path := writeImportWorkbook(t, nil)
-	if _, errOut, err := runImport(t, dbPath, path); err != nil || strings.Contains(errOut, "already imported") {
+	if _, errOut, err := runCLI(t, dbPath, "import", "rvtools", path); err != nil || strings.Contains(errOut, "already imported") {
 		t.Fatalf("first import: err=%v stderr=%q, want a clean first import", err, errOut)
 	}
-	_, errOut, err := runImport(t, dbPath, path)
+	_, errOut, err := runCLI(t, dbPath, "import", "rvtools", path)
 	if err != nil {
 		t.Fatalf("second import must not be blocked: %v", err)
 	}
 	if !strings.Contains(errOut, "already imported as assessment 1") {
 		t.Errorf("stderr = %q, want a warning naming the earlier run", errOut)
 	}
-	if _, errOut, err := runImport(t, dbPath, path, "--allow-duplicate"); err != nil || strings.Contains(errOut, "already imported") {
+	if _, errOut, err := runCLI(t, dbPath, "import", "rvtools", path, "--allow-duplicate"); err != nil || strings.Contains(errOut, "already imported") {
 		t.Errorf("--allow-duplicate: err=%v stderr=%q, want it silenced", err, errOut)
 	}
-	list, _, _ := runAssessment(t, dbPath, "list")
+	list, _, _ := runCLI(t, dbPath, "assessment", "list")
 	if strings.Count(list, "rvtools-import") != 3 {
 		t.Errorf("want three runs after three imports:\n%s", list)
 	}
@@ -178,7 +167,7 @@ func TestMalformedWorkbookImportFailsWithoutCreatingARun(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("this is not a zip archive"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := runImport(t, dbPath, bad); err == nil {
+	if _, _, err := runCLI(t, dbPath, "import", "rvtools", bad); err == nil {
 		t.Fatal("importing garbage succeeded")
 	}
 	s, err := assessment.Open(dbPath)
@@ -192,17 +181,23 @@ func TestMalformedWorkbookImportFailsWithoutCreatingARun(t *testing.T) {
 }
 
 func TestImportRequiresNoConfigurationOrNetwork(t *testing.T) {
-	// The App below has no config path, no credential store and no session
-	// factory: if import touched any of them it would fail or panic.
+	// Every side-effecting dependency on App is a lazy accessor; each one
+	// still being nil after the import proves it read no configuration,
+	// keyring or session.
 	dbPath := filepath.Join(t.TempDir(), "history.db")
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	out, _, err := runImport(t, dbPath, writeImportWorkbook(t, nil))
-	if err != nil {
-		t.Fatalf("import with no configuration: %v", err)
+	var out, errOut bytes.Buffer
+	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
+	root := NewRootCommand(a)
+	root.SetArgs([]string{"--history-db", dbPath, "import", "rvtools", writeImportWorkbook(t, nil)})
+	defer func() { _ = a.Close(context.Background()) }()
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatalf("import: %v (stderr=%s)", err, errOut.String())
 	}
-	if !strings.Contains(out, "Imported assessment") {
-		t.Errorf("output = %q", out)
+	if !strings.Contains(out.String(), "Imported assessment") {
+		t.Errorf("output = %q", out.String())
+	}
+	if a.cfg != nil || a.resolver != nil || a.mgr != nil {
+		t.Errorf("import touched the machine: config loaded=%v, resolver built=%v, session manager built=%v", a.cfg != nil, a.resolver != nil, a.mgr != nil)
 	}
 }
 

@@ -20,17 +20,6 @@ func runCompatibilityReport(t *testing.T, args ...string) (*App, string, string,
 	return a, out.String(), errOut.String(), err
 }
 
-func TestCompatibilityReportIsRegistered(t *testing.T) {
-	root := NewRootCommand(&App{})
-	cmd, _, err := root.Find([]string{"compatibility", "report"})
-	if err != nil {
-		t.Fatalf("finding the compatibility report command: %v", err)
-	}
-	if cmd.Name() != "report" {
-		t.Fatalf("expected the report command, got %q", cmd.Name())
-	}
-}
-
 // The report describes the export profile itself, so it must answer without a
 // vCenter, without configuration and without a keyring — the same promise the
 // demo makes, measured the same way: every side-effecting dependency on App is

@@ -13,8 +13,8 @@ func TestAssessmentOrphansNamesDeniedPrivilegeNotFlag(t *testing.T) {
 	const denied = "ServerFaultCode: Permission to perform this operation was denied."
 
 	// Requested but denied: name the privilege, never suggest the flag again.
-	db := newOrphanCoverageHistoryDB(t, vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Accessible: true, Backing: strong, BrowseStatus: "denied", BrowseError: denied})
-	stdout, stderr, err := runAssessmentOrphans(t, db, "latest")
+	db := newOrphanCoverageHistoryDB(t, "11", vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Accessible: true, Backing: strong, BrowseStatus: "denied", BrowseError: denied})
+	stdout, stderr, err := runCLI(t, db, "assessment", "orphans", "latest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,8 +26,8 @@ func TestAssessmentOrphansNamesDeniedPrivilegeNotFlag(t *testing.T) {
 	}
 
 	// Requested but failed for another reason: show the failure, no flag hint.
-	db = newOrphanCoverageHistoryDB(t, vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-2", Name: "datastore2", Accessible: true, Backing: strong, BrowseStatus: "failed", BrowseError: "host unreachable"})
-	stdout, _, err = runAssessmentOrphans(t, db, "latest")
+	db = newOrphanCoverageHistoryDB(t, "11", vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-2", Name: "datastore2", Accessible: true, Backing: strong, BrowseStatus: "failed", BrowseError: "host unreachable"})
+	stdout, _, err = runCLI(t, db, "assessment", "orphans", "latest")
 	if err != nil {
 		t.Fatal(err)
 	}

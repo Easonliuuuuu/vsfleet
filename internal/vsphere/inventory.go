@@ -51,6 +51,10 @@ type index struct {
 	// does not depend on the generic entity walk having reached, or typed,
 	// the port group the way the backing's key expects.
 	portgroups map[string]string
+	// folderParent overrides parent where an object's place in the VM folder
+	// tree differs from its parent property: a vApp's parent is its resource
+	// pool, but its folder is parentFolder or parentVApp. See linkVApps.
+	folderParent map[types.ManagedObjectReference]types.ManagedObjectReference
 }
 
 func newIndex(ctx context.Context, c *Client) (*index, error) {
@@ -68,6 +72,12 @@ func newIndex(ctx context.Context, c *Client) (*index, error) {
 	}
 	for _, e := range ents {
 		idx.byRef[e.Self] = entity{ref: e.Self, name: e.Name, parent: e.Parent}
+	}
+	idx.folderParent = make(map[types.ManagedObjectReference]types.ManagedObjectReference)
+	// Best effort, like the port group map below: a failure leaves vApp
+	// members at the root folder rather than failing every listing.
+	if vapps, err := retrieveVAppLinks(ctx, c, root); err == nil {
+		idx.linkVApps(vapps)
 	}
 	idx.portgroups = make(map[string]string)
 	// Best effort: the generic walk above already names most objects, and a
@@ -159,11 +169,33 @@ func (i *index) ancestors(ref types.ManagedObjectReference) []entity {
 	return chain
 }
 
+// folderAncestors is ancestors through the VM folder tree: it follows
+// folderParent where one is recorded, so a vApp and everything in it resolve
+// under the folder that holds the vApp rather than under its resource pool.
+func (i *index) folderAncestors(ref types.ManagedObjectReference) []entity {
+	var chain []entity
+	seen := make(map[types.ManagedObjectReference]bool)
+	cur := &ref
+	for cur != nil && !seen[*cur] {
+		seen[*cur] = true
+		e, ok := i.byRef[*cur]
+		if !ok {
+			break
+		}
+		chain = append(chain, e)
+		cur = e.parent
+		if folder, ok := i.folderParent[e.ref]; ok {
+			cur = &folder
+		}
+	}
+	return chain
+}
+
 // path renders the full inventory path, e.g. /Taipei/vm/Templates/ubuntu-24.
 // leaf overrides the name of the object itself, which matters for the handful
 // of types that report a display name only through their own summary.
 func (i *index) path(ref types.ManagedObjectReference, leaf string) string {
-	chain := i.ancestors(ref)
+	chain := i.folderAncestors(ref)
 	if len(chain) == 0 {
 		if leaf == "" {
 			return ""

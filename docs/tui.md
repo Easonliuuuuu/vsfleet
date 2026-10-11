@@ -250,8 +250,9 @@ stops. Rows arrive in pages while the cursor stays on the selected machine.
 
 Browsing omits expensive virtual disks, guest NIC bindings, and snapshot
 trees; [assessment capture](assessments.md) retrieves them. The path index
-is reused for two minutes; new VMs use their parent folder to retain their
-datacenter and path.
+is reused for two minutes; new VMs use their parent folder or vApp to retain
+their datacenter and path. A VM inside a vApp shows the vApp as its folder, as
+the vSphere client does: `/Apps/web-stack` for a vApp in the `Apps` folder.
 
 When credentials are required, the pane stays usable. Select or reload the
 context to open its masked password prompt.

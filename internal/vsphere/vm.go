@@ -17,6 +17,7 @@ var vmSummaryProps = []string{
 	"customValue",
 	"name",
 	"parent",
+	"parentVApp",
 	"config.template",
 	"config.uuid",
 	"config.instanceUuid",
@@ -186,14 +187,19 @@ func guestHostName(name string) string {
 
 func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 	loc := idx.locate(c, m.Self, m.Name)
-	if loc.Datacenter == "" && m.Parent != nil {
+	// A VM inside a vApp has no parent; its vApp is its place in the tree.
+	parent := m.Parent
+	if parent == nil {
+		parent = m.ParentVApp
+	}
+	if loc.Datacenter == "" && parent != nil {
 		// The index is reused for a while (see IndexTTL), so a VM created
 		// since it was built is not in it and resolves to nothing. Its parent
 		// folder almost certainly is, and folders are far more stable than
 		// their contents, so place the VM through its parent rather than
 		// showing a machine with no datacenter and no path at all.
-		loc.Datacenter = idx.datacenter(*m.Parent)
-		loc.Path = idx.path(*m.Parent, "") + "/" + m.Name
+		loc.Datacenter = idx.datacenter(*parent)
+		loc.Path = idx.path(*parent, "") + "/" + m.Name
 	}
 	vm := VM{
 		Location:        loc,
@@ -203,7 +209,7 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		ConnectionState: string(m.Runtime.ConnectionState),
 		Host:            idx.name(m.Runtime.Host),
 		Cluster:         idx.clusterOf(m.Runtime.Host),
-		Folder:          idx.folderPath(m.Parent, loc.Datacenter),
+		Folder:          idx.folderPath(parent, loc.Datacenter),
 		Datastores:      idx.names(m.Datastore),
 	}
 	if cfg := m.Config; cfg != nil {

@@ -1,13 +1,9 @@
 # vsfleet
 
 <p align="center">
-  <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/ci.yml"><img src="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/ci.yml/badge.svg" alt="CI Status"></a>
-  <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/docs.yml"><img src="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/docs.yml/badge.svg" alt="Documentation"></a>
-  <a href="https://github.com/Easonliuuuuu/vsfleet/releases"><img src="https://img.shields.io/github/v/release/Easonliuuuuu/vsfleet?include_prereleases&color=blue" alt="Latest Release"></a>
-  <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/winget-status.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FEasonliuuuuu%2Fvsfleet%2Fpackage-status%2Fwinget.json" alt="WinGet availability for the latest stable release"></a>
-  <a href="go.mod"><img src="https://img.shields.io/github/go-mod/go-version/Easonliuuuuu/vsfleet" alt="Go Version"></a>
-  <a href="docs/testing.md#real-vcenter-validation"><img src="https://img.shields.io/badge/vCenter-8.0.3%20lab--verified-1d6fa5" alt="Verified against vCenter 8.0.3"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  <a href="https://github.com/Easonliuuuuu/vsfleet/releases"><img src="https://img.shields.io/github/v/release/Easonliuuuuu/vsfleet?include_prereleases&amp;color=blue&amp;style=flat-square" alt="Latest release"></a>
+  <a href="https://easonliuuuuu.github.io/vsfleet/getting-started/#release-status"><img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status: alpha"></a>
+  <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/winget-status.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FEasonliuuuuu%2Fvsfleet%2Fpackage-status%2Fwinget.json&amp;label=WinGet&amp;style=flat-square" alt="WinGet availability for the latest stable release"></a>
 </p>
 
 <p align="center">
@@ -60,9 +56,6 @@ Managing multiple VMware vCenters traditionally requires juggling browser tabs, 
 | Historical drift and snapshot age | **Yes** | Export only | Custom script | Point-in-time |
 
 <sub>`govc` and PowerCLI are full read-write toolkits; vsfleet deliberately is not.</sub>
-
-> [!NOTE]
-> **Status: pre-1.0.** vsfleet is used against real vCenter 8.0.3 labs, and its read-only guarantee holds in every release. Until 1.0, minor releases may change command flags, JSON output fields, export columns, and the snapshot database schema. Breaking changes are called out in the [changelog](CHANGELOG.md); pin a version for automation.
 
 ---
 

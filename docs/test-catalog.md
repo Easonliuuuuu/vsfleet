@@ -197,6 +197,19 @@ with the release Go version and configuration. It strips the multi-platform
 images. It checks six OS/architecture archives, three generated WinGet
 manifests, Linux binary `--version`, and amd64 image `--version`/`--help`.
 
+The `WinGet publication` workflow compares the latest stable GitHub release
+with Microsoft's public catalog after the release workflow completes and
+hourly at minute 17. Its offline checks cover an absent package, an older
+version, the exact released version, unrelated packages, and failed reads.
+Run them with `python scripts/test-winget-publication.py`.
+
+The README badge shows the checked version as pending or published; a failed
+check replaces it with `check failed`. The job summary also shows the latest
+catalog version. Badge data lives on `package-status`, with commits only when
+the result changes. Scheduled runs and badge caching can delay updates;
+click the badge for the latest check. Catalog presence does not verify a
+native Windows installation.
+
 `scripts/check-release-pins.sh` fails when:
 
 - `Dockerfile` and `Dockerfile.vcsim` use different base images, or the base

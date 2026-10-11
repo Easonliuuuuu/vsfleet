@@ -45,7 +45,7 @@ func TestMarkHiddenInventoryDemotesContradictedCollections(t *testing.T) {
 			hiddenCollection(t, "dvswitch"),
 		},
 	}
-	markHiddenInventory(&r)
+	markHiddenInventory(&r, nil)
 	for _, kind := range []string{"host", "network", "dvswitch"} {
 		status, reason := hiddenStatus(r, kind)
 		if status != CollectionPartial || !strings.Contains(reason, "permission-hidden") {
@@ -78,7 +78,7 @@ func TestMarkHiddenInventoryLeavesConsistentInventoryAlone(t *testing.T) {
 			hiddenCollection(t, "dvswitch", vsphere.DVSwitch{UUID: "50-aa"}),
 		},
 	}
-	markHiddenInventory(&r)
+	markHiddenInventory(&r, nil)
 	for _, c := range r.Collections {
 		if c.Status != "success" {
 			t.Errorf("%s = %q (%s), want success", c.Kind, c.Status, c.Error)

@@ -299,6 +299,9 @@ type VMDisk struct {
 // UPTCompatible is the VMXNET3 UPT capability flag reported by vSphere; it is
 // not evidence of a host-device binding. See VMPCIDevice for passthrough
 // evidence. NetworkID is retained for joins when a display name is unavailable.
+// NetworkMissing is set when the capture confirmed with vCenter that the
+// network NetworkID names no longer exists: a dangling backing left behind by
+// a deleted port group, not one the account cannot see.
 type VMNIC struct {
 	Key             int32    `json:"key"`
 	Label           string   `json:"label"`
@@ -313,6 +316,7 @@ type VMNIC struct {
 	UPTCompatible   *bool    `json:"upt_compatibility_enabled,omitempty"`
 	IPv4            []string `json:"ipv4,omitempty"`
 	IPv6            []string `json:"ipv6,omitempty"`
+	NetworkMissing  bool     `json:"network_missing,omitempty"`
 }
 
 // VMCDROM is one virtual CD-ROM from a VM's hardware configuration. The

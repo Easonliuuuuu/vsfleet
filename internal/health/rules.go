@@ -338,6 +338,23 @@ var rules = []Rule{
 		},
 	},
 	{
+		ID: "vm-network-missing", Category: CategoryHygiene, Severity: SeverityInfo, MinSchema: assessment.InventoryNetworkMissingSchema,
+		Recommendation: "Connect the network adapter to an existing network, or remove it.", NeedsCollections: []string{"vm", "network"},
+		Summary: "VM network adapter is backed by a deleted network", Needs: "VM network backing checks",
+		Eval: func(in Input, emit func(Finding)) {
+			for _, item := range in.Data.VMs {
+				for _, nic := range item.Observation.VM.NICs {
+					if !nic.NetworkMissing {
+						continue
+					}
+					emit(Finding{Rule: "vm-network-missing", Severity: SeverityInfo, Object: vmObject(in.Data, item.Observation),
+						Message:  fmt.Sprintf("%s is backed by network %s, which no longer exists", nonempty(nic.Label, "network adapter"), networkLabel(nic)),
+						Evidence: []Evidence{{Field: "network_id", Observed: nic.NetworkID, Expected: "an existing network"}}})
+				}
+			}
+		},
+	},
+	{
 		ID: "vm-orphaned", Category: CategoryAvailability, Severity: SeverityCritical, MinSchema: 7,
 		Recommendation: "Reconnect the VM to a host or recover it before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM is orphaned from every host", Needs: "VM connection state inventory",
@@ -1167,4 +1184,13 @@ func boolText(value *bool) string {
 		return "unknown"
 	}
 	return fmt.Sprint(*value)
+}
+
+// networkLabel names a NIC's network by name and id, or by id alone when the
+// name was not resolved.
+func networkLabel(nic vsphere.VMNIC) string {
+	if nic.Network == "" || nic.Network == nic.NetworkID {
+		return nic.NetworkID
+	}
+	return fmt.Sprintf("%q (%s)", nic.Network, nic.NetworkID)
 }

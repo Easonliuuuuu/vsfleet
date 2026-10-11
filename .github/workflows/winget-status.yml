@@ -1,0 +1,109 @@
+name: WinGet publication
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/winget-status.yml"
+      - "scripts/*winget-publication.py"
+  pull_request:
+    paths:
+      - ".github/workflows/winget-status.yml"
+      - "scripts/*winget-publication.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winget-publication-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Test publication checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: python scripts/test-winget-publication.py
+
+  check:
+    name: Check public WinGet catalog
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Fetch latest stable release and public catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/winget-status"
+          gh api repos/Easonliuuuuu/vsfleet/releases/latest > "$RUNNER_TEMP/winget-status/release.json"
+          curl --fail --location --silent --show-error --retry 2 --max-time 90 \
+            https://cdn.winget.microsoft.com/cache/source.msix \
+            --output "$RUNNER_TEMP/winget-status/source.msix"
+
+      - name: Compare published versions
+        if: always() && !cancelled()
+        run: |
+          python scripts/check-winget-publication.py \
+            --release "$RUNNER_TEMP/winget-status/release.json" \
+            --source "$RUNNER_TEMP/winget-status/source.msix" \
+            --output "$RUNNER_TEMP/winget-status/winget.json" --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Update publication badge
+        if: always() && !cancelled()
+        uses: actions/github-script@v9
+        env:
+          STATUS_FILE: ${{ runner.temp }}/winget-status/winget.json
+        with:
+          script: |
+            const fs = require('node:fs');
+            const content = fs.readFileSync(process.env.STATUS_FILE, 'utf8');
+            const repo = context.repo;
+            const branch = 'package-status';
+            const path = 'winget.json';
+            try {
+              await github.rest.git.getRef({ ...repo, ref: `heads/${branch}` });
+            } catch (error) {
+              if (error.status !== 404) throw error;
+              await github.rest.git.createRef({ ...repo, ref: `refs/heads/${branch}`, sha: context.sha });
+            }
+            let existing;
+            try {
+              const response = await github.rest.repos.getContent({ ...repo, path, ref: branch });
+              existing = response.data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (existing && Buffer.from(existing.content, 'base64').toString('utf8') === content) {
+              core.info('Publication badge is unchanged.');
+              return;
+            }
+            const author = { name: 'Eason Liu', email: 'easoneastin@gmail.com' };
+            await github.rest.repos.createOrUpdateFileContents({
+              ...repo, path, branch,
+              message: 'chore(release): update winget publication status',
+              content: Buffer.from(content).toString('base64'),
+              ...(existing ? { sha: existing.sha } : {}),
+              author, committer: author,
+            });

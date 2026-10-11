@@ -87,6 +87,10 @@ type Rule struct {
 	Skip             func(Input) (bool, string)
 	Eval             func(in Input, emit func(Finding))
 	Resolve          func(in Input) (result, reason string, blind []string)
+	// MissingEvidence reports a non-template VM the rule cannot judge. Such
+	// VMs blind a context only when none of its VMs can be judged; otherwise
+	// they are counted in RuleStatus.Partial. See resolveVMEvidence.
+	MissingEvidence func(vsphere.VM) bool
 }
 
 type Thresholds struct {
@@ -121,6 +125,9 @@ type RuleStatus struct {
 	Reason   string   `json:"reason,omitempty"`
 	Findings int      `json:"findings"`
 	Blind    []string `json:"blind_contexts,omitempty"`
+	// Partial lists contexts the rule evaluated while leaving out VMs that
+	// had no evidence for it.
+	Partial []PartialCoverage `json:"partial_contexts,omitempty"`
 }
 
 type Coverage struct {
@@ -221,8 +228,16 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 			if len(rule.NeedsCollections) > 0 && len(status.Blind) >= len(data.Contexts) {
 				status.Result = "unknown"
 			}
-			if rule.Resolve != nil {
-				result, reason, blind := rule.Resolve(in)
+			resolve := rule.Resolve
+			if rule.MissingEvidence != nil {
+				resolve = func(in Input) (string, string, []string) {
+					result, reason, blind, partial := resolveVMEvidence(in, rule.MissingEvidence)
+					status.Partial = partial
+					return result, reason, blind
+				}
+			}
+			if resolve != nil {
+				result, reason, blind := resolve(in)
 				if result != "" {
 					status.Result = result
 				}

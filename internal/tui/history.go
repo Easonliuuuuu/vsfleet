@@ -1013,6 +1013,8 @@ func (m *Model) viewHistoryHealth() []string {
 				reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
 			}
 			lines = append(lines, t.dim.Render("  not evaluated: "+rule.Rule+" — "+reason))
+		} else if len(rule.Partial) > 0 {
+			lines = append(lines, t.dim.Render("  partly evaluated: "+rule.Rule+" — "+rule.Reason))
 		}
 	}
 	return scrollLines(lines, m.offset, m.bodyHeight())

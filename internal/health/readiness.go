@@ -16,7 +16,8 @@ type ReadinessReport struct {
 // Readiness derives the migration verdict from a health report. A finding at
 // warning or critical severity in the migration category blocks. Information
 // findings remain actionable advisories. Missing evidence can never produce a
-// ready verdict.
+// ready verdict, including a migration rule that left out VMs it could not
+// judge.
 func Readiness(report Report) ReadinessReport {
 	out := ReadinessReport{
 		SchemaVersion: report.SchemaVersion,
@@ -48,7 +49,7 @@ func Readiness(report Report) ReadinessReport {
 		if !ok || rule.Category != CategoryMigration {
 			continue
 		}
-		if status.Result == "unknown" || status.Result == "skip" || len(status.Blind) > 0 {
+		if status.Result == "unknown" || status.Result == "skip" || len(status.Blind) > 0 || len(status.Partial) > 0 {
 			out.Unresolved = append(out.Unresolved, status)
 		}
 	}

@@ -1324,7 +1324,17 @@ func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthR
 	evaluated, notEvaluated := 0, make([]health.RuleStatus, 0)
 	unknown := make([]health.RuleStatus, 0)
 	disabled := make([]string, 0)
+	var partial []string
+	var widest health.PartialCoverage
 	for _, rule := range healthReport.Rules {
+		for _, p := range rule.Partial {
+			if p.Context == c.Name {
+				partial = append(partial, rule.Rule)
+				if p.Unevaluated > widest.Unevaluated {
+					widest = p
+				}
+			}
+		}
 		switch rule.Status {
 		case "evaluated":
 			evaluated++
@@ -1377,6 +1387,13 @@ func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthR
 		if len(healthReport.Coverage.BlindContexts) > 0 {
 			message += "; blind contexts: " + strings.Join(healthReport.Coverage.BlindContexts, ", ")
 		}
+		if len(disabled) > 0 {
+			message += "; disabled rules: " + strings.Join(disabled, ", ")
+		}
+		return "partial", healthFindingsForContext(healthReport, c.Name), message
+	}
+	if len(partial) > 0 {
+		message := fmt.Sprintf("%d of %d rules evaluated; %s left out VMs without migration configuration evidence (up to %d of %d)", evaluated+len(disabled), len(allRules), strings.Join(partial, ", "), widest.Unevaluated, widest.Total)
 		if len(disabled) > 0 {
 			message += "; disabled rules: " + strings.Join(disabled, ", ")
 		}

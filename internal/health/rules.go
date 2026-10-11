@@ -18,7 +18,7 @@ var rules = []Rule{
 		ID: "bios-firmware", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
 		Recommendation: "Confirm the destination supports the VM firmware mode and boot configuration.", NeedsCollections: []string{"vm"},
 		Summary: "VM uses legacy BIOS firmware", Needs: "VM firmware configuration",
-		Eval: evaluateBIOSFirmware, Resolve: resolveFirmware,
+		Eval: evaluateBIOSFirmware, MissingEvidence: noFirmware,
 	},
 	{
 		ID: "cdrom-connected", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 6,
@@ -38,13 +38,13 @@ var rules = []Rule{
 		ID: "custom-cpu-topology", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
 		Recommendation: "Confirm the destination preserves the VM's virtual socket and core topology.", NeedsCollections: []string{"vm"},
 		Summary: "VM uses a custom topology with multiple cores per socket", Needs: "VM CPU topology configuration",
-		Eval: evaluateCustomCPUTopology, Resolve: resolveCPUTopology,
+		Eval: evaluateCustomCPUTopology, MissingEvidence: noCPUTopology,
 	},
 	{
 		ID: "custom-resource-allocation", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
 		Recommendation: "Review VM CPU and memory reservations or limits before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM has non-default CPU or memory allocation controls", Needs: "VM CPU and memory allocation configuration",
-		Eval: evaluateCustomResourceAllocation, Resolve: resolveResourceAllocation,
+		Eval: evaluateCustomResourceAllocation, MissingEvidence: noResourceAllocation,
 	},
 	{
 		ID: "datastore-host-coverage", Category: CategoryAvailability, Severity: SeverityWarning, MinSchema: assessment.InventoryHostMountSchema,
@@ -171,13 +171,13 @@ var rules = []Rule{
 		ID: "extension-managed-vm", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
 		Recommendation: "Confirm the managing extension and its destination integration before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM lifecycle is managed by a vCenter extension", Needs: "VM managed-by metadata",
-		Eval: evaluateExtensionManagedVM, Resolve: resolveVMConfiguration,
+		Eval: evaluateExtensionManagedVM, MissingEvidence: noConfiguration,
 	},
 	{
 		ID: "floppy-present", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
 		Recommendation: "Remove unused floppy devices or document their destination dependency before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM has a virtual floppy device", Needs: "VM floppy-device inventory",
-		Eval: evaluateFloppyPresent, Resolve: resolveVMConfiguration,
+		Eval: evaluateFloppyPresent, MissingEvidence: noConfiguration,
 	},
 	{
 		ID: "guest-disk-space-low", Category: CategoryCapacity, Severity: SeverityWarning, MinSchema: 4,
@@ -191,7 +191,7 @@ var rules = []Rule{
 		ID: "host-device-passthrough", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
 		Recommendation: "Remove or explicitly account for host-device passthrough before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM depends on a host PCI or direct-path device", Needs: "VM host-device passthrough inventory",
-		Eval: evaluateHostDevicePassthrough, Resolve: resolveVMConfiguration,
+		Eval: evaluateHostDevicePassthrough, MissingEvidence: noConfiguration,
 	},
 	{
 		ID: "host-disconnected", Category: CategoryAvailability, Severity: SeverityCritical,
@@ -245,7 +245,7 @@ var rules = []Rule{
 		ID: "manual-mac-address", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
 		Recommendation: "Confirm manually assigned MAC addresses are preserved or re-registered at the destination.", NeedsCollections: []string{"vm"},
 		Summary: "VM has a manually assigned MAC address", Needs: "VM NIC MAC assignment metadata",
-		Eval: evaluateManualMACAddress, Resolve: resolveVMConfiguration,
+		Eval: evaluateManualMACAddress, MissingEvidence: noConfiguration,
 	},
 	{
 		ID: "portgroup-promiscuous", Category: CategorySecurity, Severity: SeverityWarning, MinSchema: 9,
@@ -257,19 +257,19 @@ var rules = []Rule{
 		ID: "rdm-present", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
 		Recommendation: "Plan the RDM migration explicitly and confirm destination support for its compatibility mode.", NeedsCollections: []string{"vm"},
 		Summary: "VM has a raw device mapping", Needs: "VM disk backing and RDM compatibility inventory",
-		Eval: evaluateRDMPresent, Resolve: resolveVMConfiguration,
+		Eval: evaluateRDMPresent, MissingEvidence: noConfiguration,
 	},
 	{
 		ID: "secure-boot-enabled", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: 13,
 		Recommendation: "Confirm the destination supports the VM's Secure Boot state and boot keys.", NeedsCollections: []string{"vm"},
 		Summary: "VM has Secure Boot enabled", Needs: "VM Secure Boot configuration",
-		Eval: evaluateSecureBoot, Resolve: resolveSecureBoot,
+		Eval: evaluateSecureBoot, MissingEvidence: noSecureBoot,
 	},
 	{
 		ID: "shared-disk", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
 		Recommendation: "Identify every VM sharing this disk or SCSI bus and plan the destination relationship.", NeedsCollections: []string{"vm"},
 		Summary: "VM uses a shared SCSI bus or multi-writer disk", Needs: "VM disk sharing and SCSI controller inventory",
-		Eval: evaluateSharedDisk, Resolve: resolveVMConfiguration,
+		Eval: evaluateSharedDisk, MissingEvidence: noConfiguration,
 	},
 	{
 		ID: "snapshot-age", Category: CategoryHygiene, Severity: SeverityWarning,
@@ -373,7 +373,7 @@ var rules = []Rule{
 		ID: "vtpm-present", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
 		Recommendation: "Confirm destination vTPM, key-provider, and encryption support before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM has a virtual TPM", Needs: "VM virtual TPM inventory",
-		Eval: evaluateVTPMPresent, Resolve: resolveVMConfiguration,
+		Eval: evaluateVTPMPresent, MissingEvidence: noConfiguration,
 	},
 }
 
@@ -382,96 +382,6 @@ var inaccessibleVMStates = map[string]bool{
 	"invalid":       true,
 	"disconnected":  true,
 	"notResponding": true,
-}
-
-func resolveVMConfiguration(in Input) (string, string, []string) {
-	blind := make(map[string]bool)
-	for _, item := range in.Data.VMs {
-		vm := item.Observation.VM
-		if !vm.IsTemplate && !vm.ConfigurationAvailable {
-			blind[contextName(item.Observation)] = true
-		}
-	}
-	return unknownVMConfiguration(blind)
-}
-
-func resolveFirmware(in Input) (string, string, []string) {
-	result, reason, blind := resolveVMConfiguration(in)
-	if result != "" {
-		return result, reason, blind
-	}
-	missing := make(map[string]bool)
-	for _, item := range in.Data.VMs {
-		vm := item.Observation.VM
-		if !vm.IsTemplate && !validFirmware(vm.Firmware) {
-			missing[contextName(item.Observation)] = true
-		}
-	}
-	return unknownVMConfiguration(missing)
-}
-
-func validFirmware(value string) bool {
-	return strings.EqualFold(strings.TrimSpace(value), "bios") || strings.EqualFold(strings.TrimSpace(value), "efi")
-}
-
-func resolveResourceAllocation(in Input) (string, string, []string) {
-	result, reason, blind := resolveVMConfiguration(in)
-	if result != "" {
-		return result, reason, blind
-	}
-	missing := make(map[string]bool)
-	for _, item := range in.Data.VMs {
-		vm := item.Observation.VM
-		if !vm.IsTemplate && (vm.CPUAllocation == nil || vm.MemoryAllocation == nil) {
-			missing[contextName(item.Observation)] = true
-		}
-	}
-	return unknownVMConfiguration(missing)
-}
-
-func resolveCPUTopology(in Input) (string, string, []string) {
-	result, reason, blind := resolveVMConfiguration(in)
-	if result != "" {
-		return result, reason, blind
-	}
-	missing := make(map[string]bool)
-	for _, item := range in.Data.VMs {
-		vm := item.Observation.VM
-		if !vm.IsTemplate && (vm.CPU <= 0 || vm.CoresPerSocket <= 0) {
-			missing[contextName(item.Observation)] = true
-		}
-	}
-	return unknownVMConfiguration(missing)
-}
-
-func resolveSecureBoot(in Input) (string, string, []string) {
-	result, reason, blind := resolveFirmware(in)
-	if result != "" {
-		return result, reason, blind
-	}
-	missing := make(map[string]bool)
-	for _, item := range in.Data.VMs {
-		vm := item.Observation.VM
-		if vm.IsTemplate {
-			continue
-		}
-		if strings.EqualFold(vm.Firmware, "efi") && vm.SecureBootEnabled == nil {
-			missing[contextName(item.Observation)] = true
-		}
-	}
-	return unknownVMConfiguration(missing)
-}
-
-func unknownVMConfiguration(contexts map[string]bool) (string, string, []string) {
-	if len(contexts) == 0 {
-		return "", "", nil
-	}
-	blind := make([]string, 0, len(contexts))
-	for context := range contexts {
-		blind = append(blind, context)
-	}
-	sort.Strings(blind)
-	return "unknown", "VM migration configuration evidence is incomplete", blind
 }
 
 func evaluateBIOSFirmware(in Input, emit func(Finding)) {

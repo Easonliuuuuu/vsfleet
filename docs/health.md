@@ -24,6 +24,7 @@ records thresholds, so identical evidence and options reproduce the export.
 | `not-evaluated` | The run predates required inventory fields |
 | `unknown` | A required collection failed or was not recorded |
 | Partial answer | Findings remain visible, with blind contexts named |
+| Partly evaluated | The rule judged every VM it had evidence for; `partial_contexts` counts the VMs left out per context |
 
 ## Orphan-disk evidence
 

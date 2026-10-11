@@ -1,67 +1,37 @@
 package cli
 
 import (
-	"context"
 	"encoding/json"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
-	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 func newSnapshotAgeTestHistoryDB(t *testing.T) string {
 	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "history.db")
-	store, err := assessment.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-
 	started := time.Now().UTC().Truncate(time.Second)
-	run, err := store.StartRun(context.Background(), "test", []*config.Context{{Name: "prod", Endpoint: "https://prod.example"}}, started)
-	if err != nil {
-		t.Fatal(err)
-	}
-	finished := started.Add(2 * time.Minute)
 	vm := vsphere.VM{
 		Location:  vsphere.Location{Context: "prod", Datacenter: "dc1", Path: "/dc1/vm/vm-snapshot"},
 		ID:        "vm-1",
 		Name:      "vm-snapshot",
-		Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "snap-1", CreateTime: finished.Add(-90 * 24 * time.Hour)}},
+		Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "snap-1", CreateTime: started.Add(time.Minute - 90*24*time.Hour)}},
 	}
-	collections := make([]assessment.CollectionResult, 0, 8)
-	for _, kind := range []string{"vm", "host", "cluster", "resourcepool", "vapp", "dvswitch", "datastore", "network", "snapshot"} {
-		collection := assessment.CollectionResult{Kind: kind, Status: "empty"}
-		if kind == "vm" {
-			collection.Status = "success"
-			collection.ItemCount = 1
-		} else if kind == "snapshot" {
-			collection.Status = "success"
-			collection.ItemCount = 1
-		}
-		collections = append(collections, collection)
-	}
-	if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{
+	return seedHistory(t, started, "", assessment.ContextResult{
 		Name: "prod", VCenterID: "vc-1", Status: "success",
-		VMs:         []assessment.Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}},
-		Collections: collections,
-	}, finished); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.FinishRun(context.Background(), run.ID, finished); err != nil {
-		t.Fatal(err)
-	}
-	return dbPath
+		VMs: []assessment.Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}},
+		Collections: collections(
+			assessment.CollectionResult{Kind: "vm", Status: "success", ItemCount: 1},
+			assessment.CollectionResult{Kind: "snapshot", Status: "success", ItemCount: 1},
+		),
+	})
 }
 
 func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 	dbPath := newSnapshotAgeTestHistoryDB(t)
-	stdout, _, err := runAssessment(t, dbPath, "snapshots")
+	stdout, _, err := runCLI(t, dbPath, "assessment", "snapshots")
 	if err != nil {
 		t.Fatalf("assessment snapshots: %v", err)
 	}
@@ -69,7 +39,7 @@ func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 		t.Fatalf("snapshot age should be compactly rendered as 12w, got:\n%s", stdout)
 	}
 
-	stdout, _, err = runAssessment(t, dbPath, "snapshots", "-o", "json")
+	stdout, _, err = runCLI(t, dbPath, "assessment", "snapshots", "-o", "json")
 	if err != nil {
 		t.Fatalf("assessment snapshots JSON: %v", err)
 	}
@@ -87,11 +57,18 @@ func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 
 func TestAssessmentSnapshotTrendOldestUsesCompactAge(t *testing.T) {
 	dbPath := newSnapshotAgeTestHistoryDB(t)
-	stdout, _, err := runAssessment(t, dbPath, "trends", "snapshots")
+	stdout, _, err := runCLI(t, dbPath, "assessment", "trends", "snapshots")
 	if err != nil {
 		t.Fatalf("assessment snapshot trend: %v", err)
 	}
 	if !strings.Contains(stdout, "12w") || strings.Contains(stdout, "7776000") {
 		t.Fatalf("snapshot trend oldest age should be compactly rendered as 12w, got:\n%s", stdout)
+	}
+}
+
+func TestAssessmentSnapshotsRejectsAnInvalidOlderThan(t *testing.T) {
+	_, _, err := runCLI(t, newSnapshotAgeTestHistoryDB(t), "assessment", "snapshots", "--older-than", "soon")
+	if err == nil || !strings.Contains(err.Error(), "--older-than") {
+		t.Fatalf("err = %v, want an --older-than failure", err)
 	}
 }

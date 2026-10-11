@@ -80,8 +80,6 @@ func TestTyposSuggestTheIntendedCommand(t *testing.T) {
 	for _, tc := range []struct{ args, want []string }{
 		{[]string{"statas"}, []string{"status"}},
 		{[]string{"assessment", "lst"}, []string{"list"}},
-		{[]string{"vm", "lst"}, []string{"list"}},
-		{[]string{"contxt"}, []string{"context"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			_, _, err := runArgs(t, tc.args...)

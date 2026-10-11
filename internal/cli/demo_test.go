@@ -54,72 +54,23 @@ func scratchPaths(t *testing.T) (configPath, statePath string) {
 	return configPath, statePath
 }
 
-func TestDemoCommandIsRegistered(t *testing.T) {
-	root := NewRootCommand(&App{})
-	cmd, _, err := root.Find([]string{"demo"})
-	if err != nil {
-		t.Fatalf("finding the demo command: %v", err)
-	}
-	if cmd.Name() != "demo" {
-		t.Fatalf("expected the demo command, got %q", cmd.Name())
-	}
-}
-
-// The demo's promise is that it leaves the operator's machine alone. Every
-// side-effecting dependency on App is a lazy accessor, so each one still
-// being nil after the run is the strongest single signal that the demo
-// touched no configuration, no keyring, no session and no history database.
-func TestDemoLoadsNothingFromTheMachine(t *testing.T) {
-	scratchPaths(t)
-	keyring.MockInit()
-
-	a, _, err := runDemoCommand(t)
-	if err == nil || !strings.Contains(err.Error(), "terminal") {
-		t.Fatalf("expected the no-terminal refusal, got %v", err)
-	}
-
-	if a.cfg != nil {
-		t.Error("demo loaded the configuration file")
-	}
-	if a.resolver != nil {
-		t.Error("demo built the credential resolver")
-	}
-	if a.mgr != nil {
-		t.Error("demo built the session manager")
-	}
-	if a.history != nil {
-		t.Error("demo opened the history database")
-	}
-}
-
-func TestDemoWritesNothingToDisk(t *testing.T) {
+// The demo's promise is that it leaves the operator's machine alone, even when
+// that machine already has contexts. Every side-effecting dependency on App is
+// a lazy accessor, so each one still being nil after the run, and the files on
+// disk being untouched, is the strongest signal that the demo touched no
+// configuration, keyring, session or history database.
+func TestDemoLeavesTheMachineAlone(t *testing.T) {
 	configPath, statePath := scratchPaths(t)
 	keyring.MockInit()
-
-	if _, _, err := runDemoCommand(t); err == nil {
-		t.Fatal("expected the no-terminal refusal")
-	}
-
-	for _, path := range []string{configPath, statePath} {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Errorf("demo wrote %s (stat error: %v)", path, err)
-		}
-	}
-}
-
-func TestDemoIgnoresAnExistingConfiguration(t *testing.T) {
-	configPath, _ := scratchPaths(t)
-	keyring.MockInit()
-	// A real operator running the demo almost certainly has contexts already.
-	// The demo must show its own estate regardless, and must not read theirs.
-	if err := os.WriteFile(configPath, []byte(`current_context = "live"
+	existing := []byte(`current_context = "live"
 
 [[contexts]]
 name = "live"
 endpoint = "https://vcsa.internal"
 username = "administrator@vsphere.local"
 credential = "keyring:live"
-`), 0o600); err != nil {
+`)
+	if err := os.WriteFile(configPath, existing, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -128,9 +79,21 @@ credential = "keyring:live"
 		t.Fatalf("expected the no-terminal refusal, got %v", err)
 	}
 	if a.cfg != nil {
-		t.Error("demo read the operator's configuration file")
+		t.Error("demo loaded the configuration file")
 	}
 	if a.resolver != nil {
 		t.Error("demo built the credential resolver, which is what reads the keyring")
+	}
+	if a.mgr != nil {
+		t.Error("demo built the session manager")
+	}
+	if a.history != nil {
+		t.Error("demo opened the history database")
+	}
+	if got, err := os.ReadFile(configPath); err != nil || !bytes.Equal(got, existing) {
+		t.Errorf("demo changed the configuration file (err %v)", err)
+	}
+	if _, err := os.Stat(statePath); !os.IsNotExist(err) {
+		t.Errorf("demo wrote %s (stat error: %v)", statePath, err)
 	}
 }

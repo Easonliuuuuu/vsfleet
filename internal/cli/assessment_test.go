@@ -12,6 +12,9 @@ func TestParseHumanDuration(t *testing.T) {
 			t.Fatalf("%s: got %s err=%v want %s", input, got, err, want)
 		}
 	}
+	if _, err := parseHumanDuration("thirty days"); err == nil {
+		t.Fatal("invalid duration unexpectedly parsed")
+	}
 }
 
 func TestParseHumanBytes(t *testing.T) {

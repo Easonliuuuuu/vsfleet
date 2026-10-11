@@ -64,7 +64,7 @@ func seedPerformance(t *testing.T, dbPath string) {
 
 func mustAssessment(t *testing.T, dbPath string, args ...string) string {
 	t.Helper()
-	out, errOut, err := runAssessment(t, dbPath, args...)
+	out, errOut, err := runCLI(t, dbPath, append([]string{"assessment"}, args...)...)
 	if err != nil {
 		t.Fatalf("assessment %v: %v\nstderr: %s", args, err, errOut)
 	}

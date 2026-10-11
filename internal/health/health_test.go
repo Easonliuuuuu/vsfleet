@@ -215,6 +215,57 @@ func TestDVPortGroupPromiscuousSkipsUplinkPortGroups(t *testing.T) {
 	}
 }
 
+func TestPortGroupSecurityFindingNamesEnabledPolicies(t *testing.T) {
+	on, off := true, false
+	cases := []struct {
+		name                     string
+		promiscuous, forged, mac *bool
+		want                     string
+	}{
+		{name: "forged transmits only", promiscuous: &off, forged: &on, mac: &off, want: "permits forged transmits"},
+		{name: "promiscuous only", promiscuous: &on, forged: &off, mac: &off, want: "permits promiscuous mode"},
+		{name: "two policies", promiscuous: &on, mac: &on, want: "permits promiscuous mode and MAC address changes"},
+		{name: "all three", promiscuous: &on, forged: &on, mac: &on, want: "permits promiscuous mode, forged transmits and MAC address changes"},
+		{name: "none", promiscuous: &off, forged: &off, mac: &off},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dvs, _ := json.Marshal(vsphere.DVSwitch{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "dvs-1", Name: "dvSwitch0", PortGroups: []vsphere.DVPortGroup{
+				{Name: "workload", Promiscuous: tc.promiscuous, ForgedTransmits: tc.forged, MACChanges: tc.mac},
+			}})
+			esx, _ := json.Marshal(vsphere.Host{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "host-1", Name: "esx-1",
+				VSwitches:  []vsphere.HostVSwitch{{Name: "vSwitch0", Promiscuous: tc.promiscuous, ForgedTransmits: tc.forged, MACChanges: tc.mac}},
+				PortGroups: []vsphere.HostPortGroup{{Name: "VM Network", Switch: "vSwitch0", Promiscuous: tc.promiscuous, ForgedTransmits: tc.forged, MACChanges: tc.mac}},
+			})
+			data := assessment.ExportData{
+				Run:      assessment.Run{ID: 53, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion},
+				Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "empty", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "empty"}, {Kind: "host", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}},
+				Resources: []assessment.ResourceObservation{
+					{Context: "prod", VCenterID: "vc-1", Kind: "dvswitch", ID: "dvs-1", Name: "dvSwitch0", Payload: dvs},
+					{Context: "prod", VCenterID: "vc-1", Kind: "host", ID: "host-1", Name: "esx-1", Payload: esx},
+				},
+			}
+			want := map[string]bool{}
+			if tc.want != "" {
+				want = map[string]bool{
+					`Distributed port group "workload" ` + tc.want: true,
+					`Standard vSwitch "vSwitch0" ` + tc.want:       true,
+					`Standard port group "VM Network" ` + tc.want:  true,
+				}
+			}
+			got := map[string]bool{}
+			for _, finding := range Evaluate(data, Options{}).Findings {
+				if finding.Rule == "dvportgroup-promiscuous" || finding.Rule == "portgroup-promiscuous" {
+					got[finding.Message] = true
+				}
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("messages = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
 func TestEvaluateHostPathRedundancyLocality(t *testing.T) {
 	local, shared := true, false
 	cases := []struct {

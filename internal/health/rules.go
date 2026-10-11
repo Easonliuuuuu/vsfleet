@@ -1039,18 +1039,20 @@ func evaluatePortGroupPromiscuous(in Input, emit func(Finding)) {
 		}
 		obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
 		for _, sw := range host.VSwitches {
-			if !securityPolicyEnabled(sw.Promiscuous, sw.ForgedTransmits, sw.MACChanges) {
+			enabled := enabledSecurityPolicies(sw.Promiscuous, sw.ForgedTransmits, sw.MACChanges)
+			if enabled == "" {
 				continue
 			}
 			emit(Finding{Rule: "portgroup-promiscuous", Object: obj,
-				Message: fmt.Sprintf("Standard vSwitch %q permits insecure frame policies", sw.Name), Evidence: securityEvidence("switch", sw.Name, sw.Promiscuous, sw.ForgedTransmits, sw.MACChanges)})
+				Message: fmt.Sprintf("Standard vSwitch %q permits %s", sw.Name, enabled), Evidence: securityEvidence("switch", sw.Name, sw.Promiscuous, sw.ForgedTransmits, sw.MACChanges)})
 		}
 		for _, group := range host.PortGroups {
-			if !securityPolicyEnabled(group.Promiscuous, group.ForgedTransmits, group.MACChanges) {
+			enabled := enabledSecurityPolicies(group.Promiscuous, group.ForgedTransmits, group.MACChanges)
+			if enabled == "" {
 				continue
 			}
 			emit(Finding{Rule: "portgroup-promiscuous", Object: obj,
-				Message: fmt.Sprintf("Standard port group %q permits insecure frame policies", group.Name), Evidence: securityEvidence("port_group", group.Name, group.Promiscuous, group.ForgedTransmits, group.MACChanges)})
+				Message: fmt.Sprintf("Standard port group %q permits %s", group.Name, enabled), Evidence: securityEvidence("port_group", group.Name, group.Promiscuous, group.ForgedTransmits, group.MACChanges)})
 		}
 	}
 }
@@ -1067,22 +1069,41 @@ func evaluateDVPortGroupPromiscuous(in Input, emit func(Finding)) {
 		obj := resourceObject(in.Data, resource, "dvswitch", sw.Name, sw.ID, sw.Datacenter)
 		for _, group := range sw.PortGroups {
 			// Uplink port groups cannot host VMs and default to forged transmits.
-			if group.Uplink || !securityPolicyEnabled(group.Promiscuous, group.ForgedTransmits, group.MACChanges) {
+			if group.Uplink {
+				continue
+			}
+			enabled := enabledSecurityPolicies(group.Promiscuous, group.ForgedTransmits, group.MACChanges)
+			if enabled == "" {
 				continue
 			}
 			emit(Finding{Rule: "dvportgroup-promiscuous", Object: obj,
-				Message: fmt.Sprintf("Distributed port group %q permits insecure frame policies", group.Name), Evidence: append([]Evidence{{Field: "switch", Observed: sw.Name}}, securityEvidence("port_group", group.Name, group.Promiscuous, group.ForgedTransmits, group.MACChanges)...)})
+				Message: fmt.Sprintf("Distributed port group %q permits %s", group.Name, enabled), Evidence: append([]Evidence{{Field: "switch", Observed: sw.Name}}, securityEvidence("port_group", group.Name, group.Promiscuous, group.ForgedTransmits, group.MACChanges)...)})
 		}
 	}
 }
 
-func securityPolicyEnabled(values ...*bool) bool {
-	for _, value := range values {
-		if value != nil && *value {
-			return true
+// enabledSecurityPolicies names the frame policies a switch or port group
+// accepts, such as "forged transmits" or "promiscuous mode and MAC address
+// changes", or returns "" when it accepts none of them. The rule IDs say
+// "promiscuous" for history, so the message carries which policy fired.
+func enabledSecurityPolicies(promiscuous, forged, macChanges *bool) string {
+	var names []string
+	for _, policy := range []struct {
+		name  string
+		value *bool
+	}{{"promiscuous mode", promiscuous}, {"forged transmits", forged}, {"MAC address changes", macChanges}} {
+		if policy.value != nil && *policy.value {
+			names = append(names, policy.name)
 		}
 	}
-	return false
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
 }
 
 func securityEvidence(kind, name string, promiscuous, forged, macChanges *bool) []Evidence {

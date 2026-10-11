@@ -45,14 +45,17 @@ While typing, `↑`/`↓` and `PgUp`/`PgDn` move the selection.
 ## Browsing by folder
 
 Press `t` on the VMs or Templates tab to browse by folder, one level at a
-time, as in the vSphere client's VMs and Templates view. The view opens on
-the folder of the selected row. Press `t` again for the plain list. Each tab
-remembers its own folder.
+time, as in the vSphere client's VMs and Templates view. The footer shows
+`t folders` while the tab lists every object. The view opens at the top
+folder; press `t` again for the plain list, which keeps the selected row.
 
 - `Enter` on a folder opens it; `Esc` goes up one level.
 - The message line shows where you are: `in Taipei › Prod › Web`.
-- Folder rows show how many VMs or templates they hold, at any depth:
-  `▹ Web/  2 VMs`.
+- A level that holds only folders shows each folder's totals, at any depth:
+  VMs, how many are powered on, vCPU and memory; for templates, the count,
+  vCPU, memory and disk.
+- Beside VMs or templates, a folder row shows its name and count,
+  `▹ Web/  2 VMs`, under the objects' own columns.
 - With more than one datacenter in scope, the top level lists datacenters.
 - A filter searches the open folder and everything under it, and lists the
   matches without their folders. A jump from another object, such as

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
@@ -46,10 +47,10 @@ func (s folderSpot) holds(r row) bool {
 
 // rowFolder is the folder a VM or template row is filed in.
 func rowFolder(r row) string {
-	if r.filed == "" {
+	if r.filed == nil || r.filed.Folder == "" {
 		return "/"
 	}
-	return r.filed
+	return r.filed.Folder
 }
 
 // spotOf is the folder a row sits in.
@@ -67,22 +68,20 @@ func (m *Model) folderView() bool {
 	return foldersOffered(m.kind) && m.folderOn[m.kind]
 }
 
-// toggleFolderView switches the tab between folders and the plain list. The
-// folder view opens on the folder of the row under the cursor, so the
-// selection stays put either way.
+// toggleFolderView switches the tab between folders and the plain list.
+// Folders open at the top, so the first thing shown is the folders
+// themselves; going back to the list keeps the selected row.
 func (m *Model) toggleFolderView() {
 	if m.folderOn == nil {
 		m.folderOn = map[vsphere.Kind]bool{}
 	}
-	m.preserveCursor(func() {
-		on := !m.folderOn[m.kind]
-		if on {
-			if r, ok := m.currentRow(); ok {
-				m.setFolder(spotOf(r))
-			}
-		}
-		m.folderOn[m.kind] = on
-	})
+	if m.folderOn[m.kind] {
+		m.preserveCursor(func() { m.folderOn[m.kind] = false })
+		return
+	}
+	m.folderOn[m.kind] = true
+	m.setFolder(folderSpot{})
+	m.cursor, m.offset = 0, 0
 }
 
 func (m *Model) setFolder(s folderSpot) {
@@ -168,13 +167,17 @@ func (m *Model) folderRows() []row {
 	}
 
 	if spot.root() {
-		count := map[folderSpot]int{}
+		tally := map[folderSpot]*folderTally{}
 		for _, r := range all {
-			count[folderSpot{context: r.context, datacenter: r.where.Datacenter, path: "/"}]++
+			dc := folderSpot{context: r.context, datacenter: r.where.Datacenter, path: "/"}
+			if tally[dc] == nil {
+				tally[dc] = &folderTally{}
+			}
+			tally[dc].add(r)
 		}
 		var out []row
 		for _, dc := range folderDatacenters(all) {
-			out = append(out, m.folderRow(dc, humanize.Dash(dc.datacenter), count[dc]))
+			out = append(out, m.folderRow(dc, humanize.Dash(dc.datacenter), tally[dc], true))
 		}
 		return out
 	}
@@ -184,7 +187,7 @@ func (m *Model) folderRows() []row {
 		prefix += "/"
 	}
 	var leaves []row
-	count := map[string]int{}
+	tally := map[string]*folderTally{}
 	for _, r := range all {
 		if r.context != spot.context || r.where.Datacenter != spot.datacenter {
 			continue
@@ -199,10 +202,13 @@ func (m *Model) folderRows() []row {
 			continue
 		}
 		name, _, _ := strings.Cut(rest, "/")
-		count[name]++
+		if tally[name] == nil {
+			tally[name] = &folderTally{}
+		}
+		tally[name].add(r)
 	}
-	names := make([]string, 0, len(count))
-	for n := range count {
+	names := make([]string, 0, len(tally))
+	for n := range tally {
 		names = append(names, n)
 	}
 	sort.Slice(names, func(i, j int) bool {
@@ -212,23 +218,91 @@ func (m *Model) folderRows() []row {
 	for _, n := range names {
 		child := spot
 		child.path = prefix + n
-		out = append(out, m.folderRow(child, n, count[n]))
+		out = append(out, m.folderRow(child, n, tally[n], len(leaves) == 0))
 	}
 	m.sortMode.apply(leaves)
 	return append(out, leaves...)
 }
 
-// folderRow is the line for a folder: its name and how many of the tab's
-// objects it holds, at any depth.
-func (m *Model) folderRow(s folderSpot, label string, n int) row {
-	withContext := m.showContext()
-	cells := make([]string, len(columnsFor(m.kind, withContext)))
-	nameAt := 0
-	if withContext {
-		cells[0] = s.context
-		nameAt = 1
+// folderTally is what a folder holds, at any depth.
+type folderTally struct {
+	n, on  int
+	cpu    int64
+	memMB  int64
+	diskGB float64
+}
+
+func (t *folderTally) add(r row) {
+	t.n++
+	v := r.filed
+	if v == nil {
+		return
 	}
-	cells[nameAt] = label + "/  " + kindCount(m.kind, n)
+	if v.PowerState == "poweredOn" {
+		t.on++
+	}
+	t.cpu += int64(v.CPU)
+	t.memMB += v.MemoryMB
+	t.diskGB += v.StorageGB
+}
+
+// folderColumns are the table's columns on a level that holds only folders,
+// where the VM or template columns would all be empty.
+func folderColumns(kind vsphere.Kind, withContext bool) []column {
+	var cols []column
+	if withContext {
+		cols = append(cols, column{title: "VCENTER", width: 14})
+	}
+	cols = append(cols, column{title: "NAME"})
+	if kind == vsphere.KindTemplate {
+		return append(cols,
+			column{title: "TEMPLATES", width: 9, right: true},
+			column{title: "vCPU", width: 6, right: true},
+			column{title: "MEMORY", width: 8, right: true},
+			column{title: "DISK", width: 8, right: true},
+		)
+	}
+	return append(cols,
+		column{title: "VMS", width: 6, right: true},
+		column{title: "POWERED ON", width: 10, right: true},
+		column{title: "vCPU", width: 6, right: true},
+		column{title: "MEMORY", width: 8, right: true},
+	)
+}
+
+// foldersOnly reports whether the level on show holds folders and nothing
+// else, which is when the table takes folderColumns.
+func foldersOnly(rows []row) bool {
+	for _, r := range rows {
+		if r.folder == nil {
+			return false
+		}
+	}
+	return len(rows) > 0
+}
+
+// folderRow is the line for a folder. Alone on its level it fills
+// folderColumns; beside VMs or templates it fills only the name column,
+// with its count, and leaves the rest of the line to their columns.
+func (m *Model) folderRow(s folderSpot, label string, t *folderTally, alone bool) row {
+	withContext := m.showContext()
+	var cells []string
+	if withContext {
+		cells = append(cells, s.context)
+	}
+	switch {
+	case alone && m.kind == vsphere.KindTemplate:
+		cells = append(cells, label+"/", strconv.Itoa(t.n), strconv.FormatInt(t.cpu, 10),
+			humanize.MB(t.memMB), humanize.GB(t.diskGB))
+	case alone:
+		cells = append(cells, label+"/", strconv.Itoa(t.n), strconv.Itoa(t.on),
+			strconv.FormatInt(t.cpu, 10), humanize.MB(t.memMB))
+	default:
+		cells = append(cells, label+"/  "+kindCount(m.kind, t.n))
+		for len(cells) < len(columnsFor(m.kind, withContext)) {
+			cells = append(cells, "")
+		}
+	}
 	spot := s
 	return row{
 		key:     "folder\x00" + s.context + "\x00" + s.datacenter + "\x00" + s.path,

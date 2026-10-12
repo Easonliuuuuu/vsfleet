@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,9 @@ import (
 // fill soon and rising stale snapshots lead, a quiet estate says it was
 // checked, capacity reads as one row per resource, datastores without growth
 // evidence fold into one line, and the subtitle names the runs actually used.
+// The grid fills the terminal with bars a blank row apart, and stacks each
+// chart under its label when the terminal is too narrow to fit them side by
+// side.
 func TestTrendsLayout(t *testing.T) {
 	f := func(v float64) *float64 { return &v }
 	runs := []assessment.Run{
@@ -39,7 +43,10 @@ func TestTrendsLayout(t *testing.T) {
 
 	tests := []struct {
 		name   string
+		width  int
 		setup  func(m *Model)
+		match  []string
+		check  func(t *testing.T, lines []string, width int)
 		want   []string
 		reject []string
 		once   []string
@@ -67,7 +74,8 @@ func TestTrendsLayout(t *testing.T) {
 			setup: func(m *Model) {
 				m.historySnapshots.Points[1].Stale = 5
 			},
-			want:   []string{"stale snapshots rose from 2 to 5", "2 → 5  +3"},
+			want:   []string{"stale snapshots rose from 2 to 5"},
+			match:  []string{`2 → 5 +\+3`},
 			reject: []string{"No datastore fills"},
 		},
 		{
@@ -86,14 +94,62 @@ func TestTrendsLayout(t *testing.T) {
 		{
 			name:   "subtitle names the runs used",
 			setup:  func(m *Model) {},
-			want:   []string{"2 complete runs", "(2 days)", "40 → 44  +4"},
+			want:   []string{"2 complete runs", "(2 days)"},
+			match:  []string{`40 → 44 +\+4`},
 			reject: []string{"last 30", "#7"},
+		},
+		{
+			name:  "bars fill the width a blank row apart",
+			width: 140,
+			setup: func(m *Model) {
+				m.historyCapacity = &assessment.CapacityTrend{Series: []assessment.CapacitySeries{
+					{Kind: "host", Scope: "estate", Points: compute},
+					{Kind: "datastore", Scope: "estate", Points: storage},
+				}}
+			},
+			check: func(t *testing.T, lines []string, width int) {
+				for i, line := range lines {
+					if !strings.HasPrefix(line, "  CPU ") && !strings.HasPrefix(line, "  Memory ") {
+						continue
+					}
+					if !strings.Contains(line, "█") {
+						t.Errorf("%q should carry its bar on the same line", line)
+					}
+					if got := len([]rune(strings.TrimRight(line, " "))); got != width-2 {
+						t.Errorf("%q ends at column %d, want the right edge %d", line, got, width-2)
+					}
+					if i+1 < len(lines) && strings.Contains(lines[i+1], "█") {
+						t.Errorf("bar rows touch: %q then %q", line, lines[i+1])
+					}
+				}
+			},
+		},
+		{
+			name:  "narrow terminal stacks the chart under its label",
+			width: 60,
+			setup: func(m *Model) {
+				m.historyCapacity = &assessment.CapacityTrend{Series: []assessment.CapacitySeries{{Kind: "host", Scope: "estate", Points: compute}}}
+			},
+			check: func(t *testing.T, lines []string, width int) {
+				for i, line := range lines {
+					if strings.HasPrefix(line, "  CPU ") {
+						if strings.Contains(line, "█") || i+1 >= len(lines) || !strings.HasPrefix(lines[i+1], "  █") {
+							t.Errorf("CPU bar should sit alone on the next line:\n%s\n%s", line, lines[min(i+1, len(lines)-1)])
+						}
+						return
+					}
+				}
+				t.Error("no CPU row")
+			},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
-			m.width, m.height = 100, 40
+			m.width, m.height = 100, 60
+			if tt.width > 0 {
+				m.width = tt.width
+			}
 			m.historyChurn = &assessment.ChurnTrend{Points: []assessment.ChurnPoint{{Run: runs[0], VMCount: 40}, {Run: runs[1], VMCount: 44, Appeared: 4}}}
 			m.historySnapshots = &assessment.SnapshotTrend{Points: []assessment.SnapshotTrendPoint{{Run: runs[0], Stale: 2}, {Run: runs[1], Stale: 2}}}
 			tt.setup(m)
@@ -108,6 +164,14 @@ func TestTrendsLayout(t *testing.T) {
 				if strings.Contains(view, reject) {
 					t.Errorf("unexpected %q", reject)
 				}
+			}
+			for _, pattern := range tt.match {
+				if !regexp.MustCompile(pattern).MatchString(view) {
+					t.Errorf("no match for %q", pattern)
+				}
+			}
+			if tt.check != nil {
+				tt.check(t, strings.Split(view, "\n"), m.width)
 			}
 			for _, once := range tt.once {
 				if n := strings.Count(view, once); n != 1 {

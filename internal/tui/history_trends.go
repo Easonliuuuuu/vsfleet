@@ -60,9 +60,13 @@ func (m *Model) viewHistoryTrends() []string {
 	}
 	lines := append(head, "")
 	lines = append(lines, m.trendAttentionLines()...)
-	lines = append(lines, m.trendCapacityLines()...)
-	lines = append(lines, m.trendDatastoreLines()...)
-	lines = append(lines, m.trendEstateLines()...)
+	var sections []trendSection
+	for _, s := range []*trendSection{m.trendCapacitySection(), m.trendDatastoreSection(), m.trendEstateSection()} {
+		if s != nil {
+			sections = append(sections, *s)
+		}
+	}
+	lines = append(lines, m.renderTrendSections(sections)...)
 	h := m.bodyHeight()
 	m.offset = clamp(m.offset, 0, max(0, len(lines)-h))
 	return scrollLines(lines, m.offset, h)
@@ -72,14 +76,10 @@ func (m *Model) viewHistoryTrends() []string {
 // says what was used rather than what was asked for.
 func trendWindowLabel(points []assessment.ChurnPoint) string {
 	first, last := points[0].Run.StartedAt.Local(), points[len(points)-1].Run.StartedAt.Local()
-	runs := "1 complete run"
-	if len(points) > 1 {
-		runs = fmt.Sprintf("%d complete runs", len(points))
-	}
 	if len(points) == 1 {
-		return runs + " · " + first.Format("2 Jan 2006")
+		return "1 complete run · " + first.Format("2 Jan 2006")
 	}
-	return fmt.Sprintf("%s · %s → %s (%s)", runs, first.Format("2 Jan"), last.Format("2 Jan"), trendSpan(last.Sub(first)))
+	return fmt.Sprintf("%d complete runs · %s → %s (%s)", len(points), first.Format("2 Jan"), last.Format("2 Jan"), trendSpan(last.Sub(first)))
 }
 
 func trendSpan(d time.Duration) string {
@@ -95,7 +95,8 @@ func trendSpan(d time.Duration) string {
 
 // trendAttentionLines leads the pane with what an operator should act on:
 // datastores projected to fill soon, and stale snapshots that are piling up.
-// When nothing qualifies it says so, so a quiet estate reads as checked.
+// Each item's evidence sits at the right edge. When nothing qualifies it says
+// so, so a quiet estate reads as checked.
 func (m *Model) trendAttentionLines() []string {
 	t := m.theme
 	type item struct{ lead, detail string }
@@ -140,29 +141,131 @@ func (m *Model) trendAttentionLines() []string {
 		}
 		return append(out, "")
 	}
-	leadW := 0
-	for _, it := range items {
-		leadW = max(leadW, ansi.StringWidth(it.lead))
-	}
 	for _, it := range items {
 		line := "  " + it.lead
-		switch {
-		case it.detail == "":
-		case 2+leadW+3+ansi.StringWidth(it.detail) <= m.width:
-			line += strings.Repeat(" ", leadW-ansi.StringWidth(it.lead)+3) + t.dim.Render(it.detail)
-		default:
-			out = append(out, line)
-			line = "    " + t.dim.Render(it.detail)
+		if it.detail != "" {
+			gap := m.width - 2 - ansi.StringWidth(line) - ansi.StringWidth(it.detail)
+			if gap < 3 {
+				out = append(out, line)
+				line, gap = "    ", m.width-6-ansi.StringWidth(it.detail)
+			}
+			line += strings.Repeat(" ", max(0, gap)) + t.dim.Render(it.detail)
 		}
 		out = append(out, line)
 	}
 	return append(out, "")
 }
 
-// trendCapacityLines is the estate's latest CPU, memory and storage, each as
-// used of total with how far it moved across the window. CPU and memory come
-// from hosts, falling back to clusters; storage comes from datastores.
-func (m *Model) trendCapacityLines() []string {
+// trendSection is one block of the shared Trends grid: a label column, a
+// chart column that takes the remaining width, and three number columns
+// pinned to the right edge so every section's numbers line up.
+type trendSection struct {
+	title     string
+	heads     [3]string
+	chartHead func(w int) string
+	rows      []trendRow
+	footer    string
+}
+
+type trendRow struct {
+	label  string
+	chart  func(w int) string
+	cells  [3]string
+	styles [3]*lipgloss.Style
+}
+
+// trendGrid is the column layout shared by every section. Below the width a
+// readable label and chart need beside the numbers, rows stack: label and
+// numbers on one line, the chart full width beneath.
+type trendGrid struct {
+	labelW, chartW int
+	cellW          [3]int
+	stacked        bool
+}
+
+func (m *Model) trendGridFor(sections []trendSection) trendGrid {
+	g := trendGrid{}
+	labelW := 0
+	for _, s := range sections {
+		for i, h := range s.heads {
+			g.cellW[i] = max(g.cellW[i], ansi.StringWidth(h))
+		}
+		for _, r := range s.rows {
+			labelW = max(labelW, ansi.StringWidth(r.label))
+			for i, c := range r.cells {
+				g.cellW[i] = max(g.cellW[i], ansi.StringWidth(c))
+			}
+		}
+	}
+	inner := m.width - 4
+	right := g.cellW[0] + 2 + g.cellW[1] + 2 + g.cellW[2]
+	g.labelW = clamp(labelW, 15, 24)
+	if spare := inner - g.labelW - 2 - right - 2; spare < 16 {
+		g.labelW = max(15, g.labelW-(16-spare))
+	}
+	g.chartW = inner - g.labelW - 2 - right - 2
+	if g.chartW < 12 {
+		g.stacked = true
+		g.labelW = max(0, inner-right-2)
+		g.chartW = max(1, inner)
+	}
+	return g
+}
+
+// renderTrendSections lays every section on one grid. Rows within a section
+// are separated by a blank line so full-height bars never fuse into a block.
+func (m *Model) renderTrendSections(sections []trendSection) []string {
+	t := m.theme
+	g := m.trendGridFor(sections)
+	cells := func(c [3]string, styles [3]*lipgloss.Style) string {
+		var b strings.Builder
+		for i, s := range c {
+			if i > 0 {
+				b.WriteString("  ")
+			}
+			text := fmt.Sprintf("%*s", g.cellW[i], s)
+			if styles[i] != nil {
+				text = styles[i].Render(text)
+			}
+			b.WriteString(text)
+		}
+		return b.String()
+	}
+	var out []string
+	for _, s := range sections {
+		head := fmt.Sprintf("  %-*s  ", g.labelW, s.title)
+		if !g.stacked {
+			chart := ""
+			if s.chartHead != nil {
+				chart = s.chartHead(g.chartW)
+			}
+			head += fmt.Sprintf("%-*s  ", g.chartW, chart)
+		}
+		header := &t.header
+		out = append(out, t.header.Render(head)+cells(s.heads, [3]*lipgloss.Style{header, header, header}))
+		for i, r := range s.rows {
+			if i > 0 {
+				out = append(out, "")
+			}
+			label := fmt.Sprintf("  %-*s  ", g.labelW, middleTruncate(r.label, g.labelW))
+			if g.stacked {
+				out = append(out, label+cells(r.cells, r.styles), "  "+r.chart(g.chartW))
+				continue
+			}
+			out = append(out, label+r.chart(g.chartW)+"  "+cells(r.cells, r.styles))
+		}
+		if s.footer != "" {
+			out = append(out, t.dim.Render("  "+s.footer))
+		}
+		out = append(out, "")
+	}
+	return out
+}
+
+// trendCapacitySection is the estate's latest CPU, memory and storage, each
+// as used of total with how far it moved across the window. CPU and memory
+// come from hosts, falling back to clusters; storage comes from datastores.
+func (m *Model) trendCapacitySection() *trendSection {
 	t := m.theme
 	if m.historyCapacity == nil {
 		return nil
@@ -177,11 +280,15 @@ func (m *Model) trendCapacityLines() []string {
 	if len(compute) == 0 {
 		compute = estate["cluster"]
 	}
-	type capRow struct {
-		label, amount, change string
-		pct                   *float64
+	s := &trendSection{title: "CAPACITY NOW", heads: [3]string{"USED", "USED / TOTAL", ""}}
+	add := func(label string, pct *float64, amount, change string) {
+		r := trendRow{label: label, chart: m.trendBar(pct, &t.accent), cells: [3]string{percentCell(pct), amount, change}}
+		r.styles[2] = &t.dim
+		if change != "" {
+			s.heads[2] = "CHANGE"
+		}
+		s.rows = append(s.rows, r)
 	}
-	var rows []capRow
 	pointsChange := func(first, last *float64) string {
 		if first == nil || last == nil {
 			return ""
@@ -191,71 +298,50 @@ func (m *Model) trendCapacityLines() []string {
 	if n := len(compute); n > 0 {
 		first, last := compute[0], compute[n-1]
 		if last.CPUCapacity != nil {
-			r := capRow{label: "CPU", amount: humanize.MHz(int64(*last.CPUCapacity)) + " total"}
+			amount, change := humanize.MHz(int64(*last.CPUCapacity))+" total", ""
 			if last.CPUUsed != nil && last.CPUUtilization != nil {
-				r.amount = humanize.MHz(int64(*last.CPUUsed)) + " / " + humanize.MHz(int64(*last.CPUCapacity))
-				r.pct = last.CPUUtilization
+				amount = humanize.MHz(int64(*last.CPUUsed)) + " / " + humanize.MHz(int64(*last.CPUCapacity))
 			}
 			if n > 1 {
-				r.change = pointsChange(first.CPUUtilization, last.CPUUtilization)
+				change = pointsChange(first.CPUUtilization, last.CPUUtilization)
 			}
-			rows = append(rows, r)
+			add("CPU", last.CPUUtilization, amount, change)
 		}
 		if last.MemoryCapacity != nil {
-			r := capRow{label: "Memory", amount: humanize.MBPrecise(int64(*last.MemoryCapacity)) + " total"}
+			amount, change := humanize.MBPrecise(int64(*last.MemoryCapacity))+" total", ""
 			if last.MemoryUsed != nil && last.MemoryUtilization != nil {
-				r.amount = humanize.MBPrecise(int64(*last.MemoryUsed)) + " / " + humanize.MBPrecise(int64(*last.MemoryCapacity))
-				r.pct = last.MemoryUtilization
+				amount = humanize.MBPrecise(int64(*last.MemoryUsed)) + " / " + humanize.MBPrecise(int64(*last.MemoryCapacity))
 			}
 			if n > 1 {
-				r.change = pointsChange(first.MemoryUtilization, last.MemoryUtilization)
+				change = pointsChange(first.MemoryUtilization, last.MemoryUtilization)
 			}
-			rows = append(rows, r)
+			add("Memory", last.MemoryUtilization, amount, change)
 		}
 	}
 	if storage := estate["datastore"]; len(storage) > 0 {
 		first, last := storage[0], storage[len(storage)-1]
 		if last.StorageCapacity != nil {
-			r := capRow{label: "Storage", amount: tuiBytes(*last.StorageCapacity) + " total"}
+			amount, change := tuiBytes(*last.StorageCapacity)+" total", ""
 			if last.StorageUsed != nil && last.StorageUtilization != nil {
-				r.amount = tuiBytes(*last.StorageUsed) + " / " + tuiBytes(*last.StorageCapacity)
-				r.pct = last.StorageUtilization
+				amount = tuiBytes(*last.StorageUsed) + " / " + tuiBytes(*last.StorageCapacity)
 			}
 			if len(storage) > 1 && first.StorageUsed != nil && last.StorageUsed != nil {
-				r.change = signedBytes(*last.StorageUsed - *first.StorageUsed)
+				change = signedBytes(*last.StorageUsed - *first.StorageUsed)
 			}
-			rows = append(rows, r)
+			add("Storage", last.StorageUtilization, amount, change)
 		}
 	}
-	if len(rows) == 0 {
+	if len(s.rows) == 0 {
 		return nil
 	}
-	barW := clamp(m.width-52, 8, 24)
-	amountW := 0
-	for _, r := range rows {
-		amountW = max(amountW, len(r.amount))
-	}
-	change := ""
-	for _, r := range rows {
-		if r.change != "" {
-			change = "CHANGE"
-		}
-	}
-	out := []string{t.header.Render(fmt.Sprintf("  %-*s  %-*s  %s", 9+barW+5, "CAPACITY NOW", amountW, "USED / TOTAL", change))}
-	for _, r := range rows {
-		bar := t.dim.Render(fmt.Sprintf("%-*s", barW+5, "—"))
-		if r.pct != nil {
-			bar = t.accent.Render(fmt.Sprintf("%-*s", barW+5, usageBar(*r.pct, barW)))
-		}
-		out = append(out, fmt.Sprintf("  %-7s  %s  %-*s  %s", r.label, bar, amountW, r.amount, t.dim.Render(r.change)))
-	}
-	return append(out, "")
+	return s
 }
 
-// trendDatastoreLines ranks datastores by how soon they fill, then by growth,
-// with how full each is now. Datastores with neither growth nor a projection
-// fold into one line: a wall of empty rows buries the ones that matter.
-func (m *Model) trendDatastoreLines() []string {
+// trendDatastoreSection ranks datastores by how soon they fill, then by
+// growth, with how full each is now. Datastores with neither growth nor a
+// projection fold into one line: a wall of empty rows buries the ones that
+// matter.
+func (m *Model) trendDatastoreSection() *trendSection {
 	t := m.theme
 	if m.historyCapacityReport == nil || len(m.historyCapacityReport.Datastores) == 0 {
 		return nil
@@ -279,50 +365,48 @@ func (m *Model) trendDatastoreLines() []string {
 		gi, gj := known[i].UsedGrowthBytes, known[j].UsedGrowthBytes
 		return gi != nil && gj != nil && *gi > *gj
 	})
-	barW := clamp(m.width-62, 6, 20)
-	nameW := clamp(m.width-4-(barW+5)-2-11-2-10, 10, 32)
-	out := []string{t.header.Render(fmt.Sprintf("  %-*s  %-*s  %11s  %10s", nameW, "DATASTORE", barW+5, "USED", "GROWTH/WEEK", "FILLS IN"))}
+	s := &trendSection{title: "DATASTORE", heads: [3]string{"USED", "GROWTH/WEEK", "FILLS IN"}}
 	for _, ds := range known {
-		style := t.accent
+		style := &t.accent
 		days := projectedDays(ds)
 		if days != nil {
-			style = runwayStyle(t, *days)
+			rs := runwayStyle(t, *days)
+			style = &rs
 		}
-		used := t.dim.Render(fmt.Sprintf("%-*s", barW+5, "—"))
-		if pct, ok := datastoreUsedPercent(ds); ok {
-			used = style.Render(fmt.Sprintf("%-*s", barW+5, usageBar(pct, barW)))
+		var pct *float64
+		if p, ok := datastoreUsedPercent(ds); ok {
+			pct = &p
 		}
-		growth := t.dim.Render(fmt.Sprintf("%11s", "—"))
+		r := trendRow{label: ds.Object.Name, chart: m.trendBar(pct, style), cells: [3]string{percentCell(pct), "—", "—"}}
+		r.styles = [3]*lipgloss.Style{nil, &t.dim, &t.dim}
 		if ds.UsedGrowthBytes != nil && ds.SpanDays >= 1 {
-			growth = fmt.Sprintf("%11s", signedBytes(*ds.UsedGrowthBytes/ds.SpanDays*7))
+			r.cells[1], r.styles[1] = signedBytes(*ds.UsedGrowthBytes/ds.SpanDays*7), nil
 		}
-		runway := t.dim.Render(fmt.Sprintf("%10s", "—"))
 		switch {
 		case days != nil:
-			s := t.text
+			r.cells[2], r.styles[2] = fillsIn(*days), &t.text
 			if *days <= trendAttentionDays {
-				s = style
+				r.styles[2] = style
 			}
-			runway = s.Render(fmt.Sprintf("%10s", fillsIn(*days)))
 		case ds.UsedGrowthBytes != nil && *ds.UsedGrowthBytes < 0:
-			runway = t.dim.Render(fmt.Sprintf("%10s", "shrinking"))
+			r.cells[2] = "shrinking"
 		}
-		out = append(out, fmt.Sprintf("  %-*s  %s  %s  %s", nameW, middleTruncate(ds.Object.Name, nameW), used, growth, runway))
+		s.rows = append(s.rows, r)
 	}
 	if len(unknown) > 0 {
 		noun := "datastores"
 		if len(unknown) == 1 {
 			noun = "datastore"
 		}
-		out = append(out, t.dim.Render(fmt.Sprintf("  + %d %s without enough history to show growth", len(unknown), noun)))
+		s.footer = fmt.Sprintf("+ %d %s without enough history to show growth", len(unknown), noun)
 	}
-	return append(out, "")
+	return s
 }
 
-// trendEstateLines draws how the estate moved across the window. Each
-// sparkline spans its own lowest to highest value to show the shape, so the
-// first and last values and the change are printed beside it for scale.
-func (m *Model) trendEstateLines() []string {
+// trendEstateSection draws how the estate moved across the window, one
+// column per run. Each chart spans its own lowest to highest value to show
+// the shape, so the first and last values and the change sit beside it.
+func (m *Model) trendEstateSection() *trendSection {
 	t := m.theme
 	points := m.historyChurn.Points
 	var vms, changes, snaps, stale []float64
@@ -334,47 +418,80 @@ func (m *Model) trendEstateLines() []string {
 		snaps = append(snaps, float64(p.Total))
 		stale = append(stale, float64(p.Stale))
 	}
-	const labelW = 16
-	sparkW := clamp(m.width-2-labelW-2-2-18, 10, 30)
-	header := fmt.Sprintf("  %-*s  ", labelW, "ESTATE OVER TIME")
-	if from, to := points[0].Run.StartedAt.Local().Format("2 Jan"), points[len(points)-1].Run.StartedAt.Local().Format("2 Jan"); len(points) > 1 && len(from)+1+len(to) <= sparkW {
-		header += from + strings.Repeat(" ", sparkW-len(from)-len(to)) + to
-	}
-	out := []string{t.header.Render(header)}
-	fromTo := func(v []float64) string {
-		first, last := v[0], v[len(v)-1]
-		if len(v) == 1 {
-			return fmt.Sprintf("%.0f", last)
+	s := &trendSection{title: "ESTATE OVER TIME", heads: [3]string{"", "FIRST → LAST", "CHANGE"}}
+	if len(points) > 1 {
+		from, to := points[0].Run.StartedAt.Local().Format("2 Jan"), points[len(points)-1].Run.StartedAt.Local().Format("2 Jan")
+		s.chartHead = func(w int) string {
+			used := ansi.StringWidth(trendColumns(vms, w))
+			if len(from)+1+len(to) > used {
+				return ""
+			}
+			return from + strings.Repeat(" ", used-len(from)-len(to)) + to
 		}
-		return fmt.Sprintf("%.0f → %.0f  %+.0f", first, last, last-first)
 	}
-	row := func(label string, values []float64, style lipgloss.Style, summary string) {
+	add := func(label string, values []float64, style *lipgloss.Style, span, change string) {
 		if len(values) == 0 {
 			return
 		}
-		out = append(out, fmt.Sprintf("  %-*s  %s  %s", labelW, label, style.Render(trendSparkline(values, sparkW)), summary))
+		r := trendRow{label: label, cells: [3]string{"", span, change}}
+		r.chart = func(w int) string { return style.Render(fmt.Sprintf("%-*s", w, trendColumns(values, w))) }
+		r.styles[2] = &t.dim
+		s.rows = append(s.rows, r)
 	}
-	row("VMs", vms, t.accent, fromTo(vms))
-	row("Snapshots", snaps, t.accent, fromTo(snaps))
-	staleStyle := t.accent
-	if len(stale) > 1 && stale[len(stale)-1] > stale[0] {
-		staleStyle = t.warn
+	fromTo := func(v []float64) (string, string) {
+		if len(v) == 1 {
+			return fmt.Sprintf("%.0f", v[0]), ""
+		}
+		first, last := v[0], v[len(v)-1]
+		return fmt.Sprintf("%.0f → %.0f", first, last), fmt.Sprintf("%+.0f", last-first)
 	}
-	if len(stale) > 0 {
-		row("Stale snapshots", stale, staleStyle, fromTo(stale))
+	span, change := fromTo(vms)
+	add("VMs", vms, &t.accent, span, change)
+	if len(snaps) > 0 {
+		span, change = fromTo(snaps)
+		add("Snapshots", snaps, &t.accent, span, change)
+		staleStyle := &t.accent
+		if len(stale) > 1 && stale[len(stale)-1] > stale[0] {
+			staleStyle = &t.warn
+		}
+		span, change = fromTo(stale)
+		add("Stale snapshots", stale, staleStyle, span, change)
 	}
 	total := 0.0
 	for _, c := range changes {
 		total += c
 	}
-	row("Changes per run", changes, t.accent, fmt.Sprintf("avg %.1f", total/float64(len(changes))))
-	return out
+	add("Changes per run", changes, &t.accent, fmt.Sprintf("avg %.1f", total/float64(len(changes))), "")
+	return s
 }
 
-// trendSparkline draws values across w cells from their lowest to highest
-// value, always including the first and last so the ends match the numbers
-// printed beside it.
-func trendSparkline(values []float64, w int) string {
+// trendBar is a used-percentage bar the full chart width: solid blocks for
+// the used share on a faint dotted track.
+func (m *Model) trendBar(pct *float64, style *lipgloss.Style) func(w int) string {
+	return func(w int) string {
+		if pct == nil {
+			return m.theme.dim.Render(fmt.Sprintf("%-*s", w, "—"))
+		}
+		filled := clamp(int(math.Round(*pct/100*float64(w))), 0, w)
+		if *pct > 0 && filled == 0 {
+			filled = 1
+		}
+		return style.Render(strings.Repeat("█", filled)) + m.theme.faint.Render(strings.Repeat("·", w-filled))
+	}
+}
+
+func percentCell(pct *float64) string {
+	if pct == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f%%", *pct)
+}
+
+// trendColumns draws one equal-width column per run within w cells, from the
+// lowest to the highest value, with a one-cell gap between runs when each has
+// three cells or more. With more runs than cells it samples one per cell,
+// keeping the first and last so the ends match the numbers beside it.
+func trendColumns(values []float64, w int) string {
 	if len(values) == 0 || w <= 0 {
 		return ""
 	}
@@ -383,17 +500,33 @@ func trendSparkline(values []float64, w int) string {
 	for _, v := range values {
 		lo, hi = math.Min(lo, v), math.Max(hi, v)
 	}
+	glyph := func(v float64) string {
+		if hi == lo {
+			return string(glyphs[0])
+		}
+		return string(glyphs[int(math.Round((v-lo)/(hi-lo)*float64(len(glyphs)-1)))])
+	}
 	var b strings.Builder
-	for i := 0; i < w; i++ {
-		v := values[0]
-		if w > 1 {
-			v = values[int(math.Round(float64(i)*float64(len(values)-1)/float64(w-1)))]
+	if len(values) > w {
+		for i := 0; i < w; i++ {
+			v := values[0]
+			if w > 1 {
+				v = values[int(math.Round(float64(i)*float64(len(values)-1)/float64(w-1)))]
+			}
+			b.WriteString(glyph(v))
 		}
-		level := 0
-		if hi > lo {
-			level = int(math.Round((v - lo) / (hi - lo) * float64(len(glyphs)-1)))
+		return b.String()
+	}
+	per := w / len(values)
+	gap := 0
+	if per >= 3 {
+		gap = 1
+	}
+	for i, v := range values {
+		b.WriteString(strings.Repeat(glyph(v), per-gap))
+		if i < len(values)-1 {
+			b.WriteString(strings.Repeat(" ", gap))
 		}
-		b.WriteRune(glyphs[level])
 	}
 	return b.String()
 }

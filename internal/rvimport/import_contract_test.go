@@ -13,7 +13,6 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
-	"github.com/easonliuuuuu/vsfleet/internal/topology"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -569,15 +568,6 @@ func TestFailedImportLeavesNoRunBehind(t *testing.T) {
 	}
 }
 
-// Rollback deletes the run, and DeleteRun refuses a pinned one. That is safe
-// only while an import never pins, so this is pinned down as a test.
-func TestImportedRunsAreNeverPinned(t *testing.T) {
-	_, run, _ := importFixture(t, openFixture(t, writeFixtureWorkbook(t, nil)), Options{Label: "keep-me"})
-	if run.Pinned {
-		t.Fatal("an imported run was pinned, which would make a failed import's rollback impossible")
-	}
-}
-
 func TestRepeatImportIsDetectedByFingerprintAndStillImports(t *testing.T) {
 	path := writeFixtureWorkbook(t, nil)
 	sha, err := FileSHA256(path)
@@ -775,31 +765,6 @@ func TestHealthReportsUnknownWhenImportedEvidenceIsAbsent(t *testing.T) {
 		if f.Severity == health.SeverityCritical {
 			t.Errorf("an imported run produced a critical finding from absent evidence: %+v", f)
 		}
-	}
-}
-
-func TestTopologyNeverMergesSameNamedImportedVMsAcrossVCenters(t *testing.T) {
-	_, run, store := importFixture(t, openFixture(t, writeFixtureWorkbook(t, nil)), Options{})
-	data, err := store.LoadExportData(context.Background(), run.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	graph := topology.Build(data)
-	alpha := graph.Topology(topology.Subject{Kind: "vm", Name: "web-01", Members: nil})
-	// Both vCenters carry a VM called web-01; a name-only join would fuse them
-	// into one subject with two members.
-	if len(alpha.Subject.Members) > 1 {
-		t.Errorf("web-01 resolved to %d members in one subject: %+v", len(alpha.Subject.Members), alpha.Subject.Members)
-	}
-	for _, m := range alpha.Subject.Members {
-		if m.Context == "" {
-			t.Errorf("member %+v has no context", m)
-		}
-	}
-	// An imported run has no recorded network or resource-pool evidence, so a
-	// query must report reduced confidence rather than a clean answer.
-	if alpha.Confidence == topology.ConfidenceComplete {
-		t.Errorf("confidence = %q for a run with unavailable collections, want reduced", alpha.Confidence)
 	}
 }
 

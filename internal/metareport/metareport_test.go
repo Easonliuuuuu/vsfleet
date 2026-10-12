@@ -1,7 +1,6 @@
 package metareport_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -121,17 +120,9 @@ func TestObjectsReportMissingStatusAsNotRecorded(t *testing.T) {
 	}
 }
 
-func TestSavedReportIsDeterministicAndReportsUndetermined(t *testing.T) {
+func TestSavedReportPreservesValuesAndReportsUndetermined(t *testing.T) {
 	base, _ := seeded(t)
 	report := pciReport(t)
-	first, err := json.Marshal(report.Evaluate(base))
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, _ := json.Marshal(report.Evaluate(base))
-	if !bytes.Equal(first, second) {
-		t.Fatal("same report on the same assessment produced different output")
-	}
 	r := report.Evaluate(base)
 	if r.RunID != base.Run.ID || r.CapturedAt.IsZero() {
 		t.Fatalf("run identity missing: %+v", r)

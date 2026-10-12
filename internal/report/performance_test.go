@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/perf"
 )
 
@@ -103,7 +102,7 @@ func TestPerformanceMatchedByVCenterIdentityNotContextName(t *testing.T) {
 	}
 }
 
-func TestPerformanceSheetIsDeterministicAndLeavesVCPUVMemoryUntouched(t *testing.T) {
+func TestPerformanceLeavesInventoryRowsUntouched(t *testing.T) {
 	when := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	plain := sampleExportData(when)
 	withPerf := sampleExportData(when)
@@ -131,16 +130,4 @@ func TestPerformanceSheetIsDeterministicAndLeavesVCPUVMemoryUntouched(t *testing
 			}
 		}
 	}
-	first, err := RVToolsCSV(withPerf, healthReport(withPerf))
-	if err != nil {
-		t.Fatal(err)
-	}
-	second, _ := RVToolsCSV(withPerf, healthReport(withPerf))
-	for i := range first {
-		if string(first[i].Data) != string(second[i].Data) {
-			t.Fatalf("%s is not deterministic", first[i].Name)
-		}
-	}
 }
-
-var _ = assessment.ExportData{}

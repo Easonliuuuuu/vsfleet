@@ -21,6 +21,41 @@
 * **vsphere:** pass the connection test with the built-in ReadOnly role instead of requiring `Sessions.ValidateSession` ([#189](https://github.com/Easonliuuuuu/vsfleet/issues/189))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.6.3](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.2...v0.6.3) (2026-10-12)
+
+
+### Features
+
+* **tui:** animate demo startup and preview connection setup ([#384](https://github.com/Easonliuuuuu/vsfleet/issues/384)) ([cadd634](https://github.com/Easonliuuuuu/vsfleet/commit/cadd634ca0e71f9d7a9e6b93e8e4e08d078cec0d))
+* **tui:** browse VMs and templates by folder ([#411](https://github.com/Easonliuuuuu/vsfleet/issues/411)) ([2321476](https://github.com/Easonliuuuuu/vsfleet/commit/2321476027558e49a6468f138467fb5081b2dabb))
+* **tui:** lead the Trends pane with what needs attention ([#429](https://github.com/Easonliuuuuu/vsfleet/issues/429)) ([5ba54fa](https://github.com/Easonliuuuuu/vsfleet/commit/5ba54fa0aad6b208a062fb88212be9470c9b1960))
+* **tui:** show live vCenter events beside stored changes in the VM timeline ([#365](https://github.com/Easonliuuuuu/vsfleet/issues/365)) ([0dbdd6b](https://github.com/Easonliuuuuu/vsfleet/commit/0dbdd6b35acc24ad521adb3b0b4e4827dc85bdcb))
+
+
+### Bug Fixes
+
+* **assessment:** name the enabled frame policies in port group findings ([#409](https://github.com/Easonliuuuuu/vsfleet/issues/409)) ([0b9f6f1](https://github.com/Easonliuuuuu/vsfleet/commit/0b9f6f19da808cb25785197427a29ffa79bec4e6))
+* **assessment:** report a deleted port group as a dangling reference ([#407](https://github.com/Easonliuuuuu/vsfleet/issues/407)) ([d0afe26](https://github.com/Easonliuuuuu/vsfleet/commit/d0afe2640e38062f60606b6b1c6e07ee48546309))
+* **assessment:** scope missing VM configuration to the VMs that lack it ([#408](https://github.com/Easonliuuuuu/vsfleet/issues/408)) ([2f01e00](https://github.com/Easonliuuuuu/vsfleet/commit/2f01e000e3d384fc998df6a813d84a95a7df570a))
+* **assessment:** treat fields a restricted account cannot see as unknown, not moved ([#375](https://github.com/Easonliuuuuu/vsfleet/issues/375)) ([0ba77bb](https://github.com/Easonliuuuuu/vsfleet/commit/0ba77bb2ff5fc6e4911f95722a7a6cdaea7a1935))
+* **compatibility:** attach RVTools dvPort rows when the sheet has no Datacenter column ([#389](https://github.com/Easonliuuuuu/vsfleet/issues/389)) ([71dae15](https://github.com/Easonliuuuuu/vsfleet/commit/71dae15dc749f9da342ee418496a53494ab6c287))
+* **compatibility:** stream XLSX export worksheets instead of holding every cell in memory ([#390](https://github.com/Easonliuuuuu/vsfleet/issues/390)) ([a91e496](https://github.com/Easonliuuuuu/vsfleet/commit/a91e496e1f415eb5da9087536b7483b42e9eeadd))
+* **release:** publish Homebrew formula to Formula/ and Scoop manifest to bucket/ ([#363](https://github.com/Easonliuuuuu/vsfleet/issues/363)) ([ad8ccb6](https://github.com/Easonliuuuuu/vsfleet/commit/ad8ccb60444484ba3eaf6e351905cd6e888139b4))
+* **tui:** diagnose a prompt-password context without failing or asking twice ([#428](https://github.com/Easonliuuuuu/vsfleet/issues/428)) ([572bf06](https://github.com/Easonliuuuuu/vsfleet/commit/572bf06e493aee3420d66ed125682a2dfabe4bb1))
+* **tui:** make the folder view discoverable and show vApps as vApps ([#412](https://github.com/Easonliuuuuu/vsfleet/issues/412)) ([30648b2](https://github.com/Easonliuuuuu/vsfleet/commit/30648b231a7b7e95c04965cf87cce77088f3f1be))
+* **tui:** mark timeline events from before the first run ([#379](https://github.com/Easonliuuuuu/vsfleet/issues/379)) ([834557f](https://github.com/Easonliuuuuu/vsfleet/commit/834557fcceaba4a4b8bd3c13a3f01fb0f165cb68))
+* **tui:** offer the timeline hint only on VM details ([#373](https://github.com/Easonliuuuuu/vsfleet/issues/373)) ([4c5ea1f](https://github.com/Easonliuuuuu/vsfleet/commit/4c5ea1f4d8d280ed4c6b5128b6134465d2a61847))
+* **tui:** open the viewed VM's own timeline when its name repeats ([#422](https://github.com/Easonliuuuuu/vsfleet/issues/422)) ([a0233c1](https://github.com/Easonliuuuuu/vsfleet/commit/a0233c19f8d992cdda4838498d733d7e40f7d46a))
+* **tui:** place vCenter events by the vCenter's clock in the combined timeline ([#380](https://github.com/Easonliuuuuu/vsfleet/issues/380)) ([d9df3d5](https://github.com/Easonliuuuuu/vsfleet/commit/d9df3d50315d48eafd2c1cf348b3343d8ec2eaa1))
+* **tui:** print help instead of failing when launched without a terminal ([#424](https://github.com/Easonliuuuuu/vsfleet/issues/424)) ([07b23a9](https://github.com/Easonliuuuuu/vsfleet/commit/07b23a9f745d49567060f9f56fd35fcb69c2ebbc))
+* **tui:** read each vCenter's VM events once in the timeline ([#376](https://github.com/Easonliuuuuu/vsfleet/issues/376)) ([9bd6b9b](https://github.com/Easonliuuuuu/vsfleet/commit/9bd6b9b57203bbaf25dc8aaeb3558a316fa6d527))
+* **tui:** show vCenter's message as event detail and widen the BY column ([#377](https://github.com/Easonliuuuuu/vsfleet/issues/377)) ([110bd20](https://github.com/Easonliuuuuu/vsfleet/commit/110bd2006a6063e3e2bf754cbb6d754e544667ca))
+* **tui:** stop Trends bars fusing and fill the terminal width ([#430](https://github.com/Easonliuuuuu/vsfleet/issues/430)) ([9ea89c7](https://github.com/Easonliuuuuu/vsfleet/commit/9ea89c79620077db8b595539181eaf699e8f6d44))
+* **tui:** tidy VM event details and show when task history is unreadable ([#388](https://github.com/Easonliuuuuu/vsfleet/issues/388)) ([1b95c05](https://github.com/Easonliuuuuu/vsfleet/commit/1b95c054bebec28dda67ebcd60f0e2ae9242c029))
+* **vsphere:** place VMs inside a vApp under their vApp's folder ([#410](https://github.com/Easonliuuuuu/vsfleet/issues/410)) ([cf2a3b4](https://github.com/Easonliuuuuu/vsfleet/commit/cf2a3b4b41248328550ae70370101bd76d1ae242))
+* **vsphere:** read a deleted VM's events through stored history ([#381](https://github.com/Easonliuuuuu/vsfleet/issues/381)) ([129e2aa](https://github.com/Easonliuuuuu/vsfleet/commit/129e2aa5416bcc9ba2ff5d129cc929fdcb159d6b))
+* **vsphere:** show failed VM tasks as failed in VM events ([#378](https://github.com/Easonliuuuuu/vsfleet/issues/378)) ([d3cca13](https://github.com/Easonliuuuuu/vsfleet/commit/d3cca130058eca1419dbd7f565f3abf362f0f173))
+
 ## [0.6.2](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.1...v0.6.2) (2026-10-10)
 
 

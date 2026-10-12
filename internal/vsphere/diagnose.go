@@ -130,8 +130,27 @@ func (r *diagRunner) skip(name, detail string) {
 // Diagnose walks the whole path to a vCenter one stage at a time and returns
 // both the report and, on success, a live client the caller must close.
 func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Diagnosis, *Client) {
+	return DiagnoseSession(ctx, cc, opts, nil)
+}
+
+// DiagnoseSession is Diagnose for a context that may already have a live
+// session. When cc's vCenter or proxy password is typed at a prompt and live
+// is still active, the walk borrows live's route and login instead of asking
+// for that password again: the session already proved it, and nothing is
+// kept that could prove it a second time. Every network stage still runs
+// fresh over the borrowed route. The returned client is only ever a new one
+// the caller must close, never live.
+func DiagnoseSession(ctx context.Context, cc *config.Context, opts ConnectOptions, live *Client) (*Diagnosis, *Client) {
 	d := &Diagnosis{Context: cc.Name, Endpoint: cc.Endpoint, Route: cc.Transport.Describe(), TLS: cc.TLS.Describe()}
 	r := &diagRunner{d: d}
+
+	reuse := live != nil && promptsForPassword(cc)
+	if reuse {
+		// An expired session proves nothing; walk from scratch and ask.
+		if _, err := live.Ping(ctx); err != nil {
+			reuse = false
+		}
+	}
 
 	var (
 		dialer    transport.Dialer
@@ -154,19 +173,27 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 	})
 
 	r.run("Credential available", func() (string, error) {
+		src := cc.Credential.String()
+		if src == "" {
+			src = "prompt"
+		}
+		if reuse {
+			return src + ", in use by the live session", nil
+		}
 		c, err := resolveCredential(ctx, cc, opts)
 		if err != nil {
 			return "", err
 		}
 		cred = c
-		src := cc.Credential.String()
-		if src == "" {
-			src = "prompt"
-		}
 		return src, nil
 	})
 
 	r.run("Route configured", func() (string, error) {
+		if reuse {
+			dialer = live.dialer
+			d.Route = dialer.Describe()
+			return d.Route + ", from the live session", nil
+		}
 		// Resolved here, once, and threaded through as an override from this
 		// point on — including into the dialer Connect builds internally for
 		// the Authentication stage below — so a prompt-scheme proxy
@@ -265,6 +292,11 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 	}
 
 	r.run("Authentication", func() (string, error) {
+		if reuse {
+			d.Latency = live.Latency
+			d.About = live.About
+			return cc.Username + ", live session", nil
+		}
 		co := opts
 		co.Credential = &cred
 		co.ProxyCredential = proxyCred
@@ -279,7 +311,11 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 	})
 
 	r.run("API available", func() (string, error) {
-		latency, err := client.Ping(ctx)
+		c := client
+		if reuse {
+			c = live
+		}
+		latency, err := c.Ping(ctx)
 		if err != nil {
 			return "", err
 		}
@@ -292,6 +328,16 @@ func Diagnose(ctx context.Context, cc *config.Context, opts ConnectOptions) (*Di
 		client = nil
 	}
 	return d, client
+}
+
+// promptsForPassword reports whether connecting cc asks someone to type a
+// password, for the vCenter or for its proxy. An unset vCenter reference
+// means prompt; an unset proxy reference means the proxy takes none.
+func promptsForPassword(cc *config.Context) bool {
+	if cc.Credential.IsZero() || cc.Credential.Scheme == credentials.SchemePrompt {
+		return true
+	}
+	return cc.Transport.Username != "" && cc.Transport.Credential.Scheme == credentials.SchemePrompt
 }
 
 // fetchCertificate performs a TLS handshake and returns the leaf certificate.

@@ -90,6 +90,8 @@ Missing vCenters appear below the table with their state:
 
 `R` connects all and prompts for needed credentials. `c`, then `Enter`,
 connects one and selects it; `c`, then `d`, diagnoses without connecting.
+Diagnosing a context whose password is typed at a prompt asks for it only when
+the context is not connected; a connected one reuses its live session.
 Long lists and narrow-terminal hints collapse to save space. Estate search
 reports the same missing-context reasons.
 

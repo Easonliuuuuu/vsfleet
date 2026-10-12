@@ -235,7 +235,7 @@ func Run(ctx context.Context, name string, opts RunOptions) (result Result, runE
 			return Result{}, err
 		}
 	case "vm-timeline":
-		for _, key := range []string{"/", "wiki-05", "enter"} {
+		for _, key := range []string{"/", "web-05", "enter"} {
 			pressWithoutCommand(m, key)
 		}
 		if err := drive(m, send(m, tea.KeyMsg{Type: tea.KeyEnter})); err != nil {
@@ -762,7 +762,7 @@ func assertResult(result Result) error {
 		if result.Observation.Mode != "history-timeline" {
 			return fmt.Errorf("scenario %s left the VM timeline (mode %q)", result.Name, result.Observation.Mode)
 		}
-		for _, want := range []string{"Timeline", "[3 Combined]", "wiki-05", "snapshot-created", "snapshot create"} {
+		for _, want := range []string{"Timeline", "[3 Combined]", "web-05", "snapshot-created", "snapshot create"} {
 			if !strings.Contains(result.View, want) {
 				return fmt.Errorf("scenario %s is missing %q from the combined view", result.Name, want)
 			}

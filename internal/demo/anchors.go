@@ -290,6 +290,9 @@ func (e *estate) applyAnchors(s siteSpec) {
 			forceOn(vm, s.prefix+".8.221")
 			vm.Annotation = "primary database"
 		}
+		if vm := e.vmByName("web-05"); vm != nil && showcaseVM(*vm) {
+			vm.Snapshots = []vsphere.VMSnapshot{{ID: "snapshot-21", NumericID: 21, Name: "pre-resize", CreateTime: showcaseStart.Add(-15 * time.Minute), PowerState: "poweredOn", Current: true}}
+		}
 		if vm := e.vmByName("build-runner-03"); vm != nil {
 			vm.PowerState, vm.ConnectionState, vm.GuestState = "poweredOff", "orphaned", "notRunning"
 			vm.ToolsState, vm.IPAddress, vm.GuestHostName = "guestToolsNotRunning", "", ""

@@ -1,21 +1,21 @@
-vsfleet  DEMO · SAMPLE DATA  history  ·  Timeline  ·  wiki-05
+vsfleet  DEMO · SAMPLE DATA  history  ·  Timeline  ·  web-05
 ────────────────────────────────────────────────────────────────────────────────────────────────────
    1 Changes   2 vCenter events  [3 Combined]
   stored changes by run gap   ← caused it   · left no stored change
 
   #1  Sun 10 May
-▸   first_seen        4 vCPU · 16G · esxi-b-07
-      · no events · before the oldest event vCenter returned
-
-  #1 → #2  Sun 10 May → Sun 14 Jun
-    modified          cpu:4→8 memory:16384→32768 migration_configuration.cpu_sockets:4→8
+▸   first_seen        2 vCPU · 4G · esxi-a-13
       · no events · before the oldest event vCenter returned
 
   #4 → #5  Sun 09 Aug → Sun 06 Sep
-    snapshot-created  snapshot:—→2026-08-13T13:59:09Z
-      ← 08-13 13:59  snapshot create  backup@corp.example  ·  
-      · 08-10 19:21  migrate          ops@corp.example     ✓  esxi-b-07 → esxi-b-05
-      · 08-10 20:52  drs migrate      DRS                  ✓  esxi-b-05 → esxi-b-07
+    moved             host:esxi-a-13→esxi-a-05
+      ← 08-18 10:22  migrate          ops@corp.example     ✓  esxi-a-13 → esxi-a-05
+    modified          cpu:2→4 memory:4096→8192 migration_configuration.cpu_sockets:2→4
+      ← 08-18 10:41  reconfigure      admin@vsphere.local  ✓  cpu 4 · memory 8192 MB
+    snapshot-created  snapshot:—→2026-08-18T09:50:00Z
+      ← 08-18 09:50  snapshot create  backup@corp.example  ·  
+      · 08-18 10:05  reconfigure fai… ops@corp.example     ✕  cpu 2 → 4 · not enough CPU on esxi-a-…
+
 
 
 

@@ -144,6 +144,28 @@ func (r timelineRow) selectable() bool { return r.change != nil || r.event != ni
 // one: its context and managed object reference let the events tabs read
 // vCenter even before (or without) stored history naming it.
 func (m *Model) openTimeline(query string, from mode, seed *vmEventsTarget) tea.Cmd {
+	return m.openTimelineBy(query, query, from, seed)
+}
+
+// openVMTimeline opens the timeline of a live VM the operator is looking at.
+// Stored history is looked up by the VM's instance UUID when it has one, not
+// by name: the same name on another vCenter is a different VM, and asking by
+// name would stop at "ambiguous" instead of showing this one.
+func (m *Model) openVMTimeline(name, context string, vm *vsphere.VM, from mode) tea.Cmd {
+	lookup := name
+	var seed *vmEventsTarget
+	if vm != nil {
+		seed = &vmEventsTarget{context: context, vmID: vm.ID}
+		if vm.InstanceUUID != "" {
+			lookup = vm.InstanceUUID
+		}
+	}
+	return m.openTimelineBy(name, lookup, from, seed)
+}
+
+// openTimelineBy opens the timeline titled query, reading stored history for
+// lookup: a name, managed object reference or UUID.
+func (m *Model) openTimelineBy(query, lookup string, from mode, seed *vmEventsTarget) tea.Cmd {
 	if m.assessment == nil {
 		return nil
 	}
@@ -158,7 +180,7 @@ func (m *Model) openTimeline(query string, from mode, seed *vmEventsTarget) tea.
 	m.historyErr = nil
 	m.timelineFrom = from
 	m.mode = modeHistoryTimeline
-	cmds := []tea.Cmd{loadHistoryTimelineCmd(m.ctx, m.assessment, query, m.tlGen)}
+	cmds := []tea.Cmd{loadHistoryTimelineCmd(m.ctx, m.assessment, lookup, m.tlGen)}
 	if m.timelineSource != timelineSourceChanges {
 		cmds = append(cmds, m.loadTimelineEvents(false))
 	}

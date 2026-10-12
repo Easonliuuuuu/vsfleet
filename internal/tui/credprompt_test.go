@@ -479,3 +479,29 @@ func TestCredPromptWrapsAtNarrowWidth(t *testing.T) {
 		t.Error("at 140 columns the key hints should stay on one line")
 	}
 }
+
+// TestDiagnosisCredentialRequestOpensPrompt covers diagnosing a context whose
+// password source is prompt: the walk resolves the credential itself, outside
+// any inventory load, and must still be allowed to ask rather than fail
+// "Credential available" with a deferred prompt.
+func TestDiagnosisCredentialRequestOpensPrompt(t *testing.T) {
+	b := &fakeBackend{contexts: []*config.Context{{Name: "lab"}}}
+	m := New(context.Background(), b, Options{Credentials: NewPromptCoordinator()})
+	m.width, m.height = 120, 30
+	st := m.byName["lab"]
+	if m.diagnoseContext(st) == nil {
+		t.Fatal("expected the diagnosis to start")
+	}
+
+	request := credRequest{label: "lab", resp: make(chan credResult, 1)}
+	m.Update(credRequestMsg{req: request})
+	if m.credPrompt == nil {
+		t.Fatal("diagnosis credential request did not open the credential overlay")
+	}
+	select {
+	case res := <-request.resp:
+		t.Fatalf("diagnosis credential request answered without asking: %v", res.err)
+	default:
+	}
+	m.resolveCredPrompt(credResult{err: errPromptCanceled})
+}

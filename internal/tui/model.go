@@ -1047,13 +1047,13 @@ func (m *Model) nextCredPromptCmd() tea.Cmd {
 
 // credentialState finds the context behind a prompt request: one with an
 // inventory load in flight, or one included in a running historical capture
-// (see contextState.capturing) — a capture reaches the same credential
-// resolver but never sets st.loading. Bare vCenter and proxy references are
+// (see contextState.capturing), or one being diagnosed — a capture and a
+// diagnosis reach the same credential resolver but never set st.loading. Bare vCenter and proxy references are
 // labeled with the context name by the connection path; explicit prompt
 // labels are matched as a useful fallback.
 func (m *Model) credentialState(label string) *contextState {
 	for _, st := range m.states {
-		if !st.loading && !st.capturing {
+		if !st.loading && !st.capturing && !st.diagging {
 			continue
 		}
 		labels := []string{st.cc.Name, st.cc.Name + " proxy", st.cc.Credential.Value, st.cc.Transport.Credential.Value}
@@ -1098,14 +1098,15 @@ func (m *Model) markCredentialResumed(label string) {
 // credentialPromptAllowed reports whether a pending request has an explicit
 // operator action behind it. A load the operator asked for may interrupt the
 // screen for a password; a capture the operator started may too, for any
-// vCenter it actually covers; a quiet background refresh may not; and a
+// vCenter it actually covers, and so may a diagnosis, which resolves the
+// password itself; a quiet background refresh may not; and a
 // request tied to no context at all — what an unscoped capture used to raise
 // for a vCenter nobody had touched — is deferred rather than shown.
 func (m *Model) credentialPromptAllowed(st *contextState) bool {
 	if st == nil {
 		return false
 	}
-	return st.capturing || st.allowCredentialPrompt
+	return st.capturing || st.diagging || st.allowCredentialPrompt
 }
 
 // resolveCredPrompt answers the pending request and clears the overlay. The

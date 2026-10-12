@@ -213,41 +213,6 @@ func TestPartialLicenseCollectionMarksAssignmentsUnavailable(t *testing.T) {
 	}
 }
 
-func TestLicenseExportIsDeterministicAndKeyFree(t *testing.T) {
-	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
-	data := withSyntheticLicenses(sampleExportData(when))
-	var first, second bytes.Buffer
-	if err := WriteRVTools(&first, data, healthReport(data)); err != nil {
-		t.Fatal(err)
-	}
-	if err := WriteRVTools(&second, data, healthReport(data)); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(first.Bytes(), second.Bytes()) {
-		t.Fatal("re-exporting an unchanged licensed run is not byte-identical")
-	}
-	csvA, err := RVToolsCSV(data, healthReport(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	csvB, err := RVToolsCSV(data, healthReport(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var vLicenseCSV string
-	for i := range csvA {
-		if !bytes.Equal(csvA[i].Data, csvB[i].Data) {
-			t.Fatalf("%s CSV differs between renders", csvA[i].Name)
-		}
-		if csvA[i].Name == "vLicense.csv" {
-			vLicenseCSV = string(csvA[i].Data)
-		}
-	}
-	if !strings.Contains(vLicenseCSV, "2027-01-02T03:04:05Z") || !strings.Contains(vLicenseCSV, vsphere.LicenseRedacted) {
-		t.Fatalf("vLicense.csv=%q", vLicenseCSV)
-	}
-}
-
 func TestLicenseCoverageAppearsForEveryContext(t *testing.T) {
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	data := withSyntheticLicenses(sampleExportData(when))

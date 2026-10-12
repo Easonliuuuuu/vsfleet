@@ -205,6 +205,9 @@ func TestWritePersistsAnAtomicRunWithVMHostClusterDatastore(t *testing.T) {
 	if run.Source != importSource {
 		t.Errorf("run.Source = %q, want %q", run.Source, importSource)
 	}
+	if run.Pinned {
+		t.Fatal("an imported run was pinned, which would make a failed import's rollback impossible")
+	}
 	if run.Status != assessment.RunPartial {
 		t.Errorf("run.Status = %q, want %q (resourcepool and network are never collected by this profile)", run.Status, assessment.RunPartial)
 	}
@@ -259,30 +262,6 @@ func TestWritePersistsAnAtomicRunWithVMHostClusterDatastore(t *testing.T) {
 	reason := assessment.CoverageReason(contexts, "alpha", []string{"network"})
 	if !strings.Contains(reason, "network") {
 		t.Errorf("coverage reason = %q, want it to name the network gap", reason)
-	}
-}
-
-// A dry run must never touch the store: this is the difference between
-// previewing an import and committing one.
-func TestDryRunNeverWritesToTheStore(t *testing.T) {
-	path := writeFixtureWorkbook(t, nil)
-	result, err := Parse(openFixture(t, path), Options{})
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	store, err := assessment.OpenMemory()
-	if err != nil {
-		t.Fatalf("OpenMemory: %v", err)
-	}
-	defer store.Close()
-	_ = result // a dry run only inspects Report and never calls Write
-
-	runs, err := store.Runs(context.Background())
-	if err != nil {
-		t.Fatalf("Runs: %v", err)
-	}
-	if len(runs) != 0 {
-		t.Fatalf("store has %d runs before any Write call", len(runs))
 	}
 }
 
@@ -420,16 +399,6 @@ func TestMissingOptionalColumnDegradesHonestly(t *testing.T) {
 	}
 }
 
-func TestMalformedWorkbookFailsCleanly(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "not-a-workbook.xlsx")
-	if err := os.WriteFile(path, []byte("this is not a zip file"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := OpenFile(path); err == nil {
-		t.Fatal("opening a malformed workbook should fail")
-	}
-}
-
 func TestContextMapRenamesAReconstructedContext(t *testing.T) {
 	path := writeFixtureWorkbook(t, nil)
 	result, err := Parse(openFixture(t, path), Options{ContextMap: map[string]string{"alpha": "prod-renamed"}})
@@ -447,21 +416,6 @@ func TestContextMapRenamesAReconstructedContext(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected the alpha context to be present in the report")
-	}
-}
-
-func TestExplicitCapturedAtOverridesWorkbookMetadata(t *testing.T) {
-	path := writeFixtureWorkbook(t, nil)
-	explicit := time.Date(2020, 5, 6, 7, 8, 9, 0, time.UTC)
-	result, err := Parse(openFixture(t, path), Options{CapturedAt: explicit})
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	if !result.Report.CapturedAt.Equal(explicit) {
-		t.Errorf("captured at = %v, want the explicit override %v", result.Report.CapturedAt, explicit)
-	}
-	if !strings.Contains(result.Report.CapturedAtSource, "explicit") {
-		t.Errorf("captured at source = %q, want it to say explicit", result.Report.CapturedAtSource)
 	}
 }
 

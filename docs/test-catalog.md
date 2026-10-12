@@ -37,7 +37,7 @@ Packages needing a vCenter use an in-process simulator.
 | `internal/contextops` | CLI/TUI context saving | keyring cleanup only after save and when requested; shared keys preserved; cleanup failure cannot undo edit |
 | `internal/credentials` | Keyring, prompt, env, file, exec sources | lookup-only probing, isolated resolvers, unset/empty variables, missing/failing/silent/slow helpers, no unattended prompts, concise failure reasons |
 | `internal/decommission` | The VM decommission check | strict blockers, unknown coverage, ambiguous identity, unresolved dependencies |
-| `internal/demo` | Offline demo estate | determinism, realistic size, referential integrity, duplicate names, five history runs |
+| `internal/demo` | Offline demo estate | referential integrity, event log agrees with stored history, duplicate names, five seeded runs with health findings, welcome opt-out |
 | `internal/health` | Health, readiness, orphan/zombie disks | thresholds, empty/partial/truncated evidence, duplicate datastore names, schema gates, passthrough |
 | `internal/humanize`, `internal/limiter`, `internal/uistate` | Formatting, bounded concurrency, persisted TUI state | cancellation while waiting for a slot, corrupt or missing state files, untrustworthy saved SSH destinations |
 | `internal/metareport` | Saved metadata reports | unreadable sources produce undetermined membership; failed collections cannot imply removal |

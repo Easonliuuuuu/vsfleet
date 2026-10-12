@@ -58,28 +58,13 @@ is written to disk.`,
 // in-memory assessment store: no Config, Resolver, Sessions, or uistate load
 // or save.
 func runDemo(a *App, cmd *cobra.Command) error {
-	backend := demo.NewBackend()
-	service, closeHistory, err := backend.AssessmentService()
+	backend, opts, closeHistory, err := demo.Launch(os.Getenv)
 	if err != nil {
 		return err
 	}
 	defer closeHistory()
-	_, err = tui.Run(cmd.Context(), backend, tui.Options{
-		Current:         "prod-vc",
-		Demo:            true,
-		RefreshInterval: a.RefreshInterval,
-		In:              a.in(),
-		Out:             a.out(),
-		Assessment:      service,
-		Welcome:         demoWelcome(os.Getenv),
-	})
+	opts.RefreshInterval = a.RefreshInterval
+	opts.In, opts.Out = a.in(), a.out()
+	_, err = tui.Run(cmd.Context(), backend, opts)
 	return err
-}
-
-// Demo launches always replay the greeting without reading or writing state.
-func demoWelcome(getenv func(string) string) tui.Welcome {
-	if welcomeFor("", "dev", true, getenv).Kind == tui.WelcomeNone {
-		return tui.Welcome{}
-	}
-	return tui.Welcome{Kind: tui.WelcomeDemo}
 }

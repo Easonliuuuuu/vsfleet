@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -71,6 +72,19 @@ func TestBareParentPrintsHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "Available Commands:") {
 		t.Fatalf("bare parent printed no command list, got:\n%s", out)
+	}
+}
+
+// A bare "vsfleet" without a terminal used to exit 1 with "terminal interface
+// requires a terminal", which the WinGet validator reports as a broken
+// executable. It now prints the help and succeeds.
+func TestBareRootWithoutTerminalPrintsHelp(t *testing.T) {
+	out, _, err := runArgs(t, "--config", filepath.Join(t.TempDir(), "config.yaml"))
+	if err != nil {
+		t.Fatalf("bare vsfleet without a terminal failed: %v", err)
+	}
+	if !strings.Contains(out, "Usage:") {
+		t.Fatalf("bare vsfleet without a terminal printed no help, got:\n%s", out)
 	}
 }
 

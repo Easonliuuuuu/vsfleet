@@ -23,7 +23,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Do not report security vulnerabilities here; follow [SECURITY.md](https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md).
+        For a security vulnerability, leave out exploit details and follow [SECURITY.md](https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md).
         Remove credentials, hostnames, and inventory names you cannot share before submitting.
   - type: textarea
     id: behavior

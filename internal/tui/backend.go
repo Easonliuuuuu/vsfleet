@@ -353,7 +353,7 @@ func (b *sessionBackend) KeyringAvailable(ctx context.Context) error {
 func (b *sessionBackend) Status(name string) (session.Status, bool) { return b.mgr.Status(name) }
 
 func (b *sessionBackend) Diagnose(ctx context.Context, cc *config.Context) *vsphere.Diagnosis {
-	d, client := vsphere.Diagnose(ctx, cc, b.opts)
+	d, client := vsphere.DiagnoseSession(ctx, cc, b.opts, b.mgr.Live(cc))
 	if client != nil {
 		// The diagnosis owns its own connection; the session manager's
 		// long-lived one is untouched by it.

@@ -515,6 +515,25 @@ func (m *Manager) Status(name string) (Status, bool) {
 	return s.Snapshot(), true
 }
 
+// Live returns the connected client for cc, or nil when there is none or
+// the session was logged in under a different configuration than cc. It
+// never connects: a diagnosis borrows it to avoid asking for a typed password
+// the session already used, and must not start a login of its own here.
+func (m *Manager) Live(cc *config.Context) *vsphere.Client {
+	m.mu.Lock()
+	s, ok := m.sessions[cc.Name]
+	m.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.state != Connected || !s.Context.SameConnection(cc) {
+		return nil
+	}
+	return s.client
+}
+
 // Forget drops the session for one context and logs out of its vCenter, so a
 // context that was edited or removed leaves nothing of itself behind: no live
 // login on a server that is no longer configured, and no status for a name

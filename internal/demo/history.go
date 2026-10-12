@@ -108,6 +108,18 @@ func pinnedVM(name string) bool {
 	return strings.HasPrefix(name, "vCLS-")
 }
 
+// showcaseVM is the VM whose newest run gap tells a whole change story, so
+// the timeline's Combined tab has every kind of match to show at once: an
+// attempt to double its CPU failed on a full host, ops moved it to another
+// host, and the resize then succeeded, behind a snapshot taken first.
+func showcaseVM(vm vsphere.VM) bool { return vm.Context == "prod-vc" && vm.Name == "web-05" }
+
+// resizedVM reports whether a VM was smaller in the runs before its seeded
+// resize run.
+func resizedVM(vm vsphere.VM) bool {
+	return !pinnedVM(vm.Name) && !showcaseVM(vm) && hv(vm.Context, vm.Name, "resize")%40 == 0 && vm.CPU > 1
+}
+
 // bornRun is the first run a VM appears in. About one VM in seven was deployed
 // after the oldest run, spread over the four later ones.
 func bornRun(ctx, name string) int {
@@ -134,6 +146,12 @@ func viewAt(e *estate, run int) *vsphere.Inventory {
 			continue
 		}
 		vm = agedVM(vm, at, run)
+		if showcaseVM(vm) {
+			// Before the newest run it was half the size, on another host.
+			vm.CPU, vm.MemoryMB = vm.CPU/2, vm.MemoryMB/2
+			vm.CPUSockets = vm.CPU / max(1, vm.CoresPerSocket)
+			vm.Host = showcaseFrom(e, vm)
+		}
 		out.VMs = append(out.VMs, vm)
 		// Every twentieth VM has a since-decommissioned predecessor.
 		if i%20 == 7 && !pinnedVM(vm.Name) {
@@ -192,7 +210,7 @@ func agedVM(vm vsphere.VM, at time.Time, run int) vsphere.VM {
 		}
 		vm.Snapshots = kept
 	}
-	if !pinnedVM(vm.Name) && hv(vm.Context, vm.Name, "resize")%40 == 0 && vm.CPU > 1 && run < 1+int(hv(vm.Context, vm.Name, "resize-run")%4) {
+	if resizedVM(vm) && run < 1+int(hv(vm.Context, vm.Name, "resize-run")%4) {
 		vm.CPU, vm.MemoryMB = vm.CPU/2, max(vm.MemoryMB/2, 1024)
 		vm.CPUSockets = vm.CPU
 	}

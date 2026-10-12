@@ -670,11 +670,7 @@ func (m *Model) handleVAppVMDetailKey(msg tea.KeyMsg) tea.Cmd {
 		if m.assessment == nil {
 			return nil
 		}
-		var seed *vmEventsTarget
-		if m.vappVM.vm != nil {
-			seed = &vmEventsTarget{context: m.vappVM.context, vmID: m.vappVM.vm.ID}
-		}
-		return m.openTimeline(m.vappVM.name, modeVAppVMDetail, seed)
+		return m.openVMTimeline(m.vappVM.name, m.vappVM.context, m.vappVM.vm, modeVAppVMDetail)
 	case key.Matches(msg, m.keys.Open):
 		return m.openFieldActions()
 	case key.Matches(msg, m.keys.Up):

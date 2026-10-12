@@ -110,7 +110,7 @@ func vmEvents(e *estate, ctx string, vm vsphere.VM) []vsphere.VMEvent {
 	}
 
 	// Resized since the previous run: the reconfiguration that did it.
-	if !pinnedVM(vm.Name) && hv(vm.Context, vm.Name, "resize")%40 == 0 && vm.CPU > 1 && 1+int(hv(vm.Context, vm.Name, "resize-run")%4) == len(runDates)-1 {
+	if resizedVM(vm) && 1+int(hv(vm.Context, vm.Name, "resize-run")%4) == len(runDates)-1 {
 		when := at(prev, ctx, vm.Name, "resize", span)
 		l.add(vsphere.VMEvent{Time: when, Type: "VmReconfiguredEvent", Label: "reconfigure", Explains: vsphere.EventModified, User: "admin@vsphere.local",
 			Fields: []string{"cpu", "memory"}, Detail: fmt.Sprintf("cpu %d · memory %d MB", vm.CPU, vm.MemoryMB),
@@ -123,16 +123,14 @@ func vmEvents(e *estate, ctx string, vm vsphere.VM) []vsphere.VMEvent {
 			Task: "CreateSnapshot_Task", Message: "Task: Create virtual machine snapshot"})
 	}
 
+	if showcaseVM(vm) {
+		showcaseEvents(l, e, vm)
+	}
+
 	// A migration that went out and came back between runs: the live log
 	// has it, no stored run does.
-	if vm.Host != "" && pickN(4, ctx, vm.Name, "bounce") == 0 {
-		var peers []string
-		for _, h := range e.inv.Hosts {
-			if h.Cluster == vm.Cluster && h.Name != vm.Host && h.Name != e.lateHost {
-				peers = append(peers, h.Name)
-			}
-		}
-		if len(peers) > 0 {
+	if vm.Host != "" && !showcaseVM(vm) && pickN(4, ctx, vm.Name, "bounce") == 0 {
+		if peers := clusterPeers(e, vm); len(peers) > 0 {
 			other := peers[pickN(len(peers), ctx, vm.Name, "peer")]
 			when := at(prev, ctx, vm.Name, "bounce", span)
 			ds := firstOf(vm.Datastores)
@@ -147,7 +145,7 @@ func vmEvents(e *estate, ctx string, vm vsphere.VM) []vsphere.VMEvent {
 	}
 
 	// A reconfiguration that failed changed nothing a run could record.
-	if vm.CPU > 0 && pickN(6, ctx, vm.Name, "failed") == 0 {
+	if vm.CPU > 0 && !showcaseVM(vm) && pickN(6, ctx, vm.Name, "failed") == 0 {
 		when := at(prev, ctx, vm.Name, "failed", span)
 		l.add(vsphere.VMEvent{Time: when, Type: "com.vmware.vc.vm.VmReconfigureFailedEvent", Label: "reconfigure failed", Result: vsphere.ResultFailed, User: "ops@corp.example",
 			Detail:  fmt.Sprintf("cpu %d → %d · not enough CPU on %s", vm.CPU, vm.CPU*2, vm.Host),
@@ -161,6 +159,45 @@ func vmEvents(e *estate, ctx string, vm vsphere.VM) []vsphere.VMEvent {
 			Message: fmt.Sprintf("Guest OS reboot for %s on %s", vm.Name, vm.Host)})
 	}
 	return l.events
+}
+
+// showcaseStart is when the showcase VM's story begins, in the newest run gap.
+var showcaseStart = time.Date(2026, 8, 18, 10, 5, 0, 0, time.UTC)
+
+// showcaseEvents is the showcase VM's story after its snapshot (see
+// showcaseVM): the failed resize, the migration and the resize that worked.
+func showcaseEvents(l *eventLog, e *estate, vm vsphere.VM) {
+	from, ds := showcaseFrom(e, vm), firstOf(vm.Datastores)
+	when := showcaseStart
+	l.add(vsphere.VMEvent{Time: when, Type: "com.vmware.vc.vm.VmReconfigureFailedEvent", Label: "reconfigure failed", Result: vsphere.ResultFailed, User: "ops@corp.example",
+		Detail:  fmt.Sprintf("cpu %d → %d · not enough CPU on %s", vm.CPU/2, vm.CPU, from),
+		Message: fmt.Sprintf("Reconfiguration of %s failed: the host %s does not have enough CPU capacity", vm.Name, from)})
+	l.add(vsphere.VMEvent{Time: when.Add(17 * time.Minute), Type: "VmMigratedEvent", Label: "migrate", Explains: vsphere.EventMoved, User: "ops@corp.example",
+		FromHost: from, ToHost: vm.Host, FromDatastore: ds, ToDatastore: ds, Detail: from + " → " + vm.Host,
+		Message: fmt.Sprintf("Migration of virtual machine %s from %s, %s to %s, %s completed", vm.Name, from, ds, vm.Host, ds)})
+	l.add(vsphere.VMEvent{Time: when.Add(36 * time.Minute), Type: "VmReconfiguredEvent", Label: "reconfigure", Explains: vsphere.EventModified, User: "admin@vsphere.local",
+		Fields: []string{"cpu", "memory"}, SetCPU: vm.CPU, SetMemoryMB: int64(vm.MemoryMB), Detail: fmt.Sprintf("cpu %d · memory %d MB", vm.CPU, vm.MemoryMB),
+		Message: fmt.Sprintf("Reconfigured %s on %s in %s", vm.Name, vm.Host, vm.Cluster)})
+}
+
+// showcaseFrom is the host the showcase VM ran on before it was moved.
+func showcaseFrom(e *estate, vm vsphere.VM) string {
+	peers := clusterPeers(e, vm)
+	if len(peers) == 0 {
+		return vm.Host
+	}
+	return peers[pickN(len(peers), vm.Context, vm.Name, "showcase-from")]
+}
+
+// clusterPeers are the other hosts in a VM's cluster that every run saw.
+func clusterPeers(e *estate, vm vsphere.VM) []string {
+	var peers []string
+	for _, h := range e.inv.Hosts {
+		if h.Cluster == vm.Cluster && h.Name != vm.Host && h.Name != e.lateHost {
+			peers = append(peers, h.Name)
+		}
+	}
+	return peers
 }
 
 // retiredEvents is the log of a decommissioned predecessor (see viewAt): its

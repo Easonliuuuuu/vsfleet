@@ -3139,11 +3139,7 @@ func (m *Model) handleDetailKey(msg tea.KeyMsg) tea.Cmd {
 		if !ok || row.kind != vsphere.KindVM || m.assessment == nil {
 			return nil
 		}
-		var seed *vmEventsTarget
-		if row.vm != nil {
-			seed = &vmEventsTarget{context: row.context, vmID: row.vm.ID}
-		}
-		return m.openTimeline(row.name, modeDetail, seed)
+		return m.openVMTimeline(row.name, row.context, row.vm, modeDetail)
 	case key.Matches(msg, m.keys.Open):
 		return m.openFieldActions()
 	case key.Matches(msg, m.keys.Up):

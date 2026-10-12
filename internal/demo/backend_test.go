@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -113,5 +114,56 @@ func TestDemoVMEventsAgreeWithStoredHistory(t *testing.T) {
 	}
 	if _, err := b.VMEvents(context.Background(), b.contexts[2], "vm-1", 0); err == nil {
 		t.Fatal("the unreachable demo vCenter answered an events read")
+	}
+}
+
+// TestDemoShowcaseExplainsEveryNewestChange keeps the Combined tab's hero
+// screen honest: in web-05's newest run gap every stored change has the
+// vCenter event that caused it, and the failed resize stands beside them
+// unexplained.
+func TestDemoShowcaseExplainsEveryNewestChange(t *testing.T) {
+	b := NewBackend()
+	service, closeStore, err := b.AssessmentService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeStore()
+	cc := b.contexts[0]
+	history, err := service.Timeline(context.Background(), "web-05", cc.Name, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vm := b.estates[cc.Name].vmByName("web-05")
+	if vm == nil {
+		t.Fatal("prod-vc has no web-05")
+	}
+	listing, err := b.VMEvents(context.Background(), cc, vm.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spans := assessment.ExplainTimeline(history, listing.Events)
+	if len(spans) == 0 {
+		t.Fatal("web-05 has no timeline spans")
+	}
+	newest := spans[len(spans)-1]
+	causes := map[string]string{}
+	for _, c := range newest.Changes {
+		if len(c.Events) == 0 {
+			t.Errorf("stored %s has no explaining event", c.Change.Kind)
+			continue
+		}
+		causes[c.Change.Kind] = c.Events[0].Label
+	}
+	for kind, label := range map[string]string{"moved": "migrate", "modified": "reconfigure", "snapshot-created": "snapshot create"} {
+		if causes[kind] != label {
+			t.Errorf("stored %s explained by %q, want %q", kind, causes[kind], label)
+		}
+	}
+	failed := false
+	for _, e := range newest.Unexplained {
+		failed = failed || e.Result == vsphere.ResultFailed
+	}
+	if !failed {
+		t.Errorf("newest span has no failed event beside its changes: %+v", newest.Unexplained)
 	}
 }

@@ -9,7 +9,7 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes   tab/⇧tab switch
   prod-vc   ●    ●    ●    ●    ●  
   b baseline  pre-migration        #4     Sun 09 Aug 00:00  partial   2/3 vCenters
   t target    september-audit      #5     Sun 06 Sep 00:00  partial   2/3 vCenters +28d
-  10 vanished   39 appeared   0 moved   0 modified   1 infra   28 snapshots
+  10 vanished   39 appeared   1 moved   1 modified   1 infra   29 snapshots
 
  IMPACT  OBJECT                       vCENTER        │ old-api-22                                                                           
 ▸blocks  old-api-22                   prod-vc        │   context  prod-vc                                                                   
@@ -22,10 +22,10 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes   tab/⇧tab switch
 ▎blocks  old-vdi-eng-042              prod-vc        │   host         esxi-a-09                                                             
 ▎blocks  old-vdi-fin-023              prod-vc        │   cluster      compute-a                                                             
 ▎blocks  old-vdi-ops-024              prod-vc        │   size         2 vCPU · 4G                                                           
-▎growth  39 VMs                       prod-vc        │   datastore    vsan-compute-a                                                        
-▎growth  esxi-b-10                    prod-vc        │   ip address   —                                                                     
-▎churn   28 snapshots                 prod-vc        │   guest os     Ubuntu Linux (64-bit)                                                 
-                                                     │   uuid         ee15de90-09a5-0e39-31c3-b2e903dffd93                                  
+▎blocks  web-05                       prod-vc        │   datastore    vsan-compute-a                                                        
+▎growth  39 VMs                       prod-vc        │   ip address   —                                                                     
+▎growth  esxi-b-10                    prod-vc        │   guest os     Ubuntu Linux (64-bit)                                                 
+▎churn   29 snapshots                 prod-vc        │   uuid         ee15de90-09a5-0e39-31c3-b2e903dffd93                                  
                                                      │                                                                                      
                                                      │                                                                                      
                                                      │                                                                                      

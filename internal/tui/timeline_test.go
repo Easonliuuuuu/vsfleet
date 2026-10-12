@@ -543,3 +543,55 @@ func TestTimelineCombinedLegendOmitsTheFirstRunMarkWhenUnused(t *testing.T) {
 		t.Fatalf("legend wrong:\n%s", got)
 	}
 }
+
+// TestVMTimelineFromDetailFollowsTheOpenVM: a VM opened from one vCenter
+// whose name another vCenter also uses opens its own timeline. Asking stored
+// history by name found both and stopped at "ambiguous".
+func TestVMTimelineFromDetailFollowsTheOpenVM(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	b := twoHealthy()
+	var contexts []*config.Context
+	for _, name := range []string{"customer-a", "prod"} {
+		b.inventories[name].VMs[0].InstanceUUID = "uuid-" + name
+		contexts = append(contexts, &config.Context{Name: name, Endpoint: "https://" + name, Username: "user"})
+	}
+	ctx := context.Background()
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i, cpu := range []int32{2, 4} {
+		run, err := store.StartRun(ctx, "test", contexts, start.Add(time.Duration(i)*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, cc := range contexts {
+			vm := b.inventories[cc.Name].VMs[0]
+			if cc.Name == "prod" {
+				vm.CPU = cpu
+			}
+			if err := store.SaveContext(ctx, run.ID, assessment.ContextResult{Name: cc.Name, VCenterID: "vc-" + cc.Name, Status: "success",
+				VMs: []assessment.Observation{{VCenterID: "vc-" + cc.Name, Context: cc.Name, VM: vm}}}, run.StartedAt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := store.FinishRun(ctx, run.ID, run.StartedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := newTestModel(t, b, Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+	m.width, m.height = 140, 40
+	press(t, m, "enter")
+	if row, ok := m.currentRow(); m.mode != modeDetail || !ok || row.name != "app-01" || row.context != "prod" {
+		t.Fatalf("enter did not open prod's app-01: mode=%v row=%+v", m.mode, row)
+	}
+	press(t, m, "h")
+	got := viewText(m)
+	if strings.Contains(got, "ambiguous") {
+		t.Fatalf("the timeline asked by name and found both app-01s:\n%s", got)
+	}
+	if !strings.Contains(got, "cpu:2→4") {
+		t.Fatalf("the timeline is not prod's app-01:\n%s", got)
+	}
+}

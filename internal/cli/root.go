@@ -290,6 +290,13 @@ at production.`,
 			a.finishUpdateCheck(cmd)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Without a terminal there is no interface to open. A pipe, a
+			// scheduled job or the WinGet validator launching the bare
+			// binary gets the help and a clean exit instead of an error;
+			// "vsfleet ui" still insists on a terminal.
+			if !isTerminalReader(a.in()) || !isTerminalWriter(a.out()) {
+				return cmd.Help()
+			}
 			return runUI(a, cmd)
 		},
 	}

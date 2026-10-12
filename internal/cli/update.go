@@ -171,6 +171,11 @@ func isTerminalWriter(w io.Writer) bool {
 	return ok && term.IsTerminal(int(f.Fd()))
 }
 
+func isTerminalReader(r io.Reader) bool {
+	f, ok := r.(*os.File)
+	return ok && term.IsTerminal(int(f.Fd()))
+}
+
 // quietCommand reports whether cmd never prints the release notice: the
 // interface handles releases itself, the demo promises to dial nothing, and
 // completion output is read by a shell, not a person.

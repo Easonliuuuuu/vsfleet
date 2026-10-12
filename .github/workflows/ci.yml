@@ -1,9 +1,28 @@
 name: CI
 
+# Documentation-only changes skip this workflow; docs.yml builds the site and
+# checks the release pins in README.md and docs/. The test catalogue stays
+# included because a Go test checks every scenario and fuzz target has a row.
 on:
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**.md"
+      - "!mkdocs.yml"
+      - "!requirements-docs.txt"
+      - "!.github/ISSUE_TEMPLATE/**"
+      - "docs/test-catalog.md"
   pull_request:
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**.md"
+      - "!mkdocs.yml"
+      - "!requirements-docs.txt"
+      - "!.github/ISSUE_TEMPLATE/**"
+      - "docs/test-catalog.md"
 
 permissions:
   contents: read

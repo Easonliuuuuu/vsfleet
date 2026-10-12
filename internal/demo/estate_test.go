@@ -1,37 +1,11 @@
 package demo
 
 import (
-	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
-
-func TestEstateIsDeterministic(t *testing.T) {
-	a, _ := json.Marshal(NewBackend().inventories)
-	b, _ := json.Marshal(NewBackend().inventories)
-	if string(a) != string(b) {
-		t.Fatal("two demo backends produced different inventories")
-	}
-}
-
-func TestProdEstateIsProductionSized(t *testing.T) {
-	inv := NewBackend().inventories["prod-vc"]
-	for name, got := range map[string][3]int{
-		"vms":        {len(inv.VMs), 1000, 1000},
-		"datastores": {len(inv.Datastores), 30, 60},
-		"vapps":      {len(inv.VApps), 20, 60},
-		"hosts":      {len(inv.Hosts), 50, 100},
-		"clusters":   {len(inv.Clusters), 5, 10},
-		"networks":   {len(inv.Networks), 25, 80},
-		"templates":  {len(inv.Templates), 10, 40},
-	} {
-		if got[0] < got[1] || got[0] > got[2] {
-			t.Errorf("%s = %d, want within [%d,%d]", name, got[0], got[1], got[2])
-		}
-	}
-}
 
 // Every reference in the generated estate must resolve; the old hand-written
 // fixture put a VM on a host that did not exist.

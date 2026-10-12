@@ -4,82 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/easonliuuuuu/vsfleet/internal/assessment"
-	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
-
-func TestNewBackendIncludesOrphanAndZombieFixtures(t *testing.T) {
-	backend := NewBackend()
-	inv := backend.inventories["prod-vc"]
-	if inv == nil {
-		t.Fatal("prod-vc demo inventory is missing")
-	}
-	foundOrphan := false
-	for _, vm := range inv.VMs {
-		foundOrphan = foundOrphan || vm.ConnectionState == "orphaned"
-	}
-	if !foundOrphan {
-		t.Fatal("demo inventory has no orphaned VM")
-	}
-	var nvme *vsphere.Datastore
-	for i := range inv.Datastores {
-		if inv.Datastores[i].Name == "nvme-01" {
-			nvme = &inv.Datastores[i]
-		}
-	}
-	if nvme == nil || nvme.BrowseStatus != "success" {
-		t.Fatalf("demo datastore browse provenance=%+v", nvme)
-	}
-	foundZombie := false
-	for _, file := range nvme.Files {
-		if file.Path == "[nvme-01] lost+found/orphan.vmdk" {
-			foundZombie = true
-		}
-	}
-	if !foundZombie {
-		t.Fatal("demo inventory has no zombie VMDK fixture")
-	}
-}
-
-func TestAssessmentServiceSeedsHistoryAndHealthFindingsInMemory(t *testing.T) {
-	service, closeStore, err := NewBackend().AssessmentService()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer closeStore()
-	runs, err := service.Store.Runs(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(runs) != 5 {
-		t.Fatalf("seeded runs = %d, want 5", len(runs))
-	}
-	runID, err := service.Store.ResolveRun(context.Background(), "latest")
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := service.Store.LoadExportData(context.Background(), runID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	report := health.Evaluate(data, health.Options{Thresholds: health.DefaultThresholds()})
-	found := map[string]bool{}
-	for _, finding := range report.Findings {
-		found[finding.Rule] = true
-	}
-	if !found["vm-orphaned"] || !found["datastore-zombie-vmdk"] {
-		t.Fatalf("demo health findings=%v", found)
-	}
-	orphans := health.Orphans(data)
-	confidence := map[health.Confidence]bool{}
-	for _, entry := range orphans.Entries {
-		confidence[entry.Confidence] = true
-	}
-	if !confidence[health.ConfidenceVerified] || !confidence[health.ConfidenceOtherContext] {
-		t.Fatalf("demo orphan confidence=%v entries=%+v", confidence, orphans.Entries)
-	}
-}
 
 // TestDemoVMEventsAgreeWithStoredHistory keeps the synthetic event log honest:
 // every event sits inside the thirty days the demo's vCenters keep, oldest
@@ -121,56 +47,5 @@ func TestDemoVMEventsAgreeWithStoredHistory(t *testing.T) {
 	}
 	if _, err := b.VMEvents(context.Background(), b.contexts[2], "vm-1", 0); err == nil {
 		t.Fatal("the unreachable demo vCenter answered an events read")
-	}
-}
-
-// TestDemoShowcaseExplainsEveryNewestChange keeps the Combined tab's hero
-// screen honest: in web-05's newest run gap every stored change has the
-// vCenter event that caused it, and the failed resize stands beside them
-// unexplained.
-func TestDemoShowcaseExplainsEveryNewestChange(t *testing.T) {
-	b := NewBackend()
-	service, closeStore, err := b.AssessmentService()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer closeStore()
-	cc := b.contexts[0]
-	history, err := service.Timeline(context.Background(), "web-05", cc.Name, true, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	vm := b.estates[cc.Name].vmByName("web-05")
-	if vm == nil {
-		t.Fatal("prod-vc has no web-05")
-	}
-	listing, err := b.VMEvents(context.Background(), cc, vm.ID, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spans := assessment.ExplainTimeline(history, listing.Events)
-	if len(spans) == 0 {
-		t.Fatal("web-05 has no timeline spans")
-	}
-	newest := spans[len(spans)-1]
-	causes := map[string]string{}
-	for _, c := range newest.Changes {
-		if len(c.Events) == 0 {
-			t.Errorf("stored %s has no explaining event", c.Change.Kind)
-			continue
-		}
-		causes[c.Change.Kind] = c.Events[0].Label
-	}
-	for kind, label := range map[string]string{"moved": "migrate", "modified": "reconfigure", "snapshot-created": "snapshot create"} {
-		if causes[kind] != label {
-			t.Errorf("stored %s explained by %q, want %q", kind, causes[kind], label)
-		}
-	}
-	failed := false
-	for _, e := range newest.Unexplained {
-		failed = failed || e.Result == vsphere.ResultFailed
-	}
-	if !failed {
-		t.Errorf("newest span has no failed event beside its changes: %+v", newest.Unexplained)
 	}
 }

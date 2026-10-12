@@ -81,20 +81,12 @@ backup controls, and remove runs explicitly with `vsfleet assessment delete
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in vsfleet, please **do not** report it
-via a public GitHub issue.
+Open an [issue](https://github.com/Easonliuuuuu/vsfleet/issues/new/choose)
+that says you have a security report and names the affected area, but leave
+out exploit details, proof-of-concept configuration, credentials, and
+inventory names. I will reply on the issue to arrange a private channel for
+the details.
 
-Instead, please report it through one of the following channels:
-1. **GitHub Security Advisory:** Open a private draft advisory via GitHub's
-   Security tab on the repository.
-2. **Email:** Send details directly to the project maintainers.
-
-Please include:
-* Description of the vulnerability and its potential impact.
-* Steps to reproduce or proof-of-concept configuration.
-* Any potential remediations or patches you have identified.
-
-### Response Timeline
-* **Initial Acknowledgement:** Within 48 hours of receipt.
-* **Assessment & Fix:** We aim to investigate and develop a patch within 7 business days.
-* **Public Disclosure:** Coordinated after a patched release is published.
+vsfleet is maintained by one person, so there is no guaranteed response time.
+Fixes ship in a normal release, and the details are published once that
+release is out.

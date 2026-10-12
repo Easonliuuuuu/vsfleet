@@ -157,7 +157,10 @@ Press `H` for Changes, Trends, Runs, and Health.
 
 Changes and Trends use the selected context, or all configured contexts in the
 all-vCenters view. `n` captures that same scope. Trends names contexts without
-stored data. The coverage matrix, Runs, and Health are always estate-wide.
+stored data. It lists datastores projected to fill within 30 days and rising
+stale snapshots first. Then it shows CPU, memory and storage use, each
+datastore's fill level and weekly growth, and how VM and snapshot counts moved
+across up to 30 complete runs. The coverage matrix, Runs, and Health are always estate-wide.
 Health shows the latest stored assessment's migration verdict, categories,
 and default findings, ordered critical, warning, info. `↑`/`↓` scrolls.
 Use [`vsfleet health`](health.md) to tune thresholds.

@@ -161,9 +161,16 @@ type VM struct {
 	// collected from one for which vSphere returned only summary properties.
 	// Migration rules must treat false as missing evidence, not as an empty
 	// configuration.
-	ConfigurationAvailable       bool                  `json:"configuration_available,omitempty"`
-	Firmware                     string                `json:"firmware,omitempty"`
-	SecureBootEnabled            *bool                 `json:"secure_boot_enabled,omitempty"`
+	ConfigurationAvailable bool   `json:"configuration_available,omitempty"`
+	Firmware               string `json:"firmware,omitempty"`
+	SecureBootEnabled      *bool  `json:"secure_boot_enabled,omitempty"`
+	// HardwareVersion is the virtual hardware version vSphere reports
+	// (config.version), e.g. "vmx-21". It is empty for a capture predating
+	// inventory schema 23, which readers must treat as "not read".
+	HardwareVersion string `json:"hardware_version,omitempty"`
+	// HardwareUpgrade is the VM's scheduled hardware upgrade setting, nil
+	// when vSphere reported none.
+	HardwareUpgrade              *VMHardwareUpgrade    `json:"hardware_upgrade,omitempty"`
 	CoresPerSocket               int32                 `json:"cores_per_socket,omitempty"`
 	CPUSockets                   int32                 `json:"cpu_sockets,omitempty"`
 	AutoCoresPerSocket           *bool                 `json:"auto_cores_per_socket,omitempty"`
@@ -195,6 +202,18 @@ type VMResourceAllocation struct {
 type VMManagedBy struct {
 	ExtensionKey string `json:"extension_key,omitempty"`
 	Type         string `json:"type,omitempty"`
+}
+
+// VMHardwareUpgrade is a VM's scheduled hardware upgrade
+// (config.scheduledHardwareUpgradeInfo).
+type VMHardwareUpgrade struct {
+	// Policy is never, onSoftPowerOff or always.
+	Policy string `json:"policy,omitempty"`
+	// Status is the last scheduled attempt: none, pending, success or failed.
+	Status string `json:"status,omitempty"`
+	// TargetVersion is the hardware version the next upgrade moves to, e.g.
+	// "vmx-21"; empty means the host's default.
+	TargetVersion string `json:"target_version,omitempty"`
 }
 
 // VMTPM identifies a virtual TPM without persisting endorsement certificates.

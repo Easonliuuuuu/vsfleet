@@ -193,6 +193,14 @@ var sharedColumns = map[string]ColumnSpec{
 	"Memory":             {Kind: KindInteger, Unit: "MiB", Note: "Configured memory."},
 	"Primary IP Address": {Kind: KindText, Empty: "when VMware Tools reports no address"},
 	"In Use MiB":         {Kind: KindDecimal, Unit: "MiB", Note: "Committed storage across every disk, as vCenter reports it. Fractional MiB are retained; RVTools writes integer MiB."},
+	"HW version": {Kind: KindInteger, Empty: "for a capture predating inventory schema 23",
+		Note: "Virtual hardware version: the number from vSphere's vmx-<n> key, as RVTools writes it."},
+	"HW upgrade status": {Kind: KindText, Empty: "for a capture predating inventory schema 23, or when vSphere reports no scheduled upgrade",
+		Note: "The last scheduled hardware upgrade attempt: none, pending, success or failed."},
+	"HW upgrade policy": {Kind: KindText, Empty: "for a capture predating inventory schema 23, or when vSphere reports no scheduled upgrade",
+		Note: "never, onSoftPowerOff or always."},
+	"HW target": {Kind: KindInteger, Empty: "when no target version is set, so the upgrade uses the host's default",
+		Note: "Hardware version a scheduled upgrade moves to."},
 
 	// vMemory.
 	"Size MiB": {Kind: KindInteger, Unit: "MiB", Note: "Configured memory."},

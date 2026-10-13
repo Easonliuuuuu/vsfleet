@@ -191,6 +191,7 @@ func printVMDetail(out io.Writer, v vsphere.VM) {
 	f.add("Tools version", v.ToolsVersion)
 	f.add("Annotation", v.Annotation)
 	f.add("Firmware", v.Firmware)
+	f.add("Hardware version", v.HardwareVersion)
 	if v.SecureBootEnabled != nil {
 		f.add("Secure boot", yesNo(*v.SecureBootEnabled))
 	}

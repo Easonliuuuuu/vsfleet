@@ -149,7 +149,9 @@ func TestNewVMCopiesMigrationConfiguration(t *testing.T) {
 	cpuReservation, cpuLimit := int64(100), int64(500)
 	memReservation, memLimit := int64(256), int64(-1)
 	m := &mo.VirtualMachine{Config: &types.VirtualMachineConfigInfo{
-		GuestId: "ubuntu64Guest", Firmware: "efi", ManagedBy: &types.ManagedByInfo{ExtensionKey: "com.example", Type: "appliance"},
+		GuestId: "ubuntu64Guest", Firmware: "efi", Version: "vmx-21",
+		ScheduledHardwareUpgradeInfo: &types.ScheduledHardwareUpgradeInfo{UpgradePolicy: "onSoftPowerOff", VersionKey: "vmx-21", ScheduledHardwareUpgradeStatus: "pending"},
+		ManagedBy:                    &types.ManagedByInfo{ExtensionKey: "com.example", Type: "appliance"},
 		Hardware:                     types.VirtualHardware{NumCPU: 4, NumCoresPerSocket: &cores, AutoCoresPerSocket: &auto, Device: []types.BaseVirtualDevice{}},
 		BootOptions:                  &types.VirtualMachineBootOptions{EfiSecureBootEnabled: &secure},
 		CpuAllocation:                &types.ResourceAllocationInfo{Reservation: &cpuReservation, Limit: &cpuLimit},
@@ -160,10 +162,13 @@ func TestNewVMCopiesMigrationConfiguration(t *testing.T) {
 	if !vm.ConfigurationAvailable || vm.GuestID != "ubuntu64Guest" || vm.Firmware != "efi" || vm.SecureBootEnabled == nil || !*vm.SecureBootEnabled || vm.CoresPerSocket != 2 || vm.CPUSockets != 2 || vm.AutoCoresPerSocket == nil || vm.CPUAllocation == nil || *vm.CPUAllocation.Reservation != 100 || vm.MemoryAllocation == nil || *vm.MemoryAllocation.Limit != -1 || vm.ManagedBy == nil || vm.ManagedBy.ExtensionKey != "com.example" || vm.MemoryReservationLockedToMax == nil || !*vm.MemoryReservationLockedToMax {
 		t.Fatalf("VM migration configuration = %+v", vm)
 	}
+	if vm.HardwareVersion != "vmx-21" || vm.HardwareUpgrade == nil || *vm.HardwareUpgrade != (VMHardwareUpgrade{Policy: "onSoftPowerOff", Status: "pending", TargetVersion: "vmx-21"}) {
+		t.Fatalf("hardware version = %q, upgrade = %+v", vm.HardwareVersion, vm.HardwareUpgrade)
+	}
 }
 
 func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
-	for _, property := range []string{"config.guestId", "config.hardware.device", "config.hardware.numCoresPerSocket", "config.hardware.autoCoresPerSocket", "config.cpuAllocation", "config.memoryAllocation", "config.bootOptions", "config.firmware", "config.managedBy", "config.memoryReservationLockedToMax", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
+	for _, property := range []string{"config.guestId", "config.hardware.device", "config.hardware.numCoresPerSocket", "config.hardware.autoCoresPerSocket", "config.cpuAllocation", "config.memoryAllocation", "config.bootOptions", "config.firmware", "config.version", "config.scheduledHardwareUpgradeInfo", "config.managedBy", "config.memoryReservationLockedToMax", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
 		found := false
 		for _, candidate := range vmProps {
 			if candidate == property {

@@ -45,8 +45,11 @@ type RunStatus string
 // older runs have no mounts, which readers must treat as "not read", never as
 // "mounted nowhere". Schema 22 marks VM NICs whose network was confirmed
 // deleted (VMNIC.NetworkMissing); older runs never set it, which readers must
-// treat as "not checked", never as "every network exists".
-const CurrentInventorySchemaVersion = "22"
+// treat as "not checked", never as "every network exists". Schema 23 records
+// each VM's hardware version and scheduled hardware upgrade
+// (VM.HardwareVersion, VM.HardwareUpgrade); older runs have neither, which
+// readers must treat as "not read".
+const CurrentInventorySchemaVersion = "23"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

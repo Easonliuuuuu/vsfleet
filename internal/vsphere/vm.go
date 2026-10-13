@@ -55,6 +55,8 @@ var vmDetailProps = []string{
 	"config.memoryAllocation",
 	"config.bootOptions",
 	"config.firmware",
+	"config.version",
+	"config.scheduledHardwareUpgradeInfo",
 	"config.managedBy",
 	"config.memoryReservationLockedToMax",
 	"guest.net",
@@ -232,6 +234,10 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.Firmware = strings.TrimSpace(cfg.Firmware)
 		if cfg.BootOptions != nil {
 			vm.SecureBootEnabled = clonePtr(cfg.BootOptions.EfiSecureBootEnabled)
+		}
+		vm.HardwareVersion = strings.TrimSpace(cfg.Version)
+		if u := cfg.ScheduledHardwareUpgradeInfo; u != nil {
+			vm.HardwareUpgrade = &VMHardwareUpgrade{Policy: u.UpgradePolicy, Status: u.ScheduledHardwareUpgradeStatus, TargetVersion: u.VersionKey}
 		}
 		vm.CPUAllocation = resourceAllocation(cfg.CpuAllocation)
 		vm.MemoryAllocation = resourceAllocation(cfg.MemoryAllocation)

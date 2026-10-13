@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -43,6 +44,33 @@ func TestCompareVMsDetectsMigrationConfigurationChange(t *testing.T) {
 	changes, _ := compareVMs([]storedVM{base}, []storedVM{target}, false)
 	if len(changes) != 1 || len(changes[0].Fields) != 1 || changes[0].Fields[0].Field != "migration_configuration.firmware" {
 		t.Fatalf("migration configuration change=%+v", changes)
+	}
+}
+
+func TestCompareVMsReportsHardwareVersionOnlyWhenBothRunsRecordedIt(t *testing.T) {
+	for _, tc := range []struct {
+		name, before, after string
+		want                []FieldChange
+	}{
+		{"upgraded", "vmx-19", "vmx-21", []FieldChange{{Field: "migration_configuration.hardware_version", Before: `"vmx-19"`, After: `"vmx-21"`}}},
+		{"base captured before schema 23", "", "vmx-21", nil},
+		{"unchanged", "vmx-21", "vmx-21", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := stored("app", "vc-a", "vm-1", "instance-1")
+			base.observation.VM.ConfigurationAvailable = true
+			base.observation.VM.HardwareVersion = tc.before
+			target := base
+			target.observation.VM.HardwareVersion = tc.after
+			changes, _ := compareVMs([]storedVM{base}, []storedVM{target}, false)
+			var got []FieldChange
+			for _, c := range changes {
+				got = append(got, c.Fields...)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("fields = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }
 

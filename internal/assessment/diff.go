@@ -565,6 +565,7 @@ func migrationConfig(vm, other vsphere.VM) any {
 		ConfigurationAvailable       bool                        `json:"configuration_available"`
 		GuestID                      string                      `json:"guest_id"`
 		Firmware                     string                      `json:"firmware"`
+		HardwareVersion              string                      `json:"hardware_version,omitempty"`
 		SecureBootEnabled            *bool                       `json:"secure_boot_enabled"`
 		CoresPerSocket               int32                       `json:"cores_per_socket"`
 		CPUSockets                   int32                       `json:"cpu_sockets"`
@@ -579,10 +580,20 @@ func migrationConfig(vm, other vsphere.VM) any {
 		PCIDevices                   []vsphere.VMPCIDevice       `json:"pci_devices"`
 		Floppies                     []vsphere.VMFloppy          `json:"floppies"`
 	}{
-		ConfigurationAvailable: vm.ConfigurationAvailable, GuestID: vm.GuestID, Firmware: vm.Firmware,
+		ConfigurationAvailable: vm.ConfigurationAvailable, GuestID: vm.GuestID, Firmware: vm.Firmware, HardwareVersion: knownBoth(vm.HardwareVersion, other.HardwareVersion),
 		SecureBootEnabled: vm.SecureBootEnabled, CoresPerSocket: vm.CoresPerSocket, CPUSockets: vm.CPUSockets,
 		AutoCoresPerSocket: vm.AutoCoresPerSocket, CPUAllocation: allocationCompat(vm.CPUAllocation), MemoryAllocation: allocationCompat(vm.MemoryAllocation),
 		MemoryReservationLockedToMax: vm.MemoryReservationLockedToMax, ManagedBy: vm.ManagedBy, Disks: migrationDisks(vm.Disks, other.Disks), NICs: migrationNICs(vm.NICs), TPMs: vm.TPMs, PCIDevices: vm.PCIDevices, Floppies: vm.Floppies,
+	}
+	return value
+}
+
+// knownBoth returns value when the opposite run recorded the field too. A run
+// captured before the field was collected has it empty, which is "not read",
+// not a change.
+func knownBoth(value, other string) string {
+	if other == "" {
+		return ""
 	}
 	return value
 }

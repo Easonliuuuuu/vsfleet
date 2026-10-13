@@ -42,7 +42,7 @@ var (
 	// omits Folder), but vDisk, vNetwork, vSnapshot, vCPU, vMemory, and vTools
 	// all end in exactly these columns.
 	vmTailHeaders    = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	vmHeaders        = []string{"VM", "Powerstate", "Template", "Guest state", "CPUs", "Memory", "Primary IP Address", "Folder", "In Use MiB", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	vmHeaders        = []string{"VM", "Powerstate", "Template", "Guest state", "CPUs", "Memory", "Primary IP Address", "Folder", "In Use MiB", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs"}, vmTailHeaders...)
 	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB"}, vmTailHeaders...)
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "Shared Bus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -425,7 +425,12 @@ func vmRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0, len(data.VMs))
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		rows = append(rows, []any{vm.Name, vm.PowerState, vm.IsTemplate, vm.GuestState, vm.CPU, vm.MemoryMB, vm.IPAddress, vm.Folder, storageMiB(vm.StorageGB), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context})
+		var upgrade vsphere.VMHardwareUpgrade
+		if vm.HardwareUpgrade != nil {
+			upgrade = *vm.HardwareUpgrade
+		}
+		rows = append(rows, []any{vm.Name, vm.PowerState, vm.IsTemplate, vm.GuestState, vm.CPU, vm.MemoryMB, vm.IPAddress, vm.Folder, storageMiB(vm.StorageGB),
+			hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context})
 	}
 	return rows
 }
@@ -465,6 +470,16 @@ func toolsRows(data assessment.ExportData) [][]any {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// hardwareVersionCell writes a vSphere hardware version key ("vmx-21") as the
+// bare number RVTools uses.
+func hardwareVersionCell(key string) any {
+	n, err := strconv.Atoi(strings.TrimPrefix(key, "vmx-"))
+	if err != nil {
+		return nil
+	}
+	return n
 }
 
 func optionalString(value string) any {

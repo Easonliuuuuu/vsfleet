@@ -1424,7 +1424,7 @@ func parseMetadataTime(value string, timezone *time.Location, date1904 bool) (ti
 }
 
 func vmFromInfoRow(t sheetTable, row []string, contextName string) *vsphere.VM {
-	return &vsphere.VM{
+	vm := &vsphere.VM{
 		Location:     vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:           t.cell(row, "VM ID"),
 		InstanceUUID: t.cell(row, "VM UUID"),
@@ -1445,7 +1445,28 @@ func vmFromInfoRow(t sheetTable, row []string, contextName string) *vsphere.VM {
 		// ConfigurationAvailable is deliberately left false: RVTools exposes
 		// only the subset of configuration mapped below, never the deep
 		// hardware configuration that flag promises to callers.
+		HardwareVersion: hardwareVersionKey(t.cell(row, "HW version")),
 	}
+	upgrade := vsphere.VMHardwareUpgrade{
+		Policy:        t.cell(row, "HW upgrade policy"),
+		Status:        t.cell(row, "HW upgrade status"),
+		TargetVersion: hardwareVersionKey(t.cell(row, "HW target")),
+	}
+	if upgrade != (vsphere.VMHardwareUpgrade{}) {
+		vm.HardwareUpgrade = &upgrade
+	}
+	return vm
+}
+
+// hardwareVersionKey turns the bare number RVTools writes ("21") back into
+// vSphere's version key ("vmx-21"); anything that is not a number is not a
+// hardware version.
+func hardwareVersionKey(cell string) string {
+	n, err := strconv.Atoi(strings.TrimPrefix(cell, "vmx-"))
+	if err != nil || n <= 0 {
+		return ""
+	}
+	return "vmx-" + strconv.Itoa(n)
 }
 
 func applyDiskRow(t sheetTable, row []string, vm *vsphere.VM) {

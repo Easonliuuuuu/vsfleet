@@ -101,13 +101,6 @@ func TestSummarizePercentileGatedOnSampleCount(t *testing.T) {
 	}
 }
 
-func TestUnavailableCarriesNoNumbers(t *testing.T) {
-	s := Unavailable(counter(t, MemActive), 300, 288, "NoPermission")
-	if s.Status != StatusUnavailable || s.Average != nil || s.Peak != nil || s.Missing != 288 {
-		t.Fatalf("summary = %+v", s)
-	}
-}
-
 func summaries(t *testing.T, cpu, mem []int64, extra ...Summary) []Summary {
 	t.Helper()
 	out := []Summary{

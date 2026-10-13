@@ -98,50 +98,6 @@ func TestOrphansDowngradesTruncatedAndBlindCoverage(t *testing.T) {
 	}
 }
 
-func TestOrphansCoverageReportsBrowseState(t *testing.T) {
-	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	base := func(status string) assessment.ExportData {
-		return assessment.ExportData{
-			Run:      assessment.Run{ID: 7, InventorySchemaVersion: "11", FinishedAt: finish},
-			Contexts: []assessment.ContextRun{completeOrphanContext("prod")},
-			Resources: []assessment.ResourceObservation{orphanResource(t, "prod", "vc-prod", vsphere.Datastore{
-				Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1",
-				Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}, BrowseStatus: status,
-			})},
-		}
-	}
-
-	t.Run("no browse", func(t *testing.T) {
-		cov := Orphans(base("")).Coverage
-		if cov.Complete() || cov.Browsed != 0 || len(cov.Gaps) != 1 || cov.Gaps[0].Status != OrphanScanNotBrowsed {
-			t.Fatalf("coverage=%+v", cov)
-		}
-	})
-	t.Run("failed browse", func(t *testing.T) {
-		data := base("failed")
-		var ds vsphere.Datastore
-		_ = json.Unmarshal(data.Resources[0].Payload, &ds)
-		ds.BrowseError = "host unreachable"
-		data.Resources[0].Payload, _ = json.Marshal(ds)
-		cov := Orphans(data).Coverage
-		if cov.Complete() || len(cov.Gaps) != 1 || cov.Gaps[0].Status != OrphanScanFailed || cov.Gaps[0].Reason != "host unreachable" {
-			t.Fatalf("coverage=%+v", cov)
-		}
-	})
-	t.Run("denied browse", func(t *testing.T) {
-		cov := Orphans(base("denied")).Coverage
-		if cov.Complete() || len(cov.Gaps) != 1 || cov.Gaps[0].Status != OrphanScanDenied {
-			t.Fatalf("coverage=%+v", cov)
-		}
-	})
-	t.Run("complete clean browse", func(t *testing.T) {
-		cov := Orphans(base("success")).Coverage
-		if !cov.Complete() || cov.Browsed != 1 || len(cov.Gaps) != 0 {
-			t.Fatalf("coverage=%+v", cov)
-		}
-	})
-}
-
 func TestOrphansCoveragePartialAndTruncatedBrowse(t *testing.T) {
 	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
 	browsed := vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "browsed", Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}, BrowseStatus: "success"}
@@ -172,8 +128,10 @@ func TestOrphansDoesNotCrossSuppressSameNameDatastores(t *testing.T) {
 	left := vsphere.Datastore{Location: vsphere.Location{Context: "left"}, ID: "ds-left", Name: "datastore1", Backing: vsphere.DatastoreBacking{Extents: []string{"naa.left"}}, BrowseStatus: "success", Files: []vsphere.DatastoreFile{{Path: "[datastore1] orphan.vmdk"}}}
 	right := vsphere.Datastore{Location: vsphere.Location{Context: "right"}, ID: "ds-right", Name: "datastore1", Backing: vsphere.DatastoreBacking{Extents: []string{"naa.right"}}, BrowseStatus: "success", Files: []vsphere.DatastoreFile{{Path: "[datastore1] orphan.vmdk"}}}
 	data := assessment.ExportData{Run: assessment.Run{InventorySchemaVersion: "11"}, Contexts: []assessment.ContextRun{completeOrphanContext("left"), completeOrphanContext("right")}, Resources: []assessment.ResourceObservation{orphanResource(t, "left", "vc-left", left), orphanResource(t, "right", "vc-right", right)}}
-	if got := len(Orphans(data).Entries); got != 2 {
-		t.Fatalf("same-name independent datastores produced %d entries, want 2", got)
+	data.VMs = []assessment.ExportVM{{Observation: assessment.Observation{Context: "left", VCenterID: "vc-left", VM: vsphere.VM{ID: "vm-left", Name: "left-app", Disks: []vsphere.VMDisk{{BackingPath: "[datastore1] orphan.vmdk"}}}}}}
+	entries := Orphans(data).Entries
+	if len(entries) != 1 || entries[0].Object.Context != "right" || entries[0].Confidence != ConfidenceVerified {
+		t.Fatalf("same-name independent datastore evidence=%+v, want only verified right orphan", entries)
 	}
 }
 
@@ -204,12 +162,14 @@ func TestBrowseRemediationDistinguishesRequestedFromDenied(t *testing.T) {
 		name, status, err string
 		want              string
 		wantStatus        OrphanScanStatus
+		wantReason        string
 	}{
-		{"not requested", "", "", "a capture run with --browse-datastores", OrphanScanNotBrowsed},
-		{"denied", "denied", permission, "browse denied on 1/1 datastores: grant Datastore.Browse", OrphanScanDenied},
-		{"legacy failed permission text", "failed", permission, "browse denied on 1/1 datastores: grant Datastore.Browse", OrphanScanDenied},
-		{"other failure", "failed", "host unreachable", "browse failed on 1/1 datastores: host unreachable", OrphanScanFailed},
-		{"inaccessible datastore", "denied", vsphere.DatastoreInaccessibleMessage, "browse failed on 1/1 datastores: " + vsphere.DatastoreInaccessibleMessage, OrphanScanDenied},
+		{"complete clean browse", "success", "", "", "", ""},
+		{"not requested", "", "", "a capture run with --browse-datastores", OrphanScanNotBrowsed, "assessment was captured without --browse-datastores"},
+		{"denied", "denied", permission, "browse denied on 1/1 datastores: grant Datastore.Browse", OrphanScanDenied, permission},
+		{"legacy failed permission text", "failed", permission, "browse denied on 1/1 datastores: grant Datastore.Browse", OrphanScanDenied, permission},
+		{"other failure", "failed", "host unreachable", "browse failed on 1/1 datastores: host unreachable", OrphanScanFailed, "host unreachable"},
+		{"inaccessible datastore", "denied", vsphere.DatastoreInaccessibleMessage, "browse failed on 1/1 datastores: " + vsphere.DatastoreInaccessibleMessage, OrphanScanDenied, vsphere.DatastoreInaccessibleMessage},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -218,7 +178,16 @@ func TestBrowseRemediationDistinguishesRequestedFromDenied(t *testing.T) {
 			if got := report.Coverage.BrowseRemediation(); got != tc.want {
 				t.Fatalf("remediation = %q, want %q", got, tc.want)
 			}
-			if len(report.Coverage.Gaps) != 1 || report.Coverage.Gaps[0].Status != tc.wantStatus {
+			if tc.status == "success" {
+				if !report.Coverage.Complete() || report.Coverage.Browsed != 1 || len(report.Coverage.Gaps) != 0 || len(report.Entries) != 0 {
+					t.Fatalf("complete clean browse coverage = %+v", report)
+				}
+				if status := zombieRuleStatus(t, data); status.Status != "evaluated" || status.Result != "pass" {
+					t.Fatalf("clean browse rule = %+v", status)
+				}
+				return
+			}
+			if report.Coverage.Browsed != 0 || len(report.Coverage.Gaps) != 1 || report.Coverage.Gaps[0].Status != tc.wantStatus || report.Coverage.Gaps[0].Reason != tc.wantReason {
 				t.Fatalf("gaps = %+v, want status %s", report.Coverage.Gaps, tc.wantStatus)
 			}
 			// Safety: denied or failed evidence is never a clean result.

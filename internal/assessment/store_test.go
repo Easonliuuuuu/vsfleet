@@ -270,10 +270,11 @@ func TestDiffDoesNotCompareSnapshotsWhenEitherSideLacksTheEvidence(t *testing.T)
 	for _, tc := range []struct {
 		name                 string
 		baseSnap, targetSnap []CollectionResult
+		wantReason           string
 	}{
-		{"target uncovered", []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}, nil},
-		{"base uncovered", nil, []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}},
-		{"target explicitly unavailable", []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}, []CollectionResult{{Kind: "snapshot", Status: "unavailable", Error: "no vSnapshot worksheet"}}},
+		{"target uncovered", []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}, nil, "was not recorded"},
+		{"base uncovered", nil, []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}, "was not recorded"},
+		{"target explicitly unavailable", []CollectionResult{{Kind: "snapshot", Status: "success", ItemCount: 1}}, []CollectionResult{{Kind: "snapshot", Status: "unavailable", Error: "no vSnapshot worksheet"}}, "no vSnapshot worksheet"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, err := Open(filepath.Join(t.TempDir(), "history.db"))
@@ -307,7 +308,7 @@ func TestDiffDoesNotCompareSnapshotsWhenEitherSideLacksTheEvidence(t *testing.T)
 			}
 			found := false
 			for _, c := range d.Coverage {
-				if c.Context == "prod" && strings.Contains(c.Message, "snapshot") {
+				if c.Context == "prod" && strings.Contains(c.Message, tc.wantReason) {
 					found = true
 				}
 			}

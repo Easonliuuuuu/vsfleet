@@ -110,20 +110,9 @@ func (s *Store) loadExportPerformance(ctx context.Context, contexts []ContextRun
 	return out, nil
 }
 
-// ScopeExportData returns an independent view containing only the requested
-// contexts. It is used by offline queries before they build a graph so an
-// unscoped object or relationship cannot leak into a context-scoped result.
-// An empty context list means all contexts, matching the history query
-// contract.
-func ScopeExportData(data ExportData, contexts []string) ExportData {
-	scoped, err := ScopeExportDataChecked(data, contexts)
-	if err != nil {
-		return ExportData{}
-	}
-	return scoped
-}
-
-// ScopeExportDataChecked is the validating form used by CLI entry points.
+// ScopeExportDataChecked validates selectors and limits offline evidence to
+// the requested contexts before callers build graphs or evaluate findings.
+// An empty context list selects all recorded contexts.
 func ScopeExportDataChecked(data ExportData, contexts []string) (ExportData, error) {
 	selected, err := ValidateStoredContexts(contexts, data.Contexts)
 	if err != nil {

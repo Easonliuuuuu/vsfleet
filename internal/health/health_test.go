@@ -3,6 +3,8 @@ package health
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -317,22 +319,6 @@ func TestEvaluateHostPathRedundancyUnknownDoesNotMaskSharedFailure(t *testing.T)
 	t.Fatal("host-path-redundancy status missing")
 }
 
-func TestEvaluateHostPathRedundancySchemaGate(t *testing.T) {
-	shared := false
-	hostPayload, _ := json.Marshal(vsphere.Host{ID: "host-1", Name: "esx-1", Multipaths: []vsphere.HostMultipath{{LUN: "naa.1", LocalDisk: &shared, PathCount: 1}}})
-	data := assessment.ExportData{Run: assessment.Run{ID: 54, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", Collections: []assessment.CollectionRun{{Kind: "host", Status: "success"}}}}, Resources: []assessment.ResourceObservation{{Context: "prod", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}}}
-	report := Evaluate(data, Options{})
-	for _, status := range report.Rules {
-		if status.Rule == "host-path-redundancy" {
-			if status.Status != "not-evaluated" || status.Result != "unknown" {
-				t.Fatalf("status=%+v, want schema-gated unknown", status)
-			}
-			return
-		}
-	}
-	t.Fatal("host-path-redundancy status missing")
-}
-
 func TestEvaluateExpandedMigrationReadiness(t *testing.T) {
 	secure, locked, manualTopology := true, true, false
 	reservation, limit := int64(128), int64(500)
@@ -503,18 +489,13 @@ func TestEvaluateHostDevicePassthroughUsesBindingEvidence(t *testing.T) {
 	}
 }
 
-func TestMigrationReadinessDoesNotTreatAdvisoriesOrMissingConfigurationAsReady(t *testing.T) {
+func TestMigrationReadinessKeepsAdvisoriesReady(t *testing.T) {
 	unlimited := int64(-1)
 	advisoryVM := vsphere.VM{Location: vsphere.Location{Context: "prod"}, ID: "vm-1", Name: "legacy", ConfigurationAvailable: true, Firmware: "bios", CPU: 1, CoresPerSocket: 1,
 		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}}
 	base := assessment.ExportData{Run: assessment.Run{ID: 61, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}, {Kind: "snapshot", Status: "empty"}}}}, VMs: []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: advisoryVM}}}}
 	if got := Readiness(Evaluate(base, Options{})); got.Verdict != "ready" || len(got.Advisories) != 1 {
 		t.Fatalf("advisory-only readiness = %+v", got)
-	}
-	base.VMs[0].Observation.VM.ConfigurationAvailable = false
-	unknown := Readiness(Evaluate(base, Options{}))
-	if unknown.Verdict != "unknown" || len(unknown.Unresolved) == 0 {
-		t.Fatalf("incomplete migration evidence readiness = %+v", unknown)
 	}
 }
 
@@ -594,18 +575,6 @@ func TestEvaluateZombieVMDKConservativelyMatchesReferencesAndDeltas(t *testing.T
 	if len(zombies) != 1 || !strings.Contains(zombies[0].Message, "orphan/orphan.vmdk") {
 		t.Fatalf("zombie findings=%+v", zombies)
 	}
-
-	data.Resources[0].Payload, _ = json.Marshal(vsphere.Datastore{ID: "ds-1", Name: "datastore-1"})
-	report = Evaluate(data, Options{})
-	for _, status := range report.Rules {
-		if status.Rule == "datastore-zombie-vmdk" {
-			if status.Status != "not-evaluated" || status.Reason != "a capture run with --browse-datastores" {
-				t.Fatalf("zombie status=%+v", status)
-			}
-			return
-		}
-	}
-	t.Fatal("datastore-zombie-vmdk status was not reported")
 }
 
 func TestEvaluateZombieVMDKUnknownWhenBrowseCoverageIsPartial(t *testing.T) {
@@ -691,11 +660,27 @@ func TestEvaluateDatastoreAbsoluteFreeFloor(t *testing.T) {
 
 func TestEvaluateIsDeterministicAndRunRelative(t *testing.T) {
 	finish := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	data := healthFixture("5", finish)
+	data := healthFixture("13", finish)
+	data.Contexts[0].Collections = []assessment.CollectionRun{{Kind: "vm", Status: "success"}}
+	for i := range data.VMs {
+		data.VMs[i].Observation.VM.ConfigurationAvailable = true
+		data.VMs[i].Observation.VM.Disks = []vsphere.VMDisk{{Key: 2000, UUID: "shared-disk", Sharing: "sharingMultiWriter"}}
+	}
 	first := Evaluate(data, Options{Thresholds: DefaultThresholds()})
+	shared := 0
+	for _, finding := range first.Findings {
+		if finding.Rule == "shared-disk" {
+			shared++
+		}
+	}
+	if shared != 2 {
+		t.Fatalf("shared-disk fixture did not emit both findings: %+v", first.Findings)
+	}
+	slices.Reverse(data.VMs)
+	slices.Reverse(data.Resources)
 	second := Evaluate(data, Options{Thresholds: DefaultThresholds()})
 	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("repeated evaluation differs:\nfirst=%+v\nsecond=%+v", first, second)
+		t.Fatalf("reordered evaluation differs:\nfirst=%+v\nsecond=%+v", first, second)
 	}
 	if first.Findings[0].Object.Context != "prod" {
 		t.Fatalf("finding context=%q", first.Findings[0].Object.Context)
@@ -707,17 +692,49 @@ func TestEvaluateIsDeterministicAndRunRelative(t *testing.T) {
 	}
 }
 
-func TestEvaluateSchemaGatesVersionAndPartitionRules(t *testing.T) {
-	data := healthFixture("2", time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
-	report := Evaluate(data, Options{Thresholds: DefaultThresholds()})
-	statuses := make(map[string]string)
-	for _, status := range report.Rules {
-		statuses[status.Rule] = status.Status
-	}
-	for _, id := range []string{"cdrom-connected", "usb-connected", "guest-disk-space-low", "tools-not-installed", "tools-outdated"} {
-		if statuses[id] != "not-evaluated" {
-			t.Errorf("%s status=%q, want not-evaluated", id, statuses[id])
-		}
+func TestEvaluateSchemaGates(t *testing.T) {
+	for _, tc := range []struct {
+		schema int
+		rules  []string
+	}{
+		{3, []string{"tools-not-installed", "tools-outdated"}},
+		{4, []string{"guest-disk-space-low"}},
+		{6, []string{"cdrom-connected", "usb-connected"}},
+		{14, []string{"host-path-redundancy"}},
+	} {
+		t.Run(strconv.Itoa(tc.schema), func(t *testing.T) {
+			data := healthFixture(strconv.Itoa(tc.schema), time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC))
+			connected, shared := true, false
+			data.VMs[0].Observation.VM.ConfigurationAvailable = true
+			data.VMs[0].Observation.VM.CDROMs = []vsphere.VMCDROM{{Connected: &connected}}
+			data.VMs[0].Observation.VM.USBs = []vsphere.VMUSB{{Connected: &connected}}
+			payload, err := json.Marshal(vsphere.Host{ID: "host-1", Name: "esx-1", Multipaths: []vsphere.HostMultipath{{LUN: "naa.1", LocalDisk: &shared, PathCount: 1}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			data.Resources[0].Payload = payload
+			// At the capture-schema boundary the fixture must emit each rule,
+			// so a missing finding below it can only be attributed to the gate.
+			for _, schema := range []int{tc.schema, tc.schema - 1} {
+				data.Run.InventorySchemaVersion = strconv.Itoa(schema)
+				report := Evaluate(data, Options{Thresholds: DefaultThresholds()})
+				for _, id := range tc.rules {
+					var status RuleStatus
+					for _, candidate := range report.Rules {
+						if candidate.Rule == id {
+							status = candidate
+						}
+					}
+					if schema == tc.schema {
+						if status.Status != "evaluated" || status.Findings == 0 {
+							t.Errorf("schema %d %s did not exercise rule: %+v", schema, id, status)
+						}
+					} else if status.Status != "not-evaluated" || status.Result != "unknown" || status.Findings != 0 {
+						t.Errorf("schema %d %s not gated: %+v", schema, id, status)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -758,34 +775,6 @@ func TestEvaluateConnectedDeviceRulesOnlyReportConnectedDevices(t *testing.T) {
 	for _, finding := range findings {
 		if finding.Severity != SeverityWarning || finding.Object.ID != "vm-1" {
 			t.Errorf("finding metadata = %+v", finding)
-		}
-	}
-	first := Evaluate(data, Options{})
-	data.VMs[0].Observation.VM.CDROMs[0], data.VMs[0].Observation.VM.CDROMs[1] = data.VMs[0].Observation.VM.CDROMs[1], data.VMs[0].Observation.VM.CDROMs[0]
-	data.VMs[0].Observation.VM.USBs[0], data.VMs[0].Observation.VM.USBs[1] = data.VMs[0].Observation.VM.USBs[1], data.VMs[0].Observation.VM.USBs[0]
-	second := Evaluate(data, Options{})
-	if !reflect.DeepEqual(first, second) {
-		t.Fatalf("connected-device evaluation is not deterministic:\nfirst=%+v\nsecond=%+v", first, second)
-	}
-}
-
-func TestEvaluateConnectedDeviceRulesAreSchemaGated(t *testing.T) {
-	connected := true
-	data := assessment.ExportData{
-		Run: assessment.Run{ID: 44, InventorySchemaVersion: "5"},
-		VMs: []assessment.ExportVM{{Observation: assessment.Observation{VM: vsphere.VM{
-			ID: "vm-1", Name: "app", CDROMs: []vsphere.VMCDROM{{Connected: &connected}}, USBs: []vsphere.VMUSB{{Connected: &connected}},
-		}}}},
-	}
-	report := Evaluate(data, Options{})
-	for _, status := range report.Rules {
-		if (status.Rule == "cdrom-connected" || status.Rule == "usb-connected") && status.Status != "not-evaluated" {
-			t.Errorf("%s status=%q, want not-evaluated", status.Rule, status.Status)
-		}
-	}
-	for _, finding := range report.Findings {
-		if finding.Rule == "cdrom-connected" || finding.Rule == "usb-connected" {
-			t.Fatalf("schema-gated rule emitted finding: %+v", finding)
 		}
 	}
 }

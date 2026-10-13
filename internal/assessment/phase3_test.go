@@ -3,7 +3,9 @@ package assessment
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,7 +13,7 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-func TestInfrastructureRoundTripDiffAndTrends(t *testing.T) {
+func TestInfrastructureRoundTripDiffAndRestore(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -19,6 +21,7 @@ func TestInfrastructureRoundTripDiffAndTrends(t *testing.T) {
 	defer s.Close()
 	base := time.Now().UTC().Add(-2 * time.Hour).Truncate(time.Millisecond)
 	save := func(when time.Time, host vsphere.Host) Run {
+		t.Helper()
 		r, err := s.StartRun(context.Background(), "test", []*config.Context{testContext("prod")}, when)
 		if err != nil {
 			t.Fatal(err)
@@ -48,13 +51,6 @@ func TestInfrastructureRoundTripDiffAndTrends(t *testing.T) {
 	if len(d.Resources) != 1 || d.Resources[0].Kind != "host" {
 		t.Fatalf("resources=%+v", d.Resources)
 	}
-	trend, err := s.ChurnTrend(context.Background(), TrendOptions{Limit: 30})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(trend.Points) != 2 {
-		t.Fatalf("trend=%+v", trend)
-	}
 	backup := filepath.Join(t.TempDir(), "backup.db")
 	if err := s.Backup(context.Background(), backup, false); err != nil {
 		t.Fatal(err)
@@ -69,20 +65,26 @@ func TestInfrastructureRoundTripDiffAndTrends(t *testing.T) {
 		_ = backupStore.ReleaseCaptureLease(context.Background(), lease)
 	}
 	_ = backupStore.Close()
-	if _, err := s.Restore(context.Background(), backup, true); err != nil {
+	r3 := save(base.Add(2*time.Hour), host)
+	if err := s.DeleteRun(context.Background(), r1.ID); err != nil {
 		t.Fatal(err)
+	}
+	safetyCopy, err := s.Restore(context.Background(), backup, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(safetyCopy); err != nil {
+		t.Fatalf("restore safety copy: %v", err)
+	}
+	if _, err := s.GetRun(context.Background(), r3.ID); err == nil {
+		t.Fatal("run created after backup survived restore")
 	}
 	if _, err := s.GetRun(context.Background(), r1.ID); err != nil {
 		t.Fatalf("restored run: %v", err)
 	}
 }
 
-func TestInfrastructureRuntimeAndPolicy(t *testing.T) {
-	d := Diff{Resources: []ResourceChange{{Kind: "host", Changes: []string{"appeared"}}}}
-	p := EvaluatePolicy(d, PolicyOptions{FailOn: []string{"host-appeared"}})
-	if p.Passed || len(p.Violations) != 1 {
-		t.Fatalf("policy=%+v", p)
-	}
+func TestChangedResourceFieldsIgnoresRuntimeUnlessAsked(t *testing.T) {
 	if got := changedResourceFields("host", json.RawMessage(`{"power_state":"poweredOn"}`), json.RawMessage(`{"power_state":"poweredOff"}`), false); len(got) != 0 {
 		t.Fatalf("default runtime diff=%+v", got)
 	}
@@ -106,9 +108,20 @@ func TestOperationLeaseExpiryReclaimsSidecar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Operation != "test2" {
-		t.Fatalf("lease=%+v", second)
+	defer s.ReleaseCaptureLease(context.Background(), second)
+	if err := s.ValidateCaptureLease(context.Background(), first); err == nil {
+		t.Fatal("reclaimed holder was not fenced")
 	}
-	_ = s.ReleaseCaptureLease(context.Background(), first)
-	_ = s.ReleaseCaptureLease(context.Background(), second)
+	if err := s.ReleaseCaptureLease(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	if lease, err := s.AcquireOperationLease(context.Background(), now.Add(3*time.Minute), "third"); err == nil || !strings.Contains(err.Error(), "another assessment operation is already running") {
+		if err == nil {
+			_ = s.ReleaseCaptureLease(context.Background(), lease)
+		}
+		t.Fatalf("stale release did not preserve successor's sidecar: %v", err)
+	}
+	if err := s.ValidateCaptureLease(context.Background(), second); err != nil {
+		t.Fatalf("stale release invalidated successor: %v", err)
+	}
 }

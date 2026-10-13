@@ -14,7 +14,7 @@ func inventory() *vsphere.Inventory {
 	return &vsphere.Inventory{
 		Context: "prod",
 		VMs: []vsphere.VM{
-			{Location: loc("Taipei", "/Taipei/vm/ubuntu-24-build-17"), Name: "ubuntu-24-build-17", PowerState: "poweredOn"},
+			{Location: loc("Taipei", "/Taipei/vm/ubuntu-24-build-17"), Name: "Ubuntu-24-Build-17", PowerState: "poweredOn"},
 			{Location: loc("Taipei", "/Taipei/vm/windows-builder"), Name: "windows-builder", PowerState: "poweredOff"},
 		},
 		Templates: []vsphere.VM{

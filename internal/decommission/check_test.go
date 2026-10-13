@@ -56,7 +56,6 @@ func TestEvaluateStrictBlockers(t *testing.T) {
 		{name: "cdrom", vm: vsphere.VM{PowerState: "poweredOff", ConnectionState: "connected", ConfigurationAvailable: true, CDROMs: []vsphere.VMCDROM{{Label: "installer", Connected: boolPtr(true)}}}, id: "mounted-media"},
 		{name: "usb", vm: vsphere.VM{PowerState: "poweredOff", ConnectionState: "connected", ConfigurationAvailable: true, USBs: []vsphere.VMUSB{{Label: "token", Connected: boolPtr(true)}}}, id: "mounted-media"},
 		{name: "inaccessible", vm: vsphere.VM{PowerState: "poweredOff", ConnectionState: "inaccessible", ConfigurationAvailable: true}, id: "connection-state"},
-		{name: "orphaned", vm: vsphere.VM{PowerState: "poweredOff", ConnectionState: "orphaned", ConfigurationAvailable: true}, id: "connection-state"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

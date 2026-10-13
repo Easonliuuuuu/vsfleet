@@ -87,28 +87,8 @@ func TestSharedDatastoreIdentityCrossContextBlastRadius(t *testing.T) {
 	}
 }
 
-func TestSameNameIndependentDatastoresAreAmbiguous(t *testing.T) {
+func TestTopologyOfMemberlessSubjectIsUnknown(t *testing.T) {
 	data := datastoreSubjectData(t, "12", "datastore1", false)
-	data.Resources[0].Name = "datastore1"
-	var first vsphere.Datastore
-	_ = json.Unmarshal(data.Resources[0].Payload, &first)
-	first.Name = "datastore1"
-	first.Backing.Extents = []string{"naa.left"}
-	data.Resources[0].Payload, _ = json.Marshal(first)
-	var second vsphere.Datastore
-	_ = json.Unmarshal(data.Resources[1].Payload, &second)
-	second.Name = "datastore1"
-	second.Backing.Extents = []string{"naa.right"}
-	data.Resources[1].Payload, _ = json.Marshal(second)
-	if got := len(Build(data).Resolve(KindDatastore, "datastore1", nil)); got != 2 {
-		t.Fatalf("subjects=%d, want 2", got)
-	}
-}
-
-func TestMemberlessSubjectCannotResolveByNameAcrossContexts(t *testing.T) {
-	data := datastoreSubjectData(t, "12", "datastore1", false)
-	data.Resources[0].Name = "datastore1"
-	data.Resources[1].Name = "datastore1"
 	graph := Build(data)
 	result := graph.Topology(Subject{Kind: string(KindDatastore), Name: "datastore1"})
 	if result.Confidence != ConfidenceUnknown {

@@ -498,22 +498,14 @@ func tagLabel(tag vsphere.Tag) string {
 	return tag.Category + "/" + tag.Name
 }
 
-// migrationFingerprint fingerprints the migration-relevant configuration of vm.
-// other is the VM from the opposite run: disk fields that the older collector
-// did not record (empty) are unknown rather than changed, so they are left out
-// of both sides instead of turning every VM into a migration-blocking change
-// after a tool upgrade.
-func migrationFingerprint(vm, other vsphere.VM) string {
-	raw, _ := json.Marshal(migrationConfig(vm, other))
-	return string(raw)
-}
-
 // migrationFieldPrefix namespaces per-field migration configuration changes,
 // e.g. "migration_configuration.disks[2000].shared_bus".
 const migrationFieldPrefix = "migration_configuration"
 
 // migrationFieldChanges reports each differing migration-relevant sub-field
 // so the inspector can show what changed instead of two truncated blobs.
+// Disk fields absent in the older run remain unknown on both sides, rather
+// than making a collector upgrade look like a migration configuration change.
 func migrationFieldChanges(a, b vsphere.VM) []FieldChange {
 	before, after := flattenJSON(migrationConfig(a, b)), flattenJSON(migrationConfig(b, a))
 	var out []FieldChange

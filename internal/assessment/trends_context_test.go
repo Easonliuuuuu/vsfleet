@@ -19,6 +19,7 @@ type trendCtx struct {
 	vmStatus string // success (default), empty, failed
 	vms      []vsphere.VM
 	ds       []vsphere.Datastore
+	dsStatus string // failed or not recorded for incomplete datastore evidence
 }
 
 func saveTrendRun(t *testing.T, s *Store, when time.Time, specs ...trendCtx) Run {
@@ -55,6 +56,12 @@ func saveTrendRun(t *testing.T, s *Store, when time.Time, specs ...trendCtx) Run
 						cr.Resources = append(cr.Resources, ResourceObservation{Context: sp.name, VCenterID: sp.vcenter, Kind: "datastore", ID: d.ID, Name: d.Name, Payload: payload})
 					}
 				}
+				if sp.dsStatus != "" {
+					cr.Status = sp.dsStatus
+				}
+			}
+			if cr.Status == "not recorded" {
+				continue
 			}
 			collections = append(collections, cr)
 		}
@@ -215,46 +222,71 @@ func TestCapacityTrendOmitsRunsWhereOwningContextWasNotRecorded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var edgeCtx, prodCtx *CapacitySeries
-	for i := range trend.Series {
-		series := &trend.Series[i]
-		if series.Scope == "context" && series.Name == "edge" {
-			edgeCtx = series
-		}
-		if series.Scope == "context" && series.Name == "prod" {
-			prodCtx = series
-		}
+	if len(trend.Series) != 5 {
+		t.Fatalf("series=%+v, want estate, two contexts and two resources", trend.Series)
 	}
-	if edgeCtx == nil || len(edgeCtx.Points) != 1 || edgeCtx.Points[0].Run.ID != r1.ID {
-		t.Fatalf("edge context series = %+v, want single point at run %d", edgeCtx, r1.ID)
-	}
-	if prodCtx == nil || len(prodCtx.Points) != 2 {
-		t.Fatalf("prod context series = %+v, want points at runs %d and %d", prodCtx, r1.ID, r2.ID)
+	for _, series := range trend.Series {
+		want := []int64{r1.ID, r2.ID}
+		if series.Name == "edge" || strings.HasPrefix(series.Name, "edge/") {
+			want = want[:1]
+		}
+		if len(series.Points) != len(want) {
+			t.Fatalf("%s %q points=%+v, want runs %v", series.Scope, series.Name, series.Points, want)
+		}
+		encoded, err := json.Marshal(series)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire struct {
+			Points []struct {
+				Run struct {
+					ID int64 `json:"id"`
+				} `json:"run"`
+			} `json:"points"`
+		}
+		if err := json.Unmarshal(encoded, &wire); err != nil {
+			t.Fatal(err)
+		}
+		for i, point := range series.Points {
+			if point.Run.ID != want[i] || wire.Points[i].Run.ID != want[i] {
+				t.Errorf("%s %q point %d run=%d JSON run=%d, want %d", series.Scope, series.Name, i, point.Run.ID, wire.Points[i].Run.ID, want[i])
+			}
+		}
 	}
 }
 
 func TestCapacityTrendScopedCoverageOnlyReportsSelectedContexts(t *testing.T) {
-	s := newTrendTestStore(t)
-	prodDS := capacityDatastore("prod", "ds-p", "vc-1", 1000, 500)
-	prodDS.Backing = vsphere.DatastoreBacking{Local: true}
-	// run with a partial prod (vm failed) and an unrelated failing context.
-	saveTrendRun(t, s, day(1),
-		trendCtx{name: "prod", vcenter: "vc-1", vmStatus: "failed", ds: []vsphere.Datastore{prodDS}},
-		trendCtx{name: "lab", vcenter: "vc-l", vmStatus: "failed"},
-	)
-	saveTrendRun(t, s, day(2),
-		trendCtx{name: "prod", vcenter: "vc-1", ds: []vsphere.Datastore{prodDS}},
-		trendCtx{name: "lab", vcenter: "vc-l", vmStatus: "failed"},
-	)
+	for _, status := range []string{"failed", "not recorded"} {
+		t.Run(status, func(t *testing.T) {
+			s := newTrendTestStore(t)
+			prodDS := capacityDatastore("prod", "ds-p", "vc-1", 1000, 500)
+			prodDS.Backing = vsphere.DatastoreBacking{Local: true}
+			// A VM failure is irrelevant to datastore coverage; the lab datastore
+			// failure or missing collection must still be visible when selected.
+			saveTrendRun(t, s, day(1),
+				trendCtx{name: "prod", vcenter: "vc-1", vmStatus: "failed", ds: []vsphere.Datastore{prodDS}},
+				trendCtx{name: "lab", vcenter: "vc-l", vmStatus: "failed", dsStatus: status},
+			)
+			saveTrendRun(t, s, day(2),
+				trendCtx{name: "prod", vcenter: "vc-1", ds: []vsphere.Datastore{prodDS}},
+				trendCtx{name: "lab", vcenter: "vc-l", vmStatus: "failed", dsStatus: status},
+			)
 
-	trend, err := s.CapacityTrend(context.Background(), TrendOptions{IncludePartial: true, Contexts: []string{"prod"}}, []string{"datastore"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, issue := range trend.Coverage {
-		if issue.Context == "lab" {
-			t.Fatalf("coverage leaked unrelated context: %+v", trend.Coverage)
-		}
+			allContexts, err := s.CapacityTrend(context.Background(), TrendOptions{IncludePartial: true, Contexts: []string{"prod", "lab"}}, []string{"datastore"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(allContexts.Coverage) != 2 || allContexts.Coverage[0].Context != "lab" || allContexts.Coverage[1].Context != "lab" {
+				t.Fatalf("all-context coverage=%+v, want lab gap in both runs", allContexts.Coverage)
+			}
+			trend, err := s.CapacityTrend(context.Background(), TrendOptions{IncludePartial: true, Contexts: []string{"prod"}}, []string{"datastore"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(trend.Coverage) != 0 {
+				t.Fatalf("coverage leaked unrelated context: %+v", trend.Coverage)
+			}
+		})
 	}
 }
 

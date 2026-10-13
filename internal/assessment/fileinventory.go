@@ -100,8 +100,8 @@ func (c FileInventoryContext) Summary() (status string, message string) {
 	return "partial", message
 }
 
-// InventoryDatastoreStatus classifies one datastore's stored inventory.
-func InventoryDatastoreStatus(inv *vsphere.DatastoreFileInventory) (status, message string) {
+// inventoryDatastoreStatus classifies one datastore's stored inventory.
+func inventoryDatastoreStatus(inv *vsphere.DatastoreFileInventory) (status, message string) {
 	switch {
 	case inv == nil:
 		return FileInventoryNotRecorded, "no file inventory was recorded for this datastore"
@@ -148,7 +148,7 @@ func FileInventoryCoverage(data ExportData) []FileInventoryContext {
 			continue
 		}
 		entry := FileInventoryDatastore{Context: r.Context, Datastore: nonempty(ds.Name, r.Name), ID: nonempty(ds.ID, r.ID)}
-		entry.Status, entry.Message = InventoryDatastoreStatus(ds.FileInventory)
+		entry.Status, entry.Message = inventoryDatastoreStatus(ds.FileInventory)
 		if ds.FileInventory != nil {
 			out[i].Requested = true
 			entry.Files = len(ds.FileInventory.Files)

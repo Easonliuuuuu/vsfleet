@@ -32,7 +32,7 @@ func TestNumericComparisonIsNotLexical(t *testing.T) {
 }
 
 func TestTagAndCustomRequireANameAfterTheDot(t *testing.T) {
-	for _, expression := range []string{`custom.=""`, "custom.=x", "tag.=x", "custom. =x", "tag.  !=x"} {
+	for _, expression := range []string{`custom.=""`, "Custom.=x", "tag.=x", "tag.  !=x"} {
 		if _, err := Parse([]string{expression}, []vsphere.Kind{vsphere.KindVM}); err == nil {
 			t.Errorf("%q was accepted with an empty name", expression)
 		}

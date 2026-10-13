@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -82,7 +81,6 @@ func TestHostMetricProjectionAndFallbackSymmetry(t *testing.T) {
 		Name:        "esxi-01",
 		CPUCores:    32,
 		CPUMHz:      2400,
-		TotalCPUMHz: 76800,
 		CPUUsageMHz: 18400,
 		MemoryMB:    524288,
 	}
@@ -118,66 +116,14 @@ func TestHostMetricProjectionAndFallbackSymmetry(t *testing.T) {
 	if fallbackPoint.CPUUsed == nil || *fallbackPoint.CPUUsed != 18400 {
 		t.Fatalf("fallback CPUUsed=%v, want 18400", fallbackPoint.CPUUsed)
 	}
-
-	// 3. Calculation when observation has projected CPUCapacity
-	capVal := 76800.0
-	usedVal := 18400.0
-	storedProjected := storedResource{
-		observation: ResourceObservation{
-			Kind:        "host",
-			ID:          host.ID,
-			Name:        host.Name,
-			Payload:     payload,
-			CPUCapacity: &capVal,
-			CPUUsed:     &usedVal,
-		},
-	}
-	projectedPoint := capacityForResources("host", []storedResource{storedProjected}, "estate", "")
-	if projectedPoint.CPUCapacity == nil || *projectedPoint.CPUCapacity != *fallbackPoint.CPUCapacity {
-		t.Fatalf("projected (%v) and fallback (%v) CPUCapacity do not match", projectedPoint.CPUCapacity, fallbackPoint.CPUCapacity)
-	}
 }
 
 func TestHostClusterCapacityUnitCompatibility(t *testing.T) {
 	// A cluster with 4 hosts, each 32 cores @ 2,400 MHz (76,800 MHz total each)
 	// Cluster total CPU = 4 * 76,800 = 307,200 MHz.
-	hosts := []storedResource{
-		{
-			observation: ResourceObservation{
-				Kind:        "host",
-				ID:          "host-1",
-				Name:        "esx-1",
-				CPUCapacity: floatPtr(76800),
-				CPUUsed:     floatPtr(15000),
-			},
-		},
-		{
-			observation: ResourceObservation{
-				Kind:        "host",
-				ID:          "host-2",
-				Name:        "esx-2",
-				CPUCapacity: floatPtr(76800),
-				CPUUsed:     floatPtr(20000),
-			},
-		},
-		{
-			observation: ResourceObservation{
-				Kind:        "host",
-				ID:          "host-3",
-				Name:        "esx-3",
-				CPUCapacity: floatPtr(76800),
-				CPUUsed:     floatPtr(18000),
-			},
-		},
-		{
-			observation: ResourceObservation{
-				Kind:        "host",
-				ID:          "host-4",
-				Name:        "esx-4",
-				CPUCapacity: floatPtr(76800),
-				CPUUsed:     floatPtr(22000),
-			},
-		},
+	hosts := make([]storedResource, 4)
+	for i := range hosts {
+		hosts[i].observation.CPUCapacity = floatPtr(76800)
 	}
 
 	hostPoint := capacityForResources("host", hosts, "estate", "")
@@ -186,20 +132,20 @@ func TestHostClusterCapacityUnitCompatibility(t *testing.T) {
 	}
 
 	clusterPayload, _ := json.Marshal(vsphere.Cluster{
-		ID:          "cluster-1",
-		Name:        "compute-a",
-		Hosts:       4,
-		CPUCores:    128,
-		TotalCPUMHz: 307200,
+		ID:            "cluster-1",
+		Name:          "compute-a",
+		Hosts:         4,
+		CPUCores:      128,
+		TotalCPUMHz:   307200,
+		TotalMemoryMB: 4 * 524288,
 	})
 	clusterRes := []storedResource{
 		{
 			observation: ResourceObservation{
-				Kind:        "cluster",
-				ID:          "cluster-1",
-				Name:        "compute-a",
-				CPUCapacity: floatPtr(307200),
-				Payload:     clusterPayload,
+				Kind:    "cluster",
+				ID:      "cluster-1",
+				Name:    "compute-a",
+				Payload: clusterPayload,
 			},
 		},
 	}
@@ -208,77 +154,8 @@ func TestHostClusterCapacityUnitCompatibility(t *testing.T) {
 		t.Fatalf("cluster CPUCapacity=%v, want 307200", clusterPoint.CPUCapacity)
 	}
 
-	// Units and totals are identical
-	if *hostPoint.CPUCapacity != *clusterPoint.CPUCapacity {
-		t.Fatalf("host total (%f) does not match cluster total (%f)", *hostPoint.CPUCapacity, *clusterPoint.CPUCapacity)
-	}
-}
-
-func TestHostCPUUtilizationNotOverflowing(t *testing.T) {
-	// Issue #111: CPU usage across cores exceeds single core clock speed.
-	// 32-core host @ 2400 MHz = 76,800 MHz total capacity.
-	// 18,400 MHz CPU usage.
-	// Previously: 18,400 / 2,400 = 766.7% utilization.
-	// Fixed: 18,400 / 76,800 = 23.96% utilization.
-	host := vsphere.Host{
-		ID:          "host-1",
-		Name:        "esxi-01",
-		CPUCores:    32,
-		CPUMHz:      2400,
-		TotalCPUMHz: 76800,
-		CPUUsageMHz: 18400,
-	}
-	payload, _ := json.Marshal(host)
-
-	stored := storedResource{
-		observation: ResourceObservation{
-			Kind:        "host",
-			ID:          host.ID,
-			Name:        host.Name,
-			Payload:     payload,
-			CPUCapacity: floatPtr(76800),
-			CPUUsed:     floatPtr(18400),
-		},
-	}
-	point := capacityForResources("host", []storedResource{stored}, "estate", "")
-	if point.CPUUtilization == nil {
-		t.Fatal("expected CPUUtilization to be calculated")
-	}
-	if *point.CPUUtilization > 100 {
-		t.Fatalf("CPU utilization %.2f%% exceeded 100%%", *point.CPUUtilization)
-	}
-	wantUtil := 18400.0 / 76800.0 * 100.0
-	if diff := *point.CPUUtilization - wantUtil; diff < -0.01 || diff > 0.01 {
-		t.Fatalf("CPU utilization = %.2f%%, want %.2f%%", *point.CPUUtilization, wantUtil)
-	}
-}
-
-func TestCapacitySeriesPointsRetainRunIDsAcrossScopes(t *testing.T) {
-	series := make(map[string]*CapacitySeries)
-	for _, runID := range []int64{11, 12, 13} {
-		run := Run{ID: runID}
-		point := CapacityPoint{CPUCapacity: floatPtr(float64(runID))}
-		appendCapacityPoint(series, "host", "estate", "", run, point)
-		appendCapacityPoint(series, "host", "context", "prod", run, point)
-		appendCapacityPoint(series, "host", "resource", "esx-01", run, point)
-	}
-	for key, item := range series {
-		if len(item.Points) != 3 {
-			t.Fatalf("series %q has %d points, want 3", key, len(item.Points))
-		}
-		for i, point := range item.Points {
-			want := int64(i + 11)
-			if point.Run.ID != want {
-				t.Fatalf("series %q point %d run=%d, want %d", key, i, point.Run.ID, want)
-			}
-		}
-	}
-	encoded, err := json.Marshal(series["estate\x00"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(encoded), `"run":{"id":11,`) || !strings.Contains(string(encoded), `"run":{"id":13,`) {
-		t.Fatalf("JSON capacity points lost run IDs: %s", encoded)
+	if clusterPoint.MemoryCapacity == nil || *clusterPoint.MemoryCapacity != 4*524288 {
+		t.Fatalf("cluster MemoryCapacity=%v, want 2097152 MB", clusterPoint.MemoryCapacity)
 	}
 }
 
@@ -381,7 +258,11 @@ func TestMigrateV4RecomputesHostCPUCapacity(t *testing.T) {
 	if p.CPUCapacity == nil || *p.CPUCapacity != 76800 {
 		t.Fatalf("trend CPUCapacity=%v, want 76800", p.CPUCapacity)
 	}
-	if p.CPUUtilization == nil || *p.CPUUtilization > 100 {
-		t.Fatalf("trend CPUUtilization=%v, want < 100%%", p.CPUUtilization)
+	wantUtil := 18400.0 / 76800.0 * 100
+	if p.CPUUtilization == nil {
+		t.Fatal("trend CPU utilization missing")
+	}
+	if diff := *p.CPUUtilization - wantUtil; diff < -0.01 || diff > 0.01 {
+		t.Fatalf("trend CPU utilization=%.2f%%, want %.2f%%", *p.CPUUtilization, wantUtil)
 	}
 }

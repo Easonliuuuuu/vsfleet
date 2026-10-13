@@ -3,22 +3,34 @@ package health
 import "testing"
 
 func TestReadinessVerdicts(t *testing.T) {
-	base := Report{SchemaVersion: ReportSchemaVersion, RunID: 7, Rules: []RuleStatus{
-		{Rule: "bios-firmware", Status: "evaluated", Result: "pass"}, {Rule: "cdrom-connected", Status: "evaluated", Result: "pass"}, {Rule: "cluster-network-inconsistent", Status: "evaluated", Result: "pass"},
-		{Rule: "custom-cpu-topology", Status: "evaluated", Result: "pass"}, {Rule: "custom-resource-allocation", Status: "evaluated", Result: "pass"}, {Rule: "extension-managed-vm", Status: "evaluated", Result: "pass"}, {Rule: "floppy-present", Status: "evaluated", Result: "pass"}, {Rule: "host-device-passthrough", Status: "evaluated", Result: "pass"}, {Rule: "manual-mac-address", Status: "evaluated", Result: "pass"}, {Rule: "rdm-present", Status: "evaluated", Result: "pass"}, {Rule: "secure-boot-enabled", Status: "evaluated", Result: "pass"}, {Rule: "shared-disk", Status: "evaluated", Result: "pass"}, {Rule: "usb-connected", Status: "evaluated", Result: "pass"}, {Rule: "vtpm-present", Status: "evaluated", Result: "pass"},
-	}, Coverage: Coverage{Contexts: 1, CompleteContexts: 1}}
+	base := Report{SchemaVersion: ReportSchemaVersion, RunID: 7, Coverage: Coverage{Contexts: 1, CompleteContexts: 1}}
+	for _, rule := range Rules() {
+		if rule.Category == CategoryMigration {
+			base.Rules = append(base.Rules, RuleStatus{Rule: rule.ID, Status: "evaluated", Result: "pass"})
+		}
+	}
 	for _, tc := range []struct {
 		name    string
-		report  Report
+		change  func(*Report)
 		verdict string
 	}{
-		{name: "ready", report: base, verdict: "ready"},
-		{name: "blocked", report: Report{SchemaVersion: ReportSchemaVersion, RunID: 7, Findings: []Finding{{Rule: "cdrom-connected", Category: CategoryMigration, Severity: SeverityWarning}}}, verdict: "blocked"},
-		{name: "blind is unknown", report: Report{SchemaVersion: ReportSchemaVersion, RunID: 7, Rules: []RuleStatus{{Rule: "cdrom-connected", Status: "evaluated", Result: "unknown", Blind: []string{"vc-b"}}}}, verdict: "unknown"},
+		{"ready", func(*Report) {}, "ready"},
+		{"blocked", func(r *Report) {
+			r.Findings = []Finding{{Rule: "cdrom-connected", Category: CategoryMigration, Severity: SeverityWarning}}
+		}, "blocked"},
+		{"unknown result", func(r *Report) { r.Rules[0].Result = "unknown" }, "unknown"},
+		{"skip result", func(r *Report) { r.Rules[0].Result = "skip" }, "unknown"},
+		{"blind rule", func(r *Report) { r.Rules[0].Blind = []string{"vc-b"} }, "unknown"},
+		{"partial rule", func(r *Report) { r.Rules[0].Partial = []PartialCoverage{{Context: "prod", Unevaluated: 1, Total: 2}} }, "unknown"},
+		{"non-migration critical", func(r *Report) {
+			r.Findings = []Finding{{Rule: "datastore-inaccessible", Category: CategoryAvailability, Severity: SeverityCritical}}
+		}, "ready"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := Readiness(tc.report)
-			if got.Verdict != tc.verdict {
+			report := base
+			report.Rules = append([]RuleStatus(nil), base.Rules...)
+			tc.change(&report)
+			if got := Readiness(report); got.Verdict != tc.verdict {
 				t.Fatalf("verdict=%q, want %q", got.Verdict, tc.verdict)
 			}
 		})

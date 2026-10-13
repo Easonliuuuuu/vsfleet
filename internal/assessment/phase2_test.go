@@ -187,9 +187,18 @@ func TestTimelineDoesNotDecodeUnrelatedVMs(t *testing.T) {
 }
 
 func TestEvaluatePolicy(t *testing.T) {
-	d := Diff{Base: Run{Status: RunComplete}, Target: Run{Status: RunComplete}, Counts: DiffCounts{Appeared: 1}}
-	p := EvaluatePolicy(d, PolicyOptions{FailOn: []string{"appeared"}})
-	if p.Passed || len(p.Violations) != 1 {
-		t.Fatalf("policy=%+v", p)
+	for _, tc := range []struct {
+		rule string
+		diff Diff
+	}{
+		{"appeared", Diff{Counts: DiffCounts{Appeared: 1}}},
+		{"host-appeared", Diff{Resources: []ResourceChange{{Kind: "host", Changes: []string{"appeared"}}}}},
+	} {
+		t.Run(tc.rule, func(t *testing.T) {
+			p := EvaluatePolicy(tc.diff, PolicyOptions{FailOn: []string{tc.rule}})
+			if p.Passed || len(p.Violations) != 1 || p.Violations[0].Rule != tc.rule {
+				t.Fatalf("policy=%+v", p)
+			}
+		})
 	}
 }

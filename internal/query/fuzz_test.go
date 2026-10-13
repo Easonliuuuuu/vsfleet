@@ -15,7 +15,7 @@ func FuzzParseAndEvaluate(f *testing.F) {
 	for _, seed := range []string{
 		"cpu>=8", "power_state=poweredOn", `custom.environment="prod west"`,
 		"tag.Compute=Production", "name~web", "memory_mb<4096", "template=false",
-		"free_percent<10", "cpu>=", "=x", "tag.=", `custom."a b"=c`, "cpu>=1e309",
+		"free_percent<10", "cpu>=", "=x", "tag.=", `custom."a b"=c`, "cpu>=1e309", "tag=tag.x", "Custom.=x",
 	} {
 		f.Add(seed, true, true)
 		f.Add(seed, false, true)
@@ -26,8 +26,9 @@ func FuzzParseAndEvaluate(f *testing.F) {
 		if err != nil {
 			return
 		}
+		lhs := strings.ToLower(strings.TrimSpace(expression[:strings.IndexAny(expression, "<>=!")]))
 		for _, p := range filter.Predicates() {
-			if (p.Field == "tag" || p.Field == "custom") && strings.Contains(expression, p.Field+".") && strings.TrimSpace(p.Qualifier) == "" {
+			if (p.Field == "tag" || p.Field == "custom") && strings.HasPrefix(lhs, p.Field+".") && strings.TrimSpace(p.Qualifier) == "" {
 				t.Fatalf("%q was accepted with an empty %s name", expression, p.Field)
 			}
 			if strings.ContainsAny(expression, `'"`) {
@@ -51,11 +52,8 @@ func FuzzParseAndEvaluate(f *testing.F) {
 		subject.CustomAttributes = []vsphere.CustomAttribute{{Name: "environment", Value: "prod west"}}
 		matched := filter.Match(subject)
 		outcome, sources := filter.Evaluate(subject)
-		if matched && outcome != Matched {
-			t.Fatalf("%q: Match is true but Evaluate is %v", expression, outcome)
-		}
-		if outcome == NoMatch && matched {
-			t.Fatalf("%q: Evaluate is NoMatch but Match is true", expression)
+		if matched != (outcome == Matched) {
+			t.Fatalf("%q: Match=%v contradicts Evaluate=%v", expression, matched, outcome)
 		}
 		if outcome == Undetermined && tagsAvailable && customAvailable {
 			t.Fatalf("%q: Undetermined with every metadata source readable (%v)", expression, sources)

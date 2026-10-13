@@ -1194,41 +1194,6 @@ func (s *Store) clockOffsets(ctx context.Context, runID int64) (map[int64]map[st
 	return out, rows.Err()
 }
 
-func (s *Store) UpdateRun(ctx context.Context, selector string, meta RunMetadata) (Run, error) {
-	id, err := s.ResolveRun(ctx, selector)
-	if err != nil {
-		return Run{}, err
-	}
-	if meta.Label != "" {
-		if err := validateRunLabel(meta.Label); err != nil {
-			return Run{}, err
-		}
-	}
-	// Empty label means “leave it unchanged” for this API; callers that need
-	// to clear a label can use ClearLabel.
-	sets := make([]string, 0, 2)
-	args := make([]any, 0, 3)
-	if meta.Label != "" {
-		sets = append(sets, "label=?")
-		args = append(args, meta.Label)
-	}
-	if meta.Note != "" {
-		sets = append(sets, "note=?")
-		args = append(args, meta.Note)
-	}
-	if len(sets) == 0 && !meta.Pinned {
-		return Run{}, fmt.Errorf("at least one run metadata change is required")
-	}
-	if meta.Pinned {
-		sets = append(sets, "pinned=1")
-	}
-	args = append(args, id)
-	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET `+strings.Join(sets, ",")+` WHERE id=?`, args...); err != nil {
-		return Run{}, err
-	}
-	return s.GetRun(ctx, id)
-}
-
 // UpdateRunFields is the lossless metadata update used by the CLI. Nil means
 // “leave unchanged”, allowing an explicit empty note or cleared label.
 func (s *Store) UpdateRunFields(ctx context.Context, selector string, label, note *string, pinned *bool) (Run, error) {
@@ -1258,17 +1223,6 @@ func (s *Store) UpdateRunFields(ctx context.Context, selector string, label, not
 	}
 	args = append(args, id)
 	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET `+strings.Join(sets, ",")+` WHERE id=?`, args...); err != nil {
-		return Run{}, err
-	}
-	return s.GetRun(ctx, id)
-}
-
-func (s *Store) SetRunPinned(ctx context.Context, selector string, pinned bool) (Run, error) {
-	id, err := s.ResolveRun(ctx, selector)
-	if err != nil {
-		return Run{}, err
-	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE runs SET pinned=? WHERE id=?`, boolInt(pinned), id); err != nil {
 		return Run{}, err
 	}
 	return s.GetRun(ctx, id)

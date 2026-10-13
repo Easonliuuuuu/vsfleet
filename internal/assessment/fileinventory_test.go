@@ -42,6 +42,15 @@ func TestFileInventoryCoverageOnlyCallsFullyListedContextsComplete(t *testing.T)
 		}
 	}
 	mixed := got["mixed"]
+	if len(mixed.Datastores) != 3 || len(got["none"].Datastores) != 1 {
+		t.Fatalf("datastore coverage = %+v", got)
+	}
+	if truncated := mixed.Datastores[2]; truncated.Status != FileInventoryTruncated || !strings.Contains(truncated.Message, "stopped at 1 files") {
+		t.Errorf("truncated datastore = %+v", truncated)
+	}
+	if got["none"].Datastores[0].Status != FileInventoryNotRecorded {
+		t.Errorf("nil inventory = %+v", got["none"])
+	}
 	if names := []string{mixed.Datastores[0].Datastore, mixed.Datastores[1].Datastore, mixed.Datastores[2].Datastore}; strings.Join(names, ",") != "a-ok,m-skip,z-trunc" {
 		t.Errorf("datastores not in name order: %v", names)
 	}
@@ -53,15 +62,5 @@ func TestFileInventoryCoverageOnlyCallsFullyListedContextsComplete(t *testing.T)
 	}
 	if HasFileInventory(ExportData{Contexts: []ContextRun{{Name: "x"}}, Resources: []ResourceObservation{inventoryResource(t, "x", "d", nil)}}) {
 		t.Error("a run without inventory records reports the capture as opted in")
-	}
-}
-
-func TestInventoryDatastoreStatusTruncationIsNotComplete(t *testing.T) {
-	status, msg := InventoryDatastoreStatus(&vsphere.DatastoreFileInventory{Status: vsphere.FileInventorySuccess, Truncated: true, TruncatedReason: "datastore file limit", Files: make([]vsphere.DatastoreInventoryFile, 3)})
-	if status != FileInventoryTruncated || !strings.Contains(msg, "stopped at 3 files") {
-		t.Fatalf("status=%q msg=%q", status, msg)
-	}
-	if status, _ := InventoryDatastoreStatus(nil); status != FileInventoryNotRecorded {
-		t.Fatalf("nil inventory status = %q", status)
 	}
 }

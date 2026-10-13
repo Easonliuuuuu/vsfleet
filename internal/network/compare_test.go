@@ -3,6 +3,7 @@ package network
 import (
 	"encoding/json"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
@@ -145,21 +146,68 @@ func TestCompareAmbiguousClusterName(t *testing.T) {
 }
 
 func TestCompareIsDeterministic(t *testing.T) {
-	source := portGroup("app", "pg-prod", "100")
-	target := portGroup("app", "pg-dr", "100")
-	left := comparisonFixture(t, []vsphere.DVPortGroup{source}, []vsphere.DVPortGroup{target})
-	right := comparisonFixture(t, []vsphere.DVPortGroup{source}, []vsphere.DVPortGroup{target})
-	reverseResources := make([]assessment.ResourceObservation, len(right.Resources))
-	for index := range right.Resources {
-		reverseResources[len(right.Resources)-index-1] = right.Resources[index]
+	fixture := func() assessment.ExportData {
+		t.Helper()
+		data := comparisonFixture(t,
+			[]vsphere.DVPortGroup{portGroup("z-app", "pg-z-prod", "100"), portGroup("a-app", "pg-a-prod", "110"), portGroup("isolated", "pg-gap", "200")},
+			[]vsphere.DVPortGroup{portGroup("z-app", "pg-z-dr", "100"), portGroup("a-app", "pg-a-dr", "110")})
+		for i := range data.Resources {
+			r := &data.Resources[i]
+			switch r.Kind {
+			case "host":
+				var host vsphere.Host
+				if !assessment.DecodeResource(*r, &host) {
+					t.Fatal("decode fixture host")
+				}
+				host.PortGroups = []vsphere.HostPortGroup{{Name: "z-standard", Switch: "vSwitch0", VLAN: 300}, {Name: "b-standard", Switch: "vSwitch0", VLAN: 400}}
+				r.Payload = mustJSON(t, host)
+				host.ID += "-2"
+				host.Name += "-2"
+				data.Resources = append(data.Resources, assessment.ResourceObservation{Context: r.Context, VCenterID: r.VCenterID, Kind: "host", ID: host.ID, Name: host.Name, Payload: mustJSON(t, host)})
+			case "dvswitch":
+				var sw vsphere.DVSwitch
+				if !assessment.DecodeResource(*r, &sw) {
+					t.Fatal("decode fixture switch")
+				}
+				sw.Hosts = append(sw.Hosts, sw.Hosts[0]+"-2")
+				r.Payload = mustJSON(t, sw)
+			}
+		}
+		for _, name := range []string{"z-vm", "a-vm"} {
+			vm := vsphere.VM{ID: name, Name: name, Cluster: "source", NICs: []vsphere.VMNIC{{Network: "isolated", NetworkID: "pg-gap", SwitchID: "uuid-prod"}}}
+			data.VMs = append(data.VMs, assessment.ExportVM{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-prod", VM: vm}})
+		}
+		return data
 	}
-	right.Resources = reverseResources
-	reverseContexts := make([]assessment.ContextRun, len(right.Contexts))
-	for index := range right.Contexts {
-		reverseContexts[len(right.Contexts)-index-1] = right.Contexts[index]
+	left, right := fixture(), fixture()
+	slices.Reverse(right.Resources)
+	slices.Reverse(right.Contexts)
+	slices.Reverse(right.VMs)
+	for i := range right.Resources {
+		r := &right.Resources[i]
+		switch r.Kind {
+		case "host":
+			var host vsphere.Host
+			if !assessment.DecodeResource(*r, &host) {
+				t.Fatal("decode fixture host")
+			}
+			slices.Reverse(host.PortGroups)
+			r.Payload = mustJSON(t, host)
+		case "dvswitch":
+			var sw vsphere.DVSwitch
+			if !assessment.DecodeResource(*r, &sw) {
+				t.Fatal("decode fixture switch")
+			}
+			slices.Reverse(sw.PortGroups)
+			slices.Reverse(sw.Hosts)
+			r.Payload = mustJSON(t, sw)
+		}
 	}
-	right.Contexts = reverseContexts
-	if !reflect.DeepEqual(Compare(left, "source", "target", nil), Compare(right, "source", "target", nil)) {
+	result := Compare(left, "source", "target", nil)
+	if result.Confidence != "complete" || result.Source.HostCount != 2 || result.Target.HostCount != 2 || len(result.Matched) != 4 || len(result.MappingGaps) != 1 || len(result.MappingGaps[0].AttachedVMs) != 2 {
+		t.Fatalf("determinism fixture missed comparison paths: %+v", result)
+	}
+	if !reflect.DeepEqual(result, Compare(right, "source", "target", nil)) {
 		t.Fatal("comparison changed with input ordering")
 	}
 }

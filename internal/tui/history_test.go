@@ -136,7 +136,8 @@ func TestComparisonBarNamesBothRunsAndCoverageGap(t *testing.T) {
 	if _, err := store.FinishRun(ctx, base.ID, base.StartedAt); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.UpdateRun(ctx, strconv.FormatInt(base.ID, 10), assessment.RunMetadata{Label: "pre-maintenance", Pinned: true}); err != nil {
+	label, pinned := "pre-maintenance", true
+	if _, err := store.UpdateRunFields(ctx, strconv.FormatInt(base.ID, 10), &label, nil, &pinned); err != nil {
 		t.Fatal(err)
 	}
 

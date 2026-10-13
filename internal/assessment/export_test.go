@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,8 +63,8 @@ func TestLoadExportDataRejectsRunningAndMalformed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.LoadExportData(context.Background(), run.ID); err == nil {
-		t.Fatal("running export unexpectedly succeeded")
+	if _, err := s.LoadExportData(context.Background(), run.ID); err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Fatalf("running export error = %v", err)
 	}
 	if err := s.SaveContext(context.Background(), run.ID, ContextResult{Name: "prod", VCenterID: "vc-uuid", Status: "success", VMs: []Observation{{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{ID: "vm-1", Name: "app"}}}}, time.Now().UTC()); err != nil {
 		t.Fatal(err)
@@ -75,7 +76,7 @@ func TestLoadExportDataRejectsRunningAndMalformed(t *testing.T) {
 	if _, err := s.db.Exec(`UPDATE vm_observations SET payload=?`, json.RawMessage("{")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.LoadExportData(context.Background(), run.ID); err == nil {
-		t.Fatal("malformed export unexpectedly succeeded")
+	if _, err := s.LoadExportData(context.Background(), run.ID); err == nil || !strings.Contains(err.Error(), "malformed payload") {
+		t.Fatalf("malformed export error = %v", err)
 	}
 }

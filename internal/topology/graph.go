@@ -1039,8 +1039,14 @@ func memberRecordSortKey(record nodeRecord) string {
 	return strings.Join([]string{reconstructed, idMissing, nodeSortKey(record.node)}, "\x00")
 }
 
+// subjectSortKey orders subjects by kind, name and context, then by their
+// members' IDs and paths, so same-named subjects in one context do not tie.
 func subjectSortKey(subject Subject) string {
-	return strings.ToLower(strings.Join([]string{subject.Kind, subject.Name, firstContext(subject.Members)}, "\x00"))
+	parts := []string{subject.Kind, subject.Name, firstContext(subject.Members)}
+	for _, member := range subject.Members {
+		parts = append(parts, nodeSortKey(member))
+	}
+	return strings.ToLower(strings.Join(parts, "\x00"))
 }
 
 func firstContext(nodes []Node) string {

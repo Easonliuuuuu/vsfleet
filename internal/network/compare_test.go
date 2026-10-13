@@ -233,3 +233,17 @@ func TestFullCoverageOnClustersOfDifferentSizesIsNoDifference(t *testing.T) {
 		t.Fatalf("a target host without the network is not a host_coverage blocker: %+v", got)
 	}
 }
+
+// Cluster refs carry no ID, and the clusters they come from are gathered by
+// map iteration; refs that tie on name, context and vCenter must still sort
+// one way.
+func TestSortClusterRefsIsIndependentOfInputOrder(t *testing.T) {
+	a := ClusterRef{Name: "Prod", Context: "vc", VCenterID: "uuid", HostCount: 2, Resolved: true}
+	b := ClusterRef{Name: "Prod", Context: "vc", VCenterID: "uuid", HostCount: 5, Resolved: true}
+	first, second := []ClusterRef{a, b}, []ClusterRef{b, a}
+	sortClusterRefs(first)
+	sortClusterRefs(second)
+	if first[0] != second[0] || first[1] != second[1] {
+		t.Fatalf("order depends on input: %+v vs %+v", first, second)
+	}
+}

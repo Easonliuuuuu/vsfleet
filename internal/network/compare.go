@@ -629,10 +629,13 @@ func containsClusterRef(values []ClusterRef, wanted ClusterRef) bool {
 	return false
 }
 
+// sortClusterRefs orders by every field a ClusterRef carries. It has no ID,
+// so two refs that tie on all of them are identical in the output.
 func sortClusterRefs(values []ClusterRef) {
-	sort.SliceStable(values, func(i, j int) bool {
-		return objectSortKey(values[i].Name, values[i].Context, values[i].VCenterID) < objectSortKey(values[j].Name, values[j].Context, values[j].VCenterID)
-	})
+	key := func(c ClusterRef) string {
+		return objectSortKey(c.Name, c.Context, c.VCenterID, fmt.Sprintf("%010d", c.HostCount), strconv.FormatBool(c.Resolved))
+	}
+	sort.SliceStable(values, func(i, j int) bool { return key(values[i]) < key(values[j]) })
 }
 
 func inventorySchema(value string) int {

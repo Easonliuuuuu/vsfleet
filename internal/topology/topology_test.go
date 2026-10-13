@@ -193,8 +193,11 @@ func sameNameInOneVCenterData(t *testing.T) assessment.ExportData {
 	}
 }
 
+// Same-named subjects in one context must also come out in a stable order:
+// the graph is rebuilt from map iteration, so one build proves nothing.
 func TestSameNamedObjectsInOneVCenterStayDistinct(t *testing.T) {
-	graph := Build(sameNameInOneVCenterData(t))
+	data := sameNameInOneVCenterData(t)
+	graph := Build(data)
 	for _, tc := range []struct {
 		kind Kind
 		name string
@@ -217,6 +220,14 @@ func TestSameNamedObjectsInOneVCenterStayDistinct(t *testing.T) {
 		for _, id := range tc.ids {
 			if !seen[id] {
 				t.Fatalf("%s %q: %s was absorbed into another subject; got %v", tc.kind, tc.name, id, seen)
+			}
+		}
+		for build := 0; build < 100; build++ {
+			subjects := Build(data).Resolve(tc.kind, tc.name, nil)
+			for i, subject := range subjects {
+				if subject.Members[0].ID != tc.ids[i] {
+					t.Fatalf("%s %q build %d: subject %d is %s, want subjects in ID order %v", tc.kind, tc.name, build, i, subject.Members[0].ID, tc.ids)
+				}
 			}
 		}
 	}

@@ -51,8 +51,8 @@ func TestVSourceRowsAreAttributedPerContextAndOmitFailedContexts(t *testing.T) {
 	}
 	// Contexts render in name order: esxi-c, then vc-b.
 	want := [][]any{
-		{"VMware ESXi", "vmnix-x86", "HostAgent", "7.0.3.0", "7.0.3", "", "2", "VMware ESXi 7.0.3 build-2", "VMware ESX Server", "7.0", "embeddedEsx", "VMware, Inc.", "https://esxi-c.example", "esxi-uuid", "esxi-c"},
-		{"VMware vCenter Server", "linux-x64", "VirtualCenter", "8.0.3.0", "8.0.3", "00400", "1000001", "VMware vCenter Server 8.0.3 build-1000001", "VMware VirtualCenter Server", "8.0", "vpx", "Example Vendor", "https://vc-b.example", "vc-b-uuid", "vc-b"},
+		{"VMware ESXi", "vmnix-x86", "HostAgent", "7.0.3.0", "7.0.3", "", "2", "VMware ESXi 7.0.3 build-2", "VMware ESX Server", "7.0", "embeddedEsx", "VMware, Inc.", "esxi-c.example", "esxi-uuid", "esxi-c"},
+		{"VMware vCenter Server", "linux-x64", "VirtualCenter", "8.0.3.0", "8.0.3", "00400", "1000001", "VMware vCenter Server 8.0.3 build-1000001", "VMware VirtualCenter Server", "8.0", "vpx", "Example Vendor", "vc-b.example", "vc-b-uuid", "vc-b"},
 	}
 	for i := range want {
 		for j := range want[i] {

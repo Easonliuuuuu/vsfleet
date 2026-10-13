@@ -106,8 +106,8 @@ func TestAssessmentCaptureExportsAttributedVSource(t *testing.T) {
 	if _, ok := byContext["down"]; ok {
 		t.Fatal("the unreachable context has a vSource row; no version may be invented")
 	}
-	if got := byContext["alpha"][columnIndex(t, header, "VI SDK Server")]; got != alpha.URL {
-		t.Errorf("alpha VI SDK Server=%q, want its endpoint %q", got, alpha.URL)
+	if got, want := byContext["alpha"][columnIndex(t, header, "VI SDK Server")], strings.TrimPrefix(alpha.URL, "https://"); got != want {
+		t.Errorf("alpha VI SDK Server=%q, want its endpoint's host and port %q", got, want)
 	}
 
 	coverage := readCSVFile(t, filepath.Join(firstDir, "vsfleetCoverage.csv"))

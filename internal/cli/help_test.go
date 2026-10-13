@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -134,6 +135,20 @@ func TestExamplesInvokeTheirOwnCommand(t *testing.T) {
 	walk(root, func(cmd *cobra.Command) {
 		if !strings.Contains(cmd.Example, cmd.CommandPath()) {
 			t.Errorf("%q has examples that never invoke it:\n%s", cmd.CommandPath(), cmd.Example)
+		}
+	})
+}
+
+// A rule ID in an example is pasted as-is, and rules get renamed. Every
+// --disable-rule an example passes must still be a registered rule.
+func TestExampleHealthRulesAreRegistered(t *testing.T) {
+	disableRule := regexp.MustCompile(`--disable-rule[ =](\S+)`)
+	root := NewRootCommand(&App{})
+	walk(root, func(cmd *cobra.Command) {
+		for _, m := range disableRule.FindAllStringSubmatch(cmd.Example, -1) {
+			if _, err := validateHealthRules([]string{m[1]}); err != nil {
+				t.Errorf("%q example: %v", cmd.CommandPath(), err)
+			}
 		}
 	})
 }

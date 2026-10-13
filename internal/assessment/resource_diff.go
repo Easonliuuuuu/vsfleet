@@ -78,7 +78,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 	}
 	filterResourceRunData(base, selected)
 	filterResourceRunData(target, selected)
-	for _, kind := range []string{"host", "cluster", "resourcepool", "datastore", "network", "dvswitch"} {
+	for _, kind := range []string{"host", "cluster", "resourcepool", "vapp", "datastore", "network", "dvswitch"} {
 		baseByVC, targetByVC := make(map[string][]storedResource), make(map[string][]storedResource)
 		// vcNames resolves a VCenterID back to its context name for the "not
 		// comparable" messages below, the same way Diff does for VMs.

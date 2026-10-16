@@ -110,7 +110,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 		t.Fatalf("dvPort name=%q", got)
 	}
 	for sheet, cells := range map[string]map[string]string{
-		"vDisk":    {"V1": "Shared Bus"},
+		"vDisk":    {"T1": "Label", "U1": "SCSI Unit #", "V1": "Unit #", "W1": "Shared Bus", "Z1": "Raw Comp. Mode"},
 		"vHBA":     {"F1": "Pci"},
 		"vSwitch":  {"C1": "Free Ports", "F1": "Promiscuous Mode", "G1": "Mac Changes", "H1": "Forged Transmits", "I1": "Traffic Shaping"},
 		"vPort":    {"A1": "Port Group", "D1": "Promiscuous Mode", "E1": "Mac Changes", "F1": "Forged Transmits"},
@@ -126,7 +126,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 			}
 		}
 	}
-	if got, _ := f.GetCellValue("vDisk", "V2"); got != "noSharing" {
+	if got, _ := f.GetCellValue("vDisk", "W2"); got != "noSharing" {
 		t.Fatalf("vDisk shared bus=%q, want noSharing", got)
 	}
 	if got, _ := f.GetCellValue("dvPort", "N2"); got != "TRUE" {

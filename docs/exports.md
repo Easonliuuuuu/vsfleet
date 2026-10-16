@@ -218,7 +218,8 @@ Observed value differences:
 | `vHBA`, `Type` | vSphere adapter type, for example `HostBlockHba` | Human-readable label, for example `Block SCSI` |
 | `dvPort`, `VLAN` on a switch's uplink port group | Reported trunk range, for example `trunk 0-4094` | Empty |
 | `vSnapshot`, `Date / time` | UTC; XLSX displays a date without a zone and CSV uses RFC3339 with `Z` | Collector-local time without a zone |
-| `vInfo` `In Use MiB`; `vPartition` capacity, consumed, free MiB and `Free %`; `vDatastore` capacity, in-use, free MiB and `Free %`; `vHost` CPU and memory usage `%` | Decimal values are retained (vPartition `Free %` is rounded to two decimals) | Integer values |
+| `vCluster`, `DRS default VM behavior` on a cluster with DRS off | Empty | The stored automation level, for example `fullyAutomated` |
+| `vInfo` `In Use MiB` and `Total disk capacity MiB`; `vPartition` capacity, consumed, free MiB and `Free %`; `vDatastore` capacity, in-use, free MiB and `Free %`; `vHost` CPU and memory usage `%` | Decimal values are retained (vPartition `Free %` is rounded to two decimals) | Integer values |
 
 The `vTools` values describe different states: a Tools installation can exist
 while its service is not running. Treat `Tools` as a different field when

@@ -75,7 +75,10 @@ var columnRules = map[string]colRule{
 	// vInfo / per-VM tabs.
 	"Powerstate": keep(), "Template": keep(), "Guest state": keep(), "CPUs": keep(), "Memory": keep(),
 	"Primary IP Address": ipRule, "In Use MiB": keep(), "DNS Name": name(kindName), "Connection state": keep(),
-	"NICs": keep(), "Disks": keep(), "vApp": name(kindName), "EFI Secure boot": keep(), "Firmware": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),
+	"NICs": keep(), "Disks": keep(), "Total disk capacity MiB": keep(),
+	"Network #1": name(kindNetwork), "Network #2": name(kindNetwork), "Network #3": name(kindNetwork), "Network #4": name(kindNetwork),
+	"Network #5": name(kindNetwork), "Network #6": name(kindNetwork), "Network #7": name(kindNetwork), "Network #8": name(kindNetwork),
+	"Sockets": keep(), "Cores p/s": keep(), "Memory Reservation Locked To Max": keep(), "vApp": name(kindName), "EFI Secure boot": keep(), "Firmware": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),
 	"HW target": keep(), "OS according to the configuration file": keep(),
 	"Size MiB": keep(), "Tools": keep(), "Tools Version": keep(), "Tools Version Status": keep(),
 
@@ -126,6 +129,7 @@ var columnRules = map[string]colRule{
 	// vCluster / vRP / vDatastore.
 	"NumHosts": keep(), "numEffectiveHosts": keep(), "TotalCpu": keep(), "NumCpuCores": keep(), "TotalMemory": keep(),
 	"HA enabled": keep(), "DRS enabled": keep(), "OverallStatus": keep(), "NumCpuThreads": keep(), "Num VMotions": keep(),
+	"Effective Cpu": keep(), "Effective Memory": keep(), "DRS default VM behavior": keep(),
 	"Failover Level": keep(), "AdmissionControlEnabled": keep(), "Host monitoring": keep(), "HB Datastore Candidate Policy": keep(),
 	"Isolation Response": keep(), "Restart Priority": keep(), "Cluster Settings": keep(), "Max Failures": keep(),
 	"Max Failure Window": keep(), "Failure Interval": keep(), "Min Up Time": keep(), "VM Monitoring": keep(),
@@ -133,7 +137,7 @@ var columnRules = map[string]colRule{
 	"CPU limit": keep(), "CPU overheadLimit": keep(), "CPU reservation": keep(), "CPU level": keep(), "CPU shares": keep(),
 	"CPU expandableReservation": keep(), "Mem Configured": keep(), "Mem limit": keep(), "Mem overheadLimit": keep(),
 	"Mem reservation": keep(), "Mem level": keep(), "Mem shares": keep(), "Mem expandableReservation": keep(),
-	"Config status": keep(), "Accessible": keep(), "Maintenance mode": keep(),
+	"Config status": keep(), "Accessible": keep(), "Maintenance mode": keep(), "URL": id(kindID),
 
 	// vFileInfo.
 	"Friendly Path Name": pathRule, "File Name": pathRule, "File Type": keep(), "File Size in bytes": keep(),

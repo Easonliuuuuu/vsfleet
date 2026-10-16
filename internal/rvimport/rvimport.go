@@ -547,8 +547,10 @@ func (t sheetTable) probe() {
 		vmFromInfoRow(t, nil, "")
 	case sheetVCPU:
 		t.cell(nil, "CPUs")
+		applyCPUAllocationRow(t, nil, scratchVM)
 	case sheetVMemory:
 		t.cell(nil, "Size MiB")
+		applyMemoryAllocationRow(t, nil, scratchVM)
 	case sheetVDisk:
 		applyDiskRow(t, nil, scratchVM)
 	case sheetVNetwork:
@@ -913,6 +915,7 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 		cpuCovered = true
 		attachVMRows(sheetVCPU, func(t sheetTable, row []string, vm *vsphere.VM) {
 			cpus := int32(parseInt(t.cell(row, "CPUs")))
+			applyCPUAllocationRow(t, row, vm)
 			switch {
 			case !infoCPU:
 				vm.CPU = cpus
@@ -925,6 +928,7 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 		memoryCovered = true
 		attachVMRows(sheetVMemory, func(t sheetTable, row []string, vm *vsphere.VM) {
 			mb := parseInt(t.cell(row, "Size MiB"))
+			applyMemoryAllocationRow(t, row, vm)
 			switch {
 			case !infoMemory:
 				vm.MemoryMB = mb
@@ -1791,14 +1795,23 @@ func clusterFromRow(t sheetTable, row []string, contextName string) vsphere.Clus
 		CPUCores:      int32(parseInt(t.cell(row, "NumCpuCores"))),
 		TotalCPUMHz:   parseInt(t.cell(row, "TotalCpu")),
 		TotalMemoryMB: parseInt(t.cell(row, "TotalMemory")),
-		HAEnabled:     parseBool(t.cell(row, "HA enabled")),
-		DRSEnabled:    parseBool(t.cell(row, "DRS enabled")),
-		ConfigStatus:  t.cell(row, "Config status"),
-		OverallStatus: t.cell(row, "OverallStatus"),
-		CPUThreads:    parseOptInt32(t.cell(row, "NumCpuThreads")),
-		VMotions:      parseOptInt32(t.cell(row, "Num VMotions")),
+		// Effective capacity is optional: an empty cell stays zero, which
+		// the exporter writes back as empty, not as no capacity.
+		EffectiveCPUMHz:   parseInt(t.cell(row, "Effective Cpu")),
+		EffectiveMemoryMB: parseInt(t.cell(row, "Effective Memory")),
+		HAEnabled:         parseBool(t.cell(row, "HA enabled")),
+		DRSEnabled:        parseBool(t.cell(row, "DRS enabled")),
+		ConfigStatus:      t.cell(row, "Config status"),
+		OverallStatus:     t.cell(row, "OverallStatus"),
+		CPUThreads:        parseOptInt32(t.cell(row, "NumCpuThreads")),
+		VMotions:          parseOptInt32(t.cell(row, "Num VMotions")),
 	}
 	cl.Settings = clusterSettingsFromRow(t, row)
+	// A live capture records DRS's automation level only while DRS is on;
+	// RVTools writes the stored level either way.
+	if behavior := t.cell(row, "DRS default VM behavior"); cl.DRSEnabled {
+		cl.DRSBehavior = behavior
+	}
 	return cl
 }
 
@@ -1812,6 +1825,7 @@ func datastoreFromRow(t sheetTable, row []string, contextName string) vsphere.Da
 		FreeBytes:     int64(parseFloat(t.cell(row, "Free MiB")) * mib),
 		Accessible:    parseBool(t.cell(row, "Accessible")),
 		Maintenance:   t.cell(row, "Maintenance mode"),
+		Backing:       vsphere.DatastoreBacking{URL: t.cell(row, "URL")},
 	}
 }
 

@@ -169,6 +169,13 @@ var sheetMeta = map[string]sheetInfo{
 // worksheets. The identity and provenance tail — Annotation through vsfleet
 // Context — is the bulk of it, repeated on every per-VM tab.
 // clusterSettingsEmpty is when the vCluster HA, DRS and DPM columns are empty.
+// vmConfigEmpty is when a column read from a VM's configuration is empty.
+const vmConfigEmpty = "for a capture predating inventory schema 13, or when vSphere returned no VM configuration"
+
+// networkSlotSpec describes each of vInfo's eight Network #N columns.
+var networkSlotSpec = ColumnSpec{Kind: KindText, Empty: "for a slot past the VM's last NIC, a NIC that is not attached, or wherever NICs is empty",
+	Note: "Port group of the VM's Nth virtual NIC, in device order. A VM with more than eight NICs lists the rest on vNetwork only, as RVTools does."}
+
 const clusterSettingsEmpty = "for a capture predating inventory schema 25, or for a standalone host"
 
 var sharedColumns = map[string]ColumnSpec{
@@ -203,7 +210,11 @@ var sharedColumns = map[string]ColumnSpec{
 	"CPUs":               {Kind: KindInteger, Note: "Configured vCPU count."},
 	"Memory":             {Kind: KindInteger, Unit: "MiB", Note: "Configured memory."},
 	"Primary IP Address": {Kind: KindText, Empty: "when VMware Tools reports no address"},
-	"In Use MiB":         {Kind: KindDecimal, Unit: "MiB", Note: "Committed storage across every disk, as vCenter reports it. Fractional MiB are retained; RVTools writes integer MiB."},
+	"Total disk capacity MiB": {Kind: KindDecimal, Unit: "MiB", Empty: "wherever Disks is empty",
+		Note: "Provisioned size of every virtual disk, summed. Fractional MiB are retained; RVTools writes integer MiB."},
+	"Network #1": networkSlotSpec, "Network #2": networkSlotSpec, "Network #3": networkSlotSpec, "Network #4": networkSlotSpec,
+	"Network #5": networkSlotSpec, "Network #6": networkSlotSpec, "Network #7": networkSlotSpec, "Network #8": networkSlotSpec,
+	"In Use MiB": {Kind: KindDecimal, Unit: "MiB", Note: "Committed storage across every disk, as vCenter reports it. Fractional MiB are retained; RVTools writes integer MiB."},
 	"HW version": {Kind: KindInteger, Empty: "for a capture predating inventory schema 23",
 		Note: "Virtual hardware version: the number from vSphere's vmx-<n> key, as RVTools writes it."},
 	"HW upgrade status": {Kind: KindText, Empty: "for a capture predating inventory schema 23, or when vSphere reports no scheduled upgrade",
@@ -213,8 +224,14 @@ var sharedColumns = map[string]ColumnSpec{
 	"HW target": {Kind: KindInteger, Empty: "when no target version is set, so the upgrade uses the host's default",
 		Note: "Hardware version a scheduled upgrade moves to."},
 
+	// vCPU.
+	"Sockets":   {Kind: KindInteger, Empty: vmConfigEmpty, Note: "Virtual CPU sockets."},
+	"Cores p/s": {Kind: KindInteger, Empty: vmConfigEmpty, Note: "Cores per virtual socket."},
+
 	// vMemory.
 	"Size MiB": {Kind: KindInteger, Unit: "MiB", Note: "Configured memory."},
+	"Memory Reservation Locked To Max": {Kind: KindBoolean, Empty: vmConfigEmpty + ", or when vSphere does not report it",
+		Note: "True when the memory reservation follows the configured memory size."},
 
 	// vTools.
 	"Tools":                {Kind: KindText, Note: "VMware Tools running status (GuestInfo.toolsRunningStatus), for example guestToolsNotRunning. RVTools uses Tools installation status here, for example toolsNotInstalled. Do not treat these values as equivalent."},
@@ -275,7 +292,13 @@ var sharedColumns = map[string]ColumnSpec{
 	"TotalMemory":       {Kind: KindInteger, Unit: "MiB"},
 	"HA enabled":        {Kind: KindBoolean},
 	"DRS enabled":       {Kind: KindBoolean},
-	"OverallStatus":     {Kind: KindText, Empty: "when vSphere reports no status", Note: "vSphere overall status colour: green, yellow, red or gray."},
+	"Effective Cpu": {Kind: KindInteger, Unit: "MHz", Empty: "for a capture that did not record it",
+		Note: "CPU the cluster can give VMs: the total less hosts in maintenance or not responding, and less what the hosts themselves use."},
+	"Effective Memory": {Kind: KindInteger, Unit: "MiB", Empty: "for a capture that did not record it",
+		Note: "Memory the cluster can give VMs, on the same terms as Effective Cpu."},
+	"DRS default VM behavior": {Kind: KindText, Empty: "when DRS is off or vSphere reports no automation level",
+		Note: "manual, partiallyAutomated or fullyAutomated. RVTools also writes the stored level for a cluster with DRS off."},
+	"OverallStatus": {Kind: KindText, Empty: "when vSphere reports no status", Note: "vSphere overall status colour: green, yellow, red or gray."},
 	"NumCpuThreads": {Kind: KindInteger, Empty: "for a capture predating inventory schema 25",
 		Note: "Hardware threads across the member hosts."},
 	"Num VMotions": {Kind: KindInteger, Empty: "for a capture predating inventory schema 25, or for a standalone host",
@@ -324,6 +347,7 @@ var sharedColumns = map[string]ColumnSpec{
 	// vDatastore.
 	"Accessible":       {Kind: KindBoolean},
 	"Maintenance mode": {Kind: KindText, Empty: "when vSphere does not expose one"},
+	"URL":              {Kind: KindText, Empty: "for a capture predating inventory schema 11, or when vSphere reports none", Note: "The datastore's ds:/// URL, which identifies the volume or export it is presented from."},
 
 	// vSnapshot.
 	"Description": {Kind: KindText, Empty: "when the snapshot has no description"},
@@ -361,6 +385,14 @@ var sharedColumns = map[string]ColumnSpec{
 // sheetColumns describes columns whose meaning depends on the worksheet. A
 // name here shadows the shared description for that sheet only.
 var sheetColumns = map[string]map[string]ColumnSpec{
+	"vCPU": {
+		"Reservation": {Kind: KindInteger, Unit: "MHz", Empty: vmConfigEmpty, Note: "CPU guaranteed to the VM."},
+		"Limit":       {Kind: KindInteger, Unit: "MHz", Empty: vmConfigEmpty, Note: "-1 means unlimited, as vSphere and RVTools write it."},
+	},
+	"vMemory": {
+		"Reservation": {Kind: KindInteger, Unit: "MiB", Empty: vmConfigEmpty, Note: "Memory guaranteed to the VM."},
+		"Limit":       {Kind: KindInteger, Unit: "MiB", Empty: vmConfigEmpty, Note: "-1 means unlimited, as vSphere and RVTools write it."},
+	},
 	"vInfo": {
 		"Resource pool": {Kind: KindText, Empty: "for a template, a capture that did not collect resource pools, or a vApp whose parent pool is ambiguous",
 			Note: "The VM's resource pool or vApp path without the datacenter's host folder, as RVTools writes it, for example /DC-Lab/Cluster-DR/Resources."},

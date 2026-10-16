@@ -577,7 +577,7 @@ func (t sheetTable) probe() {
 	case sheetVUSB:
 		applyUSBRow(t, nil, scratchVM)
 	case sheetVHost:
-		hostFromRow(t, nil, "")
+		hostFromRow(t, nil, "", nil)
 	case sheetVSwitch:
 		applyVSwitchRow(t, nil, scratchHost)
 	case sheetVPort:
@@ -978,7 +978,7 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 	hostIndex := make(map[string]*vsphere.Host)
 	hostNameIndex := make(map[string][]*vsphere.Host)
 	attachResourceRows(tables, sheetVHost, kindHost, &warnings, &ambiguities, contextFor, func(c *importedContext, t sheetTable, row []string) string {
-		h := hostFromRow(t, row, c.name)
+		h := hostFromRow(t, row, c.name, opts.Timezone)
 		c.hosts = append(c.hosts, &h)
 		scope := c.hostScope
 		if h.ID != "" {
@@ -1625,7 +1625,7 @@ func applyPartitionRow(t sheetTable, row []string, vm *vsphere.VM) {
 	})
 }
 
-func hostFromRow(t sheetTable, row []string, contextName string) vsphere.Host {
+func hostFromRow(t sheetTable, row []string, contextName string, timezone *time.Location) vsphere.Host {
 	h := vsphere.Host{
 		Location:      vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:            t.cell(row, "Object ID"),
@@ -1636,11 +1636,11 @@ func hostFromRow(t sheetTable, row []string, contextName string) vsphere.Host {
 		CPUCores:      int32(parseInt(t.cell(row, "# Cores"))),
 		MemoryMB:      parseInt(t.cell(row, "# Memory")),
 		VMCount:       int(parseInt(t.cell(row, "# VMs total"))),
-		Version:       t.cell(row, "ESX Version"),
 		Vendor:        t.cell(row, "Vendor"),
 		Model:         t.cell(row, "Model"),
 	}
 	applyHostUsage(t, row, &h)
+	applyHostDetails(t, row, &h, timezone)
 	return h
 }
 

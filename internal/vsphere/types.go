@@ -432,6 +432,54 @@ type Host struct {
 	// physical NIC backs each of a switch's uplinks on this host.
 	ProxySwitches []HostProxySwitch `json:"proxy_switches,omitempty"`
 	Multipaths    []HostMultipath   `json:"multipaths,omitempty"`
+	// Details is the host's hardware, time, name service, vMotion and
+	// certificate configuration, nil when it was not read.
+	Details *HostDetails `json:"details,omitempty"`
+}
+
+// HostDetails is what vHost reports about a host beyond its capacity. An
+// empty string or nil field means vSphere did not report it.
+type HostDetails struct {
+	// ProductName is the full product name, for example
+	// "VMware ESXi 8.0.3 build-24784735".
+	ProductName string `json:"product_name,omitempty"`
+	CPUModel    string `json:"cpu_model,omitempty"`
+	// CPUPackages is the number of physical CPU sockets.
+	CPUPackages int32 `json:"cpu_packages,omitempty"`
+	// HTAvailable and HTActive report whether the CPUs support
+	// hyperthreading and whether it is in use.
+	HTAvailable    *bool `json:"ht_available,omitempty"`
+	HTActive       *bool `json:"ht_active,omitempty"`
+	VMotion        *bool `json:"vmotion,omitempty"`
+	StorageVMotion *bool `json:"storage_vmotion,omitempty"`
+	// CurrentEVC and MaxEVC are EVC mode keys, for example intel-broadwell.
+	CurrentEVC   string     `json:"current_evc,omitempty"`
+	MaxEVC       string     `json:"max_evc,omitempty"`
+	BootTime     *time.Time `json:"boot_time,omitempty"`
+	SerialNumber string     `json:"serial_number,omitempty"`
+	// UUID is the hardware BIOS UUID.
+	UUID         string     `json:"uuid,omitempty"`
+	BIOSVendor   string     `json:"bios_vendor,omitempty"`
+	BIOSVersion  string     `json:"bios_version,omitempty"`
+	BIOSDate     *time.Time `json:"bios_date,omitempty"`
+	DNSServers   []string   `json:"dns_servers,omitempty"`
+	DNSDHCP      *bool      `json:"dns_dhcp,omitempty"`
+	Domain       string     `json:"domain,omitempty"`
+	NTPServers   []string   `json:"ntp_servers,omitempty"`
+	NTPDRunning  *bool      `json:"ntpd_running,omitempty"`
+	TimeZone     string     `json:"time_zone,omitempty"`
+	TimeZoneName string     `json:"time_zone_name,omitempty"`
+	// GMTOffset is the time zone's current offset from UTC in seconds.
+	GMTOffset   *int32           `json:"gmt_offset,omitempty"`
+	Certificate *HostCertificate `json:"certificate,omitempty"`
+}
+
+// HostCertificate is the host's SSL certificate, without its key material.
+type HostCertificate struct {
+	Issuer    string    `json:"issuer"`
+	Subject   string    `json:"subject"`
+	NotBefore time.Time `json:"not_before"`
+	NotAfter  time.Time `json:"not_after"`
 }
 
 // TotalCPU returns the host's total CPU capacity in MHz.

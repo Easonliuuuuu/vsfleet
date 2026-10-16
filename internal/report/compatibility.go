@@ -168,6 +168,9 @@ var sheetMeta = map[string]sheetInfo{
 // sharedColumns describes every column whose meaning does not change between
 // worksheets. The identity and provenance tail — Annotation through vsfleet
 // Context — is the bulk of it, repeated on every per-VM tab.
+// clusterSettingsEmpty is when the vCluster HA, DRS and DPM columns are empty.
+const clusterSettingsEmpty = "for a capture predating inventory schema 25, or for a standalone host"
+
 var sharedColumns = map[string]ColumnSpec{
 	// Per-VM identity and provenance tail.
 	"VM":         {Kind: KindText, Note: "VM name as vCenter reports it; not unique across an estate."},
@@ -219,25 +222,22 @@ var sharedColumns = map[string]ColumnSpec{
 	"Tools Version Status": {Kind: KindText, Empty: "for a capture predating inventory schema 3", Note: "e.g. guestToolsCurrent, guestToolsNeedUpgrade."},
 
 	// vDisk.
-	"Disk UUID":              {Kind: KindText, Empty: "when vSphere does not expose one"},
-	"Disk Mode":              {Kind: KindText, Note: "e.g. persistent, independent_persistent."},
-	"Sharing mode":           {Kind: KindText, Empty: "when vSphere does not expose one"},
-	"Raw":                    {Kind: KindBoolean, Note: "True for a raw device mapping."},
-	"Thin":                   {Kind: KindBoolean, Empty: "for a raw device mapping, where it does not apply"},
-	"Eagerly Scrub":          {Kind: KindBoolean, Empty: "when vSphere does not expose it"},
-	"Split":                  {Kind: KindBoolean, Empty: "when vSphere does not expose it"},
-	"Write Through":          {Kind: KindBoolean, Empty: "when vSphere does not expose it"},
-	"Controller":             {Kind: KindText, Empty: "when the controller cannot be resolved"},
-	"SCSI label":             {Kind: KindText, Empty: "when the controller cannot be resolved"},
-	"Unit number":            {Kind: KindInteger, Empty: "when vSphere does not expose one"},
-	"Shared Bus":             {Kind: KindText, Empty: "when the controller cannot be resolved", Note: "SCSI controller bus sharing mode, such as noSharing."},
-	"Path":                   {Kind: KindText, Empty: "when the disk has no backing file", Note: "Datastore path, e.g. [datastore1] vm/vm.vmdk."},
-	"Raw LUN ID":             {Kind: KindText, Empty: "for anything but a raw device mapping"},
-	"Raw Compatibility Mode": {Kind: KindText, Empty: "for anything but a raw device mapping"},
-	"Level":                  {Kind: KindText, Note: "Disk shares level: low, normal, high or custom."},
-	"Shares":                 {Kind: KindInteger, Empty: "when vSphere does not expose it", Note: "Disk shares value."},
-	"Reservation":            {Kind: KindInteger, Unit: "IOPS", Empty: "when vSphere does not expose it"},
-	"Limit":                  {Kind: KindInteger, Unit: "IOPS", Empty: "when unlimited", Note: "-1 means unlimited where vSphere reports it that way."},
+	"Disk UUID":     {Kind: KindText, Empty: "when vSphere does not expose one"},
+	"Disk Mode":     {Kind: KindText, Note: "e.g. persistent, independent_persistent."},
+	"Sharing mode":  {Kind: KindText, Empty: "when vSphere does not expose one"},
+	"Raw":           {Kind: KindBoolean, Note: "True for a raw device mapping."},
+	"Thin":          {Kind: KindBoolean, Empty: "for a raw device mapping, where it does not apply"},
+	"Eagerly Scrub": {Kind: KindBoolean, Empty: "when vSphere does not expose it"},
+	"Split":         {Kind: KindBoolean, Empty: "when vSphere does not expose it"},
+	"Write Through": {Kind: KindBoolean, Empty: "when vSphere does not expose it"},
+	"Controller":    {Kind: KindText, Empty: "when the controller cannot be resolved"},
+	"Shared Bus":    {Kind: KindText, Empty: "when the controller cannot be resolved", Note: "SCSI controller bus sharing mode, such as noSharing."},
+	"Path":          {Kind: KindText, Empty: "when the disk has no backing file", Note: "Datastore path, e.g. [datastore1] vm/vm.vmdk."},
+	"Raw LUN ID":    {Kind: KindText, Empty: "for anything but a raw device mapping"},
+	"Level":         {Kind: KindText, Note: "Disk shares level: low, normal, high or custom."},
+	"Shares":        {Kind: KindInteger, Empty: "when vSphere does not expose it", Note: "Disk shares value."},
+	"Reservation":   {Kind: KindInteger, Unit: "IOPS", Empty: "when vSphere does not expose it"},
+	"Limit":         {Kind: KindInteger, Unit: "IOPS", Empty: "when unlimited", Note: "-1 means unlimited where vSphere reports it that way."},
 
 	// vPartition.
 	"Consumed MiB": {Kind: KindDecimal, Unit: "MiB", Note: "Fractional MiB are retained; RVTools writes integers. Clamped to zero if VMware Tools reports free space exceeding capacity."},
@@ -275,6 +275,32 @@ var sharedColumns = map[string]ColumnSpec{
 	"TotalMemory":       {Kind: KindInteger, Unit: "MiB"},
 	"HA enabled":        {Kind: KindBoolean},
 	"DRS enabled":       {Kind: KindBoolean},
+	"OverallStatus":     {Kind: KindText, Empty: "when vSphere reports no status", Note: "vSphere overall status colour: green, yellow, red or gray."},
+	"NumCpuThreads": {Kind: KindInteger, Empty: "for a capture predating inventory schema 25",
+		Note: "Hardware threads across the member hosts."},
+	"Num VMotions": {Kind: KindInteger, Empty: "for a capture predating inventory schema 25, or for a standalone host",
+		Note: "vMotions the cluster has completed, as the cluster summary counts them."},
+	"Failover Level": {Kind: KindInteger, Empty: clusterSettingsEmpty,
+		Note: "Host failures HA is configured to tolerate. Like every HA setting here it is written whether or not HA is enabled, as RVTools does: vSphere keeps it, and it applies once HA is turned on."},
+	"AdmissionControlEnabled": {Kind: KindBoolean, Empty: clusterSettingsEmpty,
+		Note: "True when vSphere omits the setting, which the vSphere API documents as the default."},
+	"Host monitoring":               {Kind: KindText, Empty: clusterSettingsEmpty, Note: "enabled or disabled."},
+	"HB Datastore Candidate Policy": {Kind: KindText, Empty: clusterSettingsEmpty, Note: "How HA picks heartbeat datastores: allFeasibleDs, userSelectedDs or allFeasibleDsWithUserPreference."},
+	"Isolation Response":            {Kind: KindText, Empty: clusterSettingsEmpty, Note: "The cluster default for VMs on an isolated host: none, powerOff or shutdown."},
+	"Restart Priority":              {Kind: KindText, Empty: clusterSettingsEmpty, Note: "The cluster default HA restart priority, for example medium."},
+	"Cluster Settings": {Kind: KindBoolean, Empty: clusterSettingsEmpty + ", or when vSphere reports no VM monitoring settings",
+		Note: "True when VMs use the cluster's VM monitoring settings rather than their own."},
+	"Max Failures":       {Kind: KindInteger, Empty: clusterSettingsEmpty + ", or when vSphere reports no VM monitoring settings", Note: "VM resets HA allows within Max Failure Window."},
+	"Max Failure Window": {Kind: KindInteger, Unit: "seconds", Empty: clusterSettingsEmpty + ", or when vSphere reports no VM monitoring settings", Note: "-1 means no window."},
+	"Failure Interval":   {Kind: KindInteger, Unit: "seconds", Empty: clusterSettingsEmpty + ", or when vSphere reports no VM monitoring settings", Note: "Time without a VMware Tools heartbeat that counts as a VM failure."},
+	"Min Up Time":        {Kind: KindInteger, Unit: "seconds", Empty: clusterSettingsEmpty + ", or when vSphere reports no VM monitoring settings", Note: "Time after a power-on before VM monitoring starts."},
+	"VM Monitoring":      {Kind: KindText, Empty: clusterSettingsEmpty, Note: "vmMonitoringDisabled, vmMonitoringOnly or vmAndAppMonitoring."},
+	"DRS vmotion rate":   {Kind: KindInteger, Empty: clusterSettingsEmpty + ", or when vSphere reports no rate", Note: "DRS migration threshold, 1 to 5."},
+	"DPM enabled":        {Kind: KindBoolean, Empty: clusterSettingsEmpty},
+	"DPM default behavior": {Kind: KindText, Empty: clusterSettingsEmpty + ", or when vSphere reports no DPM configuration",
+		Note: "manual or automated."},
+	"DPM Host Power Action Rate": {Kind: KindInteger, Empty: clusterSettingsEmpty + ", or when vSphere reports no DPM configuration",
+		Note: "DPM threshold, 1 to 5."},
 
 	// vRP.
 	"Resource pool":             {Kind: KindText, Note: "Inventory path of the pool or vApp."},
@@ -375,6 +401,11 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Disk":         {Kind: KindText, Note: "Virtual disk label, e.g. Hard disk 1."},
 		"Disk Key":     {Kind: KindInteger, Note: "Device key of the virtual disk. Joins to the column of the same name on vPartition."},
 		"Capacity MiB": {Kind: KindDecimal, Unit: "MiB", Note: "Provisioned size of the virtual disk, which is not how much of it the guest has used."},
+		"Label":        {Kind: KindText, Empty: "when the controller cannot be resolved", Note: "Controller label, e.g. SCSI controller 0."},
+		"SCSI Unit #": {Kind: KindInteger, Empty: "for a non-SCSI controller, or a capture predating inventory schema 24",
+			Note: "The SCSI controller's own unit number on its bus, usually 7."},
+		"Unit #":         {Kind: KindInteger, Empty: "when vSphere does not expose one", Note: "The disk's unit number on its controller."},
+		"Raw Comp. Mode": {Kind: KindText, Empty: "for anything but a raw device mapping"},
 	},
 	"vPartition": {
 		"Disk": {Kind: KindText, Note: "Guest filesystem mount point or drive letter, e.g. / or C:\\."},
@@ -439,8 +470,9 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Datastore ID":         {Kind: KindText, Note: "vCenter managed object reference of the datastore."},
 	},
 	"vCluster": {
-		"Name":      {Kind: KindText, Note: "Cluster name."},
-		"Object ID": {Kind: KindText, Note: "vCenter managed object reference of the cluster."},
+		"Name":          {Kind: KindText, Note: "Cluster name."},
+		"Object ID":     {Kind: KindText, Note: "vCenter managed object reference of the cluster."},
+		"Config status": {Kind: KindText, Empty: "for a capture predating inventory schema 25", Note: "vSphere configuration status colour: green, yellow, red or gray."},
 	},
 	"vRP": {
 		"Name":      {Kind: KindText, Note: "Resource pool or vApp name, the last element of the Resource pool path."},

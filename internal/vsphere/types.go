@@ -289,25 +289,29 @@ func (p VMPartition) UsedBytes() int64 {
 // VMDisk is one virtual disk from a VM's hardware configuration. Optional
 // values remain nil when vSphere does not expose them for a backing type.
 type VMDisk struct {
-	Key                  int32  `json:"key"`
-	Label                string `json:"label"`
-	CapacityBytes        int64  `json:"capacity_bytes"`
-	UUID                 string `json:"uuid,omitempty"`
-	BackingType          string `json:"backing_type,omitempty"`
-	BackingPath          string `json:"backing_path,omitempty"`
-	Raw                  bool   `json:"raw"`
-	DiskMode             string `json:"disk_mode,omitempty"`
-	Sharing              string `json:"sharing,omitempty"`
-	ThinProvisioned      *bool  `json:"thin_provisioned,omitempty"`
-	EagerlyScrub         *bool  `json:"eagerly_scrub,omitempty"`
-	Split                *bool  `json:"split,omitempty"`
-	WriteThrough         *bool  `json:"write_through,omitempty"`
-	SharesLevel          string `json:"shares_level,omitempty"`
-	Shares               *int32 `json:"shares,omitempty"`
-	Reservation          *int32 `json:"reservation,omitempty"`
-	Limit                *int64 `json:"limit,omitempty"`
-	Controller           string `json:"controller,omitempty"`
-	ControllerLabel      string `json:"controller_label,omitempty"`
+	Key             int32  `json:"key"`
+	Label           string `json:"label"`
+	CapacityBytes   int64  `json:"capacity_bytes"`
+	UUID            string `json:"uuid,omitempty"`
+	BackingType     string `json:"backing_type,omitempty"`
+	BackingPath     string `json:"backing_path,omitempty"`
+	Raw             bool   `json:"raw"`
+	DiskMode        string `json:"disk_mode,omitempty"`
+	Sharing         string `json:"sharing,omitempty"`
+	ThinProvisioned *bool  `json:"thin_provisioned,omitempty"`
+	EagerlyScrub    *bool  `json:"eagerly_scrub,omitempty"`
+	Split           *bool  `json:"split,omitempty"`
+	WriteThrough    *bool  `json:"write_through,omitempty"`
+	SharesLevel     string `json:"shares_level,omitempty"`
+	Shares          *int32 `json:"shares,omitempty"`
+	Reservation     *int32 `json:"reservation,omitempty"`
+	Limit           *int64 `json:"limit,omitempty"`
+	Controller      string `json:"controller,omitempty"`
+	ControllerLabel string `json:"controller_label,omitempty"`
+	// ControllerUnitNumber is the SCSI controller's own unit number on its
+	// bus, usually 7. It is nil for other controller types and for captures
+	// predating inventory schema 24.
+	ControllerUnitNumber *int32 `json:"controller_unit_number,omitempty"`
 	UnitNumber           *int32 `json:"unit_number,omitempty"`
 	SharedBus            string `json:"shared_bus,omitempty"`
 	RawLUNID             string `json:"raw_lun_id,omitempty"`
@@ -654,6 +658,68 @@ type Cluster struct {
 	// HA is the vSphere HA configuration and failover state, nil when it was
 	// not read or the compute resource is a standalone host.
 	HA *ClusterHA `json:"ha,omitempty"`
+	// ConfigStatus is vSphere's configuration status colour: green, yellow,
+	// red or gray. Empty means not read.
+	ConfigStatus string `json:"config_status,omitempty"`
+	// CPUThreads is the hardware threads across the member hosts, and
+	// VMotions the vMotions the cluster has completed, both from the
+	// compute resource summary. Nil means not read.
+	CPUThreads *int32 `json:"cpu_threads,omitempty"`
+	VMotions   *int32 `json:"vmotions,omitempty"`
+	// Settings is the cluster's HA, DRS and DPM configuration, nil when it
+	// was not read or the compute resource is a standalone host.
+	Settings *ClusterSettings `json:"settings,omitempty"`
+}
+
+// ClusterSettings is how a cluster's HA, DRS and DPM are configured, read
+// whether or not each feature is turned on: vSphere keeps the settings of a
+// disabled feature, and they take effect as soon as it is enabled. Unlike
+// ClusterHA it holds configuration only, never failover state.
+type ClusterSettings struct {
+	// FailoverLevel is the host failures HA is configured to tolerate.
+	FailoverLevel int32 `json:"failover_level"`
+	// AdmissionControl defaults to on when the server omits it, as the
+	// vSphere API documents.
+	AdmissionControl bool `json:"admission_control"`
+	// HostMonitoring is enabled or disabled, and VMMonitoring one of
+	// vmMonitoringDisabled, vmMonitoringOnly or vmAndAppMonitoring.
+	HostMonitoring string `json:"host_monitoring,omitempty"`
+	VMMonitoring   string `json:"vm_monitoring,omitempty"`
+	// HeartbeatDatastorePolicy is how HA picks heartbeat datastores, for
+	// example allFeasibleDsWithUserPreference.
+	HeartbeatDatastorePolicy string `json:"heartbeat_datastore_policy,omitempty"`
+	// IsolationResponse and RestartPriority are the cluster's default VM
+	// settings: what an isolated host does with its VMs, and the order HA
+	// restarts them in.
+	IsolationResponse string `json:"isolation_response,omitempty"`
+	RestartPriority   string `json:"restart_priority,omitempty"`
+	// VMTools is the cluster's default VM monitoring sensitivity, nil when
+	// vSphere omits it.
+	VMTools *ClusterVMToolsMonitoring `json:"vm_tools,omitempty"`
+	// DRSVMotionRate is the DRS migration threshold, 1 to 5; zero means not
+	// reported.
+	DRSVMotionRate int32 `json:"drs_vmotion_rate,omitempty"`
+	DPMEnabled     bool  `json:"dpm_enabled"`
+	// DPMBehavior is manual or automated, and DPMHostPowerActionRate the DPM
+	// threshold, 1 to 5; zero means not reported.
+	DPMBehavior            string `json:"dpm_behavior,omitempty"`
+	DPMHostPowerActionRate int32  `json:"dpm_host_power_action_rate,omitempty"`
+}
+
+// ClusterVMToolsMonitoring is HA's VM monitoring sensitivity: how long a VM
+// must miss VMware Tools heartbeats before HA resets it, and how often.
+type ClusterVMToolsMonitoring struct {
+	// ClusterSettings reports whether VMs use the cluster's settings rather
+	// than their own; nil means vSphere omitted it.
+	ClusterSettings *bool `json:"cluster_settings,omitempty"`
+	// MaxFailures resets are allowed within MaxFailureWindow seconds (-1 is
+	// no window). FailureInterval is the seconds without a heartbeat that
+	// count as a failure, and MinUpTime the seconds after a power-on before
+	// monitoring starts.
+	MaxFailures      int32 `json:"max_failures"`
+	MaxFailureWindow int32 `json:"max_failure_window"`
+	FailureInterval  int32 `json:"failure_interval"`
+	MinUpTime        int32 `json:"min_up_time"`
 }
 
 // Alarm is one triggered alarm: what fired, how bad it is and where.

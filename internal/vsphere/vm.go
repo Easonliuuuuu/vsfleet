@@ -562,7 +562,7 @@ func newVMUSB(device *types.VirtualUSB, controller deviceController) VMUSB {
 }
 
 func newVMDisk(d *types.VirtualDisk, controller deviceController) VMDisk {
-	out := VMDisk{Key: d.Key, Label: deviceLabel(d.DeviceInfo), CapacityBytes: d.CapacityInBytes, Controller: controller.typeName, ControllerLabel: controller.label, SharedBus: controller.sharedBus, UnitNumber: clonePtr(d.UnitNumber)}
+	out := VMDisk{Key: d.Key, Label: deviceLabel(d.DeviceInfo), CapacityBytes: d.CapacityInBytes, Controller: controller.typeName, ControllerLabel: controller.label, ControllerUnitNumber: clonePtr(controller.unitNumber), SharedBus: controller.sharedBus, UnitNumber: clonePtr(d.UnitNumber)}
 	if out.CapacityBytes == 0 && d.CapacityInKB > 0 {
 		out.CapacityBytes = d.CapacityInKB * 1024
 	}

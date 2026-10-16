@@ -45,7 +45,7 @@ var (
 	vmHeaders        = []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "CPUs", "Memory", "NICs", "Disks", "Primary IP Address", "Resource pool", "Folder", "vApp", "In Use MiB", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs"}, vmTailHeaders...)
 	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB"}, vmTailHeaders...)
-	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "SCSI label", "Unit number", "Shared Bus", "Path", "Raw LUN ID", "Raw Compatibility Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	networkHeaders   = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	toolsHeaders     = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
 	cdHeaders        = append([]string{"VM", "Powerstate", "Template", "Device", "Device Key", "Connected", "Starts Connected", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeaders...)
@@ -65,7 +65,7 @@ var (
 	dvPortHeaders       = append([]string{"Port", "Switch", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Allow Promiscuous", "Mac Changes", "Forged Transmits", "Policy", "Notify Switch", "Rolling Order", "In Traffic Shaping", "Out Traffic Shaping", "Blocked", "Auto expand", "Active Uplink", "Standby Uplink", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
 	vmkHeaders          = append([]string{"Device", "Port Group", "Mac Address", "MTU", "TSO", "Netstack", "DHCP", "IP Address", "Subnet mask", "Service console"}, hostTailHeaders...)
 	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Local disk", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
-	clusterHeaders      = []string{"Name", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "TotalMemory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -506,7 +506,7 @@ func diskRows(data assessment.ExportData) [][]any {
 				float64(disk.CapacityBytes) / miB, disk.Raw, disk.DiskMode, disk.Sharing,
 				optionalBool(disk.ThinProvisioned), optionalBool(disk.EagerlyScrub), optionalBool(disk.Split), optionalBool(disk.WriteThrough),
 				disk.SharesLevel, optionalInt32(disk.Shares), optionalInt32(disk.Reservation), optionalInt64(disk.Limit),
-				disk.Controller, disk.ControllerLabel, optionalInt32(disk.UnitNumber), disk.SharedBus, disk.BackingPath,
+				disk.Controller, disk.ControllerLabel, optionalInt32(disk.ControllerUnitNumber), optionalInt32(disk.UnitNumber), disk.SharedBus, disk.BackingPath,
 				disk.RawLUNID, disk.RawCompatibilityMode, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs),
 				vm.GuestOS, vm.ID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context,
 			})
@@ -861,9 +861,40 @@ func clusterRows(data assessment.ExportData) [][]any {
 		if err := json.Unmarshal(r.Payload, &cluster); err != nil {
 			continue
 		}
-		rows = append(rows, []any{nonempty(cluster.Name, r.Name), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, cluster.TotalMemoryMB, cluster.HAEnabled, cluster.DRSEnabled, nonempty(cluster.ID, r.ID), cluster.Datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context})
+		row := []any{nonempty(cluster.Name, r.Name), optionalString(cluster.ConfigStatus), optionalString(cluster.OverallStatus), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, optionalInt32(cluster.CPUThreads), cluster.TotalMemoryMB, optionalInt32(cluster.VMotions), cluster.HAEnabled}
+		row = append(row, clusterHACells(cluster.Settings)...)
+		row = append(row, cluster.DRSEnabled)
+		row = append(row, clusterDRSCells(cluster.Settings)...)
+		rows = append(rows, append(row, nonempty(cluster.ID, r.ID), cluster.Datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context))
 	}
 	return rows
+}
+
+// clusterHACells writes Failover Level through VM Monitoring. A cluster whose
+// settings were not read leaves every cell empty rather than reporting the
+// zero values as configuration.
+func clusterHACells(st *vsphere.ClusterSettings) []any {
+	cells := make([]any, 12)
+	if st == nil {
+		return cells
+	}
+	cells[0], cells[1], cells[2], cells[3] = st.FailoverLevel, st.AdmissionControl, optionalString(st.HostMonitoring), optionalString(st.HeartbeatDatastorePolicy)
+	cells[4], cells[5] = optionalString(st.IsolationResponse), optionalString(st.RestartPriority)
+	if mon := st.VMTools; mon != nil {
+		cells[6], cells[7], cells[8], cells[9], cells[10] = optionalBool(mon.ClusterSettings), mon.MaxFailures, mon.MaxFailureWindow, mon.FailureInterval, mon.MinUpTime
+	}
+	cells[11] = optionalString(st.VMMonitoring)
+	return cells
+}
+
+// clusterDRSCells writes DRS vmotion rate through DPM Host Power Action Rate.
+func clusterDRSCells(st *vsphere.ClusterSettings) []any {
+	cells := make([]any, 4)
+	if st == nil {
+		return cells
+	}
+	cells[0], cells[1], cells[2], cells[3] = optionalInt32NonZero(st.DRSVMotionRate), st.DPMEnabled, optionalString(st.DPMBehavior), optionalInt32NonZero(st.DPMHostPowerActionRate)
+	return cells
 }
 
 func resourcePoolRows(data assessment.ExportData) [][]any {

@@ -78,7 +78,7 @@ evidence only and never contacts a vCenter.`)
   vsfleet health --severity warning --fail-on-findings
 
   # Loosen a threshold and turn one rule off
-  vsfleet health --max-snapshot-age 90d --disable-rule guest-disk-free`
+  vsfleet health --max-snapshot-age 90d --disable-rule guest-disk-space-low`
 	return cmd
 }
 

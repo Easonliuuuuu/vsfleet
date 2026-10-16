@@ -92,12 +92,16 @@ const (
 	sheetVMetaData  = "vMetaData"
 )
 
-// headerAliases maps known RVTools spellings to the canonical headers used by
-// this importer. Matching remains case-insensitive and accepts the original
-// vsfleet-compatible spelling as well as these aliases.
+// headerAliases maps alternative spellings to the canonical headers used by
+// this importer. Matching remains case-insensitive and accepts the canonical
+// spelling as well as these aliases. vDisk reads RVTools' names and keeps the
+// ones vsfleet exported before schema 24, so older workbooks still import.
 var headerAliases = map[string]map[string]string{
 	sheetVDisk: {
-		"shared bus": "SharedBus",
+		"sharedbus":              "Shared Bus",
+		"scsi label":             "Label",
+		"unit number":            "Unit #",
+		"raw compatibility mode": "Raw Comp. Mode",
 	},
 	sheetDVSwitch: {
 		"switch":    "DVS",
@@ -1504,12 +1508,13 @@ func applyDiskRow(t sheetTable, row []string, vm *vsphere.VM) {
 		Reservation:          parseOptInt32(t.cell(row, "Reservation")),
 		Limit:                parseOptInt64(t.cell(row, "Limit")),
 		Controller:           t.cell(row, "Controller"),
-		ControllerLabel:      t.cell(row, "SCSI label"),
-		UnitNumber:           parseOptInt32(t.cell(row, "Unit number")),
-		SharedBus:            t.cell(row, "SharedBus"),
+		ControllerLabel:      t.cell(row, "Label"),
+		ControllerUnitNumber: parseOptInt32(t.cell(row, "SCSI Unit #")),
+		UnitNumber:           parseOptInt32(t.cell(row, "Unit #")),
+		SharedBus:            t.cell(row, "Shared Bus"),
 		BackingPath:          t.cell(row, "Path"),
 		RawLUNID:             t.cell(row, "Raw LUN ID"),
-		RawCompatibilityMode: t.cell(row, "Raw Compatibility Mode"),
+		RawCompatibilityMode: t.cell(row, "Raw Comp. Mode"),
 	})
 }
 
@@ -1617,7 +1622,7 @@ func applyPartitionRow(t sheetTable, row []string, vm *vsphere.VM) {
 }
 
 func hostFromRow(t sheetTable, row []string, contextName string) vsphere.Host {
-	return vsphere.Host{
+	h := vsphere.Host{
 		Location:      vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:            t.cell(row, "Object ID"),
 		Name:          t.cell(row, "Host"),
@@ -1631,6 +1636,8 @@ func hostFromRow(t sheetTable, row []string, contextName string) vsphere.Host {
 		Vendor:        t.cell(row, "Vendor"),
 		Model:         t.cell(row, "Model"),
 	}
+	applyHostUsage(t, row, &h)
+	return h
 }
 
 func applyVSwitchRow(t sheetTable, row []string, host *vsphere.Host) {
@@ -1775,7 +1782,7 @@ func parseWWN(value string) *int64 {
 }
 
 func clusterFromRow(t sheetTable, row []string, contextName string) vsphere.Cluster {
-	return vsphere.Cluster{
+	cl := vsphere.Cluster{
 		Location:      vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:            t.cell(row, "Object ID"),
 		Name:          t.cell(row, "Name"),
@@ -1786,7 +1793,13 @@ func clusterFromRow(t sheetTable, row []string, contextName string) vsphere.Clus
 		TotalMemoryMB: parseInt(t.cell(row, "TotalMemory")),
 		HAEnabled:     parseBool(t.cell(row, "HA enabled")),
 		DRSEnabled:    parseBool(t.cell(row, "DRS enabled")),
+		ConfigStatus:  t.cell(row, "Config status"),
+		OverallStatus: t.cell(row, "OverallStatus"),
+		CPUThreads:    parseOptInt32(t.cell(row, "NumCpuThreads")),
+		VMotions:      parseOptInt32(t.cell(row, "Num VMotions")),
 	}
+	cl.Settings = clusterSettingsFromRow(t, row)
+	return cl
 }
 
 func datastoreFromRow(t sheetTable, row []string, contextName string) vsphere.Datastore {
@@ -1881,37 +1894,23 @@ func parseOptBool(s string) *bool {
 }
 
 // parseInt tolerates the numeric-cell forms excelize's GetRows can produce
-// (plain integers and "123.0"-style floats alike) and returns zero for
-// anything it cannot parse or an empty cell. A caller that must tell "zero"
-// from "absent" checks the column's presence first — see criticalColumns.
+// (plain integers, "123.0"-style floats and "#,##0"-formatted "9,984")
+// and returns zero for anything it cannot parse or an empty cell. A caller
+// that must tell "zero" from "absent" checks the column's presence first —
+// see criticalColumns.
 func parseInt(s string) int64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
+	f, _ := parseNumber(s)
 	return int64(f)
 }
 
 func parseFloat(s string) float64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	f, _ := strconv.ParseFloat(s, 64)
+	f, _ := parseNumber(s)
 	return f
 }
 
 func parseOptInt32(s string) *int32 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	f, ok := parseNumber(s)
+	if !ok {
 		return nil
 	}
 	v := int32(f)
@@ -1919,12 +1918,8 @@ func parseOptInt32(s string) *int32 {
 }
 
 func parseOptInt64(s string) *int64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	f, ok := parseNumber(s)
+	if !ok {
 		return nil
 	}
 	v := int64(f)

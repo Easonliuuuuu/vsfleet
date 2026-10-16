@@ -110,14 +110,14 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 		t.Fatalf("dvPort name=%q", got)
 	}
 	for sheet, cells := range map[string]map[string]string{
-		"vDisk":    {"V1": "Shared Bus"},
+		"vDisk":    {"T1": "Label", "U1": "SCSI Unit #", "V1": "Unit #", "W1": "Shared Bus", "Z1": "Raw Comp. Mode"},
 		"vHBA":     {"F1": "Pci"},
 		"vSwitch":  {"C1": "Free Ports", "F1": "Promiscuous Mode", "G1": "Mac Changes", "H1": "Forged Transmits", "I1": "Traffic Shaping"},
 		"vPort":    {"A1": "Port Group", "D1": "Promiscuous Mode", "E1": "Mac Changes", "F1": "Forged Transmits"},
 		"vSC_VMK":  {"B1": "Port Group"},
 		"dvSwitch": {"A1": "Switch", "C1": "Max Ports"},
 		"dvPort":   {"A1": "Port", "B1": "Switch", "I1": "Allow Promiscuous", "J1": "Mac Changes", "K1": "Forged Transmits", "L1": "Policy", "M1": "Notify Switch", "N1": "Rolling Order", "O1": "In Traffic Shaping", "P1": "Out Traffic Shaping", "S1": "Active Uplink", "T1": "Standby Uplink"},
-		"vCluster": {"C1": "numEffectiveHosts"},
+		"vCluster": {"E1": "numEffectiveHosts"},
 		"vRP":      {"G1": "CPU overheadLimit", "K1": "CPU expandableReservation", "L1": "Mem Configured", "N1": "Mem overheadLimit", "R1": "Mem expandableReservation"},
 	} {
 		for cell, want := range cells {
@@ -126,7 +126,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 			}
 		}
 	}
-	if got, _ := f.GetCellValue("vDisk", "V2"); got != "noSharing" {
+	if got, _ := f.GetCellValue("vDisk", "W2"); got != "noSharing" {
 		t.Fatalf("vDisk shared bus=%q, want noSharing", got)
 	}
 	if got, _ := f.GetCellValue("dvPort", "N2"); got != "TRUE" {

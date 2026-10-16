@@ -83,8 +83,8 @@ var columnRules = map[string]colRule{
 	"Disk": keep(), "Disk Key": keep(), "Disk UUID": id(kindUUID), "Capacity MiB": keep(), "Raw": keep(),
 	"Disk Mode": keep(), "Sharing mode": keep(), "Thin": keep(), "Eagerly Scrub": keep(), "Split": keep(),
 	"Write Through": keep(), "Level": keep(), "Shares": keep(), "Reservation": keep(), "Limit": keep(),
-	"Controller": keep(), "SCSI label": keep(), "Unit number": keep(), "Shared Bus": keep(), "Path": pathRule,
-	"Raw LUN ID": id(kindID), "Raw Compatibility Mode": keep(), "Consumed MiB": keep(), "Free MiB": keep(),
+	"Controller": keep(), "Label": keep(), "SCSI Unit #": keep(), "Unit number": keep(), "Unit #": keep(), "Shared Bus": keep(), "Path": pathRule,
+	"Raw LUN ID": id(kindID), "Raw Comp. Mode": keep(), "Consumed MiB": keep(), "Free MiB": keep(),
 	"Free %": keep(), "Filesystem": keep(),
 
 	// vNetwork / vCD / vUSB.
@@ -125,7 +125,11 @@ var columnRules = map[string]colRule{
 
 	// vCluster / vRP / vDatastore.
 	"NumHosts": keep(), "numEffectiveHosts": keep(), "TotalCpu": keep(), "NumCpuCores": keep(), "TotalMemory": keep(),
-	"HA enabled": keep(), "DRS enabled": keep(), "Resource pool": pathRule, "VMs": keep(), "vCPUs": keep(),
+	"HA enabled": keep(), "DRS enabled": keep(), "OverallStatus": keep(), "NumCpuThreads": keep(), "Num VMotions": keep(),
+	"Failover Level": keep(), "AdmissionControlEnabled": keep(), "Host monitoring": keep(), "HB Datastore Candidate Policy": keep(),
+	"Isolation Response": keep(), "Restart Priority": keep(), "Cluster Settings": keep(), "Max Failures": keep(),
+	"Max Failure Window": keep(), "Failure Interval": keep(), "Min Up Time": keep(), "VM Monitoring": keep(),
+	"DRS vmotion rate": keep(), "DPM enabled": keep(), "DPM default behavior": keep(), "DPM Host Power Action Rate": keep(), "Resource pool": pathRule, "VMs": keep(), "vCPUs": keep(),
 	"CPU limit": keep(), "CPU overheadLimit": keep(), "CPU reservation": keep(), "CPU level": keep(), "CPU shares": keep(),
 	"CPU expandableReservation": keep(), "Mem Configured": keep(), "Mem limit": keep(), "Mem overheadLimit": keep(),
 	"Mem reservation": keep(), "Mem level": keep(), "Mem shares": keep(), "Mem expandableReservation": keep(),

@@ -50,8 +50,11 @@ type RunStatus string
 // (VM.HardwareVersion, VM.HardwareUpgrade); older runs have neither, which
 // readers must treat as "not read". Schema 24 records each disk's SCSI
 // controller unit number (VMDisk.ControllerUnitNumber); older runs have none,
-// which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "24"
+// which readers must treat as "not read". Schema 25 records each cluster's
+// configuration status, CPU threads, vMotion count and HA, DRS and DPM
+// settings (Cluster.ConfigStatus, CPUThreads, VMotions, Settings); older runs
+// have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "25"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

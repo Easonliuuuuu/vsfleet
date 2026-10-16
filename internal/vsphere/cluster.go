@@ -12,7 +12,7 @@ import (
 
 var computeResourceKinds = []string{"ComputeResource", "ClusterComputeResource"}
 
-var clusterProps = []string{"name", "parent", "summary", "host", "customValue", "overallStatus", "configIssue", "triggeredAlarmState"}
+var clusterProps = []string{"name", "parent", "summary", "host", "customValue", "overallStatus", "configStatus", "configIssue", "triggeredAlarmState"}
 
 // ListClusters returns the clusters in a vCenter. A host that is not in a
 // cluster appears as a standalone compute resource and is reported with
@@ -55,6 +55,7 @@ func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error
 			Hosts: len(m.Host),
 		}
 		cl.OverallStatus = string(m.OverallStatus)
+		cl.ConfigStatus = string(m.ConfigStatus)
 		cl.ConfigIssues = issueMessages(m.ConfigIssue)
 		cl.Alarms = triggeredAlarms(idx, m.TriggeredAlarmState, alarmNames)
 		if st, ok := settings[m.Self]; ok {
@@ -64,6 +65,7 @@ func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error
 				cl.DRSBehavior = st.drsBehavior
 			}
 			cl.HA = st.haConfig
+			cl.Settings = st.settings
 		}
 		applyComputeSummary(&cl, m.Summary)
 		// vCenter lists only the alarms on objects the account can see, so
@@ -100,6 +102,8 @@ func applyComputeSummary(cl *Cluster, summary types.BaseComputeResourceSummary) 
 	cl.EffectiveHost = int(s.NumEffectiveHosts)
 	cl.EffectiveCPUMHz = int64(s.EffectiveCpu)
 	cl.EffectiveMemoryMB = s.EffectiveMemory
+	threads := int32(s.NumCpuThreads)
+	cl.CPUThreads = &threads
 	if s.NumHosts > 0 {
 		cl.Hosts = int(s.NumHosts)
 	}
@@ -108,6 +112,8 @@ func applyComputeSummary(cl *Cluster, summary types.BaseComputeResourceSummary) 
 		return
 	}
 	cl.EVCMode = cs.CurrentEVCModeKey
+	vmotions := cs.NumVmotions
+	cl.VMotions = &vmotions
 	cl.DRSScore = cs.DrsScore
 	if cl.HA == nil {
 		return
@@ -223,9 +229,10 @@ type clusterSetting struct {
 	drs, ha     bool
 	drsBehavior string
 	haConfig    *ClusterHA
+	settings    *ClusterSettings
 }
 
-// clusterSettings reads DRS and HA configuration, which only exists on the
+// clusterSettings reads DRS, HA and DPM configuration, which only exists on the
 // cluster subtype and so cannot be part of the ComputeResource property set.
 func (c *Client) clusterSettings(ctx context.Context, idx *index) (map[types.ManagedObjectReference]clusterSetting, error) {
 	var raw []mo.ClusterComputeResource
@@ -250,6 +257,7 @@ func (c *Client) clusterSettings(ctx context.Context, idx *index) (map[types.Man
 		if s.ha {
 			s.haConfig = haConfig(idx, &cfg.DasConfig)
 		}
+		s.settings = configuredSettings(cfg)
 		out[raw[i].Self] = s
 	}
 	return out, nil
@@ -286,4 +294,35 @@ func haConfig(idx *index, das *types.ClusterDasConfigInfo) *ClusterHA {
 		ha.Policy, ha.FailoverLevel = HAPolicyHostFailures, das.FailoverLevel
 	}
 	return ha
+}
+
+// configuredSettings reads the HA, DRS and DPM settings RVTools reports for
+// every cluster, including those whose features are off.
+func configuredSettings(cfg *types.ClusterConfigInfoEx) *ClusterSettings {
+	das := &cfg.DasConfig
+	st := &ClusterSettings{
+		FailoverLevel:            das.FailoverLevel,
+		AdmissionControl:         das.AdmissionControlEnabled == nil || *das.AdmissionControlEnabled,
+		HostMonitoring:           das.HostMonitoring,
+		VMMonitoring:             das.VmMonitoring,
+		HeartbeatDatastorePolicy: das.HBDatastoreCandidatePolicy,
+		DRSVMotionRate:           cfg.DrsConfig.VmotionRate,
+	}
+	if vm := das.DefaultVmSettings; vm != nil {
+		st.IsolationResponse, st.RestartPriority = vm.IsolationResponse, vm.RestartPriority
+		if mon := vm.VmToolsMonitoringSettings; mon != nil {
+			st.VMTools = &ClusterVMToolsMonitoring{
+				ClusterSettings:  mon.ClusterSettings,
+				MaxFailures:      mon.MaxFailures,
+				MaxFailureWindow: mon.MaxFailureWindow,
+				FailureInterval:  mon.FailureInterval,
+				MinUpTime:        mon.MinUpTime,
+			}
+		}
+	}
+	if dpm := cfg.DpmConfigInfo; dpm != nil {
+		st.DPMEnabled = dpm.Enabled != nil && *dpm.Enabled
+		st.DPMBehavior, st.DPMHostPowerActionRate = string(dpm.DefaultDpmBehavior), dpm.HostPowerActionRate
+	}
+	return st
 }

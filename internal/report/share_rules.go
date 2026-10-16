@@ -82,8 +82,8 @@ var columnRules = map[string]colRule{
 	"Disk": keep(), "Disk Key": keep(), "Disk UUID": id(kindUUID), "Capacity MiB": keep(), "Raw": keep(),
 	"Disk Mode": keep(), "Sharing mode": keep(), "Thin": keep(), "Eagerly Scrub": keep(), "Split": keep(),
 	"Write Through": keep(), "Level": keep(), "Shares": keep(), "Reservation": keep(), "Limit": keep(),
-	"Controller": keep(), "SCSI label": keep(), "Unit number": keep(), "Shared Bus": keep(), "Path": pathRule,
-	"Raw LUN ID": id(kindID), "Raw Compatibility Mode": keep(), "Consumed MiB": keep(), "Free MiB": keep(),
+	"Controller": keep(), "Label": keep(), "SCSI Unit #": keep(), "Unit number": keep(), "Unit #": keep(), "Shared Bus": keep(), "Path": pathRule,
+	"Raw LUN ID": id(kindID), "Raw Comp. Mode": keep(), "Consumed MiB": keep(), "Free MiB": keep(),
 	"Free %": keep(), "Filesystem": keep(),
 
 	// vNetwork / vCD / vUSB.

@@ -92,12 +92,16 @@ const (
 	sheetVMetaData  = "vMetaData"
 )
 
-// headerAliases maps known RVTools spellings to the canonical headers used by
-// this importer. Matching remains case-insensitive and accepts the original
-// vsfleet-compatible spelling as well as these aliases.
+// headerAliases maps alternative spellings to the canonical headers used by
+// this importer. Matching remains case-insensitive and accepts the canonical
+// spelling as well as these aliases. vDisk reads RVTools' names and keeps the
+// ones vsfleet exported before schema 24, so older workbooks still import.
 var headerAliases = map[string]map[string]string{
 	sheetVDisk: {
-		"shared bus": "SharedBus",
+		"sharedbus":              "Shared Bus",
+		"scsi label":             "Label",
+		"unit number":            "Unit #",
+		"raw compatibility mode": "Raw Comp. Mode",
 	},
 	sheetDVSwitch: {
 		"switch":    "DVS",
@@ -1487,12 +1491,13 @@ func applyDiskRow(t sheetTable, row []string, vm *vsphere.VM) {
 		Reservation:          parseOptInt32(t.cell(row, "Reservation")),
 		Limit:                parseOptInt64(t.cell(row, "Limit")),
 		Controller:           t.cell(row, "Controller"),
-		ControllerLabel:      t.cell(row, "SCSI label"),
-		UnitNumber:           parseOptInt32(t.cell(row, "Unit number")),
-		SharedBus:            t.cell(row, "SharedBus"),
+		ControllerLabel:      t.cell(row, "Label"),
+		ControllerUnitNumber: parseOptInt32(t.cell(row, "SCSI Unit #")),
+		UnitNumber:           parseOptInt32(t.cell(row, "Unit #")),
+		SharedBus:            t.cell(row, "Shared Bus"),
 		BackingPath:          t.cell(row, "Path"),
 		RawLUNID:             t.cell(row, "Raw LUN ID"),
-		RawCompatibilityMode: t.cell(row, "Raw Compatibility Mode"),
+		RawCompatibilityMode: t.cell(row, "Raw Comp. Mode"),
 	})
 }
 

@@ -187,7 +187,8 @@ are allowed:
 
 Dry runs list ignored worksheets and recognized, ignored, and missing
 columns. Mapped headers accept vsfleet and RVTools spellings, including
-`Shared Bus`/`SharedBus`, `Switch`/`DVS`, `Max Ports`/`# Max ports`,
+`Shared Bus`/`SharedBus`, `Label`/`SCSI label`, `Unit #`/`Unit number`,
+`Raw Comp. Mode`/`Raw Compatibility Mode`, `Switch`/`DVS`, `Max Ports`/`# Max ports`,
 `Port`/`Port group`, `Allow Promiscuous`/`Promiscuous mode`, and
 `Policy`/`Teaming policy`. `Rolling Order` maps to `Failback`.
 

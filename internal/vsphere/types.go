@@ -289,25 +289,29 @@ func (p VMPartition) UsedBytes() int64 {
 // VMDisk is one virtual disk from a VM's hardware configuration. Optional
 // values remain nil when vSphere does not expose them for a backing type.
 type VMDisk struct {
-	Key                  int32  `json:"key"`
-	Label                string `json:"label"`
-	CapacityBytes        int64  `json:"capacity_bytes"`
-	UUID                 string `json:"uuid,omitempty"`
-	BackingType          string `json:"backing_type,omitempty"`
-	BackingPath          string `json:"backing_path,omitempty"`
-	Raw                  bool   `json:"raw"`
-	DiskMode             string `json:"disk_mode,omitempty"`
-	Sharing              string `json:"sharing,omitempty"`
-	ThinProvisioned      *bool  `json:"thin_provisioned,omitempty"`
-	EagerlyScrub         *bool  `json:"eagerly_scrub,omitempty"`
-	Split                *bool  `json:"split,omitempty"`
-	WriteThrough         *bool  `json:"write_through,omitempty"`
-	SharesLevel          string `json:"shares_level,omitempty"`
-	Shares               *int32 `json:"shares,omitempty"`
-	Reservation          *int32 `json:"reservation,omitempty"`
-	Limit                *int64 `json:"limit,omitempty"`
-	Controller           string `json:"controller,omitempty"`
-	ControllerLabel      string `json:"controller_label,omitempty"`
+	Key             int32  `json:"key"`
+	Label           string `json:"label"`
+	CapacityBytes   int64  `json:"capacity_bytes"`
+	UUID            string `json:"uuid,omitempty"`
+	BackingType     string `json:"backing_type,omitempty"`
+	BackingPath     string `json:"backing_path,omitempty"`
+	Raw             bool   `json:"raw"`
+	DiskMode        string `json:"disk_mode,omitempty"`
+	Sharing         string `json:"sharing,omitempty"`
+	ThinProvisioned *bool  `json:"thin_provisioned,omitempty"`
+	EagerlyScrub    *bool  `json:"eagerly_scrub,omitempty"`
+	Split           *bool  `json:"split,omitempty"`
+	WriteThrough    *bool  `json:"write_through,omitempty"`
+	SharesLevel     string `json:"shares_level,omitempty"`
+	Shares          *int32 `json:"shares,omitempty"`
+	Reservation     *int32 `json:"reservation,omitempty"`
+	Limit           *int64 `json:"limit,omitempty"`
+	Controller      string `json:"controller,omitempty"`
+	ControllerLabel string `json:"controller_label,omitempty"`
+	// ControllerUnitNumber is the SCSI controller's own unit number on its
+	// bus, usually 7. It is nil for other controller types and for captures
+	// predating inventory schema 24.
+	ControllerUnitNumber *int32 `json:"controller_unit_number,omitempty"`
 	UnitNumber           *int32 `json:"unit_number,omitempty"`
 	SharedBus            string `json:"shared_bus,omitempty"`
 	RawLUNID             string `json:"raw_lun_id,omitempty"`

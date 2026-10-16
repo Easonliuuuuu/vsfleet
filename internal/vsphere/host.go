@@ -54,7 +54,7 @@ func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool)
 	var raw []mo.HostSystem
 	props := hostProps
 	if withConfig {
-		props = append(append([]string(nil), props...), hostConfigProps...)
+		props = append(append(append([]string(nil), props...), hostConfigProps...), hostDetailProps...)
 	}
 	if err := retrieve(ctx, c, idx.root, []string{"HostSystem"}, []string{"HostSystem"}, props, &raw); err != nil {
 		return nil, err
@@ -116,6 +116,7 @@ func newHostWithConfig(c *Client, idx *index, m *mo.HostSystem, withConfig bool)
 	}
 	if withConfig {
 		mapHostConfig(&h, m.Config)
+		h.Details = mapHostDetails(m)
 	}
 	return h
 }

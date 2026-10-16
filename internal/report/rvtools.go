@@ -55,7 +55,6 @@ var (
 	// followed by vsfleet's own context column. The two VI SDK columns are the
 	// same provenance pair every other worksheet carries.
 	sourceHeaders       = []string{"Name", "OS type", "API type", "API version", "Version", "Patch level", "Build", "Fullname", "Product name", "Product version", "Product line", "Vendor", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	hostHeaders         = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	hbaHeaders          = append([]string{"Device", "Bus", "Status", "Model", "Driver", "Pci", "Storage protocol", "WWNN", "WWPN", "iSCSI name", "iSCSI alias", "Type"}, hostTailHeaders...)
 	nicHeaders          = append([]string{"Device", "PCI", "Driver", "Mac Address", "Link speed Mb", "Duplex", "Wake on LAN", "Switch"}, hostTailHeaders...)
 	switchHeaders       = append([]string{"Switch", "# Ports", "Free Ports", "MTU", "Uplinks", "Promiscuous Mode", "Mac Changes", "Forged Transmits", "Traffic Shaping"}, hostTailHeaders...)
@@ -688,6 +687,7 @@ func sourceRows(data assessment.ExportData) [][]any {
 
 func hostRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
+	densities := hostDensities(data)
 	for _, r := range data.Resources {
 		if r.Kind != "host" {
 			continue
@@ -696,8 +696,7 @@ func hostRows(data assessment.ExportData) [][]any {
 		if err := json.Unmarshal(r.Payload, &host); err != nil {
 			continue
 		}
-		id := nonempty(host.ID, r.ID)
-		rows = append(rows, []any{nonempty(host.Name, r.Name), host.Datacenter, host.Cluster, host.InMaintenance, host.CPUMHz, host.CPUCores, hostCPUPercent(host), host.MemoryMB, hostMemoryPercent(host), host.VMCount, host.Version, host.Vendor, host.Model, id, sdkServer(data, r.Context), r.VCenterID, r.Context})
+		rows = append(rows, hostRow(data, densities, r, host))
 	}
 	return rows
 }

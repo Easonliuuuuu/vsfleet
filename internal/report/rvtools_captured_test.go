@@ -145,6 +145,16 @@ func TestCapturedColumnsFollowRVToolsOrder(t *testing.T) {
 			"Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
 		{"vMemory", memoryHeaders, []string{"VM", "Powerstate", "Template", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit",
 			"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vHost", hostHeaders, []string{"Host", "Datacenter", "Cluster", "Config status", "Compliance Check State", "in Maintenance Mode",
+			"in Quarantine Mode", "vSAN Fault Domain Name", "CPU Model", "Speed", "HT Available", "HT Active", "# CPU", "Cores per CPU", "# Cores",
+			"CPU usage %", "# Memory", "Memory Tiering Type", "Memory usage %", "Console", "# NICs", "# HBAs", "# VMs total", "# VMs",
+			"VMs per Core", "# vCPUs", "vCPUs per Core", "vRAM", "VM Used memory", "VM Memory Swapped", "VM Memory Ballooned",
+			"VMotion support", "Storage VMotion support", "Current EVC", "Max EVC", "Assigned License(s)", "ATS Heartbeat", "ATS Locking",
+			"Current CPU power man. policy", "Supported CPU power man.", "Host Power Policy", "ESX Version", "Boot time", "DNS Servers",
+			"DHCP", "Domain", "Domain List", "DNS Search Order", "NTP Server(s)", "NTPD running", "Time Zone", "Time Zone Name",
+			"GMT Offset", "Vendor", "Model", "Serial number", "Service tag", "OEM specific string", "BIOS Vendor", "BIOS Version",
+			"BIOS Date", "Certificate Issuer", "Certificate Start Date", "Certificate Expiry Date", "Certificate Status",
+			"Certificate Subject", "Object ID", "AutoDeploy.MachineIdentity", "UUID", "VI SDK Server", "VI SDK UUID"}},
 		{"vDatastore", datastoreHeaders, []string{"Name", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "URL", "Object ID", "VI SDK Server", "VI SDK UUID"}},
 	} {
 		t.Run(tc.sheet, func(t *testing.T) {

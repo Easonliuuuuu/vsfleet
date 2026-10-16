@@ -212,7 +212,8 @@ Observed value differences:
 
 | Sheet / column | vsfleet value | RVTools value |
 | --- | --- | --- |
-| `vHost`, `ESX Version` | Version only, for example `8.0.3` | Product name, version and build, for example `VMware ESXi 8.0.3 build-24784735` |
+| `vHost`, `ESX Version` from a capture predating inventory schema 26 | Version only, for example `8.0.3` | Product name, version and build, for example `VMware ESXi 8.0.3 build-24784735` |
+| `vHost`, `Boot time`, `BIOS Date` and certificate dates | UTC | Collector-local time without a zone |
 | `vHost`, `# VMs total` | Counts host VM references, including templates | Excludes templates; the comparison found 4 versus vsfleet's 5 |
 | `vTools`, `Tools` | VMware Tools running status (`GuestInfo.toolsRunningStatus`), for example `guestToolsNotRunning` | Tools installation status, for example `toolsNotInstalled` |
 | `vHBA`, `Type` | vSphere adapter type, for example `HostBlockHba` | Human-readable label, for example `Block SCSI` |
@@ -273,6 +274,21 @@ Inventory schema version 15 renames the persisted VM NIC direct-path field to
 `upt_compatibility_enabled`; the old `direct_path_io` value in schemas 12 to 14
 rows was UPT compatibility mislabeled and is no longer read as passthrough
 evidence.
+
+## Host hardware and configuration
+
+`vHost` also carries each host's CPU model and sockets, hyperthreading,
+vMotion and EVC support, boot time, DNS and NTP settings, time zone, serial
+number, BIOS and SSL certificate. Assessment capture reads them with the host
+configuration, from `summary`, `runtime.bootTime`, `capability`,
+`hardware.systemInfo`, `hardware.biosInfo` and `config`; a capture predating
+inventory schema 26 leaves these cells empty. `Certificate Status` is not
+written: vSphere's host configuration carries the certificate, not vCenter's
+assessment of it.
+
+The density columns (`# VMs`, `# vCPUs`, `vRAM` and the per-core ratios)
+count powered-on VMs only, templates excluded, as RVTools does. They are
+empty for a context whose VM collection did not complete.
 
 ## Distributed switch inventory
 

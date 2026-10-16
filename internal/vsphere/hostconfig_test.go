@@ -20,7 +20,7 @@ func TestHostConfigIsExplicitlyOptIn(t *testing.T) {
 		t.Fatalf("summary host fetch returned no hosts")
 	}
 	for _, host := range summary.Hosts {
-		if len(host.HBAs) != 0 || len(host.NICs) != 0 || len(host.VSwitches) != 0 || len(host.PortGroups) != 0 || len(host.VMKs) != 0 || len(host.Multipaths) != 0 {
+		if len(host.HBAs) != 0 || len(host.NICs) != 0 || len(host.VSwitches) != 0 || len(host.PortGroups) != 0 || len(host.VMKs) != 0 || len(host.Multipaths) != 0 || host.Details != nil {
 			t.Fatalf("host %q fetched config without HostConfig option: %+v", host.Name, host)
 		}
 	}
@@ -38,5 +38,10 @@ func TestHostConfigIsExplicitlyOptIn(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("full host fetch returned no complete host configuration: %+v", full.Hosts)
+	}
+	for _, host := range full.Hosts {
+		if d := host.Details; d == nil || d.CPUModel == "" || d.CPUPackages == 0 || d.ProductName == "" || d.BootTime == nil || d.Certificate == nil {
+			t.Fatalf("host %q details = %+v, want hardware, product, boot time and certificate", host.Name, d)
+		}
 	}
 }

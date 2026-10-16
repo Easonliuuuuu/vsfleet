@@ -169,6 +169,15 @@ var sheetMeta = map[string]sheetInfo{
 // worksheets. The identity and provenance tail — Annotation through vsfleet
 // Context — is the bulk of it, repeated on every per-VM tab.
 // clusterSettingsEmpty is when the vCluster HA, DRS and DPM columns are empty.
+// hostDetailsEmpty is when a vHost hardware or configuration column is empty.
+const hostDetailsEmpty = "for a capture predating inventory schema 26"
+
+// hostDensityEmpty is when the vHost VM density columns are empty.
+const hostDensityEmpty = "when the context's VM collection did not complete"
+
+// hostCertificateEmpty is when the vHost certificate columns are empty.
+const hostCertificateEmpty = hostDetailsEmpty + ", or when vSphere reports no host certificate or it does not parse"
+
 // vmConfigEmpty is when a column read from a VM's configuration is empty.
 const vmConfigEmpty = "for a capture predating inventory schema 13, or when vSphere returned no VM configuration"
 
@@ -280,9 +289,44 @@ var sharedColumns = map[string]ColumnSpec{
 	"# Memory":            {Kind: KindInteger, Unit: "MiB", Note: "Physical memory installed."},
 	"Memory usage %":      {Kind: KindDecimal, Unit: "percent", Empty: "when the host reports no memory capacity, rather than dividing by zero", Note: "Fractional percentages are retained; RVTools writes integers."},
 	"# VMs total":         {Kind: KindInteger, Note: "Count of HostSystem.vm references, including templates. RVTools excludes templates."},
-	"ESX Version":         {Kind: KindText, Note: "Product version only, for example 8.0.3. RVTools includes product name and build in this column."},
-	"Vendor":              {Kind: KindText},
-	"Model":               {Kind: KindText},
+	"ESX Version":         {Kind: KindText, Note: "Full product name, for example VMware ESXi 8.0.3 build-24784735, as RVTools writes it. A capture predating inventory schema 26 has the version only, for example 8.0.3."},
+	"CPU Model":           {Kind: KindText, Empty: hostDetailsEmpty},
+	"HT Available": {Kind: KindBoolean, Empty: hostDetailsEmpty + ", or when vSphere reports no hyperthreading information",
+		Note: "Whether the CPUs support hyperthreading."},
+	"HT Active":               {Kind: KindBoolean, Empty: hostDetailsEmpty + ", or when vSphere reports no hyperthreading information", Note: "Whether hyperthreading is in use."},
+	"# CPU":                   {Kind: KindInteger, Empty: hostDetailsEmpty, Note: "Physical CPU sockets."},
+	"Cores per CPU":           {Kind: KindInteger, Empty: hostDetailsEmpty, Note: "# Cores divided by # CPU."},
+	"# VMs":                   {Kind: KindInteger, Empty: hostDensityEmpty, Note: "Powered-on VMs on the host, templates excluded, as RVTools counts them."},
+	"VMs per Core":            {Kind: KindDecimal, Empty: hostDensityEmpty, Note: "# VMs divided by # Cores, rounded to two decimals."},
+	"# vCPUs":                 {Kind: KindInteger, Empty: hostDensityEmpty, Note: "Configured vCPUs of the powered-on VMs."},
+	"vCPUs per Core":          {Kind: KindDecimal, Empty: hostDensityEmpty, Note: "# vCPUs divided by # Cores, rounded to two decimals."},
+	"vRAM":                    {Kind: KindInteger, Unit: "MiB", Empty: hostDensityEmpty, Note: "Configured memory of the powered-on VMs."},
+	"VMotion support":         {Kind: KindBoolean, Empty: hostDetailsEmpty},
+	"Storage VMotion support": {Kind: KindBoolean, Empty: hostDetailsEmpty},
+	"Current EVC":             {Kind: KindText, Empty: hostDetailsEmpty + ", or when the host runs without an EVC mode", Note: "EVC mode key, for example intel-broadwell."},
+	"Max EVC":                 {Kind: KindText, Empty: hostDetailsEmpty + ", or when vSphere reports none", Note: "The most capable EVC mode the host supports."},
+	"Boot time": {Kind: KindDate, Empty: hostDetailsEmpty + ", or when vSphere reports none",
+		Note: "UTC. Rendered as a date cell in XLSX and as RFC3339 UTC in CSV."},
+	"DNS Servers":    {Kind: KindText, Empty: hostDetailsEmpty + ", or when the host has no DNS servers", Note: "Several servers are joined with \", \" in one cell."},
+	"Domain":         {Kind: KindText, Empty: hostDetailsEmpty + ", or when the host has no domain name"},
+	"NTP Server(s)":  {Kind: KindText, Empty: hostDetailsEmpty + ", or when the host has no NTP servers", Note: "Several servers are joined with \", \" in one cell."},
+	"NTPD running":   {Kind: KindBoolean, Empty: hostDetailsEmpty + ", or when the host has no ntpd service"},
+	"Time Zone":      {Kind: KindText, Empty: hostDetailsEmpty, Note: "Time zone identifier, for example UTC."},
+	"Time Zone Name": {Kind: KindText, Empty: hostDetailsEmpty},
+	"GMT Offset":     {Kind: KindInteger, Unit: "seconds", Empty: hostDetailsEmpty, Note: "The time zone's current offset from UTC."},
+	"Serial number":  {Kind: KindText, Empty: hostDetailsEmpty + ", or when the hardware reports none"},
+	"BIOS Vendor":    {Kind: KindText, Empty: hostDetailsEmpty + ", or when the hardware reports none"},
+	"BIOS Version":   {Kind: KindText, Empty: hostDetailsEmpty + ", or when the hardware reports none"},
+	"BIOS Date": {Kind: KindDate, Empty: hostDetailsEmpty + ", or when the hardware reports none",
+		Note: "BIOS release date, UTC. Rendered as a date cell in XLSX and as RFC3339 UTC in CSV."},
+	"Certificate Issuer":  {Kind: KindText, Empty: hostCertificateEmpty, Note: "Distinguished name of the host certificate's issuer."},
+	"Certificate Subject": {Kind: KindText, Empty: hostCertificateEmpty, Note: "Distinguished name of the host certificate."},
+	"Certificate Start Date": {Kind: KindDate, Empty: hostCertificateEmpty,
+		Note: "When the host certificate becomes valid, UTC. Rendered as a date cell in XLSX and as RFC3339 UTC in CSV."},
+	"Certificate Expiry Date": {Kind: KindDate, Empty: hostCertificateEmpty,
+		Note: "When the host certificate expires, UTC. Rendered as a date cell in XLSX and as RFC3339 UTC in CSV."},
+	"Vendor": {Kind: KindText},
+	"Model":  {Kind: KindText},
 
 	// vCluster.
 	"NumHosts":          {Kind: KindInteger},
@@ -514,6 +558,8 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 	"vHost": {
 		"Host":      {Kind: KindText, Note: "ESXi host name."},
 		"Object ID": {Kind: KindText, Note: "vCenter managed object reference of the host."},
+		"DHCP":      {Kind: KindBoolean, Empty: hostDetailsEmpty, Note: "True when the host takes its DNS configuration from DHCP."},
+		"UUID":      {Kind: KindText, Empty: hostDetailsEmpty + ", or when the hardware reports none", Note: "Hardware BIOS UUID."},
 	},
 	"vHBA": {
 		"Device":           {Kind: KindText, Note: "Host bus adapter device name, for example vmhba0."},

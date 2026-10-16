@@ -114,6 +114,13 @@ var columnRules = map[string]colRule{
 	"Wake on LAN": keep(), "Switch": name(kindSwitch), "# Ports": keep(), "Free Ports": keep(), "MTU": keep(),
 	"Uplinks": topo(), "Promiscuous Mode": keep(), "Mac Changes": keep(), "Forged Transmits": keep(),
 	"Traffic Shaping": keep(), "Port Group": name(kindNetwork), "VLAN": topo(),
+	"CPU Model": keep(), "HT Available": keep(), "HT Active": keep(), "# CPU": keep(), "Cores per CPU": keep(),
+	"# VMs": keep(), "VMs per Core": keep(), "# vCPUs": keep(), "vCPUs per Core": keep(), "vRAM": keep(),
+	"VMotion support": keep(), "Storage VMotion support": keep(), "Current EVC": keep(), "Max EVC": keep(), "Boot time": keep(),
+	"DNS Servers": ipRule, "Domain": name(kindName), "NTP Server(s)": nameList(kindName), "NTPD running": keep(),
+	"Time Zone": keep(), "Time Zone Name": keep(), "GMT Offset": keep(), "Serial number": id(kindID),
+	"BIOS Vendor": keep(), "BIOS Version": keep(), "BIOS Date": keep(), "Certificate Issuer": text(),
+	"Certificate Start Date": keep(), "Certificate Expiry Date": keep(), "Certificate Subject": text(),
 
 	// dvSwitch / dvPort / vSC_VMK / vMultiPath.
 	"Max Ports": keep(), "UUID": id(kindUUID), "Contact": text(), "Contact detail": text(), "Hosts": nameList(kindHost),

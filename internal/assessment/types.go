@@ -53,8 +53,11 @@ type RunStatus string
 // which readers must treat as "not read". Schema 25 records each cluster's
 // configuration status, CPU threads, vMotion count and HA, DRS and DPM
 // settings (Cluster.ConfigStatus, CPUThreads, VMotions, Settings); older runs
-// have none, which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "25"
+// have none, which readers must treat as "not read". Schema 26 records each
+// host's hardware, time, name service, vMotion, EVC and certificate details
+// (Host.Details); older runs have none, which readers must treat as "not
+// read".
+const CurrentInventorySchemaVersion = "26"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

@@ -1605,7 +1605,7 @@ func applyPartitionRow(t sheetTable, row []string, vm *vsphere.VM) {
 }
 
 func hostFromRow(t sheetTable, row []string, contextName string) vsphere.Host {
-	return vsphere.Host{
+	h := vsphere.Host{
 		Location:      vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:            t.cell(row, "Object ID"),
 		Name:          t.cell(row, "Host"),
@@ -1619,6 +1619,8 @@ func hostFromRow(t sheetTable, row []string, contextName string) vsphere.Host {
 		Vendor:        t.cell(row, "Vendor"),
 		Model:         t.cell(row, "Model"),
 	}
+	applyHostUsage(t, row, &h)
+	return h
 }
 
 func applyVSwitchRow(t sheetTable, row []string, host *vsphere.Host) {
@@ -1875,37 +1877,23 @@ func parseOptBool(s string) *bool {
 }
 
 // parseInt tolerates the numeric-cell forms excelize's GetRows can produce
-// (plain integers and "123.0"-style floats alike) and returns zero for
-// anything it cannot parse or an empty cell. A caller that must tell "zero"
-// from "absent" checks the column's presence first — see criticalColumns.
+// (plain integers, "123.0"-style floats and "#,##0"-formatted "9,984")
+// and returns zero for anything it cannot parse or an empty cell. A caller
+// that must tell "zero" from "absent" checks the column's presence first —
+// see criticalColumns.
 func parseInt(s string) int64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
-		return 0
-	}
+	f, _ := parseNumber(s)
 	return int64(f)
 }
 
 func parseFloat(s string) float64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return 0
-	}
-	f, _ := strconv.ParseFloat(s, 64)
+	f, _ := parseNumber(s)
 	return f
 }
 
 func parseOptInt32(s string) *int32 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	f, ok := parseNumber(s)
+	if !ok {
 		return nil
 	}
 	v := int32(f)
@@ -1913,12 +1901,8 @@ func parseOptInt32(s string) *int32 {
 }
 
 func parseOptInt64(s string) *int64 {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return nil
-	}
-	f, err := strconv.ParseFloat(s, 64)
-	if err != nil {
+	f, ok := parseNumber(s)
+	if !ok {
 		return nil
 	}
 	v := int64(f)

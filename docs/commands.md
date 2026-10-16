@@ -192,6 +192,11 @@ columns. Mapped headers accept vsfleet and RVTools spellings, including
 `Port`/`Port group`, `Allow Promiscuous`/`Promiscuous mode`, and
 `Policy`/`Teaming policy`. `Rolling Order` maps to `Failback`.
 
+Number cells are read with RVTools' thousands separators, so `9,984` is
+9984. Host CPU and memory usage come from `vHost`'s `CPU usage %` and
+`Memory usage %` applied to the host's capacity. RVTools writes whole
+percentages, so imported usage is accurate to about one percent.
+
 In `vMultiPath`, RVTools' `Object ID` identifies the datastore. Hosts join
 through `vHost` using `Host` and `VI SDK UUID`, narrowed by `Datacenter`
 and `Cluster` if supplied. Ambiguous/missing hosts are warned and skipped.

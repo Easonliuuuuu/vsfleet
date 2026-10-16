@@ -1442,7 +1442,7 @@ func vmFromInfoRow(t sheetTable, row []string, contextName string) *vsphere.VM {
 		IPAddress:    t.cell(row, "Primary IP Address"),
 		Host:         t.cell(row, "Host"),
 		Cluster:      t.cell(row, "Cluster"),
-		Folder:       t.cell(row, "Folder"),
+		Folder:       folderBelowDatacenter(t.cell(row, "Folder"), t.cell(row, "Datacenter")),
 		StorageGB:    parseFloat(t.cell(row, "In Use MiB")) / 1024,
 		Annotation:   t.cell(row, "Annotation"),
 		GuestOS:      t.cell(row, "OS according to the configuration file"),
@@ -1460,6 +1460,23 @@ func vmFromInfoRow(t sheetTable, row []string, contextName string) *vsphere.VM {
 		vm.HardwareUpgrade = &upgrade
 	}
 	return vm
+}
+
+// folderBelowDatacenter turns RVTools' datacenter-rooted folder
+// (/DC-Lab/apps) into the path below the datacenter that a live capture
+// records (/apps). A path without the datacenter prefix, as older vsfleet
+// exports wrote it, is already in that form.
+func folderBelowDatacenter(folder, datacenter string) string {
+	prefix := "/" + datacenter
+	switch {
+	case datacenter == "":
+		return folder
+	case folder == prefix:
+		return "/"
+	case strings.HasPrefix(folder, prefix+"/"):
+		return strings.TrimPrefix(folder, prefix)
+	}
+	return folder
 }
 
 // hardwareVersionKey turns the bare number RVTools writes ("21") back into

@@ -129,7 +129,7 @@ func TestLicenseExportReportsProductUsageAndExpiration(t *testing.T) {
 	if std[3] != "cpuPackage" || std[4] != "16" || std[5] != "4" || std[7] != "Distributed Switch; vMotion" {
 		t.Fatalf("standard row=%v", std)
 	}
-	if std[8] != "https://vc.example" || std[9] != "vc-uuid" || std[10] != "prod" {
+	if std[8] != "vc.example" || std[9] != "vc-uuid" || std[10] != "prod" {
 		t.Fatalf("provenance columns=%v", std[8:])
 	}
 	for _, row := range rows[1:] {

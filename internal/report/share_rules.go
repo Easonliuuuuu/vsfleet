@@ -74,7 +74,8 @@ var columnRules = map[string]colRule{
 
 	// vInfo / per-VM tabs.
 	"Powerstate": keep(), "Template": keep(), "Guest state": keep(), "CPUs": keep(), "Memory": keep(),
-	"Primary IP Address": ipRule, "In Use MiB": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),
+	"Primary IP Address": ipRule, "In Use MiB": keep(), "DNS Name": name(kindName), "Connection state": keep(),
+	"NICs": keep(), "Disks": keep(), "vApp": name(kindName), "EFI Secure boot": keep(), "Firmware": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),
 	"HW target": keep(), "OS according to the configuration file": keep(),
 	"Size MiB": keep(), "Tools": keep(), "Tools Version": keep(), "Tools Version Status": keep(),
 

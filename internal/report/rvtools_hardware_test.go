@@ -39,22 +39,11 @@ func TestWriteRVToolsVInfoHardwareVersion(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer f.Close()
-			rows, err := f.GetRows("vInfo")
-			if err != nil || len(rows) < 2 {
-				t.Fatalf("vInfo rows=%v err=%v", rows, err)
-			}
-			for header, want := range tc.want {
-				got, found := "", false
-				for i, h := range rows[0] {
-					if h == header {
-						found = true
-						if i < len(rows[1]) {
-							got = rows[1][i]
-						}
-					}
-				}
-				if !found || got != want {
-					t.Errorf("%s = %q (column present: %v), want %q", header, got, found, want)
+			columns := []string{"HW version", "HW upgrade status", "HW upgrade policy", "HW target"}
+			got := sheetCells(t, f, "vInfo", "app", columns)
+			for i, column := range columns {
+				if got[i] != tc.want[column] {
+					t.Errorf("%s = %q, want %q", column, got[i], tc.want[column])
 				}
 			}
 		})

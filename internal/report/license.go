@@ -85,7 +85,7 @@ func licenseRows(data assessment.ExportData) [][]any {
 		}
 		rows = append(rows, []any{
 			nonempty(l.Name, r.Name), vsphere.LicenseRedacted, nil, l.CostUnit, l.Total, l.Used, expiration,
-			strings.Join(l.Features, "; "), contextEndpoint(data, r.Context), r.VCenterID, r.Context,
+			strings.Join(l.Features, "; "), sdkServer(data, r.Context), r.VCenterID, r.Context,
 		})
 	}
 	return rows
@@ -101,7 +101,7 @@ func licenseAssignmentRows(data assessment.ExportData) [][]any {
 		for _, a := range l.Assignments {
 			rows = append(rows, []any{
 				nonempty(l.Name, r.Name), l.EditionKey, a.EntityName, a.EntityType, a.EntityID, optionalString(a.Scope),
-				contextEndpoint(data, r.Context), r.VCenterID, r.Context,
+				sdkServer(data, r.Context), r.VCenterID, r.Context,
 			})
 		}
 	}

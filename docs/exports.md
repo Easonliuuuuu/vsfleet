@@ -198,10 +198,11 @@ account on a nested vCenter/ESXi 8.0.3 lab. Both RVTools versions had the same
 sheet names and order, headers and order, and cell types. The later comparison
 found no regressions against the earlier findings.
 
-`vSource` matched every RVTools column name, column order and value except
-`VI SDK Server`. `vFileInfo` listed the same files, including those at the
-datastore root, with matching names, types and paths; only `VI SDK Server`
-differed. pandas `read_excel` and openpyxl `read_only` read both workbooks
+`vSource` matched every RVTools column name, column order and value.
+`vFileInfo` listed the same files, including those at the datastore root,
+with matching names, types and paths. VM `Folder` and `VI SDK Server` now use
+RVTools' form: the folder path starts at the datacenter (`/DC-Lab`), and the
+server is the host without a URL scheme (`192.168.150.10`). pandas `read_excel` and openpyxl `read_only` read both workbooks
 cleanly. Tags, custom attributes and license values were not validated: the
 lab had no tags or custom attributes, and the account lacked `Global.Licenses`.
 These comparisons cover the lab's shared columns, not every RVTools field or
@@ -211,8 +212,6 @@ Observed value differences:
 
 | Sheet / column | vsfleet value | RVTools value |
 | --- | --- | --- |
-| VM sheets, `Folder` | Path relative to the datacenter's `vm` folder: `/` or `/Discovered virtual machine` | Includes the datacenter: `/DC-Lab` or `/DC-Lab/Discovered virtual machine` |
-| RVTools-named sheets, `VI SDK Server` | Configured endpoint URL, for example `https://192.168.150.10` | Host without URL scheme, for example `192.168.150.10` |
 | `vHost`, `ESX Version` | Version only, for example `8.0.3` | Product name, version and build, for example `VMware ESXi 8.0.3 build-24784735` |
 | `vHost`, `# VMs total` | Counts host VM references, including templates | Excludes templates; the comparison found 4 versus vsfleet's 5 |
 | `vTools`, `Tools` | VMware Tools running status (`GuestInfo.toolsRunningStatus`), for example `guestToolsNotRunning` | Tools installation status, for example `toolsNotInstalled` |

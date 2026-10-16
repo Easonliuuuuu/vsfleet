@@ -42,7 +42,7 @@ var (
 	// omits Folder), but vDisk, vNetwork, vSnapshot, vCPU, vMemory, and vTools
 	// all end in exactly these columns.
 	vmTailHeaders    = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	vmHeaders        = []string{"VM", "Powerstate", "Template", "Guest state", "CPUs", "Memory", "Primary IP Address", "Folder", "In Use MiB", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	vmHeaders        = []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "CPUs", "Memory", "NICs", "Disks", "Primary IP Address", "Resource pool", "Folder", "vApp", "In Use MiB", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs"}, vmTailHeaders...)
 	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB"}, vmTailHeaders...)
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -423,30 +423,34 @@ func writeSheet(f *excelize.File, s sheet, st styles) error {
 
 func vmRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0, len(data.VMs))
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		var upgrade vsphere.VMHardwareUpgrade
 		if vm.HardwareUpgrade != nil {
 			upgrade = *vm.HardwareUpgrade
 		}
-		rows = append(rows, []any{vm.Name, vm.PowerState, vm.IsTemplate, vm.GuestState, vm.CPU, vm.MemoryMB, vm.IPAddress, vm.Folder, storageMiB(vm.StorageGB),
-			hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context})
+		place := places[placementKey{obs.Context, vm.ID}]
+		rows = append(rows, []any{vm.Name, vm.PowerState, vm.IsTemplate, optionalString(vm.GuestHostName), optionalString(vm.ConnectionState), vm.GuestState, vm.CPU, vm.MemoryMB,
+			deviceCount(data, vm, len(vm.NICs)), deviceCount(data, vm, len(vm.Disks)), vm.IPAddress, optionalString(place.resourcePool), rvtoolsFolder(places, obs), optionalString(place.vApp),
+			storageMiB(vm.StorageGB), optionalBool(vm.SecureBootEnabled), optionalString(vm.Firmware), hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context})
 	}
 	return rows
 }
 
 // vmTail returns the identity/location/provenance columns shared by the
 // vCPU, vMemory, and vTools tabs (and, inline, by vDisk/vNetwork/vSnapshot).
-func vmTail(data assessment.ExportData, obs assessment.Observation) []any {
+func vmTail(data assessment.ExportData, places map[placementKey]vmPlacement, obs assessment.Observation) []any {
 	vm := obs.VM
-	return []any{vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.Folder, vm.GuestOS, vm.ID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context}
+	return []any{vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs), vm.GuestOS, vm.ID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context}
 }
 
 func cpuRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0, len(data.VMs))
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.CPU}, vmTail(data, obs)...)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.CPU}, vmTail(data, places, obs)...)
 		rows = append(rows, row)
 	}
 	return rows
@@ -454,9 +458,10 @@ func cpuRows(data assessment.ExportData) [][]any {
 
 func memoryRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0, len(data.VMs))
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.MemoryMB}, vmTail(data, obs)...)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.MemoryMB}, vmTail(data, places, obs)...)
 		rows = append(rows, row)
 	}
 	return rows
@@ -464,9 +469,10 @@ func memoryRows(data assessment.ExportData) [][]any {
 
 func toolsRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0, len(data.VMs))
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.ToolsState, optionalString(vm.ToolsVersion), optionalString(vm.ToolsVersionStatus)}, vmTail(data, obs)...)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.ToolsState, optionalString(vm.ToolsVersion), optionalString(vm.ToolsVersionStatus)}, vmTail(data, places, obs)...)
 		rows = append(rows, row)
 	}
 	return rows
@@ -491,6 +497,7 @@ func optionalString(value string) any {
 
 func diskRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, disk := range vm.Disks {
@@ -500,8 +507,8 @@ func diskRows(data assessment.ExportData) [][]any {
 				optionalBool(disk.ThinProvisioned), optionalBool(disk.EagerlyScrub), optionalBool(disk.Split), optionalBool(disk.WriteThrough),
 				disk.SharesLevel, optionalInt32(disk.Shares), optionalInt32(disk.Reservation), optionalInt64(disk.Limit),
 				disk.Controller, disk.ControllerLabel, optionalInt32(disk.ControllerUnitNumber), optionalInt32(disk.UnitNumber), disk.SharedBus, disk.BackingPath,
-				disk.RawLUNID, disk.RawCompatibilityMode, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.Folder,
-				vm.GuestOS, vm.ID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context,
+				disk.RawLUNID, disk.RawCompatibilityMode, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs),
+				vm.GuestOS, vm.ID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context,
 			})
 		}
 	}
@@ -514,6 +521,7 @@ func diskRows(data assessment.ExportData) [][]any {
 // a reader to infer it from a row count.
 func partitionRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, part := range vm.Partitions {
@@ -525,7 +533,7 @@ func partitionRows(data assessment.ExportData) [][]any {
 				freePercent(part),
 				part.FilesystemType,
 			}
-			rows = append(rows, append(row, vmTail(data, obs)...))
+			rows = append(rows, append(row, vmTail(data, places, obs)...))
 		}
 	}
 	return rows
@@ -565,6 +573,7 @@ func freePercent(p vsphere.VMPartition) float64 {
 
 func networkRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, nic := range vm.NICs {
@@ -572,8 +581,8 @@ func networkRows(data assessment.ExportData) [][]any {
 				vm.Name, vm.PowerState, vm.IsTemplate, nic.Label, nic.Adapter, nic.Network,
 				optionalBool(nic.Connected), optionalBool(nic.StartsConnected), nic.MACAddress, nic.MACAddressType,
 				strings.Join(nic.IPv4, ", "), strings.Join(nic.IPv6, ", "), optionalBool(nic.UPTCompatible), vm.Annotation,
-				vm.Datacenter, vm.Cluster, vm.Host, vm.Folder, vm.GuestOS, vm.ID, vm.InstanceUUID,
-				contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context,
+				vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs), vm.GuestOS, vm.ID, vm.InstanceUUID,
+				sdkServer(data, obs.Context), obs.VCenterID, obs.Context,
 			})
 		}
 	}
@@ -582,6 +591,7 @@ func networkRows(data assessment.ExportData) [][]any {
 
 func cdRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, cd := range vm.CDROMs {
@@ -592,7 +602,7 @@ func cdRows(data assessment.ExportData) [][]any {
 				cd.BackingObjectID, optionalBool(cd.UseAutoDetect), cd.Controller,
 				cd.ControllerLabel, optionalInt32(cd.UnitNumber),
 			}
-			rows = append(rows, append(row, vmTail(data, obs)...))
+			rows = append(rows, append(row, vmTail(data, places, obs)...))
 		}
 	}
 	return rows
@@ -600,6 +610,7 @@ func cdRows(data assessment.ExportData) [][]any {
 
 func usbRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, usb := range vm.USBs {
@@ -611,7 +622,7 @@ func usbRows(data assessment.ExportData) [][]any {
 				usb.BackingObjectID, optionalBool(usb.UseAutoDetect), usb.Controller,
 				usb.ControllerLabel, optionalInt32(usb.UnitNumber),
 			}
-			rows = append(rows, append(row, vmTail(data, obs)...))
+			rows = append(rows, append(row, vmTail(data, places, obs)...))
 		}
 	}
 	return rows
@@ -665,7 +676,7 @@ func sourceRows(data assessment.ExportData) [][]any {
 			continue
 		}
 		src := c.Source
-		rows = append(rows, []any{src.Name, src.OSType, src.APIType, src.APIVersion, src.Version, src.PatchLevel, src.Build, src.FullName, src.LicenseProductName, src.LicenseProductVersion, src.ProductLineID, src.Vendor, c.Endpoint, c.VCenterID, c.Name})
+		rows = append(rows, []any{src.Name, src.OSType, src.APIType, src.APIVersion, src.Version, src.PatchLevel, src.Build, src.FullName, src.LicenseProductName, src.LicenseProductVersion, src.ProductLineID, src.Vendor, sdkServer(data, c.Name), c.VCenterID, c.Name})
 	}
 	return rows
 }
@@ -681,7 +692,7 @@ func hostRows(data assessment.ExportData) [][]any {
 			continue
 		}
 		id := nonempty(host.ID, r.ID)
-		rows = append(rows, []any{nonempty(host.Name, r.Name), host.Datacenter, host.Cluster, host.InMaintenance, host.CPUMHz, host.CPUCores, hostCPUPercent(host), host.MemoryMB, hostMemoryPercent(host), host.VMCount, host.Version, host.Vendor, host.Model, id, contextEndpoint(data, r.Context), r.VCenterID, r.Context})
+		rows = append(rows, []any{nonempty(host.Name, r.Name), host.Datacenter, host.Cluster, host.InMaintenance, host.CPUMHz, host.CPUCores, hostCPUPercent(host), host.MemoryMB, hostMemoryPercent(host), host.VMCount, host.Version, host.Vendor, host.Model, id, sdkServer(data, r.Context), r.VCenterID, r.Context})
 	}
 	return rows
 }
@@ -691,7 +702,7 @@ var hostTailHeaders = []string{"Host", "Datacenter", "Cluster", "Object ID", "VI
 func hostTail(data assessment.ExportData, resource assessment.ResourceObservation, host vsphere.Host) []any {
 	return []any{
 		nonempty(host.Name, resource.Name), host.Datacenter, host.Cluster,
-		nonempty(host.ID, resource.ID), contextEndpoint(data, resource.Context), resource.VCenterID, resource.Context,
+		nonempty(host.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context,
 	}
 }
 
@@ -765,11 +776,11 @@ func portRows(data assessment.ExportData) [][]any {
 }
 
 func dvsTail(data assessment.ExportData, resource assessment.ResourceObservation, sw vsphere.DVSwitch) []any {
-	return []any{sw.Datacenter, nonempty(sw.ID, resource.ID), contextEndpoint(data, resource.Context), resource.VCenterID, resource.Context}
+	return []any{sw.Datacenter, nonempty(sw.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context}
 }
 
 func dvPortTail(data assessment.ExportData, resource assessment.ResourceObservation, sw vsphere.DVSwitch, port vsphere.DVPortGroup) []any {
-	return []any{sw.Datacenter, nonempty(port.ID, resource.ID), contextEndpoint(data, resource.Context), resource.VCenterID, resource.Context}
+	return []any{sw.Datacenter, nonempty(port.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context}
 }
 
 func dvSwitchRows(data assessment.ExportData) [][]any {
@@ -854,7 +865,7 @@ func clusterRows(data assessment.ExportData) [][]any {
 		row = append(row, clusterHACells(cluster.Settings)...)
 		row = append(row, cluster.DRSEnabled)
 		row = append(row, clusterDRSCells(cluster.Settings)...)
-		rows = append(rows, append(row, nonempty(cluster.ID, r.ID), cluster.Datacenter, contextEndpoint(data, r.Context), r.VCenterID, r.Context))
+		rows = append(rows, append(row, nonempty(cluster.ID, r.ID), cluster.Datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context))
 	}
 	return rows
 }
@@ -931,7 +942,7 @@ func resourcePoolRow(data assessment.ExportData, r assessment.ResourceObservatio
 		a.CPULevel, a.CPUShares, a.CPUExpandable, a.MemConfiguredMB,
 		optionalInt64(a.MemLimitMB), optionalInt64(a.MemOverheadLimitMB), optionalInt64(a.MemReservationMB),
 		a.MemLevel, a.MemShares, a.MemExpandable, configStatus,
-		id, datacenter, contextEndpoint(data, r.Context), r.VCenterID, r.Context,
+		id, datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context,
 	}
 }
 
@@ -950,7 +961,7 @@ func datastoreRows(data assessment.ExportData) [][]any {
 		if datastore.CapacityBytes > 0 {
 			freePercent = float64(datastore.FreeBytes) / float64(datastore.CapacityBytes) * 100
 		}
-		rows = append(rows, []any{nonempty(datastore.Name, r.Name), datastore.Datacenter, datastore.Type, capacity, float64(datastore.UsedBytes()) / miB, free, freePercent, datastore.Accessible, datastore.Maintenance, nonempty(datastore.ID, r.ID), contextEndpoint(data, r.Context), r.VCenterID, r.Context})
+		rows = append(rows, []any{nonempty(datastore.Name, r.Name), datastore.Datacenter, datastore.Type, capacity, float64(datastore.UsedBytes()) / miB, free, freePercent, datastore.Accessible, datastore.Maintenance, nonempty(datastore.ID, r.ID), sdkServer(data, r.Context), r.VCenterID, r.Context})
 	}
 	return rows
 }
@@ -982,7 +993,7 @@ func fileInfoRows(data assessment.ExportData) [][]any {
 		name := nonempty(datastore.Name, r.Name)
 		for _, file := range files {
 			folder, leaf := splitFilePath(file.Path)
-			rows = append(rows, []any{folder, leaf, file.Type, file.SizeBytes, folder, folder + leaf, contextEndpoint(data, r.Context), r.VCenterID, name, nonempty(datastore.ID, r.ID), datastore.Datacenter, r.Context})
+			rows = append(rows, []any{folder, leaf, file.Type, file.SizeBytes, folder, folder + leaf, sdkServer(data, r.Context), r.VCenterID, name, nonempty(datastore.ID, r.ID), datastore.Datacenter, r.Context})
 		}
 	}
 	if len(rows) == 0 {
@@ -1025,6 +1036,7 @@ func splitFilePath(path string) (folder, leaf string) {
 
 func snapshotRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
+	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, snapshot := range item.Snapshots {
@@ -1032,7 +1044,7 @@ func snapshotRows(data assessment.ExportData) [][]any {
 			if !snapshot.CreateTime.IsZero() {
 				created = snapshot.CreateTime.UTC()
 			}
-			rows = append(rows, []any{vm.Name, vm.PowerState, snapshot.Name, snapshot.Description, created, snapshot.Quiesced, snapshot.PowerState, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.Folder, vm.GuestOS, vm.ID, vm.InstanceUUID, contextEndpoint(data, obs.Context), obs.VCenterID, obs.Context})
+			rows = append(rows, []any{vm.Name, vm.PowerState, snapshot.Name, snapshot.Description, created, snapshot.Quiesced, snapshot.PowerState, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs), vm.GuestOS, vm.ID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context})
 		}
 	}
 	return rows
@@ -1044,7 +1056,7 @@ func healthRows(data assessment.ExportData, healthReport health.Report) [][]any 
 		object := finding.Object
 		rows = append(rows, []any{
 			object.Name, finding.Message, string(finding.Severity), string(finding.Category), finding.Rule, finding.Recommendation, healthEvidence(finding.Evidence), object.Kind,
-			object.Datacenter, object.ID, contextEndpoint(data, object.Context), object.VCenterID, object.Context,
+			object.Datacenter, object.ID, sdkServer(data, object.Context), object.VCenterID, object.Context,
 		})
 	}
 	return rows
@@ -1666,15 +1678,6 @@ func resourceDC(r assessment.ResourceObservation) string {
 	}
 	_ = json.Unmarshal(r.Payload, &loc)
 	return loc.Datacenter
-}
-
-func contextEndpoint(data assessment.ExportData, name string) string {
-	for _, c := range data.Contexts {
-		if c.Name == name {
-			return c.Endpoint
-		}
-	}
-	return ""
 }
 
 func storageMiB(gb float64) any {

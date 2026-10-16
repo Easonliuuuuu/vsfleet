@@ -59,3 +59,27 @@ func vInfoRow(t *testing.T, f *excelize.File, name string) int {
 	t.Fatalf("vInfo has no row for %q", name)
 	return 0
 }
+
+// RVTools roots Folder at the datacenter; a live capture records the path
+// below it, and the two must agree for an imported run to diff cleanly.
+func TestVInfoFolderIsReadBelowTheDatacenter(t *testing.T) {
+	path := writeFixtureWorkbook(t, nil)
+	for _, tc := range []struct{ folder, want string }{
+		{"/dc-a", "/"},
+		{"/dc-a/Discovered virtual machine", "/Discovered virtual machine"},
+		{"/apps", "/apps"}, // an older vsfleet export, already below the datacenter
+		{"/dc-ab/apps", "/dc-ab/apps"},
+	} {
+		t.Run(tc.folder, func(t *testing.T) {
+			f := openFixture(t, path)
+			setColumnValue(t, f, sheetVInfo, "Folder", vInfoRow(t, f, "web-01"), tc.folder)
+			result, err := Parse(f, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := findVM(result, "alpha", "web-01").Folder; got != tc.want {
+				t.Errorf("folder = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

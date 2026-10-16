@@ -97,13 +97,13 @@ func TestVFileInfoRowsCarrySizesPathsAndStableOrder(t *testing.T) {
 	want := []row{
 		// Contexts sort by name (edge, prod), datastores by name, files by
 		// case-insensitive path.
-		{"[ds-edge] app/", "app.vmdk", "VmDiskFileInfo", "3", "[ds-edge] app/", "https://edge.vc.example", "edge-uuid", "ds-edge", "datastore-8", "dc-edge", "edge"},
-		{"[ds-prod-a] db-01/", "db-01.vmdk", "VmDiskFileInfo", "100", "[ds-prod-a] db-01/", "https://prod.vc.example", "prod-uuid", "ds-prod-a", "datastore-1", "dc-prod", "prod"},
-		{"[ds-prod-a] db-01/", "db-01.vmx", "VmConfigFileInfo", "200", "[ds-prod-a] db-01/", "https://prod.vc.example", "prod-uuid", "ds-prod-a", "datastore-1", "dc-prod", "prod"},
-		{"[ds-prod-b]", "readme.txt", "FileInfo", "12", "[ds-prod-b]", "https://prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
-		{"[ds-prod-b] Web-01/", "vmware.log", "VmLogFileInfo", "1099511627776", "[ds-prod-b] Web-01/", "https://prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
-		{"[ds-prod-b] web-01/", "web-01.vmdk", "VmDiskFileInfo", "5368709120", "[ds-prod-b] web-01/", "https://prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
-		{"[ds-prod-b] web-01/", "web-01.vmx", "VmConfigFileInfo", "2048", "[ds-prod-b] web-01/", "https://prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
+		{"[ds-edge] app/", "app.vmdk", "VmDiskFileInfo", "3", "[ds-edge] app/", "edge.vc.example", "edge-uuid", "ds-edge", "datastore-8", "dc-edge", "edge"},
+		{"[ds-prod-a] db-01/", "db-01.vmdk", "VmDiskFileInfo", "100", "[ds-prod-a] db-01/", "prod.vc.example", "prod-uuid", "ds-prod-a", "datastore-1", "dc-prod", "prod"},
+		{"[ds-prod-a] db-01/", "db-01.vmx", "VmConfigFileInfo", "200", "[ds-prod-a] db-01/", "prod.vc.example", "prod-uuid", "ds-prod-a", "datastore-1", "dc-prod", "prod"},
+		{"[ds-prod-b]", "readme.txt", "FileInfo", "12", "[ds-prod-b]", "prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
+		{"[ds-prod-b] Web-01/", "vmware.log", "VmLogFileInfo", "1099511627776", "[ds-prod-b] Web-01/", "prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
+		{"[ds-prod-b] web-01/", "web-01.vmdk", "VmDiskFileInfo", "5368709120", "[ds-prod-b] web-01/", "prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
+		{"[ds-prod-b] web-01/", "web-01.vmx", "VmConfigFileInfo", "2048", "[ds-prod-b] web-01/", "prod.vc.example", "prod-uuid", "ds-prod-b", "datastore-2", "dc-prod", "prod"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("vFileInfo has %d rows, want %d: %+v", len(got), len(want), got)

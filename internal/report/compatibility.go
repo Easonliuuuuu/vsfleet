@@ -173,24 +173,32 @@ const clusterSettingsEmpty = "for a capture predating inventory schema 25, or fo
 
 var sharedColumns = map[string]ColumnSpec{
 	// Per-VM identity and provenance tail.
-	"VM":                                     {Kind: KindText, Note: "VM name as vCenter reports it; not unique across an estate."},
-	"Powerstate":                             {Kind: KindText, Note: "poweredOn, poweredOff or suspended."},
-	"Template":                               {Kind: KindBoolean, Note: "True for a VM template."},
-	"Annotation":                             {Kind: KindText, Empty: "when the VM has no notes", Note: "Free text; may contain newlines."},
-	"Datacenter":                             {Kind: KindText},
-	"Cluster":                                {Kind: KindText, Empty: "for a VM on a standalone host"},
-	"Host":                                   {Kind: KindText, Empty: "when vCenter reports no placement"},
-	"Folder":                                 {Kind: KindText, Note: "Inventory path below the datacenter's vm folder; the root is /. RVTools includes the datacenter name in this path."},
+	"VM":         {Kind: KindText, Note: "VM name as vCenter reports it; not unique across an estate."},
+	"Powerstate": {Kind: KindText, Note: "poweredOn, poweredOff or suspended."},
+	"Template":   {Kind: KindBoolean, Note: "True for a VM template."},
+	"Annotation": {Kind: KindText, Empty: "when the VM has no notes", Note: "Free text; may contain newlines."},
+	"Datacenter": {Kind: KindText},
+	"Cluster":    {Kind: KindText, Empty: "for a VM on a standalone host"},
+	"Host":       {Kind: KindText, Empty: "when vCenter reports no placement"},
+	"Folder": {Kind: KindText, Empty: "for a VM inside a vApp, whose vApp is named on vInfo instead",
+		Note: "Inventory folder path rooted at the datacenter, as RVTools writes it, for example /DC-Lab or /DC-Lab/Discovered virtual machine."},
 	"OS according to the configuration file": {Kind: KindText, Note: "The configured guest OS identifier, which is what the VM claims to be — not what the guest actually runs."},
 	"VM ID":                                  {Kind: KindText, Note: "vCenter managed object reference, e.g. vm-1042. Unique within one vCenter, not across an estate."},
 	"VM UUID":                                {Kind: KindText, Note: "Instance UUID: unique to this VM instance, and the identifier vsfleet tracks a VM by across captures."},
 	"VM SMBIOS UUID": {Kind: KindText, Empty: "when vCenter does not report one",
 		Note: "The BIOS UUID the guest sees. It is preserved by a clone, so it is not a reliable unique key."},
-	"VI SDK Server":   {Kind: KindText, Note: "The configured endpoint, including its URL scheme (for example https://192.168.150.10), not a value vCenter reported. RVTools writes the host without the scheme."},
+	"VI SDK Server":   {Kind: KindText, Note: "The configured endpoint's host, and port when one is configured, without the URL scheme, as RVTools writes it (for example 192.168.150.10). It is not a value vCenter reported."},
 	"VI SDK UUID":     {Kind: KindText, Note: "The vCenter instance UUID, falling back to the endpoint string when vCenter omits it."},
 	"vsfleet Context": {Kind: KindText, Note: "A vsfleet addition present on every worksheet: which configured context the row came from. It is what makes a single estate-wide workbook readable."},
 
 	// vInfo.
+	"DNS Name":           {Kind: KindText, Empty: "when VMware Tools reports no host name, or one that is not a plain DNS name", Note: "The guest's own host name as VMware Tools reports it; it need not resolve."},
+	"Connection state":   {Kind: KindText, Note: "connected, disconnected, orphaned, inaccessible or invalid."},
+	"NICs":               {Kind: KindInteger, Empty: "for a capture predating inventory schema 2, or when vSphere returned no VM configuration", Note: "Virtual network adapters."},
+	"Disks":              {Kind: KindInteger, Empty: "for a capture predating inventory schema 2, or when vSphere returned no VM configuration", Note: "Virtual disks."},
+	"vApp":               {Kind: KindText, Empty: "for a VM that is not directly inside a vApp, or a capture that did not collect vApps"},
+	"EFI Secure boot":    {Kind: KindBoolean, Empty: "when vSphere returned no VM configuration or reports no boot options"},
+	"Firmware":           {Kind: KindText, Empty: "when vSphere returned no VM configuration", Note: "bios or efi."},
 	"Guest state":        {Kind: KindText, Empty: "when VMware Tools is not running", Note: "running or notRunning, as reported by Tools."},
 	"CPUs":               {Kind: KindInteger, Note: "Configured vCPU count."},
 	"Memory":             {Kind: KindInteger, Unit: "MiB", Note: "Configured memory."},
@@ -353,6 +361,10 @@ var sharedColumns = map[string]ColumnSpec{
 // sheetColumns describes columns whose meaning depends on the worksheet. A
 // name here shadows the shared description for that sheet only.
 var sheetColumns = map[string]map[string]ColumnSpec{
+	"vInfo": {
+		"Resource pool": {Kind: KindText, Empty: "for a template, a capture that did not collect resource pools, or a vApp whose parent pool is ambiguous",
+			Note: "The VM's resource pool or vApp path without the datacenter's host folder, as RVTools writes it, for example /DC-Lab/Cluster-DR/Resources."},
+	},
 	metadataSheetName: {
 		"Run ID":          {Kind: KindInteger, Note: "The stored assessment the row was rendered from."},
 		"Captured at":     {Kind: KindDate, Note: "When the row's context was captured, in UTC. Rendered as a date cell in XLSX and as RFC3339 UTC in CSV."},

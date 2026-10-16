@@ -42,9 +42,9 @@ var (
 	// omits Folder), but vDisk, vNetwork, vSnapshot, vCPU, vMemory, and vTools
 	// all end in exactly these columns.
 	vmTailHeaders    = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	vmHeaders        = []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "CPUs", "Memory", "NICs", "Disks", "Primary IP Address", "Resource pool", "Folder", "vApp", "In Use MiB", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs"}, vmTailHeaders...)
-	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB"}, vmTailHeaders...)
+	vmHeaders        = []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "CPUs", "Memory", "NICs", "Disks", "Total disk capacity MiB", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4", "Network #5", "Network #6", "Network #7", "Network #8", "Resource pool", "Folder", "vApp", "In Use MiB", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs", "Sockets", "Cores p/s", "Reservation", "Limit"}, vmTailHeaders...)
+	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit"}, vmTailHeaders...)
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	networkHeaders   = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	toolsHeaders     = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
@@ -65,9 +65,9 @@ var (
 	dvPortHeaders       = append([]string{"Port", "Switch", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Allow Promiscuous", "Mac Changes", "Forged Transmits", "Policy", "Notify Switch", "Rolling Order", "In Traffic Shaping", "Out Traffic Shaping", "Blocked", "Auto expand", "Active Uplink", "Standby Uplink", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
 	vmkHeaders          = append([]string{"Device", "Port Group", "Mac Address", "MTU", "TSO", "Netstack", "DHCP", "IP Address", "Subnet mask", "Service console"}, hostTailHeaders...)
 	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Local disk", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
-	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "TotalMemory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "Effective Cpu", "TotalMemory", "Effective Memory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS default VM behavior", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "URL", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	// fileInfoHeaders opens with the eight vFileInfo columns of an RVTools 4.8
 	// export, in RVTools' order and spelling (Friendly Path Name through VI SDK
@@ -431,9 +431,12 @@ func vmRows(data assessment.ExportData) [][]any {
 			upgrade = *vm.HardwareUpgrade
 		}
 		place := places[placementKey{obs.Context, vm.ID}]
-		rows = append(rows, []any{vm.Name, vm.PowerState, vm.IsTemplate, optionalString(vm.GuestHostName), optionalString(vm.ConnectionState), vm.GuestState, vm.CPU, vm.MemoryMB,
-			deviceCount(data, vm, len(vm.NICs)), deviceCount(data, vm, len(vm.Disks)), vm.IPAddress, optionalString(place.resourcePool), rvtoolsFolder(places, obs), optionalString(place.vApp),
-			storageMiB(vm.StorageGB), optionalBool(vm.SecureBootEnabled), optionalString(vm.Firmware), hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context})
+		row := []any{vm.Name, vm.PowerState, vm.IsTemplate, optionalString(vm.GuestHostName), optionalString(vm.ConnectionState), vm.GuestState, vm.CPU, vm.MemoryMB,
+			deviceCount(data, vm, len(vm.NICs)), deviceCount(data, vm, len(vm.Disks)), totalDiskCapacityMiB(data, vm), vm.IPAddress}
+		row = append(row, networkSlots(data, vm)...)
+		row = append(row, optionalString(place.resourcePool), rvtoolsFolder(places, obs), optionalString(place.vApp),
+			storageMiB(vm.StorageGB), optionalBool(vm.SecureBootEnabled), optionalString(vm.Firmware), hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context)
+		rows = append(rows, row)
 	}
 	return rows
 }
@@ -450,7 +453,8 @@ func cpuRows(data assessment.ExportData) [][]any {
 	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.CPU}, vmTail(data, places, obs)...)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.CPU, optionalInt32NonZero(vm.CPUSockets), optionalInt32NonZero(vm.CoresPerSocket)}, allocationCells(vm.CPUAllocation)...)
+		row = append(row, vmTail(data, places, obs)...)
 		rows = append(rows, row)
 	}
 	return rows
@@ -461,7 +465,8 @@ func memoryRows(data assessment.ExportData) [][]any {
 	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.MemoryMB}, vmTail(data, places, obs)...)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.MemoryMB, optionalBool(vm.MemoryReservationLockedToMax)}, allocationCells(vm.MemoryAllocation)...)
+		row = append(row, vmTail(data, places, obs)...)
 		rows = append(rows, row)
 	}
 	return rows
@@ -861,9 +866,9 @@ func clusterRows(data assessment.ExportData) [][]any {
 		if err := json.Unmarshal(r.Payload, &cluster); err != nil {
 			continue
 		}
-		row := []any{nonempty(cluster.Name, r.Name), optionalString(cluster.ConfigStatus), optionalString(cluster.OverallStatus), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, optionalInt32(cluster.CPUThreads), cluster.TotalMemoryMB, optionalInt32(cluster.VMotions), cluster.HAEnabled}
+		row := []any{nonempty(cluster.Name, r.Name), optionalString(cluster.ConfigStatus), optionalString(cluster.OverallStatus), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, optionalInt32(cluster.CPUThreads), effectiveCapacity(cluster, cluster.EffectiveCPUMHz), cluster.TotalMemoryMB, effectiveCapacity(cluster, cluster.EffectiveMemoryMB), optionalInt32(cluster.VMotions), cluster.HAEnabled}
 		row = append(row, clusterHACells(cluster.Settings)...)
-		row = append(row, cluster.DRSEnabled)
+		row = append(row, cluster.DRSEnabled, optionalString(cluster.DRSBehavior))
 		row = append(row, clusterDRSCells(cluster.Settings)...)
 		rows = append(rows, append(row, nonempty(cluster.ID, r.ID), cluster.Datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context))
 	}
@@ -961,7 +966,7 @@ func datastoreRows(data assessment.ExportData) [][]any {
 		if datastore.CapacityBytes > 0 {
 			freePercent = float64(datastore.FreeBytes) / float64(datastore.CapacityBytes) * 100
 		}
-		rows = append(rows, []any{nonempty(datastore.Name, r.Name), datastore.Datacenter, datastore.Type, capacity, float64(datastore.UsedBytes()) / miB, free, freePercent, datastore.Accessible, datastore.Maintenance, nonempty(datastore.ID, r.ID), sdkServer(data, r.Context), r.VCenterID, r.Context})
+		rows = append(rows, []any{nonempty(datastore.Name, r.Name), datastore.Datacenter, datastore.Type, capacity, float64(datastore.UsedBytes()) / miB, free, freePercent, datastore.Accessible, datastore.Maintenance, optionalString(datastore.Backing.URL), nonempty(datastore.ID, r.ID), sdkServer(data, r.Context), r.VCenterID, r.Context})
 	}
 	return rows
 }

@@ -65,7 +65,7 @@ var (
 	dvPortHeaders       = append([]string{"Port", "Switch", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Allow Promiscuous", "Mac Changes", "Forged Transmits", "Policy", "Notify Switch", "Rolling Order", "In Traffic Shaping", "Out Traffic Shaping", "Blocked", "Auto expand", "Active Uplink", "Standby Uplink", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
 	vmkHeaders          = append([]string{"Device", "Port Group", "Mac Address", "MTU", "TSO", "Netstack", "DHCP", "IP Address", "Subnet mask", "Service console"}, hostTailHeaders...)
 	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Local disk", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
-	clusterHeaders      = []string{"Name", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "TotalMemory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -850,9 +850,40 @@ func clusterRows(data assessment.ExportData) [][]any {
 		if err := json.Unmarshal(r.Payload, &cluster); err != nil {
 			continue
 		}
-		rows = append(rows, []any{nonempty(cluster.Name, r.Name), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, cluster.TotalMemoryMB, cluster.HAEnabled, cluster.DRSEnabled, nonempty(cluster.ID, r.ID), cluster.Datacenter, contextEndpoint(data, r.Context), r.VCenterID, r.Context})
+		row := []any{nonempty(cluster.Name, r.Name), optionalString(cluster.ConfigStatus), optionalString(cluster.OverallStatus), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, optionalInt32(cluster.CPUThreads), cluster.TotalMemoryMB, optionalInt32(cluster.VMotions), cluster.HAEnabled}
+		row = append(row, clusterHACells(cluster.Settings)...)
+		row = append(row, cluster.DRSEnabled)
+		row = append(row, clusterDRSCells(cluster.Settings)...)
+		rows = append(rows, append(row, nonempty(cluster.ID, r.ID), cluster.Datacenter, contextEndpoint(data, r.Context), r.VCenterID, r.Context))
 	}
 	return rows
+}
+
+// clusterHACells writes Failover Level through VM Monitoring. A cluster whose
+// settings were not read leaves every cell empty rather than reporting the
+// zero values as configuration.
+func clusterHACells(st *vsphere.ClusterSettings) []any {
+	cells := make([]any, 12)
+	if st == nil {
+		return cells
+	}
+	cells[0], cells[1], cells[2], cells[3] = st.FailoverLevel, st.AdmissionControl, optionalString(st.HostMonitoring), optionalString(st.HeartbeatDatastorePolicy)
+	cells[4], cells[5] = optionalString(st.IsolationResponse), optionalString(st.RestartPriority)
+	if mon := st.VMTools; mon != nil {
+		cells[6], cells[7], cells[8], cells[9], cells[10] = optionalBool(mon.ClusterSettings), mon.MaxFailures, mon.MaxFailureWindow, mon.FailureInterval, mon.MinUpTime
+	}
+	cells[11] = optionalString(st.VMMonitoring)
+	return cells
+}
+
+// clusterDRSCells writes DRS vmotion rate through DPM Host Power Action Rate.
+func clusterDRSCells(st *vsphere.ClusterSettings) []any {
+	cells := make([]any, 4)
+	if st == nil {
+		return cells
+	}
+	cells[0], cells[1], cells[2], cells[3] = optionalInt32NonZero(st.DRSVMotionRate), st.DPMEnabled, optionalString(st.DPMBehavior), optionalInt32NonZero(st.DPMHostPowerActionRate)
+	return cells
 }
 
 func resourcePoolRows(data assessment.ExportData) [][]any {

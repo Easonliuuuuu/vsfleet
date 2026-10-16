@@ -124,7 +124,11 @@ var columnRules = map[string]colRule{
 
 	// vCluster / vRP / vDatastore.
 	"NumHosts": keep(), "numEffectiveHosts": keep(), "TotalCpu": keep(), "NumCpuCores": keep(), "TotalMemory": keep(),
-	"HA enabled": keep(), "DRS enabled": keep(), "Resource pool": pathRule, "VMs": keep(), "vCPUs": keep(),
+	"HA enabled": keep(), "DRS enabled": keep(), "OverallStatus": keep(), "NumCpuThreads": keep(), "Num VMotions": keep(),
+	"Failover Level": keep(), "AdmissionControlEnabled": keep(), "Host monitoring": keep(), "HB Datastore Candidate Policy": keep(),
+	"Isolation Response": keep(), "Restart Priority": keep(), "Cluster Settings": keep(), "Max Failures": keep(),
+	"Max Failure Window": keep(), "Failure Interval": keep(), "Min Up Time": keep(), "VM Monitoring": keep(),
+	"DRS vmotion rate": keep(), "DPM enabled": keep(), "DPM default behavior": keep(), "DPM Host Power Action Rate": keep(), "Resource pool": pathRule, "VMs": keep(), "vCPUs": keep(),
 	"CPU limit": keep(), "CPU overheadLimit": keep(), "CPU reservation": keep(), "CPU level": keep(), "CPU shares": keep(),
 	"CPU expandableReservation": keep(), "Mem Configured": keep(), "Mem limit": keep(), "Mem overheadLimit": keep(),
 	"Mem reservation": keep(), "Mem level": keep(), "Mem shares": keep(), "Mem expandableReservation": keep(),

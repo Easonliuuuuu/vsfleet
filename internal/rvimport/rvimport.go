@@ -1763,7 +1763,7 @@ func parseWWN(value string) *int64 {
 }
 
 func clusterFromRow(t sheetTable, row []string, contextName string) vsphere.Cluster {
-	return vsphere.Cluster{
+	cl := vsphere.Cluster{
 		Location:      vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:            t.cell(row, "Object ID"),
 		Name:          t.cell(row, "Name"),
@@ -1774,7 +1774,13 @@ func clusterFromRow(t sheetTable, row []string, contextName string) vsphere.Clus
 		TotalMemoryMB: parseInt(t.cell(row, "TotalMemory")),
 		HAEnabled:     parseBool(t.cell(row, "HA enabled")),
 		DRSEnabled:    parseBool(t.cell(row, "DRS enabled")),
+		ConfigStatus:  t.cell(row, "Config status"),
+		OverallStatus: t.cell(row, "OverallStatus"),
+		CPUThreads:    parseOptInt32(t.cell(row, "NumCpuThreads")),
+		VMotions:      parseOptInt32(t.cell(row, "Num VMotions")),
 	}
+	cl.Settings = clusterSettingsFromRow(t, row)
+	return cl
 }
 
 func datastoreFromRow(t sheetTable, row []string, contextName string) vsphere.Datastore {

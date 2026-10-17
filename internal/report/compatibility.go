@@ -288,6 +288,8 @@ var sharedColumns = map[string]ColumnSpec{
 	"CPU usage %":         {Kind: KindDecimal, Unit: "percent", Empty: "when the host reports no CPU capacity, rather than dividing by zero", Note: "Fractional percentages are retained; RVTools writes integers."},
 	"# Memory":            {Kind: KindInteger, Unit: "MiB", Note: "Physical memory installed."},
 	"Memory usage %":      {Kind: KindDecimal, Unit: "percent", Empty: "when the host reports no memory capacity, rather than dividing by zero", Note: "Fractional percentages are retained; RVTools writes integers."},
+	"# NICs":              {Kind: KindInteger, Empty: "for a host captured without its configuration, such as a disconnected host, a capture predating inventory schema 9, or an RVTools import", Note: "Physical NICs, one row each on vNIC."},
+	"# HBAs":              {Kind: KindInteger, Empty: "for a host captured without its configuration, such as a disconnected host, a capture predating inventory schema 9, or an RVTools import", Note: "Host bus adapters, one row each on vHBA."},
 	"# VMs total":         {Kind: KindInteger, Note: "Count of HostSystem.vm references, including templates. RVTools excludes templates."},
 	"ESX Version":         {Kind: KindText, Note: "Full product name, for example VMware ESXi 8.0.3 build-24784735, as RVTools writes it. A capture predating inventory schema 26 has the version only, for example 8.0.3."},
 	"CPU Model":           {Kind: KindText, Empty: hostDetailsEmpty},

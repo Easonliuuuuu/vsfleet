@@ -286,6 +286,11 @@ inventory schema 26 leaves these cells empty. `Certificate Status` is not
 written: vSphere's host configuration carries the certificate, not vCenter's
 assessment of it.
 
+`# NICs` and `# HBAs` count the host's `vNIC` and `vHBA` rows. They are empty
+for a host captured without its configuration, such as a disconnected host,
+for a capture predating inventory schema 9, and for an RVTools import, whose
+adapter rows come from worksheets that may be missing.
+
 The density columns (`# VMs`, `# vCPUs`, `vRAM` and the per-core ratios)
 count powered-on VMs only, templates excluded, as RVTools does. They are
 empty for a context whose VM collection did not complete.

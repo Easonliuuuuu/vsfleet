@@ -578,6 +578,7 @@ func (t sheetTable) probe() {
 		applyUSBRow(t, nil, scratchVM)
 	case sheetVHost:
 		hostFromRow(t, nil, "", nil)
+		adapterCountsFromRow(t, nil, scratchHost)
 	case sheetVSwitch:
 		applyVSwitchRow(t, nil, scratchHost)
 	case sheetVPort:
@@ -977,9 +978,11 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 	// identify their context and are self-contained.
 	hostIndex := make(map[string]*vsphere.Host)
 	hostNameIndex := make(map[string][]*vsphere.Host)
+	var adapterCounts []hostAdapterCounts
 	attachResourceRows(tables, sheetVHost, kindHost, &warnings, &ambiguities, contextFor, func(c *importedContext, t sheetTable, row []string) string {
 		h := hostFromRow(t, row, c.name, opts.Timezone)
 		c.hosts = append(c.hosts, &h)
+		adapterCounts = append(adapterCounts, adapterCountsFromRow(t, row, &h))
 		scope := c.hostScope
 		if h.ID != "" {
 			hostIndex[scope+"|"+h.ID] = &h
@@ -1072,6 +1075,7 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 	}
 	hostSub(sheetVSwitch, applyVSwitchRow)
 	hostSub(sheetVPort, applyVPortRow)
+	checkHostAdapterCounts(tables, adapterCounts, warn)
 
 	// Distributed switches. dvPort names its switch by display name, so the
 	// join is scoped to context and datacenter and refused when it is not

@@ -108,7 +108,7 @@ var columnRules = map[string]colRule{
 
 	// vHost / vHBA / vNIC / vSwitch / vPort.
 	"in Maintenance Mode": keep(), "# Cores": keep(), "CPU usage %": keep(), "# Memory": keep(), "Memory usage %": keep(),
-	"# VMs total": keep(), "ESX Version": keep(), "Model": keep(), "Bus": keep(), "Status": keep(), "Driver": keep(),
+	"# NICs": keep(), "# HBAs": keep(), "# VMs total": keep(), "ESX Version": keep(), "Model": keep(), "Bus": keep(), "Status": keep(), "Driver": keep(),
 	"Pci": keep(), "PCI": keep(), "Storage protocol": keep(), "WWNN": id(kindID), "WWPN": id(kindID),
 	"iSCSI name": id(kindID), "iSCSI alias": name(kindName), "Type": keep(), "Link speed Mb": keep(), "Duplex": keep(),
 	"Wake on LAN": keep(), "Switch": name(kindSwitch), "# Ports": keep(), "Free Ports": keep(), "MTU": keep(),

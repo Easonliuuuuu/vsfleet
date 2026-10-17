@@ -179,7 +179,7 @@ are allowed:
 | `vCPU`, `vMemory` | VM CPU and memory, when `vInfo` lacks the column; a disagreement with `vInfo` is warned about and `vInfo` wins |
 | `vDisk`, `vNetwork`, `vTools`, `vPartition`, `vSnapshot` | per-VM disks, NICs, Tools state, guest filesystems and snapshots |
 | `vHost`, `vCluster`, `vDatastore` | the host, cluster and datastore collections |
-| `vSwitch`, `vPort`, `vHBA`, `vNIC`, `vSC+VMK` / `vSC_VMK` | host configuration, joined by `Object ID` or a unique host name scoped to the same vCenter in the workbook |
+| `vSwitch`, `vPort`, `vHBA`, `vNIC`, `vSC+VMK` / `vSC_VMK` | host configuration, joined by `Object ID` or a unique host name scoped to the same vCenter in the workbook; a host whose `vNIC` or `vHBA` rows disagree with its `vHost` `# NICs` or `# HBAs` is warned about |
 | `vMultiPath` | host multipaths, joined by a unique `Host` name scoped to the same vCenter in the workbook; `Object ID` is not used for the host join |
 | `dvSwitch`, `dvPort` | distributed switches and their port groups |
 | `vCD`, `vUSB` | per-VM CD-ROM and USB devices |

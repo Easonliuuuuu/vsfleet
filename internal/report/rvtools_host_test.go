@@ -74,3 +74,44 @@ func TestWriteRVToolsVHostDetails(t *testing.T) {
 		})
 	}
 }
+
+// The lab RVTools 4.8.1.4 export writes 2 NICs and 1 HBA on each host. An
+// empty adapter list is a count only when the host's configuration was read.
+func TestWriteRVToolsVHostAdapterCounts(t *testing.T) {
+	nics := []vsphere.HostNIC{{Key: "nic-0", Device: "vmnic0"}, {Key: "nic-1", Device: "vmnic1"}}
+	hbas := []vsphere.HostHBA{{Key: "hba-0", Device: "vmhba0"}}
+	vmks := []vsphere.HostVMKernel{{Key: "vmk-0", Device: "vmk0"}}
+	for _, tc := range []struct {
+		name   string
+		schema string
+		host   vsphere.Host
+		nics   string
+		hbas   string
+	}{
+		{"lab", assessment.CurrentInventorySchemaVersion, vsphere.Host{NICs: nics, HBAs: hbas, VMKs: vmks}, "2", "1"},
+		{"configuration read, no adapters", assessment.CurrentInventorySchemaVersion, vsphere.Host{VMKs: vmks}, "0", "0"},
+		{"disconnected host", assessment.CurrentInventorySchemaVersion, vsphere.Host{ConnectionState: "disconnected"}, "", ""},
+		// An import claims schema 5 at most, and a workbook missing vHBA would
+		// otherwise report every host as having none.
+		{"RVTools import", "5", vsphere.Host{NICs: nics, VMKs: vmks}, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := sampleExportData(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+			data.Run.InventorySchemaVersion = tc.schema
+			tc.host.ID, tc.host.Name = "host-1", "esx-1"
+			payload, err := json.Marshal(tc.host)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range data.Resources {
+				if data.Resources[i].Kind == "host" {
+					data.Resources[i].Payload = payload
+				}
+			}
+			got := firstRowByHeader(t, data, "vHost")
+			if got["# NICs"] != tc.nics || got["# HBAs"] != tc.hbas {
+				t.Errorf("# NICs, # HBAs = %q, %q, want %q, %q", got["# NICs"], got["# HBAs"], tc.nics, tc.hbas)
+			}
+		})
+	}
+}

@@ -21,6 +21,32 @@
 * **vsphere:** pass the connection test with the built-in ReadOnly role instead of requiring `Sessions.ValidateSession` ([#189](https://github.com/Easonliuuuuu/vsfleet/issues/189))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.7.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.3...v0.7.0) (2026-10-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **vsphere:** collect host hardware, time and certificate details ([#460](https://github.com/Easonliuuuuu/vsfleet/issues/460))
+* **compatibility:** RVTools-profile exports write Folder as /<datacenter>/<path> (empty for a VM inside a vApp) and VI SDK Server as host[:port] without the URL scheme. Pipelines that match vsfleet's previous forms must update.
+
+### Features
+
+* **compatibility:** export # NICs and # HBAs to vHost ([#462](https://github.com/Easonliuuuuu/vsfleet/issues/462)) ([e448576](https://github.com/Easonliuuuuu/vsfleet/commit/e44857614afac250d86c7a592141264d9fc4b5bf)), closes [#461](https://github.com/Easonliuuuuu/vsfleet/issues/461)
+* **compatibility:** export captured VM, cluster and datastore columns ([#459](https://github.com/Easonliuuuuu/vsfleet/issues/459)) ([19dd110](https://github.com/Easonliuuuuu/vsfleet/commit/19dd110320e074e28b2054be9d1c990838ca911e))
+* **compatibility:** match RVTools folder, server and vInfo columns ([#446](https://github.com/Easonliuuuuu/vsfleet/issues/446)) ([f09d6a3](https://github.com/Easonliuuuuu/vsfleet/commit/f09d6a3fb938cf534554f02359df4df54652c2b5))
+* **vsphere:** collect cluster HA, DRS and DPM settings for vCluster ([#457](https://github.com/Easonliuuuuu/vsfleet/issues/457)) ([97090f6](https://github.com/Easonliuuuuu/vsfleet/commit/97090f6b576af67e31fd6818ee4246bfbf8d222f))
+* **vsphere:** collect host hardware, time and certificate details ([#460](https://github.com/Easonliuuuuu/vsfleet/issues/460)) ([500f971](https://github.com/Easonliuuuuu/vsfleet/commit/500f971e07795cf8acf917e7e0aee0adc49d2d27))
+* **vsphere:** collect VM hardware version and export it to vInfo ([#444](https://github.com/Easonliuuuuu/vsfleet/issues/444)) ([dd4dd9a](https://github.com/Easonliuuuuu/vsfleet/commit/dd4dd9a3ec9584ed15f755b6fa99f5b551b6aaa3))
+
+
+### Bug Fixes
+
+* **assessment:** include vApp changes in assessment diff ([#449](https://github.com/Easonliuuuuu/vsfleet/issues/449)) ([42d645f](https://github.com/Easonliuuuuu/vsfleet/commit/42d645fa6aef1ae19b2c2c835355cb97ea094dce))
+* **assessment:** name a registered rule in the health help example ([#447](https://github.com/Easonliuuuuu/vsfleet/issues/447)) ([1a3a175](https://github.com/Easonliuuuuu/vsfleet/commit/1a3a17543efd3436759d6d47c969d0ba81e2f5a4))
+* **assessment:** order same-named topology subjects by their identity ([#448](https://github.com/Easonliuuuuu/vsfleet/issues/448)) ([c2600cd](https://github.com/Easonliuuuuu/vsfleet/commit/c2600cdab16eb4e21424c8649e14ee9464123caf))
+* **compatibility:** match RVTools vDisk header names ([#456](https://github.com/Easonliuuuuu/vsfleet/issues/456)) ([f46defc](https://github.com/Easonliuuuuu/vsfleet/commit/f46defc3d3bb5c725f4f2e43315d81a87c990c23))
+* **compatibility:** read thousands-formatted numbers in RVTools imports ([#458](https://github.com/Easonliuuuuu/vsfleet/issues/458)) ([4f9dd7c](https://github.com/Easonliuuuuu/vsfleet/commit/4f9dd7cb3f720837d4a317d088d8aa5b883337ef))
+
 ## [0.6.3](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.2...v0.6.3) (2026-10-12)
 
 

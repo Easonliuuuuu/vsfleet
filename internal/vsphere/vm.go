@@ -33,6 +33,7 @@ var vmSummaryProps = []string{
 	"guest.hostName",
 	"guest.guestState",
 	"guest.toolsRunningStatus",
+	"guest.toolsStatus",
 	"guest.toolsVersion",
 	"guest.toolsVersionStatus2",
 	"summary.storage.committed",
@@ -255,6 +256,7 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		vm.GuestHostName = guestHostName(g.HostName)
 		vm.GuestState = g.GuestState
 		vm.ToolsState = g.ToolsRunningStatus
+		vm.ToolsStatus = string(g.ToolsStatus)
 		vm.ToolsVersion = g.ToolsVersion
 		vm.ToolsVersionStatus = g.ToolsVersionStatus2
 		vm.Partitions = guestPartitions(g.Disk)

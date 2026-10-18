@@ -168,7 +168,7 @@ func TestNewVMCopiesMigrationConfiguration(t *testing.T) {
 }
 
 func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
-	for _, property := range []string{"config.guestId", "config.hardware.device", "config.hardware.numCoresPerSocket", "config.hardware.autoCoresPerSocket", "config.cpuAllocation", "config.memoryAllocation", "config.bootOptions", "config.firmware", "config.version", "config.scheduledHardwareUpgradeInfo", "config.managedBy", "config.memoryReservationLockedToMax", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2"} {
+	for _, property := range []string{"config.guestId", "config.hardware.device", "config.hardware.numCoresPerSocket", "config.hardware.autoCoresPerSocket", "config.cpuAllocation", "config.memoryAllocation", "config.bootOptions", "config.firmware", "config.version", "config.scheduledHardwareUpgradeInfo", "config.managedBy", "config.memoryReservationLockedToMax", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2", "guest.toolsStatus"} {
 		found := false
 		for _, candidate := range vmProps {
 			if candidate == property {
@@ -186,6 +186,7 @@ func TestNewVMCopiesToolsVersion(t *testing.T) {
 	m := &mo.VirtualMachine{
 		Guest: &types.GuestInfo{
 			ToolsRunningStatus:  "guestToolsRunning",
+			ToolsStatus:         types.VirtualMachineToolsStatusToolsOk,
 			ToolsVersion:        "12352",
 			ToolsVersionStatus2: "guestToolsCurrent",
 		},
@@ -193,6 +194,9 @@ func TestNewVMCopiesToolsVersion(t *testing.T) {
 	vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, m)
 	if vm.ToolsState != "guestToolsRunning" {
 		t.Errorf("tools state = %q", vm.ToolsState)
+	}
+	if vm.ToolsStatus != "toolsOk" {
+		t.Errorf("tools installation status = %q", vm.ToolsStatus)
 	}
 	if vm.ToolsVersion != "12352" {
 		t.Errorf("tools version = %q", vm.ToolsVersion)

@@ -215,17 +215,28 @@ Observed value differences:
 | `vHost`, `ESX Version` from a capture predating inventory schema 26 | Version only, for example `8.0.3` | Product name, version and build, for example `VMware ESXi 8.0.3 build-24784735` |
 | `vHost`, `Boot time`, `BIOS Date` and certificate dates | UTC | Collector-local time without a zone |
 | `vHost`, `# VMs total` | Counts host VM references, including templates | Excludes templates; the comparison found 4 versus vsfleet's 5 |
-| `vTools`, `Tools` | VMware Tools running status (`GuestInfo.toolsRunningStatus`), for example `guestToolsNotRunning` | Tools installation status, for example `toolsNotInstalled` |
+| `vTools`, `Tools` from a capture predating inventory schema 27 | Empty: installation status was not collected | Tools installation status, for example `toolsNotInstalled` |
 | `vHBA`, `Type` | vSphere adapter type, for example `HostBlockHba` | Human-readable label, for example `Block SCSI` |
 | `dvPort`, `VLAN` on a switch's uplink port group | Reported trunk range, for example `trunk 0-4094` | Empty |
 | `vSnapshot`, `Date / time` | UTC; XLSX displays a date without a zone and CSV uses RFC3339 with `Z` | Collector-local time without a zone |
 | `vCluster`, `DRS default VM behavior` on a cluster with DRS off | Empty | The stored automation level, for example `fullyAutomated` |
 | `vInfo` `In Use MiB` and `Total disk capacity MiB`; `vPartition` capacity, consumed, free MiB and `Free %`; `vDatastore` capacity, in-use, free MiB and `Free %`; `vHost` CPU and memory usage `%` | Decimal values are retained (vPartition `Free %` is rounded to two decimals) | Integer values |
 
-The `vTools` values describe different states: a Tools installation can exist
-while its service is not running. Treat `Tools` as a different field when
-mapping an RVTools pipeline. For `vSnapshot`, convert the UTC value to the
-collector's local zone before comparing wall-clock times.
+`vTools.Tools` writes the legacy vSphere installation status (`toolsNotInstalled`,
+`toolsNotRunning`, `toolsOk` or `toolsOld`), matching RVTools, for captures at
+inventory schema 27 or later. Older live captures leave that cell empty;
+imports preserve installation status supplied by the workbook.
+`Tools Running Status` is a vsfleet extension that preserves the separate
+`guestToolsRunning` / `guestToolsNotRunning` evidence. Exports produced before
+this correction put running status in `Tools`; pipelines using those values
+should switch to `Tools Running Status`.
+
+A live same-vCenter comparison on 2026-10-18 found that vsfleet populated host
+certificate issuer, subject and validity dates while RVTools 4.8.2.1 left them
+empty. Those reference cells cannot validate vsfleet's certificate values.
+
+For `vSnapshot`, convert the UTC value to the collector's local zone before
+comparing wall-clock times.
 
 vsfleet is a personal open-source project, not an official Dell Technologies
 product, and is not sponsored, endorsed, or supported by Dell Technologies. Its

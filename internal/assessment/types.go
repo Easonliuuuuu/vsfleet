@@ -56,8 +56,10 @@ type RunStatus string
 // have none, which readers must treat as "not read". Schema 26 records each
 // host's hardware, time, name service, vMotion, EVC and certificate details
 // (Host.Details); older runs have none, which readers must treat as "not
-// read".
-const CurrentInventorySchemaVersion = "26"
+// read". Schema 27 records the legacy VMware Tools installation status
+// (VM.ToolsStatus), independently of the running status. Older captures
+// have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "27"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

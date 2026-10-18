@@ -44,7 +44,7 @@ import (
 // ProfileVersion identifies this adapter's worksheet/column mapping. It is
 // recorded on every imported run's note so a richer profile can be told apart
 // from runs an earlier version of this importer produced.
-const ProfileVersion = "rvtools-v3"
+const ProfileVersion = "rvtools-v4"
 
 // importSource marks an imported run's Run.Source, the one field every other
 // command already reads, so "vsfleet assessment list" tells an imported run
@@ -1608,7 +1608,7 @@ func applySnapshotRow(t sheetTable, row []string, vm *vsphere.VM, timezone *time
 }
 
 func applyToolsRow(t sheetTable, row []string, vm *vsphere.VM) {
-	vm.ToolsState = t.cell(row, "Tools")
+	applyToolsStatus(t.cell(row, "Tools"), t.cell(row, "Tools Running Status"), vm)
 	vm.ToolsVersion = t.cell(row, "Tools Version")
 	vm.ToolsVersionStatus = t.cell(row, "Tools Version Status")
 }

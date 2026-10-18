@@ -142,6 +142,7 @@ type VM struct {
 	GuestOS            string   `json:"guest_os"`
 	GuestState         string   `json:"guest_state"`
 	ToolsState         string   `json:"tools_state"`
+	ToolsStatus        string   `json:"tools_status,omitempty"`
 	ToolsVersion       string   `json:"tools_version,omitempty"`
 	ToolsVersionStatus string   `json:"tools_version_status,omitempty"`
 	IPAddress          string   `json:"ip_address"`

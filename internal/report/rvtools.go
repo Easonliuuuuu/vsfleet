@@ -47,7 +47,7 @@ var (
 	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit"}, vmTailHeaders...)
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	networkHeaders   = []string{"VM", "Powerstate", "Template", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	toolsHeaders     = append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...)
+	toolsHeaders     = append(append([]string{"VM", "Powerstate", "Template", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...), "Tools Running Status")
 	cdHeaders        = append([]string{"VM", "Powerstate", "Template", "Device", "Device Key", "Connected", "Starts Connected", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeaders...)
 	usbHeaders       = append([]string{"VM", "Powerstate", "Template", "Device", "Device Key", "Connected", "Vendor ID", "Product ID", "Family", "Speed", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeaders...)
 	partitionHeaders = append([]string{"VM", "Powerstate", "Template", "Disk Key", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
@@ -476,7 +476,8 @@ func toolsRows(data assessment.ExportData) [][]any {
 	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, vm.ToolsState, optionalString(vm.ToolsVersion), optionalString(vm.ToolsVersionStatus)}, vmTail(data, places, obs)...)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, optionalString(vm.ToolsStatus), optionalString(vm.ToolsVersion), optionalString(vm.ToolsVersionStatus)}, vmTail(data, places, obs)...)
+		row = append(row, optionalString(vm.ToolsState))
 		rows = append(rows, row)
 	}
 	return rows
@@ -1323,7 +1324,7 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 					message = c.Error
 				} else if spec.kind == "vtools" && !toolsRecorded {
 					// The vTools tab still has one row per VM here (the
-					// running-status column predates schema 3), just without
+					// running-status extension predates schema 3), just without
 					// a version — say so rather than claiming the tab is
 					// unrecorded.
 					message = "capture predates VMware Tools version inventory"

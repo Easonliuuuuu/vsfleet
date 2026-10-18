@@ -301,7 +301,7 @@ func TestSnapshotsAreImportedAndAnAbsentWorksheetIsUnavailable(t *testing.T) {
 func TestToolsAndPartitionsAreMappedAndEarnTheirSchemaLevel(t *testing.T) {
 	path := writeFixtureWorkbook(t, func(data *assessment.ExportData) {
 		vm := &data.VMs[0].Observation.VM
-		vm.ToolsState, vm.ToolsVersion, vm.ToolsVersionStatus = "guestToolsRunning", "12352", "guestToolsCurrent"
+		vm.ToolsState, vm.ToolsStatus, vm.ToolsVersion, vm.ToolsVersionStatus = "guestToolsRunning", "toolsOk", "12352", "guestToolsCurrent"
 		vm.Partitions = []vsphere.VMPartition{{Path: "/", DiskKeys: []int32{2000}, CapacityBytes: 20 << 30, FreeBytes: 5 << 30, FilesystemType: "ext4"}}
 	})
 	result, err := Parse(openFixture(t, path), Options{})
@@ -309,8 +309,8 @@ func TestToolsAndPartitionsAreMappedAndEarnTheirSchemaLevel(t *testing.T) {
 		t.Fatal(err)
 	}
 	vm := findVM(result, "alpha", "web-01")
-	if vm.ToolsState != "guestToolsRunning" || vm.ToolsVersionStatus != "guestToolsCurrent" {
-		t.Errorf("tools = %q/%q, want the vTools values", vm.ToolsState, vm.ToolsVersionStatus)
+	if vm.ToolsState != "guestToolsRunning" || vm.ToolsStatus != "toolsOk" || vm.ToolsVersionStatus != "guestToolsCurrent" {
+		t.Errorf("tools = %q/%q/%q, want the vTools values", vm.ToolsStatus, vm.ToolsState, vm.ToolsVersionStatus)
 	}
 	if len(vm.Partitions) != 1 || vm.Partitions[0].FilesystemType != "ext4" || vm.Partitions[0].FreeBytes != 5<<30 || len(vm.Partitions[0].DiskKeys) != 1 || vm.Partitions[0].DiskKeys[0] != 2000 {
 		t.Errorf("partitions = %+v, want the mapped ext4 filesystem joined to disk key 2000", vm.Partitions)
@@ -879,5 +879,54 @@ func TestRunIsStampedWithTheCaptureTimeAndRecordsTheImportTime(t *testing.T) {
 		if c.FinishedAt.After(captured.Add(time.Minute)) {
 			t.Errorf("context %s finished at %v, want it stamped with the capture time", c.Name, c.FinishedAt)
 		}
+	}
+}
+
+func TestToolsStatusKeepsInstallationAndRunningEvidenceSeparate(t *testing.T) {
+	for _, tc := range []struct {
+		name, status, running, wantStatus, wantRunning string
+	}{
+		{"RVTools not installed", "toolsNotInstalled", "", "toolsNotInstalled", ""},
+		{"RVTools installed", "toolsOk", "", "toolsOk", ""},
+		{"legacy vsfleet", "guestToolsRunning", "", "", "guestToolsRunning"},
+		{"explicit running status", "toolsOld", "guestToolsNotRunning", "toolsOld", "guestToolsNotRunning"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := writeFixtureWorkbook(t, nil)
+			f := openFixture(t, path)
+			rows, err := f.GetRows(sheetVTools)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i, header := range rows[0] {
+				var value string
+				switch header {
+				case "Tools":
+					value = tc.status
+				case "Tools Running Status":
+					value = tc.running
+				default:
+					continue
+				}
+				cell, err := excelize.CoordinatesToCellName(i+1, 2)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := f.SetCellValue(sheetVTools, cell, value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.running == "" {
+				blankHeader(t, f, sheetVTools, "Tools Running Status")
+			}
+			result, err := Parse(f, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			vm := findVM(result, "alpha", "web-01")
+			if vm.ToolsStatus != tc.wantStatus || vm.ToolsState != tc.wantRunning {
+				t.Fatalf("installation/running = %q/%q, want %q/%q", vm.ToolsStatus, vm.ToolsState, tc.wantStatus, tc.wantRunning)
+			}
+		})
 	}
 }

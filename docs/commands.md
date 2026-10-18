@@ -165,7 +165,7 @@ vsfleet assessment diff pre-migration wave-1
 ```
 
 Imported runs show source `rvtools-import`. Their notes record filename,
-SHA-256 fingerprint, capture time/source, parser profile `rvtools-v3`, and
+SHA-256 fingerprint, capture time/source, parser profile `rvtools-v4`, and
 recognized/ignored worksheets.
 
 ### What is read
@@ -207,6 +207,12 @@ The LUN label uses `Display name`, falling back to `Disk`; `Disk` remains
 the device ID. RVTools path counts cover only supplied `Path 1`–`Path 8`
 slots and states. Locality and working-path count remain unknown. vsfleet's
 own aggregate counts, locality, and working-path columns are preserved.
+
+`vTools` installation status (`Tools`) and running status (`Tools Running Status`,
+a vsfleet extension) are stored separately. Real RVTools workbooks do not supply
+the running-status extension, so running status remains unknown. Older vsfleet
+workbooks that put `guestToolsRunning` or `guestToolsNotRunning` in `Tools`
+retain those values as running status.
 
 ### Missing evidence is never good news
 

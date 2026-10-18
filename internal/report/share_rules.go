@@ -80,7 +80,7 @@ var columnRules = map[string]colRule{
 	"Network #5": name(kindNetwork), "Network #6": name(kindNetwork), "Network #7": name(kindNetwork), "Network #8": name(kindNetwork),
 	"Sockets": keep(), "Cores p/s": keep(), "Memory Reservation Locked To Max": keep(), "vApp": name(kindName), "EFI Secure boot": keep(), "Firmware": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),
 	"HW target": keep(), "OS according to the configuration file": keep(),
-	"Size MiB": keep(), "Tools": keep(), "Tools Version": keep(), "Tools Version Status": keep(),
+	"Size MiB": keep(), "Tools": keep(), "Tools Version": keep(), "Tools Version Status": keep(), "Tools Running Status": keep(),
 
 	// vDisk / vPartition.
 	"Disk": keep(), "Disk Key": keep(), "Disk UUID": id(kindUUID), "Capacity MiB": keep(), "Raw": keep(),

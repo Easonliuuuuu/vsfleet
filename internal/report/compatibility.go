@@ -132,7 +132,7 @@ var sheetMeta = map[string]sheetInfo{
 	"vNetwork": {derivesFrom: "the VM collection", note: "One row per virtual NIC."},
 	"vCD":      {derivesFrom: "the VM collection", note: "One row per virtual CD/DVD device. Connection and backing fields are preserved as unknown when vSphere omits them; captures before inventory schema 6 mark the sheet not recorded in vsfleetCoverage."},
 	"vUSB":     {derivesFrom: "the VM collection", note: "One row per virtual USB device. Connection and backing fields are preserved as unknown when vSphere omits them; captures before inventory schema 6 mark the sheet not recorded in vsfleetCoverage."},
-	"vTools":   {derivesFrom: "the VM collection", note: "One row per VM. Captures taken before inventory schema 3 populate the running status but leave the version columns blank, and vsfleetCoverage records the gap."},
+	"vTools":   {derivesFrom: "the VM collection", note: "One row per VM. Tools is the legacy installation status collected since inventory schema 27; older captures leave it empty. Tools Running Status is a vsfleet extension. Captures taken before schema 3 leave the version columns blank, and vsfleetCoverage records the gap."},
 	"vSource": {derivesFrom: "the stored ServiceInstance About record",
 		note: "One row per context whose run stored the vCenter or ESXi ServiceInstance About record at capture time, using the RVTools vSource column names and order plus a vsfleet Context column. Rows come only from that stored evidence: re-exporting never contacts the server or reads current configuration. A context that never connected, and every run captured before inventory schema 17, has no row; vsfleetCoverage marks the tab failed or not recorded and states why. Fields the server does not report are empty. A same-vCenter comparison matched every RVTools column name, column order and value except VI SDK Server, which vsfleet writes as the configured URL with scheme rather than the host alone (see docs/exports.md)."},
 	"vHost":      {derivesFrom: "the host collection", note: "One row per ESXi host."},
@@ -243,7 +243,8 @@ var sharedColumns = map[string]ColumnSpec{
 		Note: "True when the memory reservation follows the configured memory size."},
 
 	// vTools.
-	"Tools":                {Kind: KindText, Note: "VMware Tools running status (GuestInfo.toolsRunningStatus), for example guestToolsNotRunning. RVTools uses Tools installation status here, for example toolsNotInstalled. Do not treat these values as equivalent."},
+	"Tools":                {Kind: KindText, Empty: "for a capture predating inventory schema 27, or when no installation status was reported", Note: "Legacy VMware Tools installation status (GuestInfo.toolsStatus), as RVTools writes it: toolsNotInstalled, toolsNotRunning, toolsOk or toolsOld. Imported installation status is preserved."},
+	"Tools Running Status": {Kind: KindText, Empty: "when running status was not reported or imported", Note: "vsfleet extension: GuestInfo.toolsRunningStatus, for example guestToolsRunning or guestToolsNotRunning. Installation status is never substituted for running status."},
 	"Tools Version":        {Kind: KindText, Empty: "for a capture predating inventory schema 3, or when vCenter reports no version"},
 	"Tools Version Status": {Kind: KindText, Empty: "for a capture predating inventory schema 3", Note: "e.g. guestToolsCurrent, guestToolsNeedUpgrade."},
 

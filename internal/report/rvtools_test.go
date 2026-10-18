@@ -49,7 +49,7 @@ func sampleExportData(when time.Time) assessment.ExportData {
 	return assessment.ExportData{
 		Run:       assessment.Run{ID: 7, Label: "nightly", StartedAt: when, FinishedAt: when.Add(time.Minute), Status: assessment.RunComplete, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion},
 		Contexts:  []assessment.ContextRun{{Name: "prod", Endpoint: "https://vc.example", Datacenter: "dc-a", VCenterID: "vc-uuid", VMStatus: "success", Source: sampleSource("vpx", "VMware vCenter Server", "8.0.3"), Collections: []assessment.CollectionRun{{Kind: "host", Status: "success", ItemCount: 1}, {Kind: "cluster", Status: "empty"}, {Kind: "resourcepool", Status: "success", ItemCount: 1}, {Kind: "vapp", Status: "empty"}, {Kind: "dvswitch", Status: "success", ItemCount: 1}, {Kind: "datastore", Status: "success", ItemCount: 1}}}},
-		VMs:       []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "vm-1", Name: "app", PowerState: "poweredOn", CPU: 2, MemoryMB: 4096, StorageGB: 10, GuestOS: "Ubuntu", InstanceUUID: "instance", BIOSUUID: "bios", Host: "esx-1", ToolsState: "guestToolsRunning", ToolsVersion: "12352", ToolsVersionStatus: "guestToolsCurrent", Disks: []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 8 << 30, UUID: "disk-uuid", SharedBus: "noSharing", ThinProvisioned: &thin, BackingPath: "[ds] app/app.vmdk"}}, NICs: []vsphere.VMNIC{{Key: 201, Label: "Network adapter 1", Network: "VM Network", Connected: &connected, UPTCompatible: &uptCompatible, IPv4: []string{"192.0.2.20"}}}, CDROMs: []vsphere.VMCDROM{{Key: 301, Label: "CD/DVD drive 1", Connected: &cdConnected, StartsConnected: &cdStarts, BackingType: "iso", BackingPath: "[datastore-1] app/install.iso", BackingDatastore: "datastore-1", BackingObjectID: "backing-1", UseAutoDetect: &autoDetect, Controller: "IDE", ControllerLabel: "IDE controller 0", UnitNumber: int32Ptr(0)}}, USBs: []vsphere.VMUSB{{Key: 401, Label: "USB device 1", Connected: &usbConnected, Vendor: 4660, Product: 22136, Family: []string{"storage", "hid"}, Speed: []string{"high", "full"}, BackingType: "remoteHost", BackingDevice: "vid:1234 pid:5678", BackingHost: "esx-1", UseAutoDetect: &autoDetect, Controller: "USB", ControllerLabel: "USB controller 0", UnitNumber: int32Ptr(1)}}, Partitions: []vsphere.VMPartition{{Path: "/", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}}}}, Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when, PowerState: "poweredOn", Quiesced: true}}}},
+		VMs:       []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "vm-1", Name: "app", PowerState: "poweredOn", CPU: 2, MemoryMB: 4096, StorageGB: 10, GuestOS: "Ubuntu", InstanceUUID: "instance", BIOSUUID: "bios", Host: "esx-1", ToolsState: "guestToolsRunning", ToolsStatus: "toolsOk", ToolsVersion: "12352", ToolsVersionStatus: "guestToolsCurrent", Disks: []vsphere.VMDisk{{Key: 101, Label: "Hard disk 1", CapacityBytes: 8 << 30, UUID: "disk-uuid", SharedBus: "noSharing", ThinProvisioned: &thin, BackingPath: "[ds] app/app.vmdk"}}, NICs: []vsphere.VMNIC{{Key: 201, Label: "Network adapter 1", Network: "VM Network", Connected: &connected, UPTCompatible: &uptCompatible, IPv4: []string{"192.0.2.20"}}}, CDROMs: []vsphere.VMCDROM{{Key: 301, Label: "CD/DVD drive 1", Connected: &cdConnected, StartsConnected: &cdStarts, BackingType: "iso", BackingPath: "[datastore-1] app/install.iso", BackingDatastore: "datastore-1", BackingObjectID: "backing-1", UseAutoDetect: &autoDetect, Controller: "IDE", ControllerLabel: "IDE controller 0", UnitNumber: int32Ptr(0)}}, USBs: []vsphere.VMUSB{{Key: 401, Label: "USB device 1", Connected: &usbConnected, Vendor: 4660, Product: 22136, Family: []string{"storage", "hid"}, Speed: []string{"high", "full"}, BackingType: "remoteHost", BackingDevice: "vid:1234 pid:5678", BackingHost: "esx-1", UseAutoDetect: &autoDetect, Controller: "USB", ControllerLabel: "USB controller 0", UnitNumber: int32Ptr(1)}}, Partitions: []vsphere.VMPartition{{Path: "/", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, FilesystemType: "ext4"}}}}, Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "base", CreateTime: when, PowerState: "poweredOn", Quiesced: true}}}},
 		Resources: []assessment.ResourceObservation{{Context: "prod", VCenterID: "vc-uuid", Kind: "host", ID: "host-1", Name: "esx-1", Payload: hostPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "resourcepool", ID: "pool-1", Name: "app-pool", Payload: poolPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "dvswitch", ID: "dvs-1", Name: "DVS-1", Payload: dvSwitchPayload}, {Context: "prod", VCenterID: "vc-uuid", Kind: "datastore", ID: "ds-1", Name: "datastore-1", Payload: datastorePayload}},
 	}
 }
@@ -165,8 +165,8 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	if got, _ := f.GetCellValue("vUSB", "J2"); got != "full, high" {
 		t.Fatalf("vUSB speed=%q", got)
 	}
-	if got, _ := f.GetCellValue("vTools", "D2"); got != "guestToolsRunning" {
-		t.Fatalf("vTools state=%q", got)
+	if got, _ := f.GetCellValue("vTools", "D2"); got != "toolsOk" {
+		t.Fatalf("vTools installation status=%q", got)
 	}
 	if got, _ := f.GetCellValue("vTools", "E2"); got != "12352" {
 		t.Fatalf("vTools version=%q", got)
@@ -359,7 +359,7 @@ func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 	}
 
 	vTools := readCSV(t, byName["vTools.csv"])
-	if got := vTools[1]; got[0] != "app" || got[3] != "guestToolsRunning" || got[4] != "12352" || got[5] != "guestToolsCurrent" {
+	if got := vTools[1]; got[0] != "app" || got[3] != "toolsOk" || got[4] != "12352" || got[5] != "guestToolsCurrent" {
 		t.Fatalf("vTools.csv row=%v", got)
 	}
 	vCD := readCSV(t, byName["vCD.csv"])
@@ -613,8 +613,8 @@ func TestWriteRVToolsMarksToolsVersionGapForSchemaTwoRuns(t *testing.T) {
 		t.Fatalf("vDisk coverage count=%q, want 1 at schema 2", got)
 	}
 	// ...but the Tools version columns are still schema-3-only.
-	if got, _ := f.GetCellValue("vTools", "D2"); got != "guestToolsRunning" {
-		t.Fatalf("vTools state=%q", got)
+	if got, _ := f.GetCellValue("vTools", "D2"); got != "" {
+		t.Fatalf("vTools installation status=%q, want empty for an old capture", got)
 	}
 	if got, _ := f.GetCellValue("vTools", "E2"); got != "" {
 		t.Fatalf("vTools version=%q, want empty at schema 2", got)

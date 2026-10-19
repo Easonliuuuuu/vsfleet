@@ -22,7 +22,9 @@ func syntheticPerfCounter(t *testing.T, m perf.Metric) perf.Counter {
 
 // seedPerformance stores a synthetic window for "prod": one VM that is idle
 // in its latest sample but peaks briefly and periodically, one whose memory
-// counter was denied (so it reads cpu-only), and one with too little history. "edge" gets none.
+// counter was denied (so it reads cpu-only), one with too little history, and
+// one at statistics level 1 whose active memory comes from mem.usage, and one
+// at that level that was powered off. "edge" gets none.
 func seedPerformance(t *testing.T, dbPath string) {
 	t.Helper()
 	store, err := assessment.Open(dbPath)
@@ -44,16 +46,24 @@ func seedPerformance(t *testing.T, dbPath string) {
 	spiky := []perf.Summary{summarize(perf.CPUUsage, cpu), summarize(perf.MemActive, mem)}
 	denied := []perf.Summary{summarize(perf.CPUUsage, cpu), perf.Unavailable(syntheticPerfCounter(t, perf.MemActive), 300, n, "permission denied")}
 	sparse := []perf.Summary{summarize(perf.CPUUsage, cpu[:3]), summarize(perf.MemActive, mem[:3])}
+	usage := make([]int64, n)
+	for i := range usage {
+		usage[i] = 1885
+	}
+	active := syntheticPerfCounter(t, perf.MemActive)
+	belowLevel := perf.Unavailable(active, 300, n, perf.BelowLevelReason(active, 2, 1, 300))
+	leveled := []perf.Summary{summarize(perf.CPUUsage, cpu), belowLevel, summarize(perf.MemUsage, usage)}
+	off := []perf.Summary{summarize(perf.CPUUsage, nil), belowLevel, summarize(perf.MemUsage, nil)}
 	end := time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC)
 	w := perf.Window{
 		Context: "prod", VCenterID: "vc-prod", Endpoint: "https://prod.example", Source: "synthetic test data",
 		StartedAt: end, FinishedAt: end, WindowStart: end.Add(-24 * time.Hour), WindowEnd: end, IntervalSeconds: 300, ExpectedSamples: n,
-		RequestsUsed: 2, VMsRequested: 3, VMsSampled: 3, Status: perf.WindowSuccess,
+		RequestsUsed: 2, VMsRequested: 5, VMsSampled: 5, Status: perf.WindowSuccess,
 	}
 	for _, vm := range []struct {
 		name string
 		sums []perf.Summary
-	}{{"spiky", spiky}, {"denied", denied}, {"sparse", sparse}} {
+	}{{"spiky", spiky}, {"denied", denied}, {"sparse", sparse}, {"leveled", leveled}, {"off", off}} {
 		sig, reason := perf.Classify(perf.ClassifyInput{Summaries: vm.sums, MemoryMB: 4096})
 		w.VMs = append(w.VMs, perf.VMResult{MoRef: "vm-" + vm.name, Name: vm.name, VCPU: 4, MemoryMB: 4096, Sampled: true, Signal: sig, SignalReason: reason, Summaries: vm.sums})
 	}
@@ -116,5 +126,35 @@ func TestAssessmentReportStatesWhichContextsHavePerformanceHistory(t *testing.T)
 	}
 	if status["prod"] != "success" || status["edge"] != "not collected" {
 		t.Fatalf("performance = %+v", report.Performance)
+	}
+}
+
+// At statistics level 1 the table fills active memory from mem.usage, marks
+// it, and drops the hint to raise the level, which would change nothing.
+func TestPerfShowReadsActiveMemoryFromMemUsage(t *testing.T) {
+	dbPath := newTopologyTestHistoryDB(t)
+	seedPerformance(t, dbPath)
+	out := mustAssessment(t, dbPath, "perf", "show", "latest")
+	var row []string
+	for _, line := range strings.Split(out, "\n") {
+		if f := strings.Fields(line); len(f) > 1 && f[0] == "leveled" {
+			row = f
+		}
+	}
+	// 18.85% of 4096 MiB.
+	if len(row) < 7 || row[1] != string(perf.SignalPeaksObserved) || row[5] != "772.1*" || row[6] != "772.1*" {
+		t.Errorf("leveled row = %q; want active memory from mem.usage, marked", row)
+	}
+	for _, want := range []string{
+		"memory:    active memory read from mem.usage for 1 of 5 sampled VMs, as mem.active is not kept",
+		"* active memory from mem.usage × configured memory",
+		"leveled: low typical usage but peaks of CPU 90%, active memory 19% (" + perf.FromMemUsage + ")",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "hint:") {
+		t.Errorf("no VM needs a higher level, so there is no hint:\n%s", out)
 	}
 }

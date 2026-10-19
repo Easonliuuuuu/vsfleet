@@ -874,6 +874,16 @@ func (d dash) memPct(name string, m perf.Metric) metric {
 	return metric{name: name, unit: "% of " + humanize.MB(d.vm.MemoryMB), values: pctOf(v, float64(d.vm.MemoryMB)), missing: why, format: fmtPct, scale: 100, warnAt: warnAt}
 }
 
+// memActive charts active memory. Where mem.active is not kept it draws
+// mem.usage, which is already a share of configured memory, and says so.
+func (d dash) memActive() metric {
+	if !perf.UsesMemUsage(d.set.Summaries()) {
+		return d.memPct("Memory active", perf.MemActive)
+	}
+	v, why := d.series(perf.MemUsage)
+	return metric{name: "Memory active", unit: "% of " + humanize.MB(d.vm.MemoryMB) + " · from " + string(perf.MemUsage), values: v, missing: why, format: fmtPct, scale: 100, warnAt: perf.HighPeakPercent}
+}
+
 func (d dash) memBalloon() metric {
 	v, why := d.series(perf.MemBalloon)
 	return metric{name: "Balloon", unit: "MiB reclaimed by the balloon driver", values: v, missing: why, format: fmtMiB, minScale: 64, warnAt: perf.MemPressureMiB}
@@ -926,7 +936,7 @@ func (d dash) overview() []string {
 	t := m.theme
 	var out []string
 	out = append(out, d.chart(d.cpuUsage())...)
-	out = append(out, d.chart(d.memPct("Memory active", perf.MemActive))...)
+	out = append(out, d.chart(d.memActive())...)
 	disk := d.diskThroughput()
 	lat := d.diskLatency()
 	disk.unit = "read + write · latency " + d.peakText(lat)
@@ -963,7 +973,7 @@ func (d dash) cpuPage() []string {
 
 func (d dash) memoryPage() []string {
 	var out []string
-	for _, mt := range []metric{d.memPct("Memory active", perf.MemActive), d.memPct("Memory consumed", perf.MemConsumed), d.memBalloon(), d.memSwapin()} {
+	for _, mt := range []metric{d.memActive(), d.memPct("Memory consumed", perf.MemConsumed), d.memBalloon(), d.memSwapin()} {
 		out = append(out, d.chart(mt)...)
 	}
 	if s, ok := d.set.Get(perf.MemSwapped); ok && s.Summary.Peak != nil {
@@ -1001,7 +1011,7 @@ func (d dash) signalLines() []string {
 	switch d.set.Signal {
 	case perf.SignalContention:
 		glyph, style = glyphCheckWarn, t.warn
-	case perf.SignalUnavailable, perf.SignalInsufficient:
+	case perf.SignalUnavailable, perf.SignalInsufficient, perf.SignalCPUOnly:
 		glyph, style = glyphSkip, t.faint
 	}
 	lines := []string{truncate(t.label.Render("Sizing signal  ")+style.Render(glyph+" "+string(d.set.Signal)), d.w)}

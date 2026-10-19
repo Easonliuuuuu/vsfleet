@@ -213,7 +213,7 @@ func TestCollectPerfDeniedCounterIsUnavailableNotZero(t *testing.T) {
 	base := constant(500)
 	f.data = func(vm string, key int32, n int) []int64 {
 		switch key {
-		case f.keys["mem.active.average"]:
+		case f.keys["mem.active.average"], f.keys["mem.usage.average"]:
 			return nil
 		case f.keys["cpu.usage.average"]:
 			return base(vm, key, n)
@@ -232,8 +232,8 @@ func TestCollectPerfDeniedCounterIsUnavailableNotZero(t *testing.T) {
 
 // Measured on a vCenter 8.0.3 at the default statistics level 1:
 // mem.active.average and mem.swapped.average are level 2, so they are never
-// kept. They must not be requested, must say why, and must not stop the VM
-// getting a CPU reading.
+// kept. They must not be requested and must say why. mem.usage (level 1)
+// stands in for mem.active, so the VM still gets a full reading.
 func TestCollectPerfSkipsCountersAboveStatisticsLevel(t *testing.T) {
 	f := newFakePerf()
 	f.levels = map[string]int32{}
@@ -252,8 +252,11 @@ func TestCollectPerfSkipsCountersAboveStatisticsLevel(t *testing.T) {
 		return nil
 	}
 	f.data = func(_ string, key int32, n int) []int64 {
-		if key == f.keys["cpu.usage.average"] {
+		switch key {
+		case f.keys["cpu.usage.average"]:
 			return constant(500)("", key, n)
+		case f.keys["mem.usage.average"]:
+			return constant(1885)("", key, n)
 		}
 		return make([]int64, n)
 	}
@@ -277,8 +280,8 @@ func TestCollectPerfSkipsCountersAboveStatisticsLevel(t *testing.T) {
 	if w.Status != perf.WindowSuccess {
 		t.Fatalf("status = %s (%s); a statistics level is a setting, not a failure", w.Status, w.Error)
 	}
-	if got := w.VMs[0].Signal; got != perf.SignalCPUOnly {
-		t.Fatalf("signal = %s (%s), want %s", got, w.VMs[0].SignalReason, perf.SignalCPUOnly)
+	if got, reason := w.VMs[0].Signal, w.VMs[0].SignalReason; got != perf.SignalSustainedLow || !strings.Contains(reason, "active memory 19% ("+perf.FromMemUsage+")") {
+		t.Fatalf("signal = %s (%s), want %s from mem.usage", got, reason, perf.SignalSustainedLow)
 	}
 }
 

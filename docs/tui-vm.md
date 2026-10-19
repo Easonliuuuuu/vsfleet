@@ -83,6 +83,8 @@ disables chart refresh too and removes “live” from the header.
 Only the open VM makes a read-only `QueryPerf` request. Device disk/network
 counters are summed when no VM total exists. Dashboard counters are separate
 from stored assessment performance. Longer ranges depend on the vCenter's
-statistics level; unavailable counters show “no samples” and a reason. An
+statistics level; unavailable counters show “no samples” and a reason. Where
+`mem.active` is not kept, “Memory active” draws
+[`mem.usage`](performance.md) and says so in its title. An
 initial failure replaces charts with an error while properties remain usable.
 `vsfleet demo` shows fixed synthetic charts.

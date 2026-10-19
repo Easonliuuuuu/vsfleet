@@ -45,11 +45,7 @@ func (b *groupPerfBackend) VMsPerfSeries(_ context.Context, _ *config.Context, v
 			if c.Metric == perf.CPUUsageMHz {
 				value = b.mhz[vm.ID]
 			}
-			raw := make([]int64, n)
-			for j := range raw {
-				raw[j] = value
-			}
-			set.Series = append(set.Series, perf.NewSeries(c, raw, n, interval, vm.CPU))
+			set.Series = append(set.Series, b.series(c, value, n, interval, vm.CPU))
 		}
 		out[i] = vsphere.VMSeriesResult{VM: vm, Set: set}
 	}
@@ -169,5 +165,25 @@ func TestVAppCeilingCountsEveryMember(t *testing.T) {
 	}, inv)
 	if cpu != 3*2400 || mem != 4096+1024+512 {
 		t.Fatalf("ceiling = %.0f MHz, %.0f MB", cpu, mem)
+	}
+}
+
+// A member whose mem.active is not kept adds its mem.usage share of its
+// configured memory to the vApp's active memory.
+func TestVAppActiveMemoryFallsBackToMemUsage(t *testing.T) {
+	b := &groupPerfBackend{perfFakeBackend: perfHealthy(), mhz: map[string]int64{"prod-vm-1": 700, "prod-vm-db": 300}}
+	b.notKept = map[perf.Metric]bool{perf.MemActive: true}
+	withAllocatedVApp(b.fakeBackend)
+	m := newTestModel(t, b.fakeBackend, Options{Current: "prod"})
+	m.backend = b
+	m.width, m.height = 220, 40
+	press(t, m, "7", "enter")
+	out := ansi.Strip(m.View())
+	_, l := lineWith(out, "Memory active")
+	if !strings.Contains(l, "2 members from mem.usage") {
+		t.Fatalf("memory active title = %q; want both members read from mem.usage", l)
+	}
+	if strings.Contains(out, "no member reported active memory") {
+		t.Fatalf("the members' mem.usage should fill the chart:\n%s", out)
 	}
 }

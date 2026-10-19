@@ -141,7 +141,9 @@ Live charts sum member VM performance, including nested vApps:
   `▲` marks samples within 5% of it. Otherwise the ceiling is member vCPUs
   at host core speed.
 - Active memory sums against the vApp memory limit, or configured memory if
-  unlimited. The reservation appears alongside.
+  unlimited. The reservation appears alongside. A member whose `mem.active`
+  is not kept adds its [`mem.usage`](performance.md) share of configured
+  memory, and the title counts those members.
 - Members show peak CPU (MHz, `▲` when busy for their vCPUs), CPU ready,
   and CPU limited time. `s` toggles startup order/busiest first.
 

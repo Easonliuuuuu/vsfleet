@@ -154,22 +154,53 @@ func (m *Model) currentVAppPerf() *vappPerfEntry {
 // is missing only when no member has it; a powered-off member, which has no
 // samples, simply adds nothing. reporting counts the members that had any.
 func (e *vappPerfEntry) totals(metric perf.Metric) (values []float64, reporting int) {
+	return e.sum(func(r vsphere.VMSeriesResult) []float64 {
+		s, _ := r.Set.Get(metric)
+		return s.Values
+	})
+}
+
+// activeMemory sums the members' active memory in MB. A member whose
+// mem.active is not kept adds its mem.usage share of its configured memory
+// instead (see perf.UsesMemUsage); fromUsage counts those members.
+func (e *vappPerfEntry) activeMemory() (values []float64, fromUsage int) {
+	values, _ = e.sum(func(r vsphere.VMSeriesResult) []float64 {
+		if !perf.UsesMemUsage(r.Set.Summaries()) {
+			s, _ := r.Set.Get(perf.MemActive)
+			return s.Values
+		}
+		s, _ := r.Set.Get(perf.MemUsage)
+		if len(s.Values) == 0 || r.VM.MemoryMB <= 0 {
+			return nil
+		}
+		fromUsage++
+		mb := make([]float64, len(s.Values))
+		for i, v := range s.Values {
+			mb[i] = v / 100 * float64(r.VM.MemoryMB)
+		}
+		return mb
+	})
+	return values, fromUsage
+}
+
+// sum adds each member's series, as member returns it, sample by sample.
+func (e *vappPerfEntry) sum(member func(vsphere.VMSeriesResult) []float64) (values []float64, reporting int) {
 	for _, r := range e.byVM {
 		if r.Err != nil {
 			continue
 		}
-		s, ok := r.Set.Get(metric)
-		if !ok || len(s.Values) == 0 {
+		series := member(r)
+		if len(series) == 0 {
 			continue
 		}
 		any := false
 		if values == nil {
-			values = make([]float64, len(s.Values))
+			values = make([]float64, len(series))
 			for i := range values {
 				values[i] = math.NaN()
 			}
 		}
-		for i, v := range s.Values {
+		for i, v := range series {
 			if i >= len(values) || math.IsNaN(v) {
 				continue
 			}
@@ -268,7 +299,7 @@ func vappCPU(e *vappPerfEntry, v *vsphere.VApp, members int, ceiling float64) me
 // memory limit when it has one, or else their configured memory; its
 // reservation is context, not a ceiling.
 func vappMemory(e *vappPerfEntry, v *vsphere.VApp, ceiling float64) metric {
-	values, _ := e.totals(perf.MemActive)
+	values, fromUsage := e.activeMemory()
 	mt := metric{name: "Memory active", values: values, format: fmtMB, minScale: 256, warnAt: math.Inf(1)}
 	if limit, ok := allocationLimit(v, false); ok {
 		mt.unit = "limit " + humanize.MB(limit)
@@ -279,6 +310,9 @@ func vappMemory(e *vappPerfEntry, v *vsphere.VApp, ceiling float64) metric {
 	}
 	if a := v.Allocation; a != nil && a.MemReservationMB != nil && *a.MemReservationMB > 0 {
 		mt.unit = strings.TrimPrefix(mt.unit+" · reserved "+humanize.MB(*a.MemReservationMB), " · ")
+	}
+	if fromUsage > 0 {
+		mt.unit = strings.TrimPrefix(mt.unit+fmt.Sprintf(" · %d %s from %s", fromUsage, plural("member", fromUsage), perf.MemUsage), " · ")
 	}
 	if values == nil {
 		mt.missing = "no member reported active memory in this range"

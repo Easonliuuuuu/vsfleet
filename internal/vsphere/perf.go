@@ -21,8 +21,8 @@ const (
 	DefaultPerfMaxVMs      = 500
 	DefaultPerfMaxRequests = 1000
 	// DefaultPerfBatchVMs keeps metrics-per-request under vCenter's default
-	// config.vpxd.stats.maxQueryMetrics of 64 (seven counters x nine VMs).
-	DefaultPerfBatchVMs = 9
+	// config.vpxd.stats.maxQueryMetrics of 64 (eight counters x eight VMs).
+	DefaultPerfBatchVMs = 8
 )
 
 // PerfOptions bound one performance collection.

@@ -1253,12 +1253,27 @@ func (m *Model) helpLines() []string {
 	}
 
 	var body []string
-	if m.width >= helpColumnWidth*2+4 {
+	twoColumns := m.width >= helpColumnWidth*2+4
+	switch {
+	case m.helpFrom == modeChanges && twoColumns:
+		// The pane's keys on the left; the hub keys and what the pane's
+		// marks mean on the right, where the short hub block leaves room.
+		// pairColumns would balance the blocks by height instead and put
+		// the guide under the pane's keys, below a 24 row terminal.
+		right := blocks[1]
+		if guide := m.historyGuideLines(m.historyPane, m.width-2-helpColumnWidth); len(guide) > 0 {
+			right = append(append(right, ""), guide...)
+		}
+		body = joinColumns(blocks[0], right, helpColumnWidth)
+	case twoColumns:
 		body = pairColumns(blocks, helpColumnWidth)
-	} else {
+	default:
 		for _, block := range blocks {
 			body = append(body, block...)
 			body = append(body, "")
+		}
+		if m.helpFrom == modeChanges {
+			body = append(body, m.historyGuideLines(m.historyPane, m.width-2)...)
 		}
 	}
 
@@ -1291,6 +1306,11 @@ func pairColumns(blocks [][]string, w int) []string {
 		*dst = append(*dst, "")
 		run += len(b) + 1
 	}
+	return joinColumns(left, right, w)
+}
+
+// joinColumns sets right beside left, padding left to w columns.
+func joinColumns(left, right []string, w int) []string {
 	out := make([]string, 0, max(len(left), len(right)))
 	for i := 0; i < max(len(left), len(right)); i++ {
 		l, r := "", ""

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -468,6 +469,9 @@ func (m *Model) viewScrubber(width int, bars bool) []string {
 	sizes := pad("VMs", scrubLabelWidth, false)
 	handles := pad("pick", scrubLabelWidth, false)
 	glyphs := scrubBars(counts, visible)
+	// A row of nothing but "·" says only that no run has a count, which
+	// looks like a drawing fault rather than an answer, so it is left out.
+	bars = bars && slices.ContainsFunc(glyphs, func(g string) bool { return g != "·" })
 	for i, r := range visible {
 		style := t.dim
 		switch r.ID {
@@ -489,6 +493,10 @@ func (m *Model) viewScrubber(width int, bars bool) []string {
 	lines := []string{ids}
 	if bars {
 		lines = append(lines, sizes)
+	} else {
+		// The size note belongs to the row just dropped; without this the
+		// handle row would carry it and lose its own "←/→ move" hint.
+		notes = slices.Delete(notes, 1, 2)
 	}
 	lines = append(lines, handles)
 	for i := range lines {

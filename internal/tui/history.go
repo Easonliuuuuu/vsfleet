@@ -1208,6 +1208,10 @@ func (m *Model) viewHistoryHubRuns() []string {
 	// The key hints live in the footer with every other pane's bindings; this
 	// line only says how the list is ordered.
 	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first")}
+	if len(m.runs) > 0 {
+		// Two columns of marker and gap, then the same widths as the rows.
+		lines = append(lines, t.header.Render(truncate(fmt.Sprintf("  %-5s %-18s %-9s %s", "RUN", "LABEL", "STATUS", "STARTED"), m.width)))
+	}
 	for i, r := range m.runs {
 		label := r.Label
 		if label == "" {

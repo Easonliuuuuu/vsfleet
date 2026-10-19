@@ -3,7 +3,6 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes
   RUNS     #1   #2   #3   #4   #5  
   pick                     b    t  
   #4 → #5 · 28d · 2 runs
-  —
   ←/→ move target · b/t pick end
   COVER    ● reached   ✕ not compared   · no record
   dr-site   ✕    ✕    ✕    ✕    ✕  
@@ -16,5 +15,6 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes
  IMPACT  OBJECT                       vCENTER WHAT MOVED    
 ▸blocks  old-api-22                   prod-vc vanished      
 ▎blocks  old-batch-17                 prod-vc vanished      
+▎blocks  old-crm-04                   prod-vc vanished      
 
 ←/→ move  b/t end  c clip  tab panes  esc back  ? help

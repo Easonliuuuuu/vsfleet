@@ -181,8 +181,8 @@ newest and marks baseline `b` and target `t`:
 | `n` | Capture current scope |
 | `e` / `N` / `p` in Runs | Edit label / operator note / pin |
 
-`?` lists the current pane's keys. Captures run in the background while
-inventory remains usable.
+`?` lists the current pane's keys and what its marks and columns mean.
+Captures run in the background while inventory remains usable.
 
 Coverage uses `●` reached, `✕` not compared, and `·` no record.
 It collapses when visible runs have identical coverage; otherwise it names the

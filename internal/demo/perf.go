@@ -164,6 +164,8 @@ func demoSample(m perf.Metric, p demoProfile, vm vsphere.VM, interval int, seed 
 		return perVCPU(readyPct)
 	case perf.MemActive:
 		return int64(math.Max(0, math.Min(100, activePct)) / 100 * memMiB * 1024)
+	case perf.MemUsage:
+		return int64(math.Max(0, math.Min(100, activePct)) * 100)
 	case perf.MemConsumed:
 		return int64(memMiB * 0.9 * 1024)
 	case perf.MemBalloon:

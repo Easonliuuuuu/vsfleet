@@ -53,8 +53,10 @@ type ClassifyInput struct {
 // Classify derives a Signal and a one-line reason. Anything missing,
 // denied or too sparse yields SignalUnavailable or SignalInsufficient; a low
 // reading is only ever returned when every required counter is supported by
-// enough samples. When CPU usage is supported but active memory cannot be
-// read at all, the result is SignalCPUOnly, which never claims memory is low.
+// enough samples. Active memory comes from mem.usage when mem.active cannot
+// be read at all (see UsesMemUsage), and the reason says so. When CPU usage
+// is supported but neither can be read, the result is SignalCPUOnly, which
+// never claims memory is low.
 func Classify(in ClassifyInput) (Signal, string) {
 	by := map[Metric]Summary{}
 	for _, s := range in.Summaries {
@@ -86,28 +88,38 @@ func Classify(in ClassifyInput) (Signal, string) {
 	}
 	cpuAvg, cpuPeak := *cpu.Average, *cpu.Peak
 
-	mem, ok := by[MemActive]
-	switch {
-	case !ok:
-		return SignalCPUOnly, fmt.Sprintf("CPU avg %.0f%% peak %.0f%%; active memory unknown: %s was not collected", cpuAvg, cpuPeak, MemActive)
-	case mem.Status == StatusUnavailable:
-		return SignalCPUOnly, fmt.Sprintf("CPU avg %.0f%% peak %.0f%%; active memory unknown: %s", cpuAvg, cpuPeak, mem.Reason)
-	case mem.Status != StatusOK:
-		return SignalInsufficient, fmt.Sprintf("%s: %s", MemActive, mem.Reason)
+	var memAvg, memPeak float64
+	source := ""
+	if UsesMemUsage(in.Summaries) {
+		usage := by[MemUsage]
+		if usage.Status != StatusOK {
+			return SignalInsufficient, fmt.Sprintf("%s: %s", MemUsage, usage.Reason)
+		}
+		// mem.usage is already a share of configured memory.
+		memAvg, memPeak, source = *usage.Average, *usage.Peak, " ("+FromMemUsage+")"
+	} else {
+		mem, ok := by[MemActive]
+		switch {
+		case !ok:
+			return SignalCPUOnly, fmt.Sprintf("CPU avg %.0f%% peak %.0f%%; active memory unknown: %s was not collected", cpuAvg, cpuPeak, MemActive)
+		case mem.Status == StatusUnavailable:
+			return SignalCPUOnly, fmt.Sprintf("CPU avg %.0f%% peak %.0f%%; active memory unknown: %s", cpuAvg, cpuPeak, mem.Reason)
+		case mem.Status != StatusOK:
+			return SignalInsufficient, fmt.Sprintf("%s: %s", MemActive, mem.Reason)
+		}
+		if in.MemoryMB <= 0 {
+			return SignalInsufficient, "configured memory is unknown, so active memory cannot be judged"
+		}
+		memAvg = *mem.Average / float64(in.MemoryMB) * 100
+		memPeak = *mem.Peak / float64(in.MemoryMB) * 100
 	}
-	if in.MemoryMB <= 0 {
-		return SignalInsufficient, "configured memory is unknown, so active memory cannot be judged"
-	}
-
-	memAvg := *mem.Average / float64(in.MemoryMB) * 100
-	memPeak := *mem.Peak / float64(in.MemoryMB) * 100
 
 	switch {
 	case cpuPeak < LowPeakPercent && memPeak < LowPeakPercent:
-		return SignalSustainedLow, fmt.Sprintf("peaks stayed low: CPU %.0f%%, active memory %.0f%%", cpuPeak, memPeak)
+		return SignalSustainedLow, fmt.Sprintf("peaks stayed low: CPU %.0f%%, active memory %.0f%%%s", cpuPeak, memPeak, source)
 	case (cpuPeak >= HighPeakPercent && cpuAvg < LowPeakPercent) || (memPeak >= HighPeakPercent && memAvg < LowPeakPercent):
-		return SignalPeaksObserved, fmt.Sprintf("low typical usage but peaks of CPU %.0f%%, active memory %.0f%%", cpuPeak, memPeak)
+		return SignalPeaksObserved, fmt.Sprintf("low typical usage but peaks of CPU %.0f%%, active memory %.0f%%%s", cpuPeak, memPeak, source)
 	default:
-		return SignalInUse, fmt.Sprintf("CPU avg %.0f%% peak %.0f%%, active memory avg %.0f%% peak %.0f%%", cpuAvg, cpuPeak, memAvg, memPeak)
+		return SignalInUse, fmt.Sprintf("CPU avg %.0f%% peak %.0f%%, active memory avg %.0f%% peak %.0f%%%s", cpuAvg, cpuPeak, memAvg, memPeak, source)
 	}
 }

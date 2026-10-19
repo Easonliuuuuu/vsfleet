@@ -36,6 +36,7 @@ func TestNormalizeUnits(t *testing.T) {
 		ok       bool
 	}{
 		{"cpu usage is hundredths of a percent", CPUUsage, 2550, 300, 4, 25.5, true},
+		{"memory usage is hundredths of a percent", MemUsage, 1885, 300, 4, 18.85, true},
 		{"cpu ready is per-vCPU percent of the interval", CPUReady, 30000, 300, 2, 5, true},
 		{"memory KB to MiB", MemActive, 2048, 300, 1, 2, true},
 		{"no data is never zero", CPUUsage, NoData, 300, 4, 0, false},
@@ -196,6 +197,45 @@ func TestClassifyCPUOnlyWhenActiveMemoryUnreadable(t *testing.T) {
 		if !strings.Contains(reason, "CPU avg 5% peak 5%") || !strings.Contains(reason, "active memory unknown") {
 			t.Errorf("%s: reason %q lacks the CPU reading or the unknown memory", name, reason)
 		}
+	}
+}
+
+// At statistics level 1 mem.usage stands in for mem.active, but only when
+// mem.active could not be read at all.
+func TestClassifyActiveMemoryFromMemUsage(t *testing.T) {
+	const n = 288
+	cpu := Summarize(SummaryInput{Counter: counter(t, CPUUsage), Raw: series(n, 500), Expected: n, IntervalSeconds: 300})
+	mem := counter(t, MemActive)
+	belowLevel := Unavailable(mem, 300, n, BelowLevelReason(mem, 2, 1, 300))
+	usage := func(raw []int64) Summary {
+		return Summarize(SummaryInput{Counter: counter(t, MemUsage), Raw: raw, Expected: n, IntervalSeconds: 300})
+	}
+	cases := []struct {
+		name      string
+		in        []Summary
+		memoryMB  int64
+		want      Signal
+		fromUsage bool
+	}{
+		{"low usage is sustained-low", []Summary{cpu, belowLevel, usage(series(n, 1885))}, 4096, SignalSustainedLow, true},
+		{"high usage is in-use", []Summary{cpu, belowLevel, usage(series(n, 7500))}, 4096, SignalInUse, true},
+		{"needs no configured size", []Summary{cpu, belowLevel, usage(series(n, 1885))}, 0, SignalSustainedLow, true},
+		{"mem.active never collected", []Summary{cpu, usage(series(n, 1885))}, 4096, SignalSustainedLow, true},
+		{"sparse usage is insufficient", []Summary{cpu, belowLevel, usage(series(4, 1885))}, 4096, SignalInsufficient, false},
+		{"unreadable usage stays cpu-only", []Summary{cpu, belowLevel, Unavailable(counter(t, MemUsage), 300, n, "permission denied")}, 4096, SignalCPUOnly, false},
+		{"readable mem.active wins", []Summary{cpu, Summarize(SummaryInput{Counter: mem, Raw: series(n, 3500*1024), Expected: n, IntervalSeconds: 300}), usage(series(n, 1885))}, 4096, SignalInUse, false},
+		{"sparse mem.active is not replaced", []Summary{cpu, Summarize(SummaryInput{Counter: mem, Raw: series(4, 400*1024), Expected: n, IntervalSeconds: 300}), usage(series(n, 1885))}, 4096, SignalInsufficient, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sig, reason := Classify(ClassifyInput{Summaries: tc.in, MemoryMB: tc.memoryMB})
+			if sig != tc.want {
+				t.Fatalf("signal = %s (%s), want %s", sig, reason, tc.want)
+			}
+			if got := strings.Contains(reason, FromMemUsage); got != tc.fromUsage {
+				t.Fatalf("reason %q names mem.usage = %v, want %v", reason, got, tc.fromUsage)
+			}
+		})
 	}
 }
 

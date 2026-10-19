@@ -24,6 +24,20 @@ type perfFakeBackend struct {
 	*fakeBackend
 	calls []perfCall
 	err   error
+	// notKept lists counters the interval's statistics level does not keep.
+	notKept map[perf.Metric]bool
+}
+
+// series is one counter's steady reading, or its below-level gap.
+func (b *perfFakeBackend) series(c perf.Counter, value int64, n, interval int, vcpu int32) perf.Series {
+	if b.notKept[c.Metric] {
+		return perf.UnavailableSeries(c, interval, n, perf.BelowLevelReason(c, 2, 1, interval))
+	}
+	raw := make([]int64, n)
+	for i := range raw {
+		raw[i] = value
+	}
+	return perf.NewSeries(c, raw, n, interval, vcpu)
 }
 
 type perfCall struct {
@@ -42,11 +56,7 @@ func (b *perfFakeBackend) VMPerfSeries(_ context.Context, _ *config.Context, vm 
 	n := int(window.Seconds()) / interval
 	set := perf.SeriesSet{IntervalSeconds: interval, WindowStart: now.Add(-window), WindowEnd: now}
 	for _, c := range perf.DashboardCounters {
-		raw := make([]int64, n)
-		for i := range raw {
-			raw[i] = 2000
-		}
-		set.Series = append(set.Series, perf.NewSeries(c, raw, n, interval, vm.CPU))
+		set.Series = append(set.Series, b.series(c, 2000, n, interval, vm.CPU))
 	}
 	set.Signal, set.SignalReason = perf.Classify(perf.ClassifyInput{Summaries: set.Summaries(), MemoryMB: vm.MemoryMB})
 	return set, nil
@@ -865,5 +875,47 @@ func TestChartTitleKeepsStatisticsAtEveryWidth(t *testing.T) {
 		if got := ansi.Strip(m.chartTitle(mt, st, ok, w)); !strings.Contains(got, "peak") {
 			t.Fatalf("at %d columns the title lost its statistics: %q", w, got)
 		}
+	}
+}
+
+// At statistics level 1 the chart and the signal read active memory from
+// mem.usage, and say so, instead of reporting it as not kept.
+func TestVMDetailChartsActiveMemoryFromMemUsage(t *testing.T) {
+	b := perfHealthy()
+	// The steady 2000 would read as ballooning and swap-in, which outrank
+	// the utilisation signal under test.
+	b.notKept = map[perf.Metric]bool{perf.MemActive: true, perf.MemSwapped: true, perf.MemBalloon: true, perf.MemSwapinRate: true}
+	m := newTestModel(t, b.fakeBackend, Options{Current: "prod"})
+	m.backend = b
+	m.height = 60
+	press(t, m, "enter", "2")
+	out := ansi.Strip(m.View())
+	// The fake's 2000 is 20.00% of configured memory.
+	if _, l := lineWith(out, "Memory active"); !strings.Contains(l, "from mem.usage") || !strings.Contains(l, "peak 20.0%") {
+		t.Errorf("memory active title = %q; want mem.usage's 20%%, named as the source", l)
+	}
+	if strings.Contains(out, "mem.active.average needs statistics level") {
+		t.Errorf("mem.usage stands in for mem.active, so its level gap should not show:\n%s", out)
+	}
+	press(t, m, "1")
+	out = ansi.Strip(m.View())
+	if _, l := lineWith(out, "Sizing signal"); !strings.Contains(l, glyphCheckOK+" "+string(perf.SignalSustainedLow)) {
+		t.Errorf("signal line = %q; want sustained-low", l)
+	}
+	if _, l := lineWith(out, "peaks stayed low"); !strings.Contains(l, "(active memory from mem.usage") {
+		t.Errorf("signal reason = %q; want it to name mem.usage as the source", l)
+	}
+}
+
+// cpu-only leaves memory unknown, so it is not drawn as a good reading.
+func TestVMDetailCPUOnlySignalIsNotMarkedOK(t *testing.T) {
+	b := perfHealthy()
+	b.notKept = map[perf.Metric]bool{perf.MemActive: true, perf.MemUsage: true, perf.MemSwapped: true, perf.MemBalloon: true, perf.MemSwapinRate: true}
+	m := newTestModel(t, b.fakeBackend, Options{Current: "prod"})
+	m.backend = b
+	m.height = 60
+	press(t, m, "enter", "1")
+	if _, l := lineWith(m.View(), "Sizing signal"); !strings.Contains(l, glyphSkip+" "+string(perf.SignalCPUOnly)) {
+		t.Fatalf("signal line = %q; want cpu-only marked as skipped, not %s", l, glyphCheckOK)
 	}
 }

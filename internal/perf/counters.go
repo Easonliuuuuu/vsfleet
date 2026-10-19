@@ -16,6 +16,9 @@ const (
 	MemSwapped  Metric = "mem.swapped"
 	// MemSwapinRate is the level-1 sign of host swapping.
 	MemSwapinRate Metric = "mem.swapinRate"
+	// MemUsage is the level-1 stand-in for mem.active: for a VM it is active
+	// memory as a share of configured memory, whatever vCenter labels it.
+	MemUsage Metric = "mem.usage"
 )
 
 // Unit is the unit of a normalised value, not of the raw vSphere counter.
@@ -47,7 +50,7 @@ func (c Counter) VSphereName() string { return c.Group + "." + c.Name + "." + c.
 // deliberately absent until its counters and cost are validated. mem.active
 // and mem.swapped need statistics level 2, above vCenter's default of 1, so
 // mem.swapinRate (level 1) is read too: it still shows host swapping where
-// mem.swapped is not kept.
+// mem.swapped is not kept, and mem.usage (level 1) stands in for mem.active.
 var Counters = []Counter{
 	{CPUUsage, "cpu", "usage", "average", UnitPercent, "interval average of VM CPU usage, as a percentage of the VM's configured vCPU capacity"},
 	{CPUReady, "cpu", "ready", "summation", UnitPercent, "interval sum of CPU ready milliseconds, converted to the average percentage of the interval a single vCPU waited to be scheduled"},
@@ -56,6 +59,7 @@ var Counters = []Counter{
 	{MemBalloon, "mem", "vmmemctl", "average", UnitMiB, "interval average of memory reclaimed by the balloon driver"},
 	{MemSwapped, "mem", "swapped", "average", UnitMiB, "interval average of VM memory swapped to the host swap file"},
 	{MemSwapinRate, "mem", "swapinRate", "average", UnitKBps, "interval average rate memory was read back in from the host swap file"},
+	{MemUsage, "mem", "usage", "average", UnitPercent, "interval average of active memory as a percentage of the VM's configured memory; vCenter labels it \"Host consumed %\""},
 }
 
 // CounterFor returns the counter definition for a metric.
@@ -82,7 +86,7 @@ func Normalize(c Counter, raw int64, intervalSeconds int, vcpu int32) (value flo
 		return 0, false
 	}
 	switch c.Metric {
-	case CPUUsage:
+	case CPUUsage, MemUsage:
 		// vSphere reports usage in hundredths of a percent.
 		return float64(raw) / 100, true
 	case CPUReady, CPUCostop, CPUMaxLimited:

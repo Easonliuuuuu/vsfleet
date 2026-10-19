@@ -53,7 +53,9 @@ The finest historical interval that still retains the whole window is used,
 unless --interval names one. vCenter only keeps counters that its statistics
 level enables. Active memory and swapped memory need level 2, above the
 default of 1; a counter the interval does not keep is not requested and is
-recorded as unavailable, and VMs then get a "cpu-only" reading.
+recorded as unavailable. Where mem.active is not kept, active memory is read
+from mem.usage (level 1), which for a VM is active memory as a share of
+configured memory; VMs get a "cpu-only" reading only when neither is kept.
 
 Collection stops, and the window is recorded as partial, when any bound is
 reached: --max-vms, --max-requests or --max-runtime. VMs that were not
@@ -143,9 +145,12 @@ func printPerfWindowSummary(a *App, w perf.Window) {
 	unavailable := 0
 	var belowLevel []string
 	seen := map[perf.Metric]bool{}
-	needLevel := 0
+	needLevel, fromUsage := 0, 0
 	for _, vm := range w.VMs {
 		counts[vm.Signal]++
+		if perf.UsesMemUsage(vm.Summaries) && perfSummary(vm, perf.MemUsage).Status == perf.StatusOK {
+			fromUsage++
+		}
 		for _, s := range vm.Summaries {
 			switch {
 			case perf.BelowLevel(s):
@@ -153,7 +158,9 @@ func printPerfWindowSummary(a *App, w perf.Window) {
 					seen[s.Metric] = true
 					belowLevel = append(belowLevel, string(s.Metric))
 				}
-				if level, ok := perf.NeededLevel(s); ok && s.Metric == perf.MemActive {
+				// Raising the level only helps memory sizing where
+				// nothing stood in for mem.active.
+				if level, ok := perf.NeededLevel(s); ok && s.Metric == perf.MemActive && vm.Signal == perf.SignalCPUOnly {
 					needLevel = level
 				}
 			case s.Status == perf.StatusUnavailable:
@@ -164,6 +171,9 @@ func printPerfWindowSummary(a *App, w perf.Window) {
 	fmt.Fprintf(a.out(), "  signals:   %s\n", signalCounts(counts))
 	if len(belowLevel) > 0 {
 		fmt.Fprintf(a.out(), "  not kept:  %s, above this interval's statistics level (see \"assessment perf show %d\")\n", strings.Join(belowLevel, ", "), w.ID)
+	}
+	if fromUsage > 0 {
+		fmt.Fprintf(a.out(), "  memory:    active memory read from %s for %d of %d sampled VMs, as %s is not kept\n", perf.MemUsage, fromUsage, w.VMsSampled, perf.MemActive)
 	}
 	if needLevel > 0 {
 		fmt.Fprintf(a.out(), "  hint:      for memory sizing, raise the %s interval to statistics level %d in %s;\n", intervalName(w.IntervalSeconds), needLevel, perf.StatisticsSetting)
@@ -277,14 +287,20 @@ explain themselves below the table.`), Example: `  vsfleet assessment perf show 
 		printPerfWindowSummary(a, w)
 		fmt.Fprintln(a.out())
 		t := newTable(a.out(), "VM", "SIGNAL", "CPU% AVG", "PEAK", "P95", "ACTIVE MiB AVG", "PEAK", "READY% PEAK", "BALLOON MiB", "SWAP MiB", "SWAP-IN KBps", "SAMPLES")
+		derived := false
 		for _, vm := range w.VMs {
-			cpu, mem := perfSummary(vm, perf.CPUUsage), perfSummary(vm, perf.MemActive)
+			cpu := perfSummary(vm, perf.CPUUsage)
+			memAvg, memPeak, fromUsage := perfActiveMiB(vm)
+			derived = derived || fromUsage
 			t.row(vm.Name, string(vm.Signal), perfNum(cpu.Average), perfNum(cpu.Peak), perfNum(cpu.P95),
-				perfNum(mem.Average), perfNum(mem.Peak), perfNum(perfSummary(vm, perf.CPUReady).Peak),
+				memAvg, memPeak, perfNum(perfSummary(vm, perf.CPUReady).Peak),
 				perfNum(perfSummary(vm, perf.MemBalloon).Peak), perfNum(perfSummary(vm, perf.MemSwapped).Peak),
 				perfNum(perfSummary(vm, perf.MemSwapinRate).Peak), perfSamples(cpu))
 		}
 		t.flush()
+		if derived {
+			fmt.Fprintf(a.out(), "* active memory from %s × configured memory, as %s is not kept\n", perf.MemUsage, perf.MemActive)
+		}
 		notes := false
 		for _, vm := range w.VMs {
 			switch vm.Signal {
@@ -308,6 +324,24 @@ func perfSummary(vm perf.VMResult, m perf.Metric) perf.Summary {
 		}
 	}
 	return perf.Summary{}
+}
+
+// perfActiveMiB is a VM's active memory average and peak in MiB. Where
+// mem.active is not kept they come from mem.usage, a share of configured
+// memory, and carry a "*".
+func perfActiveMiB(vm perf.VMResult) (avg, peak string, fromUsage bool) {
+	if !perf.UsesMemUsage(vm.Summaries) {
+		mem := perfSummary(vm, perf.MemActive)
+		return perfNum(mem.Average), perfNum(mem.Peak), false
+	}
+	usage := perfSummary(vm, perf.MemUsage)
+	if usage.Average == nil || usage.Peak == nil || vm.MemoryMB <= 0 {
+		return "-", "-", false
+	}
+	mib := func(pct float64) string {
+		return strconv.FormatFloat(pct/100*float64(vm.MemoryMB), 'f', 1, 64) + "*"
+	}
+	return mib(*usage.Average), mib(*usage.Peak), true
 }
 
 func perfNum(v *float64) string {

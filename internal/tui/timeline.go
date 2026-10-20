@@ -729,7 +729,7 @@ func (m *Model) viewTimelineChanges() ([]string, int) {
 	t := m.theme
 	var lines []string
 	for i, e := range m.timeline {
-		line := fmt.Sprintf("%s %-16s %-16s %-12s %s", listCursor(i == m.timelineCursor), e.Run.StartedAt.Local().Format("2006-01-02 15:04"), e.Kind, e.Context, truncate(timelineChangeDetail(e), max(1, m.width-52)))
+		line := fmt.Sprintf("%s %-16s %-16s %-12s %s", listCursor(i == m.timelineCursor), e.Run.StartedAt.Local().Format("2006-01-02 15:04"), timelineKind(e.Kind), e.Context, truncate(timelineChangeDetail(e), max(1, m.width-52)))
 		if i == m.timelineCursor {
 			line = t.focused.Render(line)
 		} else {
@@ -762,11 +762,7 @@ func timelineChangeDetail(e assessment.VMHistoryEvent) string {
 }
 
 func changeSummary(changes []assessment.FieldChange) string {
-	parts := make([]string, len(changes))
-	for j, f := range changes {
-		parts[j] = f.Field + ":" + historyFieldValue(f.Field, f.Before) + "→" + historyFieldValue(f.Field, f.After)
-	}
-	return strings.Join(parts, " ")
+	return fieldChangeSummary(changes)
 }
 
 func (m *Model) viewTimelineEvents() ([]string, int) {
@@ -1008,7 +1004,7 @@ func (m *Model) viewTimelineCombined() ([]string, int) {
 		case r.note != "":
 			lines = append(lines, "      "+t.faint.Render("· "+r.note))
 		case r.change != nil:
-			left := listCursor(selected) + "   " + pad(r.change.Kind, 18, false) + timelineChangeDetail(*r.change)
+			left := listCursor(selected) + "   " + pad(timelineKind(r.change.Kind), 18, false) + timelineChangeDetail(*r.change)
 			if !side {
 				lines = append(lines, m.timelineLine(left, selected))
 				continue
@@ -1107,12 +1103,10 @@ func (m *Model) viewHistoryTimelineDetail() []string {
 	if !ok {
 		return []string{t.dim.Render("nothing selected")}
 	}
-	lines := []string{t.title.Render(e.Name), "", "  " + t.label.Render("Event") + "    " + e.Kind, "  " + t.label.Render("Run") + "      " + historyRunLabel(e.Run.ID), "  " + t.label.Render("Date") + "     " + e.Run.StartedAt.Local().Format("2006-01-02 15:04:05"), "  " + t.label.Render("Context") + "  " + e.Context}
+	lines := []string{t.title.Render(e.Name), "", "  " + t.label.Render("Event") + "    " + timelineKind(e.Kind), "  " + t.label.Render("Run") + "      " + historyRunLabel(e.Run.ID), "  " + t.label.Render("Date") + "     " + e.Run.StartedAt.Local().Format("2006-01-02 15:04:05"), "  " + t.label.Render("Context") + "  " + e.Context}
 	if len(e.Changes) > 0 {
 		lines = append(lines, "", t.header.Render("Changes"))
-		for _, f := range e.Changes {
-			lines = append(lines, fmt.Sprintf("  %-18s %s → %s", f.Field, truncate(historyFieldValue(f.Field, f.Before), 24), truncate(historyFieldValue(f.Field, f.After), 24)))
-		}
+		lines = append(lines, fieldChangeLines(e.Changes, 0)...)
 	}
 	if m.tlEvents != nil && m.tlEvents.loaded {
 		lines = append(lines, "", t.header.Render("vCenter events"))
@@ -1201,7 +1195,7 @@ func (m *Model) eventPlacement(e vsphere.VMEvent) (string, string) {
 		for _, c := range s.Changes {
 			for _, x := range c.Events {
 				if same(x) {
-					return where, m.theme.ok.Render("yes") + m.theme.dim.Render(" · the "+c.Change.Kind+" stored by run "+historyRunLabel(c.Change.Run.ID))
+					return where, m.theme.ok.Render("yes") + m.theme.dim.Render(" · the "+timelineKind(c.Change.Kind)+" stored by run "+historyRunLabel(c.Change.Run.ID))
 				}
 			}
 		}

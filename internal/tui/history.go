@@ -122,7 +122,7 @@ func (m *Model) changeRows() []historyRow {
 		rows = append(rows, historyRow{kind: "vm", label: v.Name, context: v.Context, change: strings.Join(v.Changes, ", "), detail: changeDetail(v)})
 	}
 	for _, s := range m.changeDiff.Snapshots {
-		rows = append(rows, historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: nonempty(s.After, s.Before)})
+		rows = append(rows, historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: historyFieldValue("snapshot", nonempty(s.After, s.Before))})
 	}
 	for _, r := range m.changeDiff.Resources {
 		rows = append(rows, historyRow{kind: r.Kind, label: r.Name, context: r.Context, change: strings.Join(r.Changes, ", "), detail: resourceDetail(r)})
@@ -1395,9 +1395,7 @@ func (m *Model) vmInspectorFields(v assessment.VMChange) []string {
 	}
 	if len(v.Fields) > 0 {
 		lines = append(lines, "", t.header.Render("  Field changes"))
-		for _, f := range v.Fields {
-			lines = append(lines, fmt.Sprintf("  %-18s %s → %s", f.Field, truncate(historyFieldValue(f.Field, f.Before), 24), truncate(historyFieldValue(f.Field, f.After), 24)))
-		}
+		lines = append(lines, fieldChangeLines(v.Fields, 12)...)
 	}
 	return lines
 }
@@ -1406,22 +1404,14 @@ func resourceInspectorFields(t theme, r assessment.ResourceChange) []string {
 	if len(r.Fields) == 0 {
 		return nil
 	}
-	lines := []string{t.header.Render("  Field changes")}
-	for _, field := range r.Fields {
-		lines = append(lines, fmt.Sprintf("  %-22s %s → %s", field.Field, truncate(historyFieldValue(field.Field, field.Before), 24), truncate(historyFieldValue(field.Field, field.After), 24)))
-	}
-	return lines
+	return append([]string{t.header.Render("  Field changes")}, fieldChangeLines(r.Fields, 12)...)
 }
 
 func resourceDetail(r assessment.ResourceChange) string {
 	if len(r.Fields) == 0 {
 		return ""
 	}
-	parts := make([]string, len(r.Fields))
-	for i, field := range r.Fields {
-		parts[i] = field.Field + ":" + historyFieldValue(field.Field, field.Before) + "→" + historyFieldValue(field.Field, field.After)
-	}
-	return strings.Join(parts, " ")
+	return fieldChangeSummary(r.Fields)
 }
 
 func nonempty(a, b string) string {
@@ -1435,11 +1425,7 @@ func changeDetail(v assessment.VMChange) string {
 	if len(v.Fields) == 0 {
 		return ""
 	}
-	parts := make([]string, len(v.Fields))
-	for i, f := range v.Fields {
-		parts[i] = f.Field + ":" + historyFieldValue(f.Field, f.Before) + "→" + historyFieldValue(f.Field, f.After)
-	}
-	return strings.Join(parts, " ")
+	return fieldChangeSummary(v.Fields)
 }
 
 func historyRunLabel(id int64) string {

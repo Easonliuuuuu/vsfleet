@@ -147,8 +147,9 @@ func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors
 		}
 	}
 	// A gap between two successful runs is an unknown boundary. We only emit a
-	// vanished event when the immediately following run is comparable and has no
-	// observation for this lineage.
+	// vanished event when the immediately following run collected this VM's
+	// vCenter and has no observation for this lineage. That run may be partial:
+	// a vCenter that failed elsewhere says nothing about this one.
 	byRun := make(map[int64]VMHistoryEntry, len(entries))
 	for _, e := range entries {
 		byRun[e.Run.ID] = e
@@ -161,12 +162,36 @@ func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors
 		nextRun := runs[i-1]
 		prev, hadPrev := byRun[prevRun.ID]
 		_, hadNext := byRun[nextRun.ID]
-		if hadPrev && !hadNext && nextRun.Status == RunComplete {
+		if !hadPrev || hadNext {
+			continue
+		}
+		saw, err := s.collectedVCenter(ctx, nextRun, prev.Observation)
+		if err != nil {
+			return nil, err
+		}
+		if saw {
 			events = append(events, VMHistoryEvent{Kind: "vanished", Run: nextRun, Context: prev.Observation.Context, Name: prev.Observation.VM.Name, Observation: &prev.Observation})
 		}
 	}
 	sort.SliceStable(events, func(i, j int) bool { return events[i].Run.StartedAt.Before(events[j].Run.StartedAt) })
 	return events, nil
+}
+
+// collectedVCenter reports whether run read the VMs of the vCenter obs was
+// observed in. A context stored before vCenter IDs were recorded is matched
+// by its name instead.
+func (s *Store) collectedVCenter(ctx context.Context, run Run, obs Observation) (bool, error) {
+	if run.Status != RunComplete && run.Status != RunPartial {
+		return false, nil
+	}
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM context_runs WHERE run_id=? AND vm_status IN ('success','empty')
+		AND (COALESCE(vcenter_id,'')=? AND ?<>'' OR (COALESCE(vcenter_id,'')='' OR ?='') AND name=?)`,
+		run.ID, obs.VCenterID, obs.VCenterID, obs.VCenterID, obs.Context).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("read vCenter coverage of run %d: %w", run.ID, err)
+	}
+	return n > 0, nil
 }
 
 // placementChanges says what a "moved" event moved: the vCenter, host,

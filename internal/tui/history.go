@@ -509,12 +509,6 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		return m.moveScrubHandle(1)
 	case key.Matches(msg, m.keys.ScrubNext):
 		return m.moveScrubHandle(-1)
-	case key.Matches(msg, m.keys.Swap):
-		if m.baseRun == 0 || m.targetRun == 0 {
-			return nil
-		}
-		m.baseRun, m.targetRun = m.targetRun, m.baseRun
-		return m.historyDiffCommand()
 	case key.Matches(msg, m.keys.Base):
 		m.scrubHandle = "b"
 		return nil
@@ -581,10 +575,14 @@ func (m *Model) moveScrubHandle(step int) tea.Cmd {
 		active, other = m.baseRun, m.targetRun
 	}
 	i := m.runIndex(active) + step
-	if i >= 0 && i < len(m.runs) && m.runs[i].ID == other {
-		i += step
-	}
 	if i < 0 || i >= len(m.runs) {
+		return nil
+	}
+	// An end stops at the other one rather than jumping over it: past it the
+	// baseline would be newer than the target, and every vanished object
+	// would really be one that appeared.
+	if m.runs[i].ID == other {
+		m.setMessage("baseline must be older than target — move the other end first", false)
 		return nil
 	}
 	if m.scrubHandle == "b" {
@@ -837,13 +835,19 @@ func (m *Model) handleHistoryRunsKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Open):
 		selected := m.runs[clamp(m.runCursor, 0, len(m.runs)-1)].ID
 		if (m.pickerRole == "base" && selected == m.targetRun) || (m.pickerRole == "target" && selected == m.baseRun) {
-			m.historyErr = fmt.Errorf("baseline and target must be different runs")
+			m.setMessage("baseline and target must be different runs", true)
 			return nil
 		}
 		if m.pickerRole == "base" {
 			m.baseRun = selected
 		} else {
 			m.targetRun = selected
+		}
+		// The picker can reach past the other end, so it reorders the pair
+		// instead: a comparison always runs from the older run to the newer.
+		if m.runIndex(m.baseRun) < m.runIndex(m.targetRun) {
+			m.baseRun, m.targetRun = m.targetRun, m.baseRun
+			m.setMessage(historyRunLabel(m.targetRun)+" is newer than "+historyRunLabel(m.baseRun)+" — it is now the target", false)
 		}
 		m.mode = modeChanges
 		m.historyErr = nil

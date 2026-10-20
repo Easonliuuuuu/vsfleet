@@ -70,44 +70,6 @@ func TestChangesRunPickerSelectsAnotherBaseline(t *testing.T) {
 	}
 }
 
-// TestChangesAxisStepsOverTheOtherEnd pins the one move the axis must refuse
-// to make: walking an end onto the run the other end is already on, which
-// would diff an assessment against itself.
-func TestChangesAxisStepsOverTheOtherEnd(t *testing.T) {
-	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
-	cc := &config.Context{Name: "prod", Endpoint: "https://prod", Username: "user"}
-	for i := 0; i < 3; i++ {
-		when := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
-		run, err := store.StartRun(context.Background(), "test", []*config.Context{cc}, when)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := store.SaveContext(context.Background(), run.ID, assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success"}, when); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := store.FinishRun(context.Background(), run.ID, when); err != nil {
-			t.Fatal(err)
-		}
-	}
-	m := newTestModel(t, twoHealthy(), Options{Assessment: &assessment.Service{Store: store}})
-	press(t, m, "H")
-	// Default span is #2 → #3. Moving the target one run older would land it
-	// on the baseline, so it steps past to #1 instead — and then, with no
-	// older run left, stays put.
-	press(t, m, "t", "left")
-	if m.targetRun != 1 || m.baseRun != 2 {
-		t.Fatalf("target did not step over the baseline: base=%d target=%d", m.baseRun, m.targetRun)
-	}
-	press(t, m, "left")
-	if m.targetRun != 1 {
-		t.Fatalf("target moved past the oldest run: target=%d", m.targetRun)
-	}
-}
-
 // TestComparisonBarNamesBothRunsAndCoverageGap pins the fix for the
 // Changes screen's loudest failure mode: a run that covered fewer vCenters
 // than its baseline must say so by name, not leave "vanished" looking like
@@ -202,17 +164,19 @@ func TestComparisonBarNamesAVCenterMissingFromBothRuns(t *testing.T) {
 	}
 }
 
-// TestSwapKeyExchangesBaselineAndTarget pins "s" on the Changes pane: it
-// swaps which run is baseline and which is target, and re-diffs immediately
-// rather than leaving the two counts stale until the next unrelated update.
-func TestSwapKeyExchangesBaselineAndTarget(t *testing.T) {
+// TestChangesSpanStaysForward pins issue #471: an end used to jump over the
+// other one, giving a span whose baseline was newer than its target, labelled
+// "+56d · 0 runs", with every appeared object counted as vanished. The arrows
+// now stop at the other end, and a pick past it reorders the pair.
+func TestChangesSpanStaysForward(t *testing.T) {
 	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close()
 	cc := &config.Context{Name: "prod", Endpoint: "https://prod", Username: "user"}
-	for i := 0; i < 2; i++ {
+	var ids []int64
+	for i := 0; i < 3; i++ {
 		when := time.Date(2026, 1, 1+i, 0, 0, 0, 0, time.UTC)
 		run, err := store.StartRun(context.Background(), "test", []*config.Context{cc}, when)
 		if err != nil {
@@ -224,17 +188,39 @@ func TestSwapKeyExchangesBaselineAndTarget(t *testing.T) {
 		if _, err := store.FinishRun(context.Background(), run.ID, when); err != nil {
 			t.Fatal(err)
 		}
+		ids = append(ids, run.ID)
 	}
-	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
-	press(t, m, "H")
-	base, target := m.baseRun, m.targetRun
-	press(t, m, "s")
-	if m.baseRun != target || m.targetRun != base {
-		t.Fatalf("swap did not exchange runs: base=%d target=%d, want base=%d target=%d", m.baseRun, m.targetRun, target, base)
+	oldest, middle, newest := ids[0], ids[1], ids[2]
+	forward := func(t *testing.T, m *Model, base, target int64) {
+		t.Helper()
+		if m.baseRun != base || m.targetRun != target {
+			t.Fatalf("span is %d → %d, want %d → %d", m.baseRun, m.targetRun, base, target)
+		}
+		if m.changeDiff == nil || !m.changeDiff.Base.StartedAt.Before(m.changeDiff.Target.StartedAt) {
+			t.Fatalf("diff does not run from the older run to the newer: %+v", m.changeDiff)
+		}
 	}
-	if m.changeDiff == nil || m.changeDiff.Base.ID != target || m.changeDiff.Target.ID != base {
-		t.Fatalf("swap did not re-diff: diff=%+v", m.changeDiff)
+
+	// Each case opens History afresh on the default newest pair, target end
+	// active.
+	open := func(t *testing.T) *Model {
+		t.Helper()
+		m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
+		press(t, m, "H")
+		forward(t, m, middle, newest)
+		return m
 	}
+
+	t.Run("arrow stops at the other end", func(t *testing.T) {
+		m := open(t)
+		press(t, m, "left")
+		forward(t, m, middle, newest)
+	})
+	t.Run("pick past the other end reorders the pair", func(t *testing.T) {
+		m := open(t)
+		press(t, m, "R", "G", "enter")
+		forward(t, m, oldest, middle)
+	})
 }
 
 // oneVMDiffStore builds a two-run store with a single VM present only in the

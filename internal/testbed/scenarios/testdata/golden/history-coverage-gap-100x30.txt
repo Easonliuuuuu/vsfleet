@@ -21,7 +21,7 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes   tab/⇧tab switch
 ▎blocks  old-vdi-eng-042           prod-vc │   host         esxi-a-09                               
 ▎blocks  old-vdi-fin-023           prod-vc │   cluster      compute-a                               
 ▎blocks  old-vdi-ops-024           prod-vc │   size         2 vCPU · 4G                             
-▎blocks  web-05                    prod-vc │   datastore    vsan-compute-a                          
+▎sizing  web-05                    prod-vc │   datastore    vsan-compute-a                          
 ▎growth  39 VMs                    prod-vc │   ip address   —                                       
 ▎growth  esxi-b-10                 prod-vc │   guest os     Ubuntu Linux (64-bit)                   
 ▎churn   29 snapshots              prod-vc │   uuid         ee15de90-09a5-0e39-31c3-b2e903dffd93    

@@ -65,7 +65,7 @@ func TestHelpFromTheHistoryHubDocumentsTheChangesKeys(t *testing.T) {
 
 	view := ansi.Strip(m.View())
 	for _, want := range []string{
-		"Changes pane", "History hub", "move active end", "baseline", "target", "swap", "pick from all runs",
+		"Changes pane", "History hub", "move active end", "baseline", "target", "pick from all runs",
 		"clip to same vCenters", "impact", "VM timeline", "capture", "back to browse",
 	} {
 		if !strings.Contains(view, want) {

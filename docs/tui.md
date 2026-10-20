@@ -168,14 +168,14 @@ and default findings, ordered critical, warning, info. `↑`/`↓` scrolls.
 Use [`vsfleet health`](health.md) to tune thresholds.
 
 Changes starts with the newest two assessments. Its run axis goes oldest to
-newest and marks baseline `b` and target `t`:
+newest and marks baseline `b` and target `t`. The baseline is always the
+older run:
 
 | Keys | Action |
 |---|---|
 | `b` / `t` | Choose end to move; active end is uppercase |
-| `←` / `→` | Move one run, skipping the other end |
-| `R` | Open full run picker for active end |
-| `s` | Swap ends |
+| `←` / `→` | Move one run; an end stops at the other end |
+| `R` | Open full run picker for active end; a pick past the other end reorders the pair |
 | `c` | Set baseline to newest older run covering the target's vCenters |
 | `1`–`4`, `0` | Filter blocks/sizing/growth/churn; clear filter |
 | `Enter` | Open change inspector on narrow terminals |
@@ -191,7 +191,9 @@ It collapses when visible runs have identical coverage; otherwise it names the
 missing sites. `c` clips the comparison to shared coverage.
 
 Changes rank migration blockers first: vanished VMs/hosts, snapshots older
-than 30 days, and changed migration configuration. These stay separate.
+than 30 days, and changed migration configuration such as firmware, secure
+boot or devices. These stay separate. CPU layout, allocation and disk size
+changes count as sizing.
 Other identical changes may share a counted row such as
 `k8s-worker-0… 12 VMs`; the inspector lists all members. Wide terminals
 show the inspector beside the stream.

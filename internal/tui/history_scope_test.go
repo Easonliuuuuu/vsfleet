@@ -377,6 +377,35 @@ func TestStaleSnapshotIsABlocker(t *testing.T) {
 	}
 }
 
+// TestVMImpactSeparatesSizingFromBlockers pins issue #470: a resize changes
+// migration_configuration.cpu_sockets along with cpu, and any migration
+// configuration change used to class the VM as a blocker, so no resized VM
+// was ever "sizing".
+func TestVMImpactSeparatesSizingFromBlockers(t *testing.T) {
+	field := func(name string) assessment.FieldChange {
+		return assessment.FieldChange{Field: name, Before: "1", After: "2"}
+	}
+	for _, tc := range []struct {
+		name   string
+		fields []assessment.FieldChange
+		want   impact
+	}{
+		{"CPU resize with its socket count", []assessment.FieldChange{field("cpu"), field("memory"), field("migration_configuration.cpu_sockets")}, impactSizing},
+		{"memory reservation", []assessment.FieldChange{field("migration_configuration.memory_allocation.reservation")}, impactSizing},
+		{"grown disk", []assessment.FieldChange{field("migration_configuration.disks[2000].capacity_bytes")}, impactSizing},
+		{"firmware change", []assessment.FieldChange{field("migration_configuration.firmware")}, impactBlocks},
+		{"disk sharing change", []assessment.FieldChange{field("migration_configuration.disks[2000].sharing")}, impactBlocks},
+		{"resize alongside secure boot", []assessment.FieldChange{field("cpu"), field("migration_configuration.cpu_sockets"), field("migration_configuration.secure_boot_enabled")}, impactBlocks},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			d := &assessment.Diff{VMs: []assessment.VMChange{{Name: "web-05", Context: "prod", Changes: []string{"modified"}, Fields: tc.fields}}}
+			if got := classifyDiff(d)[0].impact; got != tc.want {
+				t.Fatalf("classed %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 // TestScopeStreamFitsEightyColumns pins the width floor the pane targets: at
 // 80 columns every band still renders, and no line runs past the terminal.
 func TestScopeStreamFitsEightyColumns(t *testing.T) {

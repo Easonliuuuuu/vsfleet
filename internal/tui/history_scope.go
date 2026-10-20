@@ -162,14 +162,22 @@ func snapshotAges(d *assessment.Diff) map[string]time.Duration {
 // capture could not see it — both need an answer before a cutover. A
 // migration-configuration change is a blocker for the same reason: firmware,
 // secure boot and device changes are exactly what a destination has to match.
+// The CPU layout, resource allocations and disk sizes in that configuration
+// are not: they follow every resize, and only change what the destination
+// has to be sized for.
 func vmImpact(v assessment.VMChange) impact {
 	if hasChange(v.Changes, "vanished") {
 		return impactBlocks
 	}
+	sizing := false
 	for _, f := range v.Fields {
-		if strings.HasPrefix(f.Field, "migration_configuration.") {
+		if !strings.HasPrefix(f.Field, migrationPrefix) {
+			continue
+		}
+		if !migrationSizingField(strings.TrimPrefix(f.Field, migrationPrefix)) {
 			return impactBlocks
 		}
+		sizing = true
 	}
 	if hasChange(v.Changes, "appeared") {
 		return impactGrowth
@@ -177,10 +185,34 @@ func vmImpact(v assessment.VMChange) impact {
 	for _, f := range v.Fields {
 		switch f.Field {
 		case "cpu", "memory", "storage_gb":
-			return impactSizing
+			sizing = true
 		}
 	}
+	if sizing {
+		return impactSizing
+	}
 	return impactChurn
+}
+
+// migrationPrefix is how the diff namespaces migration-configuration fields,
+// e.g. "migration_configuration.disks[2000].capacity_bytes".
+const migrationPrefix = "migration_configuration."
+
+// migrationSizingField reports whether a migration-configuration path is
+// capacity rather than compatibility: the CPU socket and core layout, CPU and
+// memory allocations, the memory reservation lock, and a disk's size. Any
+// other path — firmware, secure boot, guest ID, hardware version, disk
+// backing and sharing, NICs, TPMs, PCI devices — stays a blocker.
+func migrationSizingField(path string) bool {
+	switch {
+	case path == "cpu_sockets", path == "cores_per_socket", path == "auto_cores_per_socket",
+		path == "memory_reservation_locked_to_max",
+		strings.HasPrefix(path, "cpu_allocation."), strings.HasPrefix(path, "memory_allocation."):
+		return true
+	case strings.HasPrefix(path, "disks["):
+		return strings.HasSuffix(path, "].capacity_bytes")
+	}
+	return false
 }
 
 // resourceImpact ranks an infrastructure change: capacity fields size the

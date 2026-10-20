@@ -61,16 +61,12 @@ type keyMap struct {
 	PerfPage key.Binding
 	// VAppSort orders the vApp workspace's member VMs by start order or by
 	// peak CPU. It is "s" like Sort, which the workspace never handles.
-	VAppSort key.Binding
-	Doctor   key.Binding
-	History  key.Binding
-	Capture  key.Binding
-	Base     key.Binding
-	Target   key.Binding
-	// Swap exchanges baseline and target on the Changes pane. It is "s"
-	// rather than sharing anything with Sort — Sort belongs to the browse
-	// table, which the history hub never shows, so the two never collide.
-	Swap        key.Binding
+	VAppSort    key.Binding
+	Doctor      key.Binding
+	History     key.Binding
+	Capture     key.Binding
+	Base        key.Binding
+	Target      key.Binding
 	Timeline    key.Binding
 	TimelineAll key.Binding
 	// TimelineSource moves between the VM timeline's Changes, vCenter
@@ -224,7 +220,6 @@ func defaultKeys() keyMap {
 		Capture:        key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "capture")),
 		Base:           key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "baseline")),
 		Target:         key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "target")),
-		Swap:           key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "swap")),
 		Timeline:       key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "timeline")),
 		TimelineAll:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "unchanged")),
 		TimelineSource: key.NewBinding(key.WithKeys("tab", "1", "2", "3"), key.WithHelp("tab", "source")),
@@ -385,7 +380,6 @@ func (k keyMap) historyHelpSections(pane int, canCapture bool) []helpSection {
 			described(k.ScrubPrev, "←/→", "move active end"),
 			described(k.Base, "b", "move baseline end"),
 			described(k.Target, "t", "move target end"),
-			described(k.Swap, "s", "swap the two ends"),
 			described(k.PickRun, "R", "pick from all runs"),
 			described(k.ClipSpan, "c", "clip to same vCenters"),
 			described(k.ImpactFilter, "1-4", "impact · 0 clears"),

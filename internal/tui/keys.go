@@ -371,11 +371,13 @@ func (k keyMap) historyHelpSections(pane int, canCapture bool) []helpSection {
 		panes = helpSection{"Trends pane", []key.Binding{
 			described(k.Up, "↑/k", "scroll up"),
 			described(k.Down, "↓/j", "scroll down"),
+			k.PageUp, k.PageDown, k.Home, k.End,
 		}}
 	case historyPaneHealth:
 		panes = helpSection{"Health pane", []key.Binding{
 			described(k.Up, "↑/k", "scroll up"),
 			described(k.Down, "↓/j", "scroll down"),
+			k.PageUp, k.PageDown, k.Home, k.End,
 		}}
 	default:
 		panes = helpSection{"Changes pane", []key.Binding{

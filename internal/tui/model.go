@@ -692,20 +692,26 @@ type Model struct {
 	returnTo mode
 	// search holds the last estate-wide result set, and searchDirty marks it
 	// stale after an inventory arrives or the context list changes.
-	search                *searchState
-	searchDirty           bool
-	assessment            *assessment.Service
-	runs                  []assessment.Run
-	changeDiff            *assessment.Diff
-	historyErr            error
-	changeCursor          int
-	changeOffset          int
-	runCursor             int
-	capturing             bool
-	baseRun               int64
-	targetRun             int64
-	pickerRole            string
-	historyPane           int
+	search       *searchState
+	searchDirty  bool
+	assessment   *assessment.Service
+	runs         []assessment.Run
+	changeDiff   *assessment.Diff
+	historyErr   error
+	changeCursor int
+	changeOffset int
+	runCursor    int
+	capturing    bool
+	baseRun      int64
+	targetRun    int64
+	pickerRole   string
+	historyPane  int
+	// hubOffset scrolls the Health and Trends panes. It is their own, not
+	// the browse table's offset, so scrolling History never moves the
+	// table the operator returns to. hubScrollMax is the furthest offset
+	// the last render could show, so a key cannot scroll past the end.
+	hubOffset             int
+	hubScrollMax          int
 	historyChurn          *assessment.ChurnTrend
 	historySnapshots      *assessment.SnapshotTrend
 	historyCapacity       *assessment.CapacityTrend

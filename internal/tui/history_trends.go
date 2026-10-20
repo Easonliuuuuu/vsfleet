@@ -46,8 +46,7 @@ func (m *Model) viewHistoryTrends() []string {
 				lines = append(lines, "  "+t.warn.Render(line))
 			}
 		}
-		m.offset = clamp(m.offset, 0, max(0, len(lines)-m.bodyHeight()))
-		return scrollLines(lines, m.offset, m.bodyHeight())
+		return m.scrollHubLines(lines, m.bodyHeight())
 	}
 	if m.historyTrendsErr != nil {
 		return append(head, t.warn.Render("  "+m.historyTrendsErr.Error()))
@@ -67,9 +66,7 @@ func (m *Model) viewHistoryTrends() []string {
 		}
 	}
 	lines = append(lines, m.renderTrendSections(sections)...)
-	h := m.bodyHeight()
-	m.offset = clamp(m.offset, 0, max(0, len(lines)-h))
-	return scrollLines(lines, m.offset, h)
+	return m.scrollHubLines(lines, m.bodyHeight())
 }
 
 // trendWindowLabel names the runs the pane is drawn from, so the subtitle

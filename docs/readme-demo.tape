@@ -86,7 +86,7 @@ Type "2"
 Wait+Screen /LIVE from prod-vc/
 Sleep 2500ms
 Type "3"
-Wait+Screen /snapshot-created/
+Wait+Screen /snapshot created/
 Sleep 2500ms
 Escape
 Sleep 500ms

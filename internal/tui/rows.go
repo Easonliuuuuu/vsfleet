@@ -979,24 +979,6 @@ func kindCount(kind vsphere.Kind, n int) string {
 	}
 }
 
-// historyFieldValue shares browse vocabulary while leaving stored evidence
-// and exports intact. Other field values keep their original meaning.
-func historyFieldValue(name, value string) string {
-	if value == "" {
-		return "—"
-	}
-	switch name {
-	case "power_state", "power":
-		return powerWord(value)
-	case "tools_state":
-		return toolsWord(value, "")
-	case "guest_state":
-		return guestStateWord(value)
-	default:
-		return value
-	}
-}
-
 func yesNo(b bool) string {
 	if b {
 		return "yes"

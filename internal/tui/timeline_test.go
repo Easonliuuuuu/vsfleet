@@ -591,7 +591,7 @@ func TestVMTimelineFromDetailFollowsTheOpenVM(t *testing.T) {
 	if strings.Contains(got, "ambiguous") {
 		t.Fatalf("the timeline asked by name and found both app-01s:\n%s", got)
 	}
-	if !strings.Contains(got, "cpu:2→4") {
+	if !strings.Contains(got, "vCPU:2→4") {
 		t.Fatalf("the timeline is not prod's app-01:\n%s", got)
 	}
 }

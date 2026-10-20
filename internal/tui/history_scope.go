@@ -129,7 +129,7 @@ func classifyDiff(d *assessment.Diff) []classified {
 		out = append(out, classified{row: row, impact: vmImpact(v), signature: vmSignature(v)})
 	}
 	for _, s := range d.Snapshots {
-		row := historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: nonempty(s.After, s.Before)}
+		row := historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: historyFieldValue("snapshot", nonempty(s.After, s.Before))}
 		age, known := ages[s.VMName+"/"+s.Name]
 		class, signature := impactChurn, "snapshot "+s.Kind
 		if known && age >= staleSnapshotAge {

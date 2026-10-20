@@ -211,6 +211,10 @@ VM's timeline. It has three sources, one tab each:
 | `2 vCenter events` | vCenter's event log, read live | Who did what and when, including failed tasks and changes undone before the next run. Only as far back as vCenter keeps events, usually 30 days. |
 | `3 Combined` | Both | Each stored change beside the event that caused it, grouped by the gap between the two runs that bracket it. |
 
+A VM is recorded as `vanished` in the run right after its last observation
+when that run read the VM's vCenter, even if another vCenter failed in it.
+If that run could not read the VM's vCenter, the timeline records nothing.
+
 On Combined, `←` marks an event that caused the stored change on its line or
 above it. `‹` marks an event from before the first run that saw the VM:
 whatever it did is already part of that run's first observation, so no

@@ -56,7 +56,7 @@ func TestHistoryAndBrowseSharePowerWords(t *testing.T) {
 	if !strings.Contains(view, "off → on") || !strings.Contains(view, "not running → running") || strings.Contains(view, "poweredOn") || strings.Contains(view, "guestTools") {
 		t.Fatalf("History vocabulary diverged: %s", view)
 	}
-	if got := changeDetail(v); got != "power_state:off→on tools_state:not running→running" {
+	if got := changeDetail(v); got != "power:off→on VMware Tools:not running→running" {
 		t.Fatalf("change stream: %s", got)
 	}
 }

@@ -469,6 +469,9 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 			}
 		case key.Matches(msg, m.keys.PinRun):
 			if m.historyPane == historyPaneRuns && len(m.runs) > 0 && m.assessment != nil {
+				if !m.canEditRuns() {
+					return nil
+				}
 				return toggleHistoryRunPinCmd(m.ctx, m.assessment, m.runs[clamp(m.runCursor, 0, len(m.runs)-1)])
 			}
 		}
@@ -756,7 +759,11 @@ func (m *Model) captureCommand() tea.Cmd {
 	// replaces the whole change stream, and one keypress must not take away
 	// the comparison the operator was reading.
 	if !m.canCapture() {
-		m.setMessage("capture is not available in this session — the stored assessments are read-only", true)
+		reason := "capture is not available in this session — it has no vCenter collector"
+		if m.demo {
+			reason = demoReadOnlyReason + " · capture is off"
+		}
+		m.setMessage(reason, true)
 		return nil
 	}
 	states := m.inScope()
@@ -879,10 +886,7 @@ func (m *Model) viewHistoryRuns() []string {
 		if label == "" {
 			label = "—"
 		}
-		if r.Pinned {
-			label = "📌 " + label
-		}
-		line := fmt.Sprintf("%s%-5s %-18s %-8s %-10s %s", marker, historyRunLabel(r.ID), truncate(label, 18), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"), r.Source)
+		line := fmt.Sprintf("%s%-5s %s %s %-8s %-10s %s", marker, historyRunLabel(r.ID), runPin(r), pad(label, 18, false), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"), r.Source)
 		if i == m.runCursor {
 			line = t.focused.Render(line)
 		} else {
@@ -1229,18 +1233,15 @@ func (m *Model) viewHistoryHubRuns() []string {
 	// line only says how the list is ordered.
 	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first")}
 	if len(m.runs) > 0 {
-		// Two columns of marker and gap, then the same widths as the rows.
-		lines = append(lines, t.header.Render(truncate(fmt.Sprintf("  %-5s %-18s %-9s %s", "RUN", "LABEL", "STATUS", "STARTED"), m.width)))
+		// Cursor, pin and their gaps, then the same widths as the rows.
+		lines = append(lines, t.header.Render(truncate(fmt.Sprintf("     %-5s %-18s %-9s %s", "RUN", "LABEL", "STATUS", "STARTED"), m.width)))
 	}
 	for i, r := range m.runs {
 		label := r.Label
 		if label == "" {
 			label = "—"
 		}
-		if r.Pinned {
-			label = "📌 " + label
-		}
-		line := fmt.Sprintf("%s%-5s %-18s %-9s %s", listCursor(i == m.runCursor)+" ", historyRunLabel(r.ID), truncate(label, 18), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"))
+		line := fmt.Sprintf("%s%s %-5s %s %-9s %s", listCursor(i == m.runCursor)+" ", runPin(r), historyRunLabel(r.ID), pad(label, 18, false), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"))
 		if i == m.runCursor {
 			line = t.focused.Render(line)
 		} else {
@@ -1261,8 +1262,28 @@ func newRunEditInput() textinput.Model {
 	return input
 }
 
+// canEditRuns reports whether a run's label, note and pin may change. The
+// demo is a read-only presentation, so it refuses them the way it refuses a
+// capture, and says so on the status line.
+func (m *Model) canEditRuns() bool {
+	if m.demo {
+		m.setMessage(demoReadOnlyReason+" · runs cannot be labelled, noted or pinned", true)
+		return false
+	}
+	return true
+}
+
+// runPin is the fixed two-cell pin column of a run row: the pin, or the
+// blank it would take, so a pinned row's columns stay in line.
+func runPin(r assessment.Run) string {
+	if r.Pinned {
+		return "📌"
+	}
+	return "  "
+}
+
 func (m *Model) beginRunEdit(field string) tea.Cmd {
-	if m.assessment == nil || len(m.runs) == 0 {
+	if m.assessment == nil || len(m.runs) == 0 || !m.canEditRuns() {
 		return nil
 	}
 	run := m.runs[clamp(m.runCursor, 0, len(m.runs)-1)]

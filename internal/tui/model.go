@@ -1819,7 +1819,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.runEditInput.Blur()
 		m.mode = modeChanges
 		m.runEditKind, m.runEditRunID = "", 0
-		m.setMessage(fmt.Sprintf("assessment %d metadata updated", msg.run.ID), false)
+		m.setMessage(historyRunLabel(msg.run.ID)+" "+msg.change, false)
 		return m, nil
 	case historyCaptureMsg:
 		m.capturing = false

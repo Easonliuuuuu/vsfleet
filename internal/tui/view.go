@@ -1240,7 +1240,7 @@ func (m *Model) helpLines() []string {
 	if m.helpFrom == modeChanges {
 		// Opened from the history hub: show that pane's keys in place of the
 		// browse sections, which describe a screen that is not visible.
-		sections, title = m.keys.historyHelpSections(m.historyPane, m.canCapture()), "Keys · History"
+		sections, title = m.changesHelpSections(), "Keys · History"
 	}
 	blocks := make([][]string, 0, len(sections))
 	for _, sec := range sections {

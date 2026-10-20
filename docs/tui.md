@@ -179,6 +179,7 @@ older run:
 | `c` | Set baseline to newest older run covering the target's vCenters |
 | `1`–`4`, `0` | Filter blocks/sizing/growth/churn; clear filter |
 | `Enter` | Open change inspector on narrow terminals |
+| `PgUp` / `PgDn` | Scroll the change inspector |
 | `h` | Open VM timeline from a change |
 | `n` | Capture current scope |
 | `e` / `N` / `p` in Runs | Edit label / operator note / pin |
@@ -196,8 +197,11 @@ than 30 days, and changed migration configuration such as firmware, secure
 boot or devices. These stay separate. CPU layout, allocation and disk size
 changes count as sizing.
 Other identical changes may share a counted row such as
-`k8s-worker-0… 12 VMs`; the inspector lists all members. Wide terminals
-show the inspector beside the stream.
+`k8s-worker-0… 12 VMs`; the inspector lists all members and counts any it
+cannot fit. Wide terminals show the inspector beside the stream. The counts
+line starts with the vCenters in scope, since the run axis and coverage
+describe every vCenter. On short terminals the move hint, the coverage matrix
+and then the baseline/target lines give way so the stream keeps eight rows.
 
 See [assessments](assessments.md) for capture and comparison workflows.
 

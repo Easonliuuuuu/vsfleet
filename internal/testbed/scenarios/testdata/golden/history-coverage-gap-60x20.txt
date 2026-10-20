@@ -3,18 +3,18 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes
   RUNS     #1   #2   #3   #4   #5  
   pick                     b    t  
   #4 → #5 · 28d · 2 runs
-  ←/→ move target · b/t pick end
-  COVER    ● reached   ✕ not compared   · no record
-  dr-site   ✕    ✕    ✕    ✕    ✕  
-  edge-vc   ●    ●    ●    ●    ●  
-  prod-vc   ●    ●    ●    ●    ●  
+  COVER   not reached in every run: dr-site
   b baseline  pre-migration  #4     08-09 00:00  partial   …
   t target    september-aud… #5     09-06 00:00  partial   …
-  10 vanished   39 appeared   1 moved   1 modified   1 infr…
+  prod-vc · 10 vanished   39 appeared   1 moved   1 modifie…
 
  IMPACT  OBJECT                       vCENTER WHAT MOVED    
 ▸blocks  old-api-22                   prod-vc vanished      
 ▎blocks  old-batch-17                 prod-vc vanished      
 ▎blocks  old-crm-04                   prod-vc vanished      
+▎blocks  old-jira-22                  prod-vc vanished      
+▎blocks  old-mysql-20                 prod-vc vanished      
+▎blocks  old-queue-18                 prod-vc vanished      
+▎blocks  old-vdi-eng-002              prod-vc vanished      
 
 ←/→ move  b/t end  c clip  tab panes  esc back  ? help

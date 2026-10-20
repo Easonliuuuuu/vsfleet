@@ -430,6 +430,10 @@ func countSegment(t theme, n int, label string, style lipgloss.Style) string {
 }
 
 func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
+	// A status line answers the key that set it. The next key is a new
+	// action, so the old answer goes rather than following the operator
+	// through later filters, captures and out of History altogether.
+	m.setMessage("", false)
 	if m.historyPane != historyPaneChanges {
 		if (m.historyPane == historyPaneHealth || m.historyPane == historyPaneTrends) && m.scrollHubPane(msg) {
 			return nil
@@ -475,6 +479,9 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 				return toggleHistoryRunPinCmd(m.ctx, m.assessment, m.runs[clamp(m.runCursor, 0, len(m.runs)-1)])
 			}
 		}
+		return nil
+	}
+	if m.scrollInspector(msg) {
 		return nil
 	}
 	rows := m.scopeRows()
@@ -535,7 +542,8 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Open):
 		// Above the split threshold the inspector is already showing beside
 		// the list and follows the cursor, so there is nothing left for
-		// Enter to open — that is the whole point of the split.
+		// Enter to open — that is the whole point of the split. Help leaves
+		// Enter out there (see changesHelpSections).
 		if len(rows) > 0 && m.changeCursor < len(rows) && m.historySplitWidth() == 0 {
 			m.mode = modeChangeDetail
 		}
@@ -664,6 +672,10 @@ func (m *Model) openTimelineForRow(row historyRow, from mode) tea.Cmd {
 // previously advertised in the footer here but silently dropped by the
 // dispatch, so pressing it did nothing.
 func (m *Model) handleChangeDetailKey(msg tea.KeyMsg) tea.Cmd {
+	m.setMessage("", false)
+	if m.scrollInspector(msg) {
+		return nil
+	}
 	rows := m.scopeRows()
 	switch {
 	case key.Matches(msg, m.keys.Back):
@@ -936,47 +948,11 @@ func (m *Model) viewChanges() []string {
 		list := m.renderScopeStream(rows, splitW, avail)
 		var inspector []string
 		if m.changeCursor >= 0 && m.changeCursor < len(rows) {
-			inspector = m.scopeInspector(rows[m.changeCursor])
+			inspector = m.windowInspector(m.scopeInspector(rows[m.changeCursor]), avail)
 		}
 		return append(lines, joinSideBySide(t, list, inspector, splitW, rightW, avail)...)
 	}
 	return append(lines, m.renderScopeStream(rows, m.width, avail)...)
-}
-
-// changesHeaderLines is everything above the change stream: the run axis, the
-// coverage under it, the identity of the two runs being compared, and the
-// counts. It is one function rather than inline rendering so the stream's
-// height budget is measured against exactly what was drawn, instead of an
-// arithmetic estimate that drifts every time a band gains a line.
-func (m *Model) changesHeaderLines() []string {
-	t := m.theme
-	var lines []string
-	if m.capturing {
-		lines = append(lines, "  "+m.spin.View()+t.dim.Render("capturing VM inventory from "+captureScopeLabel(m.capturingStates())+"…"))
-	}
-	// The capture-size row is the first thing to go on a short terminal: it
-	// is the only band on this screen that is decoration rather than an
-	// answer, since the counts below say what actually changed.
-	lines = append(lines, m.viewScrubber(m.width, m.bodyHeight() >= 18)...)
-	lines = append(lines, m.viewCoverage(m.width)...)
-	if m.changeDiff == nil {
-		return append(lines, "")
-	}
-	lines = append(lines, m.viewComparisonBar(m.changeDiff)...)
-	c := m.changeDiff.Counts
-	counts := strings.Join([]string{
-		countSegment(t, c.Vanished, "vanished", t.bad),
-		countSegment(t, c.Appeared, "appeared", t.ok),
-		countSegment(t, c.Moved, "moved", t.warn),
-		countSegment(t, c.Modified, "modified", t.warn),
-		countSegment(t, c.Resources, "infra", t.warn),
-		countSegment(t, c.Snapshots, "snapshots", t.warn),
-	}, t.faint.Render("   "))
-	lines = append(lines, truncate("  "+counts, m.width))
-	if m.impactFilter != impactAll {
-		lines = append(lines, truncate("  "+t.accent.Render(m.impactFilter.String())+t.dim.Render(" only — "+m.impactFilter.why()+" · 0 clears"), m.width))
-	}
-	return append(lines, "")
 }
 
 func (m *Model) viewHistoryHealth() []string {
@@ -1336,7 +1312,7 @@ func (m *Model) viewChangeDetail() []string {
 	if m.changeCursor < 0 || m.changeCursor >= len(rows) {
 		return []string{m.theme.dim.Render("nothing selected")}
 	}
-	return scrollLines(m.scopeInspector(rows[m.changeCursor]), 0, m.bodyHeight())
+	return m.windowInspector(m.scopeInspector(rows[m.changeCursor]), m.bodyHeight())
 }
 
 // historyInspector is the detail for one Changes row: the summary already on

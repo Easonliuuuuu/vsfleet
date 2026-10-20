@@ -482,6 +482,12 @@ func scrubBars(counts map[int64]int, runs []assessment.Run) []string {
 // Runs read left to right oldest to newest, the direction time is drawn in
 // everywhere else, even though the run list itself is newest-first.
 func (m *Model) viewScrubber(width int, bars bool) []string {
+	return m.viewScrubberWith(width, bars, true)
+}
+
+// viewScrubberWith is viewScrubber with the move hint optional: a short
+// terminal drops it first, since the footer names the same keys.
+func (m *Model) viewScrubberWith(width int, bars, moveHint bool) []string {
 	t := m.theme
 	if len(m.runs) == 0 {
 		return []string{t.dim.Render("  no assessments stored — press n to capture")}
@@ -505,13 +511,17 @@ func (m *Model) viewScrubber(width int, bars bool) []string {
 	// looks like a drawing fault rather than an answer, so it is left out.
 	bars = bars && slices.ContainsFunc(glyphs, func(g string) bool { return g != "·" })
 	for i, r := range visible {
+		// A partial run is amber, but the two compared runs are accented
+		// whatever their status: the comparison bar already says they are
+		// partial, and the axis is where the operator looks for which two
+		// runs are selected.
 		style := t.dim
-		switch r.ID {
-		case m.baseRun, m.targetRun:
-			style = t.accent
-		}
 		if r.Status == assessment.RunFailed || r.Status == assessment.RunPartial {
 			style = t.warn
+		}
+		switch r.ID {
+		case m.baseRun, m.targetRun:
+			style = t.accent.Bold(true)
 		}
 		ids += style.Render(centre(historyRunLabel(r.ID), scrubCellWidth))
 		sizes += t.dim.Render(centre(glyphs[i], scrubCellWidth))
@@ -522,6 +532,9 @@ func (m *Model) viewScrubber(width int, bars bool) []string {
 		handles += handleStyle.Render(centre(m.handleMark(r.ID), scrubCellWidth))
 	}
 	notes := m.scrubNotes(width)
+	if !moveHint {
+		notes = notes[:len(notes)-1]
+	}
 	lines := []string{ids}
 	if bars {
 		lines = append(lines, sizes)

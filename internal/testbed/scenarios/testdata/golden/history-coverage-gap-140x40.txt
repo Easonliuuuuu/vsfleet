@@ -8,7 +8,7 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes   tab/⇧tab switch
   prod-vc   ●    ●    ●    ●    ●  
   b baseline  pre-migration        #4     Sun 09 Aug 00:00  partial   2/3 vCenters
   t target    september-audit      #5     Sun 06 Sep 00:00  partial   2/3 vCenters +28d
-  10 vanished   39 appeared   1 moved   1 modified   1 infra   29 snapshots
+  prod-vc · 10 vanished   39 appeared   1 moved   1 modified   1 infra   29 snapshots
 
  IMPACT  OBJECT                       vCENTER        │ old-api-22                                                                           
 ▸blocks  old-api-22                   prod-vc        │   context  prod-vc                                                                   

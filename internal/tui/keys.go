@@ -384,6 +384,7 @@ func (k keyMap) historyHelpSections(pane int, canCapture bool) []helpSection {
 			described(k.ClipSpan, "c", "clip to same vCenters"),
 			described(k.ImpactFilter, "1-4", "impact · 0 clears"),
 			described(k.Open, "enter", "open inspector"),
+			described(k.PageDown, "pgup/dn", "scroll inspector"),
 			described(k.Timeline, "h", "VM timeline"),
 		}}
 	}
@@ -583,7 +584,7 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		// history help (see historyHelpSections), and ctrl+c still quits.
 		return append(append([]key.Binding{k.ScrubPrev, k.BaseTarget, k.ClipSpan, k.ImpactFilter, k.NextPaneBrief}, capture...), k.Back, k.Help)
 	case modeChangeDetail:
-		return []key.Binding{k.Up, k.Down, k.Timeline, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Up, k.Down, described(k.PageDown, "pgup/dn", "scroll"), k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:
 		return []key.Binding{k.Up, k.Down, k.Open, k.EditRun, k.NoteRun, k.PinRun, k.Back, k.Help, k.Quit}
 	case modeHistoryRunEdit:

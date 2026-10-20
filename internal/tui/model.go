@@ -700,12 +700,16 @@ type Model struct {
 	historyErr   error
 	changeCursor int
 	changeOffset int
-	runCursor    int
-	capturing    bool
-	baseRun      int64
-	targetRun    int64
-	pickerRole   string
-	historyPane  int
+	// inspectorOffset scrolls the change inspector; inspectorCursor is the
+	// row it was scrolled for, so moving to another change starts at its top.
+	inspectorOffset int
+	inspectorCursor int
+	runCursor       int
+	capturing       bool
+	baseRun         int64
+	targetRun       int64
+	pickerRole      string
+	historyPane     int
 	// hubOffset scrolls the Health and Trends panes. It is their own, not
 	// the browse table's offset, so scrolling History never moves the
 	// table the operator returns to. hubScrollMax is the furthest offset

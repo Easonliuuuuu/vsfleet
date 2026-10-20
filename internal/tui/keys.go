@@ -567,7 +567,12 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 			// The Runs pane's per-run actions belong in the footer next to
 			// every other binding, the way the standalone run picker lists
 			// them, rather than on a hint line above the list.
-			return append(append([]key.Binding{k.Up, k.Down, k.EditRun, k.NoteRun, k.PinRun, k.NextPane}, capture...), k.Back, k.Help, k.Quit)
+			// The demo refuses run edits, so it does not offer them either.
+			edits := []key.Binding{k.EditRun, k.NoteRun, k.PinRun}
+			if m.demo {
+				edits = nil
+			}
+			return append(append(append(append([]key.Binding{k.Up, k.Down}, edits...), k.NextPane), capture...), k.Back, k.Help, k.Quit)
 		}
 		if m.historyPane != historyPaneChanges {
 			return append(append([]key.Binding{k.Up, k.Down, k.NextPane}, capture...), k.Back, k.Help, k.Quit)

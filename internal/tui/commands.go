@@ -111,7 +111,10 @@ type historyTimelineMsg struct {
 
 type historyRunUpdatedMsg struct {
 	run assessment.Run
-	err error
+	// change says what the update did, for the status line: "pinned",
+	// "label set", "note cleared".
+	change string
+	err    error
 }
 
 type historyTrendsMsg struct {
@@ -310,16 +313,24 @@ func updateHistoryRunCmd(ctx context.Context, service *assessment.Service, runID
 		} else {
 			note = &value
 		}
+		change := field + " set"
+		if value == "" {
+			change = field + " cleared"
+		}
 		run, err := service.Store.UpdateRunFields(ctx, strconv.FormatInt(runID, 10), label, note, nil)
-		return historyRunUpdatedMsg{run: run, err: err}
+		return historyRunUpdatedMsg{run: run, change: change, err: err}
 	}
 }
 
 func toggleHistoryRunPinCmd(ctx context.Context, service *assessment.Service, run assessment.Run) tea.Cmd {
 	return func() tea.Msg {
 		value := !run.Pinned
+		change := "pinned"
+		if !value {
+			change = "unpinned"
+		}
 		updated, err := service.Store.UpdateRunFields(ctx, strconv.FormatInt(run.ID, 10), nil, nil, &value)
-		return historyRunUpdatedMsg{run: updated, err: err}
+		return historyRunUpdatedMsg{run: updated, change: change, err: err}
 	}
 }
 

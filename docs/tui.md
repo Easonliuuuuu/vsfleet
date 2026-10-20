@@ -185,6 +185,7 @@ older run:
 
 `?` lists the current pane's keys and what its marks and columns mean.
 Captures run in the background while inventory remains usable.
+`vsfleet demo` stores nothing, so it refuses `n`, `e`, `N` and `p`.
 
 Coverage uses `●` reached, `✕` not compared, and `·` no record.
 It collapses when visible runs have identical coverage; otherwise it names the

@@ -27,7 +27,7 @@ func (m *Model) enterChanges() tea.Cmd {
 	m.filtering = false
 	m.filter.Blur()
 	m.changeCursor, m.changeOffset = 0, 0
-	m.offset = 0
+	m.hubOffset, m.hubScrollMax = 0, 0
 	m.scrubOffset = 0
 	m.scrubHandle = "t"
 	m.impactFilter = impactAll
@@ -216,18 +216,21 @@ func (m *Model) viewComparisonBar(d *assessment.Diff) []string {
 		"  " + t.accent.Render("b") + " " + t.dim.Render("baseline") + "  " + comparisonRunLine(t, d.Base, "", m.width),
 		"  " + t.accent.Render("t") + " " + t.dim.Render("target  ") + "  " + comparisonRunLine(t, d.Target, formatInterval(d.Target.StartedAt.Sub(d.Base.StartedAt)), m.width),
 	}
-	missingTarget, missingBaseline := coverageGaps(d)
+	missingTarget, missingBaseline, missingBoth := coverageGaps(d)
 	if len(missingTarget) > 0 {
 		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! not compared: %s — collected in the baseline but not the target", strings.Join(missingTarget, ", "))))
 	}
 	if len(missingBaseline) > 0 {
 		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! not compared: %s — collected in the target but not the baseline", strings.Join(missingBaseline, ", "))))
 	}
+	if len(missingBoth) > 0 {
+		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! not compared: %s — not collected in either run", strings.Join(missingBoth, ", "))))
+	}
 	// Two runs can report the same VCenterID for genuinely different
 	// vCenters (a simulator fixture, a cloned appliance) — Diff cannot name
 	// the gap by vCenter in that case, but the counts still disagree and the
 	// operator still needs to know the comparison is not full-estate.
-	if len(missingTarget) == 0 && len(missingBaseline) == 0 && d.Base.SuccessfulContexts != d.Target.SuccessfulContexts {
+	if len(missingTarget) == 0 && len(missingBaseline) == 0 && len(missingBoth) == 0 && d.Base.SuccessfulContexts != d.Target.SuccessfulContexts {
 		lines = append(lines, "  "+t.warn.Render(fmt.Sprintf("! baseline covered %s, target covered %s — the counts below are not a full-estate comparison", vCenterCount(d.Base.SuccessfulContexts), vCenterCount(d.Target.SuccessfulContexts))))
 	}
 	for _, note := range condenseCoverageNotes(coverageNotes(d)) {
@@ -293,32 +296,42 @@ func vCenterCount(n int) string {
 }
 
 // coverageGaps names, by human context name, which vCenters the diff could
-// not compare on each side — everything Diff.Coverage recorded, whether the
-// vCenter was missing entirely or its collection simply failed that run.
-// Deduplicated because infrastructure coverage repeats one entry per kind
-// (host, cluster, datastore) for the same context.
-func coverageGaps(d *assessment.Diff) (missingFromTarget, missingFromBaseline []string) {
-	seenTarget, seenBaseline := map[string]bool{}, map[string]bool{}
+// not compare — everything Diff.Coverage recorded, whether the vCenter was
+// missing entirely or its collection simply failed that run. A coverage
+// entry says a side was incomplete, not that the other side was complete, so
+// a vCenter incomplete on both sides is returned once in missingFromBoth
+// rather than in both one-sided lists. Deduplicated because infrastructure
+// coverage repeats one entry per kind (host, cluster, datastore) for the
+// same context.
+func coverageGaps(d *assessment.Diff) (missingFromTarget, missingFromBaseline, missingFromBoth []string) {
+	inTarget, inBaseline := map[string]bool{}, map[string]bool{}
 	for _, c := range d.Coverage {
 		if c.Context == "" {
 			continue
 		}
 		switch c.Scope {
 		case "target":
-			if !seenTarget[c.Context] {
-				seenTarget[c.Context] = true
-				missingFromTarget = append(missingFromTarget, c.Context)
-			}
+			inTarget[c.Context] = true
 		case "baseline":
-			if !seenBaseline[c.Context] {
-				seenBaseline[c.Context] = true
-				missingFromBaseline = append(missingFromBaseline, c.Context)
-			}
+			inBaseline[c.Context] = true
+		}
+	}
+	for name := range inTarget {
+		if inBaseline[name] {
+			missingFromBoth = append(missingFromBoth, name)
+		} else {
+			missingFromTarget = append(missingFromTarget, name)
+		}
+	}
+	for name := range inBaseline {
+		if !inTarget[name] {
+			missingFromBaseline = append(missingFromBaseline, name)
 		}
 	}
 	sort.Strings(missingFromTarget)
 	sort.Strings(missingFromBaseline)
-	return missingFromTarget, missingFromBaseline
+	sort.Strings(missingFromBoth)
+	return missingFromTarget, missingFromBaseline, missingFromBoth
 }
 
 // coverageNotes returns coverage issues that name no specific vCenter — a
@@ -418,20 +431,17 @@ func countSegment(t theme, n int, label string, style lipgloss.Style) string {
 
 func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	if m.historyPane != historyPaneChanges {
+		if (m.historyPane == historyPaneHealth || m.historyPane == historyPaneTrends) && m.scrollHubPane(msg) {
+			return nil
+		}
 		switch {
-		case (m.historyPane == historyPaneHealth || m.historyPane == historyPaneTrends) && key.Matches(msg, m.keys.Up):
-			m.offset = max(0, m.offset-1)
-			return nil
-		case (m.historyPane == historyPaneHealth || m.historyPane == historyPaneTrends) && key.Matches(msg, m.keys.Down):
-			m.offset++
-			return nil
 		case key.Matches(msg, m.keys.PrevPane):
 			m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
-			m.offset = 0
+			m.hubOffset = 0
 			return nil
 		case key.Matches(msg, m.keys.NextPane):
 			m.historyPane = (m.historyPane + 1) % historyPaneCount
-			m.offset = 0
+			m.hubOffset = 0
 			return nil
 		case key.Matches(msg, m.keys.Capture):
 			// Capture is the hub's primary action, so it answers from every
@@ -744,13 +754,16 @@ func (m *Model) captureCommand() tea.Cmd {
 	}
 	// A store-only service has nothing to capture with. Bail before touching
 	// m.capturing so the hub cannot enter a state only a collector can leave.
+	// A refused capture is a status line, not a pane error: historyErr
+	// replaces the whole change stream, and one keypress must not take away
+	// the comparison the operator was reading.
 	if !m.canCapture() {
-		m.historyErr = fmt.Errorf("capture is not available in this session — the stored assessments are read-only")
+		m.setMessage("capture is not available in this session — the stored assessments are read-only", true)
 		return nil
 	}
 	states := m.inScope()
 	if len(states) == 0 {
-		m.historyErr = fmt.Errorf("no vCenter in scope to capture")
+		m.setMessage("no vCenter in scope to capture", true)
 		return nil
 	}
 	m.capturing = true
@@ -963,12 +976,12 @@ func (m *Model) viewHistoryHealth() []string {
 	// Health is not scoped: its rules run over the whole stored assessment, so
 	// the header says so rather than letting it be read as the selected
 	// vCenter's verdict.
-	lines := []string{t.title.Render("Health"), "", truncate(t.dim.Render("  all vCenters · read-only findings from the latest stored assessment"), m.width)}
+	head := []string{t.title.Render("Health"), "", truncate(t.dim.Render("  all vCenters · read-only findings from the latest stored assessment"), m.width)}
 	if m.historyHealthErr != nil {
-		return append(lines, "  "+t.warn.Render(m.historyHealthErr.Error()))
+		return append(head, "  "+t.warn.Render(m.historyHealthErr.Error()))
 	}
 	if m.historyHealth == nil {
-		return append(lines, t.dim.Render("  loading health findings…"))
+		return append(head, t.dim.Render("  loading health findings…"))
 	}
 	r := m.historyHealth
 	readiness := health.Readiness(*r)
@@ -982,16 +995,19 @@ func (m *Model) viewHistoryHealth() []string {
 		countSegment(t, c.Warning, "warning", t.warn) + sep +
 		countSegment(t, c.Info, "info", t.dim) + sep +
 		t.faint.Render(fmt.Sprintf("%d total", c.Total))
-	lines = append(lines, truncate(summary, m.width), "")
+	head = append(head, truncate(summary, m.width), "")
+	// The summary and column header stay put and only the findings scroll,
+	// so a row two screens down still says which column is which.
+	var body []string
 	if len(r.Findings) == 0 {
-		lines = append(lines, t.ok.Render("  no findings"))
+		body = append(body, t.ok.Render("  no findings"))
 	} else {
 		cols := healthColumns(r.Findings, m.width)
-		head := make([]string, 0, len(cols))
+		titles := make([]string, 0, len(cols))
 		for _, col := range cols {
-			head = append(head, pad(col.title, col.width, false))
+			titles = append(titles, pad(col.title, col.width, false))
 		}
-		lines = append(lines, t.header.Render(truncate("  "+strings.Join(head, healthGap), m.width)))
+		head = append(head, t.header.Render(truncate("  "+strings.Join(titles, healthGap), m.width)))
 		for _, finding := range sortFindingsBySeverity(r.Findings) {
 			cells := make([]string, 0, len(cols))
 			for _, col := range cols {
@@ -1003,7 +1019,7 @@ func (m *Model) viewHistoryHealth() []string {
 			} else if finding.Severity == health.SeverityInfo {
 				style = t.dim
 			}
-			lines = append(lines, style.Render(truncate("  "+strings.Join(cells, healthGap), m.width)))
+			body = append(body, style.Render(truncate("  "+strings.Join(cells, healthGap), m.width)))
 		}
 	}
 	for _, rule := range r.Rules {
@@ -1012,12 +1028,12 @@ func (m *Model) viewHistoryHealth() []string {
 			if len(rule.Blind) > 0 {
 				reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
 			}
-			lines = append(lines, t.dim.Render("  not evaluated: "+rule.Rule+" — "+reason))
+			body = append(body, t.dim.Render("  not evaluated: "+rule.Rule+" — "+reason))
 		} else if len(rule.Partial) > 0 {
-			lines = append(lines, t.dim.Render("  partly evaluated: "+rule.Rule+" — "+rule.Reason))
+			body = append(body, t.dim.Render("  partly evaluated: "+rule.Rule+" — "+rule.Reason))
 		}
 	}
-	return scrollLines(lines, m.offset, m.bodyHeight())
+	return append(head, m.scrollHubLines(body, m.bodyHeight()-len(head))...)
 }
 
 // sortFindingsBySeverity lists critical findings first. The stored order is

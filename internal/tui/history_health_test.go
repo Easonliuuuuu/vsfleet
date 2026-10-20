@@ -141,3 +141,59 @@ func TestHealthColumnsShrinkBeforeObjectGoes(t *testing.T) {
 		t.Errorf("80 columns should drop CONFIDENCE and CATEGORY first, got %q", got)
 	}
 }
+
+// scrollHealth presses key n times, rendering after each press the way the
+// Bubble Tea runtime does, so the offset the view settles on carries into the
+// next key.
+func scrollHealth(t *testing.T, m *Model, key string, n int) string {
+	t.Helper()
+	var view string
+	for range n {
+		press(t, m, key)
+		view = ansi.Strip(m.View())
+	}
+	return view
+}
+
+// TestHealthPaneScrollStopsAtTheEnd pins issue #467: "j" past the last
+// finding kept counting while the screen stood still, so "k" then did
+// nothing for as many presses; "G" did not jump; and the column header
+// scrolled away with the rows.
+func TestHealthPaneScrollStopsAtTheEnd(t *testing.T) {
+	m := healthPaneModel(t, 100, 20)
+	m.View()
+
+	end := scrollHealth(t, m, "G", 1)
+	if !strings.Contains(end, "app-29") {
+		t.Fatalf("G did not reach the last finding:\n%s", end)
+	}
+	if !strings.Contains(end, "SEVERITY") || !strings.Contains(end, "1 critical") {
+		t.Fatalf("scrolling took the summary or column header off screen:\n%s", end)
+	}
+	if overshot := scrollHealth(t, m, "j", 50); overshot != end {
+		t.Fatalf("j past the end changed the view:\n%s", overshot)
+	}
+	if back := scrollHealth(t, m, "k", 1); back == end {
+		t.Fatal("one k after scrolling past the end did not move the view")
+	}
+}
+
+// TestHistoryScrollLeavesTheBrowseTableAlone pins issue #466: the Health and
+// Trends panes scrolled the browse table's own offset, so after Esc the table
+// was scrolled past its rows and the cursor was off screen.
+func TestHistoryScrollLeavesTheBrowseTableAlone(t *testing.T) {
+	monochrome(t)
+	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
+	m.width, m.height = 100, 20
+	before := onlyCursorLine(t, m.View())
+
+	press(t, m, "H")
+	m.historyPane = historyPaneHealth
+	m.historyHealth, m.historyHealthErr = healthFixture(), nil
+	scrollHealth(t, m, "j", 40)
+	press(t, m, "esc")
+
+	if after := onlyCursorLine(t, m.View()); after != before {
+		t.Fatalf("browse cursor row after History is %q, want %q", after, before)
+	}
+}

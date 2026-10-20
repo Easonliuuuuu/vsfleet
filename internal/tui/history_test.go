@@ -174,6 +174,34 @@ func TestComparisonBarNamesBothRunsAndCoverageGap(t *testing.T) {
 	}
 }
 
+// TestComparisonBarNamesAVCenterMissingFromBothRuns pins issue #468: a
+// vCenter whose collection failed in both runs was reported as collected in
+// the baseline but not the target, and the reverse, and the axis hint said
+// its objects read as vanished and that "c" would fix it.
+func TestComparisonBarNamesAVCenterMissingFromBothRuns(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.width = 160
+	m.changeDiff = &assessment.Diff{
+		Base:   assessment.Run{ID: 4, SuccessfulContexts: 2},
+		Target: assessment.Run{ID: 5, SuccessfulContexts: 2},
+		Coverage: []assessment.CoverageIssue{
+			{Scope: "baseline", Context: "dr-site", Message: "dr-site was not fully collected in baseline: failed"},
+			{Scope: "target", Context: "dr-site", Message: "dr-site was not fully collected in target: failed"},
+		},
+	}
+
+	bar := ansi.Strip(strings.Join(m.viewComparisonBar(m.changeDiff), "\n"))
+	if !strings.Contains(bar, "not compared: dr-site — not collected in either run") {
+		t.Errorf("comparison bar does not say dr-site is missing from both runs:\n%s", bar)
+	}
+	if strings.Contains(bar, "but not the") {
+		t.Errorf("comparison bar claims dr-site was collected on one side:\n%s", bar)
+	}
+	if hint := m.coverageHint(); hint != "" {
+		t.Errorf("axis hint offers a one-sided explanation for a two-sided gap: %q", hint)
+	}
+}
+
 // TestSwapKeyExchangesBaselineAndTarget pins "s" on the Changes pane: it
 // swaps which run is baseline and which is target, and re-diffs immediately
 // rather than leaving the two counts stale until the next unrelated update.
@@ -767,11 +795,16 @@ func TestStoreOnlyServiceDoesNotAdvertiseOrEnterCapture(t *testing.T) {
 	if m.capturing {
 		t.Fatal("\"n\" entered the capturing state against a store-only service")
 	}
-	if m.message != "" {
+	if strings.HasPrefix(m.message, "capturing ") {
 		t.Fatalf("\"n\" set a sticky progress message %q against a store-only service", m.message)
 	}
-	if m.historyErr == nil {
-		t.Fatal("\"n\" against a store-only service left no explanation on screen")
+	// The refusal is a status line. Issue #469: it used to be the pane's
+	// error, which replaced the comparison the operator was reading.
+	if !m.messageBad || !strings.Contains(m.message, "not available") {
+		t.Fatalf("\"n\" against a store-only service left no explanation on screen, message %q", m.message)
+	}
+	if m.historyErr != nil {
+		t.Fatalf("\"n\" against a store-only service replaced the change stream with %q", m.historyErr)
 	}
 
 	// The Changes error panel must not tell the operator to repeat a key that

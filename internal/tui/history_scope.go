@@ -678,7 +678,10 @@ func (m *Model) coverageHint() string {
 	if m.changeDiff == nil {
 		return ""
 	}
-	missingTarget, missingBaseline := coverageGaps(m.changeDiff)
+	// A vCenter missing from both runs contributes nothing to either side,
+	// so it reads as neither vanished nor appeared and clipping cannot help;
+	// the comparison bar names it on its own line.
+	missingTarget, missingBaseline, _ := coverageGaps(m.changeDiff)
 	switch {
 	case len(missingTarget) > 0:
 		return fmt.Sprintf("! %s not in the target — its objects read as vanished; c clips the span to shared coverage", strings.Join(missingTarget, ", "))

@@ -376,6 +376,8 @@ func (k keyMap) historyHelpSections(pane int, canCapture bool) []helpSection {
 			described(k.Up, "↑/k", "scroll up"),
 			described(k.Down, "↓/j", "scroll down"),
 			k.PageUp, k.PageDown, k.Home, k.End,
+			described(k.Open, "enter", "open finding"),
+			described(k.Filter, "/", "filter findings"),
 		}}
 	default:
 		panes = helpSection{"Changes pane", []key.Binding{
@@ -579,6 +581,12 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 			compare := []key.Binding{k.runChangesHint(), k.runCompareHint()}
 			return append(append(append(append(append([]key.Binding{k.Up, k.Down}, compare...), edits...), k.NextPane), capture...), k.Back, k.Help, k.Quit)
 		}
+		if m.historyPane == historyPaneHealth {
+			if m.healthDetail {
+				return []key.Binding{described(k.Up, "↑/k", "scroll up"), described(k.Down, "↓/j", "scroll down"), k.Back, k.Help, k.Quit}
+			}
+			return append(append([]key.Binding{k.Up, k.Down, k.healthOpenHint(), k.Filter, k.NextPane}, capture...), k.Back, k.Help, k.Quit)
+		}
 		if m.historyPane != historyPaneChanges {
 			return append(append([]key.Binding{k.Up, k.Down, k.NextPane}, capture...), k.Back, k.Help, k.Quit)
 		}
@@ -648,6 +656,7 @@ func (k keyMap) footerDropOrder() [][]key.Binding {
 		{k.PinRun},
 		{k.runCompareHint()},
 		{k.runChangesHint()},
+		{k.healthOpenHint()},
 		{k.Reload},
 		{k.CopyPath},
 		{k.Doctor},
@@ -666,6 +675,11 @@ func (k keyMap) footerDropOrder() [][]key.Binding {
 // without giving up the Changes pane's "b/t end".
 func (k keyMap) runChangesHint() key.Binding { return described(k.Open, "enter", "changes") }
 func (k keyMap) runCompareHint() key.Binding { return described(k.BaseTarget, "b/t", "compare") }
+
+// healthOpenHint is the Health pane's footer name for Enter, kept apart from
+// "enter open" elsewhere so the footer can give it up on a narrow terminal
+// without giving up anyone else's.
+func (k keyMap) healthOpenHint() key.Binding { return described(k.Open, "enter", "detail") }
 
 // sameHint reports whether two bindings read the same on the key line.
 // Bindings are not comparable, and their labels are what the reader sees.

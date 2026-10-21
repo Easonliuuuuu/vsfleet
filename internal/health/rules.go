@@ -212,7 +212,7 @@ var rules = []Rule{
 				}
 				obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
 				emit(Finding{Rule: "host-disconnected", Severity: SeverityCritical, Object: obj,
-					Message: fmt.Sprintf("Host is %s", nonempty(host.ConnectionState, "not connected")), Evidence: []Evidence{{Field: "connection_state", Observed: nonempty(host.ConnectionState, "unknown"), Expected: "connected"}}})
+					Message: "Host is " + stateWords(host.ConnectionState), Evidence: []Evidence{{Field: "connection_state", Observed: nonempty(host.ConnectionState, "unknown"), Expected: "connected"}}})
 			}
 		},
 	},
@@ -302,7 +302,7 @@ var rules = []Rule{
 					continue
 				}
 				emit(Finding{Rule: "tools-not-running", Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation),
-					Message: fmt.Sprintf("VMware Tools are not running (%s)", nonempty(vm.ToolsState, "unknown")), Evidence: []Evidence{{Field: "tools_state", Observed: nonempty(vm.ToolsState, "unknown"), Expected: "guestToolsRunning"}}})
+					Message: toolsNotRunningMessage(vm.ToolsState), Evidence: []Evidence{{Field: "tools_state", Observed: nonempty(vm.ToolsState, "unknown"), Expected: "guestToolsRunning"}}})
 			}
 		},
 	},
@@ -333,7 +333,7 @@ var rules = []Rule{
 					continue
 				}
 				emit(Finding{Rule: "vm-inaccessible", Severity: SeverityCritical, Object: vmObject(in.Data, item.Observation),
-					Message: fmt.Sprintf("VM is %s", nonempty(vm.ConnectionState, "inaccessible")), Evidence: []Evidence{{Field: "connection_state", Observed: nonempty(vm.ConnectionState, "unknown"), Expected: "connected"}}})
+					Message: "VM is " + stateWords(vm.ConnectionState), Evidence: []Evidence{{Field: "connection_state", Observed: nonempty(vm.ConnectionState, "unknown"), Expected: "connected"}}})
 			}
 		},
 	},
@@ -761,7 +761,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 			if vm.IsTemplate || vm.ToolsVersionStatus != "guestToolsNotInstalled" {
 				continue
 			}
-			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation), Message: "VMware Tools are not installed (guestToolsNotInstalled)", Evidence: []Evidence{{Field: "tools_version_status", Observed: "guestToolsNotInstalled", Expected: "installed"}}})
+			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation), Message: "VMware Tools are not installed", Evidence: []Evidence{{Field: "tools_version_status", Observed: "guestToolsNotInstalled", Expected: "installed"}}})
 		}
 	case "tools-outdated":
 		outdated := map[string]bool{
@@ -775,7 +775,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 			if vm.IsTemplate || !outdated[vm.ToolsVersionStatus] {
 				continue
 			}
-			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VMware Tools are out of date (%s)", vm.ToolsVersionStatus), Evidence: []Evidence{{Field: "tools_version_status", Observed: vm.ToolsVersionStatus, Expected: "guestToolsCurrent"}}})
+			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VMware Tools are out of date (%s)", stateWords(vm.ToolsVersionStatus)), Evidence: []Evidence{{Field: "tools_version_status", Observed: vm.ToolsVersionStatus, Expected: "guestToolsCurrent"}}})
 		}
 	}
 }

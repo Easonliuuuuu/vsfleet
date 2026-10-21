@@ -28,6 +28,7 @@ func (m *Model) enterChanges() tea.Cmd {
 	m.filter.Blur()
 	m.changeCursor, m.changeOffset = 0, 0
 	m.hubOffset, m.hubScrollMax = 0, 0
+	m.healthCursor, m.healthDetail = 0, false
 	m.scrubOffset = 0
 	m.scrubHandle = "t"
 	m.impactFilter = impactAll
@@ -435,17 +436,20 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	// through later filters, captures and out of History altogether.
 	m.setMessage("", false)
 	if m.historyPane != historyPaneChanges {
-		if (m.historyPane == historyPaneHealth || m.historyPane == historyPaneTrends) && m.scrollHubPane(msg) {
+		if m.historyPane == historyPaneHealth {
+			if cmd, ok := m.handleHealthKey(msg); ok {
+				return cmd
+			}
+		}
+		if m.historyPane == historyPaneTrends && m.scrollHubPane(msg) {
 			return nil
 		}
 		switch {
 		case key.Matches(msg, m.keys.PrevPane):
-			m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
-			m.hubOffset = 0
+			m.switchHistoryPane((m.historyPane + historyPaneCount - 1) % historyPaneCount)
 			return nil
 		case key.Matches(msg, m.keys.NextPane):
-			m.historyPane = (m.historyPane + 1) % historyPaneCount
-			m.hubOffset = 0
+			m.switchHistoryPane((m.historyPane + 1) % historyPaneCount)
 			return nil
 		case key.Matches(msg, m.keys.Capture):
 			// Capture is the hub's primary action, so it answers from every
@@ -494,10 +498,10 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 	rows := m.scopeRows()
 	switch {
 	case key.Matches(msg, m.keys.PrevPane):
-		m.historyPane = (m.historyPane + historyPaneCount - 1) % historyPaneCount
+		m.switchHistoryPane((m.historyPane + historyPaneCount - 1) % historyPaneCount)
 		return nil
 	case key.Matches(msg, m.keys.NextPane):
-		m.historyPane = historyPaneTrends
+		m.switchHistoryPane(historyPaneTrends)
 		return nil
 	case key.Matches(msg, m.keys.History), key.Matches(msg, m.keys.Back):
 		return m.exitHistoryToBrowse()
@@ -513,6 +517,7 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 		m.changeCursor = clamp(m.changeCursor+1, 0, max(0, len(rows)-1))
 		m.scrollChangesIntoView(len(rows))
 	case key.Matches(msg, m.keys.Filter):
+		m.filter.Placeholder = "filter changes"
 		m.filtering = true
 		return m.filter.Focus()
 	case key.Matches(msg, m.keys.Capture):
@@ -956,191 +961,6 @@ func (m *Model) viewChanges() []string {
 		return append(lines, joinSideBySide(t, list, inspector, splitW, rightW, avail)...)
 	}
 	return append(lines, m.renderScopeStream(rows, m.width, avail)...)
-}
-
-func (m *Model) viewHistoryHealth() []string {
-	t := m.theme
-	// Health is not scoped: its rules run over the whole stored assessment, so
-	// the header says so rather than letting it be read as the selected
-	// vCenter's verdict.
-	head := []string{t.title.Render("Health"), "", truncate(t.dim.Render("  all vCenters · read-only findings from the latest stored assessment"), m.width)}
-	if m.historyHealthErr != nil {
-		return append(head, "  "+t.warn.Render(m.historyHealthErr.Error()))
-	}
-	if m.historyHealth == nil {
-		return append(head, t.dim.Render("  loading health findings…"))
-	}
-	r := m.historyHealth
-	readiness := health.Readiness(*r)
-	// Critical leads the counts and the total comes last. The line is cut at
-	// the terminal width, and on an 80 column terminal the figure that goes
-	// missing must be the least actionable one, never the critical count.
-	c := r.Counts
-	sep := t.faint.Render(" · ")
-	summary := "  assessment " + historyRunLabel(r.RunID) + "  " + strings.ToUpper(readiness.Verdict) + sep +
-		countSegment(t, c.Critical, "critical", t.bad) + sep +
-		countSegment(t, c.Warning, "warning", t.warn) + sep +
-		countSegment(t, c.Info, "info", t.dim) + sep +
-		t.faint.Render(fmt.Sprintf("%d total", c.Total))
-	head = append(head, truncate(summary, m.width), "")
-	// The summary and column header stay put and only the findings scroll,
-	// so a row two screens down still says which column is which.
-	var body []string
-	if len(r.Findings) == 0 {
-		body = append(body, t.ok.Render("  no findings"))
-	} else {
-		cols := healthColumns(r.Findings, m.width)
-		titles := make([]string, 0, len(cols))
-		for _, col := range cols {
-			titles = append(titles, pad(col.title, col.width, false))
-		}
-		head = append(head, t.header.Render(truncate("  "+strings.Join(titles, healthGap), m.width)))
-		for _, finding := range sortFindingsBySeverity(r.Findings) {
-			cells := make([]string, 0, len(cols))
-			for _, col := range cols {
-				cells = append(cells, pad(col.cell(finding), col.width, false))
-			}
-			style := t.warn
-			if finding.Severity == health.SeverityCritical {
-				style = t.bad
-			} else if finding.Severity == health.SeverityInfo {
-				style = t.dim
-			}
-			body = append(body, style.Render(truncate("  "+strings.Join(cells, healthGap), m.width)))
-		}
-	}
-	for _, rule := range r.Rules {
-		if rule.Status == "not-evaluated" || rule.Result == "unknown" {
-			reason := rule.Reason
-			if len(rule.Blind) > 0 {
-				reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
-			}
-			body = append(body, t.dim.Render("  not evaluated: "+rule.Rule+" — "+reason))
-		} else if len(rule.Partial) > 0 {
-			body = append(body, t.dim.Render("  partly evaluated: "+rule.Rule+" — "+rule.Reason))
-		}
-	}
-	return append(head, m.scrollHubLines(body, m.bodyHeight()-len(head))...)
-}
-
-// sortFindingsBySeverity lists critical findings first. The stored order is
-// by rule, which on a real estate puts hundreds of informational findings in
-// front of the handful that block a migration, and the pane scrolls: the
-// critical rows were off the bottom of the screen. The sort is stable, so
-// within a severity the report's own order is kept and the list does not
-// shuffle between renders.
-func sortFindingsBySeverity(in []health.Finding) []health.Finding {
-	out := append([]health.Finding(nil), in...)
-	sort.SliceStable(out, func(i, j int) bool {
-		return findingSeverityRank(out[i].Severity) > findingSeverityRank(out[j].Severity)
-	})
-	return out
-}
-
-func findingSeverityRank(s health.Severity) int {
-	switch s {
-	case health.SeverityCritical:
-		return 2
-	case health.SeverityWarning:
-		return 1
-	default:
-		return 0
-	}
-}
-
-// healthColumn is one column of the findings table: its heading, how to read
-// it off a finding, and the width it is drawn at.
-type healthColumn struct {
-	title string
-	width int
-	cell  func(health.Finding) string
-}
-
-// healthGap separates the findings columns by the same gap every other table
-// uses; a single space ran SEVERITY into RULE ("critical datastore-…").
-var healthGap = strings.Repeat(" ", cellGap)
-
-// healthMessageMin is the least width the MESSAGE column is given before
-// lower-value columns are dropped to make room. The message is what tells the
-// operator what to do, so it is worth more than CATEGORY or CONFIDENCE.
-const healthMessageMin = 24
-
-// healthMessageSqueezed is the floor once RULE and OBJECT are being
-// shortened as well: below it a message is too clipped to read. It gave up
-// three columns when the findings columns moved from a one space gap to the
-// shared cellGap, so that an 80 column terminal still shows the whole of a
-// 25 column OBJECT such as "datastore/vsan-archive-01".
-const healthMessageSqueezed = 17
-
-// healthColumns sizes the findings table to the data and the terminal.
-// Columns take the width of their longest value rather than a fixed
-// allotment, and a column with no values at all is not drawn: CONFIDENCE is
-// only ever set by the orphan-VMDK rule, and reserving 26 columns for it
-// pushed OBJECT off an 80 column screen. When even that is too wide,
-// CONFIDENCE goes first, then CATEGORY, and last RULE and OBJECT are
-// shortened. OBJECT is never dropped: a finding that does not say what it is
-// about cannot be acted on.
-func healthColumns(findings []health.Finding, width int) []healthColumn {
-	sev := healthColumn{"SEVERITY", 8, func(f health.Finding) string { return string(f.Severity) }}
-	conf := healthColumn{title: "CONFIDENCE", cell: func(f health.Finding) string { return string(f.Confidence) }}
-	cat := healthColumn{title: "CATEGORY", cell: func(f health.Finding) string { return string(f.Category) }}
-	rule := healthColumn{title: "RULE", cell: func(f health.Finding) string { return f.Rule }}
-	obj := healthColumn{title: "OBJECT", cell: func(f health.Finding) string { return f.Object.Kind + "/" + f.Object.Name }}
-	msg := healthColumn{"MESSAGE", 0, func(f health.Finding) string { return f.Message }}
-
-	// fit sets a column to the width of its longest value, never wider than
-	// limit, and reports whether any finding had a value at all.
-	fit := func(c *healthColumn, limit int) bool {
-		c.width = ansi.StringWidth(c.title)
-		found := false
-		for _, f := range findings {
-			if v := c.cell(f); v != "" {
-				found = true
-				c.width = max(c.width, ansi.StringWidth(v))
-			}
-		}
-		c.width = min(c.width, limit)
-		return found
-	}
-	hasConfidence := fit(&conf, 12)
-	fit(&cat, 14)
-	fit(&rule, 28)
-	fit(&obj, 30)
-
-	// fits reports whether the columns, their gaps, the two
-	// column indent and the minimum message width all fit.
-	fits := func(cols []healthColumn) bool {
-		used := 2 + healthMessageMin
-		for _, c := range cols {
-			used += c.width + cellGap
-		}
-		return used <= width
-	}
-	cols := []healthColumn{sev}
-	if hasConfidence {
-		cols = append(cols, conf)
-	}
-	cols = append(cols, cat, rule, obj)
-	if !fits(cols) && hasConfidence {
-		cols = []healthColumn{sev, cat, rule, obj}
-	}
-	if !fits(cols) {
-		cols = []healthColumn{sev, rule, obj}
-	}
-	if !fits(cols) {
-		// Still too wide: hold the message at a smaller floor, cap RULE (its
-		// ids are the most compressible text here), and give OBJECT what the
-		// rest leaves.
-		rule.width = min(rule.width, 22)
-		obj.width = max(12, min(obj.width, width-2-(sev.width+cellGap)-(rule.width+cellGap)-cellGap-healthMessageSqueezed))
-		cols = []healthColumn{sev, rule, obj}
-	}
-	used := 2
-	for _, c := range cols {
-		used += c.width + cellGap
-	}
-	msg.width = max(1, width-used)
-	return append(cols, msg)
 }
 
 // changesListHeight is how many rows the change stream can draw — its own

@@ -714,8 +714,14 @@ type Model struct {
 	// the browse table's offset, so scrolling History never moves the
 	// table the operator returns to. hubScrollMax is the furthest offset
 	// the last render could show, so a key cannot scroll past the end.
-	hubOffset             int
-	hubScrollMax          int
+	hubOffset    int
+	hubScrollMax int
+	// healthCursor is the selected finding in the Health pane, and
+	// healthDetail whether it is open full screen. healthListHeight is the
+	// rows the findings were last drawn in, so a page key moves a page.
+	healthCursor          int
+	healthDetail          bool
+	healthListHeight      int
 	historyChurn          *assessment.ChurnTrend
 	historySnapshots      *assessment.SnapshotTrend
 	historyCapacity       *assessment.CapacityTrend
@@ -2664,6 +2670,13 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	switch msg.Type {
 	case tea.KeyTab:
+		if m.mode == modeChanges {
+			// History filters its own changes or findings; the inventory
+			// search Tab widens to elsewhere would leave History altogether.
+			m.filtering = false
+			m.filter.Blur()
+			return nil
+		}
 		// Widening is offered exactly where the narrow filter runs out: the
 		// same query, against every vCenter and every kind.
 		return m.toggleSearch()

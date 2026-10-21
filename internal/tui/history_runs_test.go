@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -137,4 +138,90 @@ func TestDemoRefusesRunEdits(t *testing.T) {
 			t.Fatalf("capture refusal calls an editable store read-only: %q", m.message)
 		}
 	})
+}
+
+// TestRunsPaneDetailsTheSelectedRun checks that the Runs pane says which
+// vCenter made the selected run partial, and shows its note and pin, beside
+// the list and under it (issue #478).
+func TestRunsPaneDetailsTheSelectedRun(t *testing.T) {
+	for _, width := range []int{140, 80} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m := partialEstateModel(t, Options{AllContexts: true}, width, 30)
+			m.historyPane = historyPaneRuns
+			m.runs[1].Note = "after the edge cutover"
+			m.runs[1].Pinned = true
+			press(t, m, "down")
+			view := viewText(m)
+			for _, want := range []string{"#2", "dr", "not reached", "edge-vc", "reached", "after the edge cutover", "PINNED", "yes"} {
+				if !strings.Contains(view, want) {
+					t.Fatalf("run detail lacks %q:\n%s", want, view)
+				}
+			}
+		})
+	}
+}
+
+// TestRunsPaneComparesTheSelectedRun checks that Enter opens the changes in
+// the selected run since the run before it, and that b and t make it one end
+// of the comparison (issue #478).
+func TestRunsPaneComparesTheSelectedRun(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		cursor       int
+		key          string
+		base, target int // indices into the newest-first run list
+		pane         int
+	}{
+		{"enter compares with the run before", 1, "enter", 2, 1, historyPaneChanges},
+		{"enter on the oldest run stays", 2, "enter", 1, 0, historyPaneRuns},
+		{"b sets the baseline", 2, "b", 2, 0, historyPaneChanges},
+		{"t on the baseline is refused", 1, "t", 1, 0, historyPaneRuns},
+		{"t past the baseline swaps the pair", 2, "t", 2, 1, historyPaneChanges},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := partialEstateModel(t, Options{AllContexts: true}, 140, 30)
+			m.historyPane, m.runCursor = historyPaneRuns, tc.cursor
+			press(t, m, tc.key)
+			if m.baseRun != m.runs[tc.base].ID || m.targetRun != m.runs[tc.target].ID || m.historyPane != tc.pane {
+				t.Fatalf("compare is %s → %s in pane %d, want %s → %s in pane %d (status %q)",
+					historyRunLabel(m.baseRun), historyRunLabel(m.targetRun), m.historyPane,
+					historyRunLabel(m.runs[tc.base].ID), historyRunLabel(m.runs[tc.target].ID), tc.pane, m.message)
+			}
+		})
+	}
+}
+
+// TestRunsPaneKeepsTheCursorOnScreen checks that the run list scrolls with
+// the cursor when there are more runs than rows (issue #478).
+func TestRunsPaneKeepsTheCursorOnScreen(t *testing.T) {
+	m := newTestModel(t, twoHealthy(), Options{})
+	m.width, m.height = 80, 24
+	m.mode, m.historyPane = modeChanges, historyPaneRuns
+	at := time.Date(2026, 9, 6, 8, 0, 0, 0, time.UTC)
+	for i := 40; i > 0; i-- {
+		m.runs = append(m.runs, assessment.Run{ID: int64(i), Status: assessment.RunComplete, StartedAt: at})
+	}
+	press(t, m, "end")
+	if view := viewText(m); !strings.Contains(view, "#1 ") {
+		t.Fatalf("the cursor on #1 is off screen:\n%s", view)
+	}
+}
+
+// TestRunPickerLabelsItsColumnsAndKeys checks that the run picker heads its
+// columns, the source among them, and offers only the keys it accepts
+// (issue #478).
+func TestRunPickerLabelsItsColumnsAndKeys(t *testing.T) {
+	m := partialEstateModel(t, Options{AllContexts: true}, 100, 30)
+	press(t, m, "R")
+	if m.mode != modeHistoryRuns {
+		t.Fatalf("R opened mode %v", m.mode)
+	}
+	if view := viewText(m); !strings.Contains(view, "SOURCE") {
+		t.Fatalf("picker does not label its source column:\n%s", view)
+	}
+	for _, b := range m.keys.footerHints(m) {
+		if k := b.Help().Key; k == "e" || k == "N" || k == "p" {
+			t.Fatalf("picker footer offers %q, which it ignores", k)
+		}
+	}
 }

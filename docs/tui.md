@@ -183,6 +183,11 @@ older run:
 | `h` | Open VM timeline from a change |
 | `n` | Capture current scope |
 | `e` / `N` / `p` in Runs | Edit label / operator note / pin |
+| `Enter` in Runs | Compare the selected run with the run before it |
+| `b` / `t` in Runs | Make the selected run the baseline / target |
+
+Runs details the selected run: which vCenters it reached, its duration,
+source, VM count where Trends counted it, pin and note.
 
 `?` lists the current pane's keys and what its marks and columns mean.
 Captures run in the background while inventory remains usable.

@@ -358,6 +358,9 @@ func (k keyMap) historyHelpSections(pane int, canCapture bool) []helpSection {
 	case historyPaneRuns:
 		panes = helpSection{"Runs pane", []key.Binding{
 			k.Up, k.Down,
+			described(k.Open, "enter", "changes in this run"),
+			described(k.Base, "b", "compare from this run"),
+			described(k.Target, "t", "compare to this run"),
 			described(k.EditRun, "e", "edit label"),
 			described(k.NoteRun, "N", "edit note"),
 			described(k.PinRun, "p", "pin or unpin"),
@@ -573,7 +576,8 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 			if m.demo {
 				edits = nil
 			}
-			return append(append(append(append([]key.Binding{k.Up, k.Down}, edits...), k.NextPane), capture...), k.Back, k.Help, k.Quit)
+			compare := []key.Binding{k.runChangesHint(), k.runCompareHint()}
+			return append(append(append(append(append([]key.Binding{k.Up, k.Down}, compare...), edits...), k.NextPane), capture...), k.Back, k.Help, k.Quit)
 		}
 		if m.historyPane != historyPaneChanges {
 			return append(append([]key.Binding{k.Up, k.Down, k.NextPane}, capture...), k.Back, k.Help, k.Quit)
@@ -586,7 +590,9 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	case modeChangeDetail:
 		return []key.Binding{k.Up, k.Down, described(k.PageDown, "pgup/dn", "scroll"), k.Timeline, k.Back, k.Help, k.Quit}
 	case modeHistoryRuns:
-		return []key.Binding{k.Up, k.Down, k.Open, k.EditRun, k.NoteRun, k.PinRun, k.Back, k.Help, k.Quit}
+		// The picker only chooses a run; its label, note and pin are edited
+		// in the Runs pane.
+		return []key.Binding{k.Up, k.Down, described(k.Open, "enter", "select"), k.Back, k.Help, k.Quit}
 	case modeHistoryRunEdit:
 		// The editor is a text input: "?" and "q" are typed into it, so
 		// neither help nor quit is offered.
@@ -640,6 +646,8 @@ func (k keyMap) footerDropOrder() [][]key.Binding {
 		{k.ImpactFilter},
 		{k.ClipSpan},
 		{k.PinRun},
+		{k.runCompareHint()},
+		{k.runChangesHint()},
 		{k.Reload},
 		{k.CopyPath},
 		{k.Doctor},
@@ -651,6 +659,13 @@ func (k keyMap) footerDropOrder() [][]key.Binding {
 		{k.Timeline},
 	}
 }
+
+// runChangesHint and runCompareHint are the Runs pane's footer names for
+// Enter and b/t, which there compare from the selected run. They read
+// differently from the same keys elsewhere, so the footer can give them up
+// without giving up the Changes pane's "b/t end".
+func (k keyMap) runChangesHint() key.Binding { return described(k.Open, "enter", "changes") }
+func (k keyMap) runCompareHint() key.Binding { return described(k.BaseTarget, "b/t", "compare") }
 
 // sameHint reports whether two bindings read the same on the key line.
 // Bindings are not comparable, and their labels are what the reader sees.

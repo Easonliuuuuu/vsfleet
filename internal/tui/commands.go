@@ -270,7 +270,7 @@ func trendEmptyExplanation(ctx context.Context, service *assessment.Service, sco
 	if partial == len(runs) {
 		summary = fmt.Sprintf("All %d stored assessments are partial.", partial)
 	}
-	lines := []string{summary, "Trends requires complete assessments, even for one vCenter."}
+	lines := []string{summary, "Trends counts a run only when it reached every vCenter it tried, even when Trends shows one vCenter."}
 	var names []string
 	for name := range gaps {
 		names = append(names, name)

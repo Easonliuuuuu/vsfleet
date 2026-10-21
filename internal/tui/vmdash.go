@@ -813,9 +813,16 @@ func pctOf(values []float64, whole float64) []float64 {
 	return out
 }
 
-func fmtPct(v float64) string     { return fmt.Sprintf("%.1f%%", v) }
-func fmtMs(v float64) string      { return fmt.Sprintf("%.0f ms", v) }
-func fmtMiB(v float64) string     { return fmt.Sprintf("%.0f MiB", v) }
+func fmtPct(v float64) string { return fmt.Sprintf("%.1f%%", v) }
+func fmtMs(v float64) string  { return fmt.Sprintf("%.0f ms", v) }
+func fmtMem(v float64) string {
+	// A memory figure reads in the units every other size does: M under a
+	// gibibyte, then one decimal of G. 0M is a real reading, not a blank.
+	if v < 1024 {
+		return fmt.Sprintf("%.0fM", v)
+	}
+	return humanize.MBPrecise(int64(v))
+}
 func fmtCount(v float64) string   { return humanCount(v) }
 func fmtRate(kbps float64) string { return humanRate(kbps) }
 
@@ -886,7 +893,7 @@ func (d dash) memActive() metric {
 
 func (d dash) memBalloon() metric {
 	v, why := d.series(perf.MemBalloon)
-	return metric{name: "Balloon", unit: "MiB reclaimed by the balloon driver", values: v, missing: why, format: fmtMiB, minScale: 64, warnAt: perf.MemPressureMiB}
+	return metric{name: "Balloon", unit: "reclaimed by the balloon driver", values: v, missing: why, format: fmtMem, minScale: 64, warnAt: perf.MemPressureMiB}
 }
 
 func (d dash) memSwapin() metric {
@@ -977,7 +984,7 @@ func (d dash) memoryPage() []string {
 		out = append(out, d.chart(mt)...)
 	}
 	if s, ok := d.set.Get(perf.MemSwapped); ok && s.Summary.Peak != nil {
-		out = append(out, d.m.theme.dim.Render(fmt.Sprintf("swapped out at peak %s, which can be old pages rather than current pressure", fmtMiB(*s.Summary.Peak))))
+		out = append(out, d.m.theme.dim.Render(fmt.Sprintf("swapped out at peak %s, which can be old pages rather than current pressure", fmtMem(*s.Summary.Peak))))
 	}
 	return out
 }

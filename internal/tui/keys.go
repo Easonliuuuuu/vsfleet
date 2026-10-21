@@ -556,9 +556,9 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		return []key.Binding{k.Confirm, k.ToggleKeep, k.Back}
 	case modeContexts:
 		if m.demo {
-			return []key.Binding{k.UseContext, k.AllScopeBrief, k.NewContext, k.Doctor, k.Back, k.Help}
+			return []key.Binding{k.UseContext, k.AllScopeBrief, k.NewContext, k.Doctor, k.Back, k.Help, k.Quit}
 		}
-		return []key.Binding{k.UseContext, k.AllScopeBrief, k.NewContext, k.EditContext, k.DeleteContext, k.LogoutContext, k.Doctor, k.Back, k.Help}
+		return []key.Binding{k.UseContext, k.AllScopeBrief, k.NewContext, k.EditContext, k.DeleteContext, k.LogoutContext, k.Doctor, k.Back, k.Help, k.Quit}
 	case modeSearch:
 		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
 	case modeChanges:

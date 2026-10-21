@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -598,7 +599,7 @@ func vmRow(vm vsphere.VM, withContext bool) row {
 			{"DNS name", humanize.Dash(vm.GuestHostName)},
 			{"CPU", strconv.FormatInt(int64(vm.CPU), 10) + " vCPU"},
 			{"Memory", humanize.MB(vm.MemoryMB)},
-			{"Committed storage", humanize.GB(vm.StorageGB)},
+			{"Committed storage", committedStorage(vm.StorageGB)},
 			{"Snapshots", snapshotsValue(vm)},
 			{"Guest disks", guestDisksValue(vm)},
 			{"Host", humanize.Dash(vm.Host)},
@@ -660,7 +661,7 @@ func templateRow(vm vsphere.VM, withContext bool) row {
 			{"Guest OS", humanize.Dash(vm.GuestOS)},
 			{"CPU", strconv.FormatInt(int64(vm.CPU), 10) + " vCPU"},
 			{"Memory", humanize.MB(vm.MemoryMB)},
-			{"Committed storage", humanize.GB(vm.StorageGB)},
+			{"Committed storage", committedStorage(vm.StorageGB)},
 			{"Datacenter", humanize.Dash(vm.Datacenter)},
 			{"Folder", humanize.Dash(vm.Folder)},
 			{"Datastores", humanize.Dash(strings.Join(vm.Datastores, ", "))},
@@ -705,10 +706,11 @@ func hostRow(h vsphere.Host, withContext bool) row {
 			{"Cluster", humanize.Dash(h.Cluster)},
 			{"Hardware", humanize.Dash(strings.TrimSpace(h.Vendor + " " + h.Model))},
 			{"ESXi", humanize.Dash(strings.TrimSpace(h.Version + " build-" + h.Build))},
-			{"CPU", fmt.Sprintf("%d cores / %d threads @ %s", h.CPUCores, h.CPUThreads, humanize.MHz(int64(h.CPUMHz)))},
-			{"CPU used", ratio(humanize.MHz(h.CPUUsageMHz), humanize.MHz(h.TotalCPU()))},
-			{"Memory", humanize.MB(h.MemoryMB)},
-			{"Memory used", ratio(humanize.MBPrecise(h.MemoryUsageMB), humanize.MBPrecise(h.MemoryMB))},
+			// Use is read the way the cluster detail reads it, so a host and
+			// its cluster state the same figure in the same words.
+			{"CPU", usedOfTotal(h.CPUUsageMHz, h.TotalCPU(), humanize.MHz)},
+			{"CPU cores", fmt.Sprintf("%d cores / %d threads @ %s", h.CPUCores, h.CPUThreads, humanize.MHz(int64(h.CPUMHz)))},
+			{"Memory", usedOfTotal(h.MemoryUsageMB, h.MemoryMB, humanize.MBPrecise)},
 			{"Virtual machines", strconv.Itoa(h.VMCount)},
 			{"Datacenter", humanize.Dash(h.Datacenter)},
 			{"Inventory path", humanize.Dash(h.Path)},
@@ -986,14 +988,10 @@ func yesNo(b bool) string {
 	return "no"
 }
 
-func ratio(used, total string) string {
-	if total == "-" {
-		return "-"
-	}
-	if used == "-" {
-		used = "0"
-	}
-	return used + "/" + total
+// committedStorage is a VM's committed storage by the rule its configured
+// memory uses: 40G beside 8G, not 40.0G.
+func committedStorage(gb float64) string {
+	return humanize.MB(int64(math.Round(gb * 1024)))
 }
 
 // usageBarSuffix is what usageBar appends after the bar itself: a space and a

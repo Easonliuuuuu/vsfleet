@@ -755,7 +755,9 @@ func TestMetricRowKeepsAGapBeforeAWidePeak(t *testing.T) {
 	for i := range pinned {
 		pinned[i] = 16384
 	}
-	mt := metric{name: "Balloon", values: pinned, format: fmtMiB, minScale: 64, warnAt: 1}
+	// A value as wide as the column, whatever unit formats it.
+	wide := func(v float64) string { return fmt.Sprintf("%.0f MiB", v) }
+	mt := metric{name: "Balloon", values: pinned, format: wide, minScale: 64, warnAt: 1}
 	row := ansi.Strip(m.metricRow(mt, 90))
 	if !strings.Contains(row, "16384 MiB peak 16384 MiB") {
 		t.Errorf("a peak as wide as its column ran into the value: %q", row)

@@ -1,6 +1,7 @@
 vsfleet  DEMO · SAMPLE DATA  history  ·  Changes   tab/⇧tab switch
 ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
   RUNS     #1   #2   #3   #4   #5    #4 → #5 · 28d · 2 runs
+  VMs       ▁    ▄    █    ·    ·    953 VMs in #3
   pick                     b    t    ←/→ move target · b/t pick end
   COVER    ● reached   ✕ not compared   · no record
   dr-site   ✕    ✕    ✕    ✕    ✕  
@@ -25,7 +26,6 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Changes   tab/⇧tab switch
 ▎growth  39 VMs                       prod-vc        │   ip address   —                                                                     
 ▎growth  esxi-b-10                    prod-vc        │   guest os     Ubuntu Linux (64-bit)                                                 
 ▎churn   29 snapshots                 prod-vc        │   uuid         ee15de90-09a5-0e39-31c3-b2e903dffd93                                  
-                                                     │                                                                                      
                                                      │                                                                                      
                                                      │                                                                                      
                                                      │                                                                                      

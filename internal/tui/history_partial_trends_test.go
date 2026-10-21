@@ -96,3 +96,35 @@ func TestPartialTrendsExplainsStoredCoverage(t *testing.T) {
 		t.Fatal("complete capture did not replace the empty state")
 	}
 }
+
+// TestPartialTrendsNamesTheRunWideRule checks that a scoped Trends refusing a
+// run whose own vCenter was reached says the rule is per run, not per
+// vCenter (issue #479).
+func TestPartialTrendsNamesTheRunWideRule(t *testing.T) {
+	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	ctx := context.Background()
+	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	run, err := store.StartRun(ctx, "synthetic", []*config.Context{{Name: "prod"}, {Name: "dr-site"}}, when)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []assessment.ContextResult{
+		{Name: "prod", VCenterID: "vc-prod", Status: "success", VMs: []assessment.Observation{scopedVM("prod", "vc-prod", "billing")}, Collections: allKindsCollected()},
+		{Name: "dr-site", Status: "error", Error: "synthetic unreachable site"},
+	} {
+		if err := store.SaveContext(ctx, run.ID, r, when); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.FinishRun(ctx, run.ID, when); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Join(trendEmptyExplanation(ctx, &assessment.Service{Store: store}, []string{"prod"}), "\n")
+	if !strings.Contains(lines, "only when it reached every vCenter it tried") {
+		t.Fatalf("explanation does not say the rule is per run:\n%s", lines)
+	}
+}

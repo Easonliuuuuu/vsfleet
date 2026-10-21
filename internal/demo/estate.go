@@ -348,6 +348,27 @@ func guestFor(hint string) guestInfo {
 	return guestInfo{"Ubuntu Linux (64-bit)", "ubuntu64Guest"}
 }
 
+// reachableDatastore keeps a VM's disk on a datastore its host mounts. A
+// local datastore is mounted only by the host it is named for (see
+// mountDatastores), so a disk picked onto another host's moves to its own
+// host's local datastore, or else to the cluster's first shared one.
+func reachableDatastore(name string, all []string, host string) string {
+	if !strings.HasPrefix(name, "local-") || name == "local-"+host {
+		return name
+	}
+	for _, n := range all {
+		if n == "local-"+host {
+			return n
+		}
+	}
+	for _, n := range all {
+		if !strings.HasPrefix(n, "local-") {
+			return n
+		}
+	}
+	return name
+}
+
 func disk(n int, size int64, path string, unit int32) vsphere.VMDisk {
 	return vsphere.VMDisk{
 		Key: int32(2000 + n - 1), Label: fmt.Sprintf("Hard disk %d", n), CapacityBytes: size, BackingType: "FlatVer2", BackingPath: path,
@@ -402,7 +423,9 @@ func fillVM(vm *vsphere.VM, s siteSpec, c *clusterSpec, svc string, k int, dsIdx
 		vm.ToolsVersion = "11365"
 	case t < 0.125:
 		vm.ToolsVersionStatus, vm.ToolsVersion = "guestToolsNotInstalled", ""
-		vm.ToolsState = "guestToolsNotRunning"
+		// Without Tools vCenter cannot see the guest run, so it reports
+		// the guest as not running whatever the VM's power state.
+		vm.ToolsState, vm.GuestState = "guestToolsNotRunning", "notRunning"
 	}
 	if vm.ToolsState == "guestToolsRunning" && svc != "vcls" {
 		// Generated addresses stop at .209; the evidence anchors use .211+.
@@ -440,6 +463,7 @@ func fillVM(vm *vsphere.VM, s siteSpec, c *clusterSpec, svc string, k int, dsIdx
 		if i > 0 && len(ds) > 1 {
 			dsName = ds[pickN(len(ds), s.ctx, name, "data", fmt.Sprint(i))]
 		}
+		dsName = reachableDatastore(dsName, ds, vm.Host)
 		used[dsName] = true
 		path := fmt.Sprintf("[%s] %s/%s.vmdk", dsName, name, name)
 		if i > 0 {

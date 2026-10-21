@@ -89,11 +89,11 @@ func TestHostDetailKeepsExactFiguresAtOnePrecision(t *testing.T) {
 	press(t, m, "3")
 	press(t, m, "enter")
 	view := ansi.Strip(m.View())
-	if _, line := lineWith(view, "CPU used"); !strings.Contains(line, "18.5GHz/115.0GHz") {
-		t.Errorf("CPU used = %q, want 18.5GHz/115.0GHz", line)
+	if _, line := lineWith(view, "CPU  "); !strings.Contains(line, "18.5GHz used of 115.0GHz (16%)") {
+		t.Errorf("CPU = %q, want 18.5GHz used of 115.0GHz (16%%)", line)
 	}
-	if _, line := lineWith(view, "Memory used"); !strings.Contains(line, "120.5G/256.0G") {
-		t.Errorf("Memory used = %q, want 120.5G/256.0G", line)
+	if _, line := lineWith(view, "Memory  "); !strings.Contains(line, "120.5G used of 256.0G (47%)") {
+		t.Errorf("Memory = %q, want 120.5G used of 256.0G (47%%)", line)
 	}
 }
 

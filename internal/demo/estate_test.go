@@ -1,9 +1,11 @@
 package demo
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -122,5 +124,52 @@ func TestSharedNamesAcrossContexts(t *testing.T) {
 				t.Errorf("%s has no %s; the duplicate-names scenario needs the collision", ctx, name)
 			}
 		}
+	}
+}
+
+// TestDemoVMsAreConsistentInEveryRun checks that no demo VM, today or in any
+// stored run, sits on a datastore local to a host other than its own, or
+// reports a running guest without VMware Tools (issue #479).
+func TestDemoVMsAreConsistentInEveryRun(t *testing.T) {
+	b := NewBackend()
+	for name, e := range b.estates {
+		for run := range runDates {
+			inv := viewAt(e, run)
+			local := map[string]bool{}
+			for _, ds := range inv.Datastores {
+				local[ds.Name] = ds.Backing.Local
+			}
+			for _, vm := range inv.VMs {
+				for _, ds := range vm.Datastores {
+					if local[ds] && ds != "local-"+vm.Host {
+						t.Errorf("%s run %d: %s runs on %s but uses %s", name, run, vm.Name, vm.Host, ds)
+					}
+				}
+				if vm.ToolsVersionStatus == "guestToolsNotInstalled" && vm.GuestState == "running" {
+					t.Errorf("%s run %d: %s reports a running guest without Tools", name, run, vm.Name)
+				}
+			}
+		}
+	}
+}
+
+// TestDemoHistoryHasCompleteRuns checks that the demo stores complete runs
+// for Trends and partial ones for the coverage gap (issue #479).
+func TestDemoHistoryHasCompleteRuns(t *testing.T) {
+	service, closeStore, err := NewBackend().AssessmentService()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeStore()
+	runs, err := service.Store.Runs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	statuses := map[assessment.RunStatus]int{}
+	for _, r := range runs {
+		statuses[r.Status]++
+	}
+	if statuses[assessment.RunComplete] < 2 || statuses[assessment.RunPartial] < 2 {
+		t.Fatalf("demo runs by status = %v, want at least two complete and two partial", statuses)
 	}
 }

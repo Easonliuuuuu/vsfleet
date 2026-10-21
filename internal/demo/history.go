@@ -24,12 +24,18 @@ var (
 	runLabels = []string{"q2-baseline", "june-audit", "july-audit", "pre-migration", "september-audit"}
 )
 
+// drSiteFirstRun is the first run, by index into runDates, that tries to
+// capture dr-site.
+const drSiteFirstRun = 3
+
 // AssessmentService returns a seeded, in-memory history service for the
 // presentation demo: five dated runs whose older states are derived backwards
 // from today's estate (see viewAt), so drift, churn, snapshot and capacity
 // history all have something to show. It lets the History health pane show the
-// orphaned VM and zombie-VMDK evidence without touching disk. dr-site fails in
-// every run.
+// orphaned VM and zombie-VMDK evidence without touching disk. dr-site joins
+// the capture in the fourth run and fails from then on, so the first three
+// runs are complete and give Trends something to plot, and the newest two
+// show the coverage gap.
 func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 	store, err := assessment.OpenMemory()
 	if err != nil {
@@ -42,7 +48,11 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 		return nil, nil, err
 	}
 	for run, at := range runDates {
-		r, err := store.StartRunWithMetadata(ctx, "demo", b.contexts, at, assessment.RunMetadata{
+		contexts := b.contexts
+		if run < drSiteFirstRun {
+			contexts = b.contexts[:2]
+		}
+		r, err := store.StartRunWithMetadata(ctx, "demo", contexts, at, assessment.RunMetadata{
 			InventorySchemaVersion: assessment.CurrentInventorySchemaVersion, Label: runLabels[run],
 		})
 		if err != nil {
@@ -53,6 +63,12 @@ func (b *Backend) AssessmentService() (*assessment.Service, func(), error) {
 			if err := saveSite(ctx, store, r.ID, cc, id, viewAt(b.estates[cc.Name], run), at.Add(time.Minute)); err != nil {
 				return fail(err)
 			}
+		}
+		if run < drSiteFirstRun {
+			if _, err := store.FinishRun(ctx, r.ID, at.Add(2*time.Minute)); err != nil {
+				return fail(err)
+			}
+			continue
 		}
 		dr := b.contexts[2]
 		failed := make([]assessment.CollectionResult, 0, 8)

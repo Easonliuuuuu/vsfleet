@@ -6,14 +6,14 @@ vsfleet  DEMO · SAMPLE DATA  ◆ prod-vc  ·  1 connected
   Power state         on                           │ CPU usage  % of 2 vCPU                               avg 37.3% · p95 48.8% · peak 50.4%
   Guest OS            Microsoft Windows Server     │ 
                       2022 (64-bit)                │                                                                                        
-  Guest state         running                      │                                                                                        
+  Guest state         not running                  │                                                                                        
   VMware Tools        not installed  ▲             │ ▅▅▅▅▅▅▆▆▆▆▆▅▅▄▃▂▁▁    ▁▁▁▂▂▃▃▃▂▂▂▂▁▁▁▂▂▃▄▅▆▇▇▇██▇▇▇▆▆▆▆▆▆▇▇██████▇▆▆▅▄▃▃▂▂▂▂▃▃▃▃▃▃▃▂▂▁ 
   Tools version       -                            │ ███████████████████████████████████████████████████████████████████████████████████████
   IP address          -                            │ 23:00                                                                             00:00
   DNS name            -                            │ 
   CPU                 2 vCPU                       │ Memory active  % of 8G                               avg 34.7% · p95 40.4% · peak 41.2%
   Memory              8G                           │ 
-  Committed storage   40.0G                        │                                                                                        
+  Committed storage   40G                          │                                                                                        
   Snapshots           none  ✓                      │                                                                                        
   Guest disks         -                            │ ▄▄▄▄▄▄▄▄▄▄▄▄▄▃▃▂▂▂▁▁▁▁▁▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▂▃▃▃▄▄▅▅▅▅▅▅▄▄▄▄▄▄▄▅▅▅▅▅▅▅▅▅▄▄▃▃▃▂▂▂▂▂▂▃▃▃▃▃▂▂▂▂▁
   Host                esxi-mgmt-02                 │ ███████████████████████████████████████████████████████████████████████████████████████
@@ -21,7 +21,7 @@ vsfleet  DEMO · SAMPLE DATA  ◆ prod-vc  ·  1 connected
   Datacenter          Taipei                       │ 
   Folder              /Infrastructure/Core/        │ Disk  read + write · latency 5 ms           avg 866 KB/s · p95 1.5 MB/s · peak 1.5 MB/s
                       identity                     │ 
-  Datastores          local-esxi-mgmt-01           │                                                               ▂▃▄▆▇▇████▇▆▅▄▃▂▁      ▁▁
+  Datastores          local-esxi-mgmt-02           │                                                               ▂▃▄▆▇▇████▇▆▅▄▃▂▁      ▁▁
   Inventory path      /Taipei/vm/Infrastructure/   │ ▁                                        ▁▂▄▅▆▆▆▆▆▆▅▅▄▄▄▄▄▅▆▇████████████████████▇▇████
                       Core/identity/ad-dc-01       │ ██▇▅▄▂▁         ▁▂▃▃▄▄▄▄▄▃▃▂▁      ▁▂▃▄▆███████████████████████████████████████████████
   Managed object      prod-vc-vm-906               │ ████████▇▆▅▅▆▆▇███████████████▇▇▇▇█████████████████████████████████████████████████████
@@ -31,7 +31,7 @@ vsfleet  DEMO · SAMPLE DATA  ◆ prod-vc  ·  1 connected
                                                    │ CPU ready     ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▂▂▁▁▁▁▁▁▁▁▁▁▁▁       0.4%      peak 1.9% ✓
                                                    │ Co-stop       ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁       0.2%      peak 0.2% ✓
                                                    │ CPU limited   —  no CPU limit set
-                                                   │ Balloon       ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁      0 MiB     peak 0 MiB ✓
+                                                   │ Balloon       ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁         0M        peak 0M ✓
                                                    │ Swap-in       ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁     0 KB/s    peak 0 KB/s ✓
                                                    │ NETWORK
                                                    │ Received      ▇▇██▇▆▄▃▃▃▃▂▂▁▂▄▅▅▆▆▆▇███▇▆▅▄▄▄▃▂▁▁▂▄▄▅▅▅▆▇██   2.6 MB/s  peak 2.6 MB/s

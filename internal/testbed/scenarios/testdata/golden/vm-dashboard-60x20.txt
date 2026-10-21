@@ -5,14 +5,14 @@ vsfleet  DEMO · SAMPLE DATA  ◆ prod-vc  ·  1 connected
   vCenter             prod-vc
   Power state         on
   Guest OS            Microsoft Windows Server 2022 (64-bit)
-  Guest state         running
+  Guest state         not running
   VMware Tools        not installed  ▲
   Tools version       -
   IP address          -
   DNS name            -
   CPU                 2 vCPU
   Memory              8G
-  Committed storage   40.0G
+  Committed storage   40G
   Snapshots           none  ✓
   Guest disks         -
   Host                esxi-mgmt-02

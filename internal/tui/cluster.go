@@ -271,9 +271,9 @@ func clusterFields(c vsphere.Cluster, mem clusterMembers) ([]field, map[string]f
 		memUsed += h.MemoryUsageMB
 	}
 	add("CPU", usedOfTotal(cpuUsed, c.TotalCPUMHz, humanize.MHz))
-	add("Memory", usedOfTotal(memUsed, c.TotalMemoryMB, humanize.MB))
+	add("Memory", usedOfTotal(memUsed, c.TotalMemoryMB, humanize.MBPrecise))
 	effective("Effective CPU", c.EffectiveCPUMHz, humanize.MHz, add)
-	effective("Effective memory", c.EffectiveMemoryMB, humanize.MB, add)
+	effective("Effective memory", c.EffectiveMemoryMB, humanize.MBPrecise, add)
 	add("CPU cores", strconv.FormatInt(int64(c.CPUCores), 10))
 
 	if !c.Standalone {

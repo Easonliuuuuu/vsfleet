@@ -58,7 +58,7 @@ func TestHealthPaneListsCriticalFindingsFirst(t *testing.T) {
 	m := healthPaneModel(t, 100, 30)
 	var severities []string
 	for _, line := range m.viewHistoryHealth() {
-		fields := strings.Fields(ansi.Strip(line))
+		fields := strings.Fields(strings.TrimPrefix(strings.TrimSpace(ansi.Strip(line)), glyphCursor))
 		if len(fields) > 0 && (fields[0] == "critical" || fields[0] == "warning" || fields[0] == "info") {
 			severities = append(severities, fields[0])
 		}
@@ -195,5 +195,90 @@ func TestHistoryScrollLeavesTheBrowseTableAlone(t *testing.T) {
 
 	if after := onlyCursorLine(t, m.View()); after != before {
 		t.Fatalf("browse cursor row after History is %q, want %q", after, before)
+	}
+}
+
+// TestHealthNamesTheVCenterOfEachFinding checks that two findings about
+// same-named objects on two vCenters say which vCenter each is on
+// (issue #476).
+func TestHealthNamesTheVCenterOfEachFinding(t *testing.T) {
+	m := healthPaneModel(t, 140, 30)
+	for i, ctx := range []string{"prod-vc", "edge-vc"} {
+		m.historyHealth.Findings[30+i].Object.Name = "DVS-Production"
+		m.historyHealth.Findings[30+i].Object.Context = ctx
+	}
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"VCENTER", "prod-vc", "edge-vc"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("health pane lacks %q:\n%s", want, view)
+		}
+	}
+}
+
+// TestHealthEnterOpensTheWholeFinding checks that Enter shows the selected
+// finding's full message, evidence and fix, and Esc returns to the list on
+// the same finding (issue #476).
+func TestHealthEnterOpensTheWholeFinding(t *testing.T) {
+	m := healthPaneModel(t, 80, 24)
+	long := "datastore is not accessible from any host in the cluster, so its VMs cannot be migrated until it is remounted"
+	m.historyHealth.Findings[33].Message = long
+	m.historyHealth.Findings[33].Object.Context = "prod-vc"
+	m.historyHealth.Findings[33].Evidence = []health.Evidence{{Field: "accessible", Observed: "false", Expected: "true"}}
+	m.historyHealth.Findings[33].Recommendation = "Remount the datastore."
+	m.View()
+	press(t, m, "enter")
+	view := strings.Join(strings.Fields(ansi.Strip(m.View())), " ")
+	for _, want := range []string{long, "prod-vc", "accessible false · expected true", "Remount the datastore.", "datastore-inaccessible"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("finding detail lacks %q:\n%s", want, ansi.Strip(m.View()))
+		}
+	}
+	press(t, m, "esc")
+	if m.mode != modeChanges || m.historyPane != historyPaneHealth || m.healthCursor != 0 {
+		t.Fatalf("esc left the detail for mode %v pane %d cursor %d", m.mode, m.historyPane, m.healthCursor)
+	}
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "SEVERITY") {
+		t.Fatalf("esc did not return to the findings:\n%s", view)
+	}
+}
+
+// TestHealthFilterNarrowsTheFindings checks that / narrows the findings,
+// counts what it kept, stays in History on Tab, and that Esc clears it
+// before it leaves History (issue #476).
+func TestHealthFilterNarrowsTheFindings(t *testing.T) {
+	m := healthPaneModel(t, 100, 30)
+	press(t, m, "/", "c", "d", "r", "o", "m", "tab")
+	if m.mode != modeChanges || m.historyPane != historyPaneHealth {
+		t.Fatalf("tab in the filter left the Health pane for mode %v", m.mode)
+	}
+	view := ansi.Strip(m.View())
+	if strings.Contains(view, "app-0") || !strings.Contains(view, "db-02") || !strings.Contains(view, "3 of 34 findings") {
+		t.Fatalf("filter did not keep just the CD-ROM findings:\n%s", view)
+	}
+	press(t, m, "esc")
+	if m.mode != modeChanges || m.filter.Value() != "" {
+		t.Fatalf("esc left mode %v with filter %q, want the filter cleared first", m.mode, m.filter.Value())
+	}
+}
+
+// TestHealthCoverageSitsBesideTheSummary checks that the vCenters Health
+// could not read and its unevaluated rules are named next to the verdict,
+// above the findings (issue #476).
+func TestHealthCoverageSitsBesideTheSummary(t *testing.T) {
+	m := healthPaneModel(t, 100, 30)
+	m.historyCoverage = map[int64]map[string]string{12: {"prod-vc": "success", "dr-site": "failed"}}
+	m.historyHealth.Rules = []health.RuleStatus{{Rule: "datastore-zombie-vmdk", Status: "not-evaluated", Result: "unknown", Reason: "orphan coverage is incomplete"}}
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	coverage, header := -1, -1
+	for i, line := range lines {
+		if coverage < 0 && strings.Contains(line, "not collected: dr-site") && strings.Contains(line, "1 rule not evaluated") {
+			coverage = i
+		}
+		if header < 0 && strings.Contains(line, "SEVERITY") {
+			header = i
+		}
+	}
+	if coverage < 0 || header < 0 || coverage > header {
+		t.Fatalf("coverage line at %d, findings header at %d:\n%s", coverage, header, strings.Join(lines, "\n"))
 	}
 }

@@ -534,7 +534,7 @@ func TestEvaluateVMConnectionRules(t *testing.T) {
 			got[finding.Rule] = finding
 		}
 	}
-	if len(got) != 2 || got["vm-orphaned"].Object.ID != "vm-orphan" || !strings.Contains(got["vm-inaccessible"].Message, "notResponding") {
+	if len(got) != 2 || got["vm-orphaned"].Object.ID != "vm-orphan" || got["vm-inaccessible"].Message != "VM is not responding" || got["vm-inaccessible"].Evidence[0].Observed != "notResponding" {
 		t.Fatalf("VM connection findings=%+v", got)
 	}
 	for _, status := range report.Rules {

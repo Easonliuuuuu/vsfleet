@@ -273,6 +273,9 @@ func (m *Model) filterHint() string {
 	if m.mode == modeSearch || m.filter.Value() == "" {
 		return ""
 	}
+	if m.mode == modeChanges {
+		return m.historyFilterHint()
+	}
 	if m.mode == modeDatastoreFiles {
 		total := 0
 		if m.ds != nil {

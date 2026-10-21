@@ -164,7 +164,11 @@ stale snapshots first. Then it shows CPU, memory and storage use, each
 datastore's fill level and weekly growth, and how VM and snapshot counts moved
 across up to 30 complete runs. The coverage matrix, Runs, and Health are always estate-wide.
 Health shows the latest stored assessment's migration verdict, categories,
-and default findings, ordered critical, warning, info. `↑`/`↓` scrolls.
+and default findings, ordered critical, warning, info. Under the verdict it
+names vCenters the assessment did not collect and rules it could not
+evaluate; the rules are listed after the findings. `Enter` opens a finding's
+full message, evidence, fix and rule. `/` filters findings by severity,
+category, rule, vCenter, object or message.
 Use [`vsfleet health`](health.md) to tune thresholds.
 
 Changes starts with the newest two assessments. Its run axis goes oldest to

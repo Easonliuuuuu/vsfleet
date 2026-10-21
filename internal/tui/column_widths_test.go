@@ -232,7 +232,7 @@ func TestHealthFindingsUseTheSharedColumnGap(t *testing.T) {
 		if got, want := strings.Index(head, "RULE")-strings.Index(head, "SEVERITY"), len("SEVERITY")+cellGap; got != want {
 			t.Errorf("%d columns: RULE starts %d columns after SEVERITY, want %d:\n%s", width, got, want, head)
 		}
-		crit := lineContaining(t, view, "  critical ")
+		crit := lineContaining(t, view, glyphCursor+" critical ")
 		if want := "critical" + strings.Repeat(" ", cellGap) + "datastore-inaccessible"; !strings.Contains(crit, want) {
 			t.Errorf("%d columns: critical row %q does not separate its columns by %d spaces", width, crit, cellGap)
 		}

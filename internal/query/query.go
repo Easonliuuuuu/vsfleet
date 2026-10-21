@@ -187,6 +187,9 @@ func parseOne(expression string) (Predicate, error) {
 		return Predicate{}, fmt.Errorf("invalid query expression %q (expected field=value)", expression)
 	}
 	field := strings.TrimSpace(expression[:position])
+	if strings.HasSuffix(field, "!") && operator == "=" {
+		return Predicate{}, fmt.Errorf("invalid query expression %q (did you mean \"!=\"?)", expression)
+	}
 	value, err := parseValue(expression[position+len(operator):])
 	if err != nil {
 		return Predicate{}, fmt.Errorf("%s: %w", expression, err)

@@ -42,6 +42,16 @@ func TestTagAndCustomRequireANameAfterTheDot(t *testing.T) {
 	}
 }
 
+func TestSplitNotEqualsIsRejected(t *testing.T) {
+	for _, expression := range []string{"tAg.! =0", "tag.Env! =prod", "custom.env! =prod", "name! =web"} {
+		t.Run(expression, func(t *testing.T) {
+			if _, err := Parse([]string{expression}, []vsphere.Kind{vsphere.KindVM}); err == nil {
+				t.Errorf("Parse(%q) succeeded; a field ending in ! before = is a split !=", expression)
+			}
+		})
+	}
+}
+
 func TestInvalidTypesFailEarly(t *testing.T) {
 	for _, expression := range []string{"cpu>=many", "power_state>on", "missing=x", "cpu='unterminated"} {
 		if _, err := Parse([]string{expression}, []vsphere.Kind{vsphere.KindVM}); err == nil {

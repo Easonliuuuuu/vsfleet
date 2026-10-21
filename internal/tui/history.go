@@ -463,6 +463,13 @@ func (m *Model) handleChangesKey(msg tea.KeyMsg) tea.Cmd {
 				m.runCursor = clamp(m.runCursor+1, 0, max(0, len(m.runs)-1))
 			}
 			return nil
+		}
+		if m.historyPane == historyPaneRuns {
+			if cmd, ok := m.handleRunsPaneKey(msg); ok {
+				return cmd
+			}
+		}
+		switch {
 		case key.Matches(msg, m.keys.EditRun):
 			if m.historyPane == historyPaneRuns {
 				return m.beginRunEdit("label")
@@ -852,21 +859,14 @@ func (m *Model) handleHistoryRunsKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.End):
 		m.runCursor = len(m.runs) - 1
 	case key.Matches(msg, m.keys.Open):
-		selected := m.runs[clamp(m.runCursor, 0, len(m.runs)-1)].ID
-		if (m.pickerRole == "base" && selected == m.targetRun) || (m.pickerRole == "target" && selected == m.baseRun) {
-			m.setMessage("baseline and target must be different runs", true)
-			return nil
-		}
-		if m.pickerRole == "base" {
-			m.baseRun = selected
-		} else {
-			m.targetRun = selected
-		}
 		// The picker can reach past the other end, so it reorders the pair
-		// instead: a comparison always runs from the older run to the newer.
-		if m.runIndex(m.baseRun) < m.runIndex(m.targetRun) {
-			m.baseRun, m.targetRun = m.targetRun, m.baseRun
-			m.setMessage(historyRunLabel(m.targetRun)+" is newer than "+historyRunLabel(m.baseRun)+" — it is now the target", false)
+		// instead of refusing it.
+		role := "target"
+		if m.pickerRole == "base" {
+			role = "base"
+		}
+		if !m.setComparisonEnd(role, m.runs[clamp(m.runCursor, 0, len(m.runs)-1)].ID) {
+			return nil
 		}
 		m.mode = modeChanges
 		m.historyErr = nil
@@ -882,6 +882,9 @@ func (m *Model) viewHistoryRuns() []string {
 		role = "run"
 	}
 	lines := []string{t.title.Render("Select " + role + " assessment"), "", t.dim.Render("  newest first · enter selects · esc cancels")}
+	if len(m.runs) > 0 {
+		lines = append(lines, t.header.Render(runPickerHeading(m.width)))
+	}
 	for i, r := range m.runs {
 		// The cursor takes the first column and the B/T role the second, so
 		// a row can be both under the cursor and the baseline, and the
@@ -1201,34 +1204,6 @@ func joinSideBySide(t theme, left, right []string, leftW, rightW, height int) []
 		out[i] = pad(l, leftW, false) + " " + rule + " " + pad(r, rightW, false)
 	}
 	return out
-}
-
-func (m *Model) viewHistoryHubRuns() []string {
-	t := m.theme
-	// The key hints live in the footer with every other pane's bindings; this
-	// line only says how the list is ordered.
-	lines := []string{t.title.Render("Runs"), "", t.dim.Render("  newest first")}
-	if len(m.runs) > 0 {
-		// Cursor, pin and their gaps, then the same widths as the rows.
-		lines = append(lines, t.header.Render(truncate(fmt.Sprintf("     %-5s %-18s %-9s %s", "RUN", "LABEL", "STATUS", "STARTED"), m.width)))
-	}
-	for i, r := range m.runs {
-		label := r.Label
-		if label == "" {
-			label = "—"
-		}
-		line := fmt.Sprintf("%s%s %-5s %s %-9s %s", listCursor(i == m.runCursor)+" ", runPin(r), historyRunLabel(r.ID), pad(label, 18, false), r.Status, r.StartedAt.Local().Format("2006-01-02 15:04"))
-		if i == m.runCursor {
-			line = t.focused.Render(line)
-		} else {
-			line = t.text.Render(line)
-		}
-		lines = append(lines, line)
-	}
-	if len(m.runs) == 0 {
-		lines = append(lines, t.dim.Render("  no assessments stored"))
-	}
-	return scrollLines(lines, 0, m.bodyHeight())
 }
 
 func newRunEditInput() textinput.Model {

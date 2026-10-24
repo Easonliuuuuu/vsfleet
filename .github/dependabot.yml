@@ -14,7 +14,18 @@ updates:
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: all-dependencies
+  # Go modules use regular groups so govmomi gets its own PR. It supplies
+  # both the vSphere client and the vcsim simulator CI tests against, so a
+  # bump should be reviewed alone and checked against the lab vCenter.
   - package-ecosystem: gomod
     directory: "/"
-    patterns: ["*"]
-    multi-ecosystem-group: all-dependencies
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      govmomi:
+        patterns: ["github.com/vmware/govmomi"]
+      go-modules:
+        patterns: ["*"]
+        exclude-patterns: ["github.com/vmware/govmomi"]

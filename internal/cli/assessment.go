@@ -1393,8 +1393,19 @@ func newAssessmentDeleteCommand(a *App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if err := s.DeleteRunSelector(cmd.Context(), args[0]); err != nil {
+		id, err := s.ResolveRun(cmd.Context(), args[0])
+		if err != nil {
 			return err
+		}
+		run, err := s.GetRun(cmd.Context(), id)
+		if err != nil {
+			return err
+		}
+		if err := s.DeleteRun(cmd.Context(), id); err != nil {
+			return err
+		}
+		if a.json() {
+			return writeJSON(a.out(), map[string]assessment.Run{"deleted": run})
 		}
 		fmt.Fprintf(a.out(), "deleted assessment %s\n", args[0])
 		return nil

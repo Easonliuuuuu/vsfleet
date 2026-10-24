@@ -21,6 +21,46 @@
 * **vsphere:** pass the connection test with the built-in ReadOnly role instead of requiring `Sessions.ValidateSession` ([#189](https://github.com/Easonliuuuuu/vsfleet/issues/189))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.7.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.3...v0.7.0) (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **compatibility:** match RVTools Tools status semantics ([#463](https://github.com/Easonliuuuuu/vsfleet/issues/463))
+* **vsphere:** collect host hardware, time and certificate details ([#460](https://github.com/Easonliuuuuu/vsfleet/issues/460))
+* **compatibility:** RVTools-profile exports write Folder as /<datacenter>/<path> (empty for a VM inside a vApp) and VI SDK Server as host[:port] without the URL scheme. Pipelines that match vsfleet's previous forms must update.
+
+### Features
+
+* **assessment:** use mem.usage for active memory when mem.active is not kept ([#464](https://github.com/Easonliuuuuu/vsfleet/issues/464)) ([0e40804](https://github.com/Easonliuuuuu/vsfleet/commit/0e408042e70cc141a86487f9e675d2da3981f8aa))
+* **compatibility:** export # NICs and # HBAs to vHost ([#462](https://github.com/Easonliuuuuu/vsfleet/issues/462)) ([e448576](https://github.com/Easonliuuuuu/vsfleet/commit/e44857614afac250d86c7a592141264d9fc4b5bf)), closes [#461](https://github.com/Easonliuuuuu/vsfleet/issues/461)
+* **compatibility:** export captured VM, cluster and datastore columns ([#459](https://github.com/Easonliuuuuu/vsfleet/issues/459)) ([19dd110](https://github.com/Easonliuuuuu/vsfleet/commit/19dd110320e074e28b2054be9d1c990838ca911e))
+* **compatibility:** match RVTools folder, server and vInfo columns ([#446](https://github.com/Easonliuuuuu/vsfleet/issues/446)) ([f09d6a3](https://github.com/Easonliuuuuu/vsfleet/commit/f09d6a3fb938cf534554f02359df4df54652c2b5))
+* **tui:** add Health vCenter column, finding detail and filter ([#487](https://github.com/Easonliuuuuu/vsfleet/issues/487)) ([4a06c3a](https://github.com/Easonliuuuuu/vsfleet/commit/4a06c3a1d75a1a56aea93b078a438ca631dd0e34))
+* **tui:** detail the selected run and compare from the Runs pane ([#486](https://github.com/Easonliuuuuu/vsfleet/issues/486)) ([ccd5394](https://github.com/Easonliuuuuu/vsfleet/commit/ccd53948f074db1a20d24f90474384fb96fefa53))
+* **tui:** explain History pane marks and columns in help ([#465](https://github.com/Easonliuuuuu/vsfleet/issues/465)) ([68b6d58](https://github.com/Easonliuuuuu/vsfleet/commit/68b6d582b15f4a037fee19d448cface38d72c092))
+* **tui:** label Changes scope, scroll its inspector, fit short screens ([#484](https://github.com/Easonliuuuuu/vsfleet/issues/484)) ([c9c6ed7](https://github.com/Easonliuuuuu/vsfleet/commit/c9c6ed77660eabeae503a5e0ef46ecd8f676b845))
+* **vsphere:** collect cluster HA, DRS and DPM settings for vCluster ([#457](https://github.com/Easonliuuuuu/vsfleet/issues/457)) ([97090f6](https://github.com/Easonliuuuuu/vsfleet/commit/97090f6b576af67e31fd6818ee4246bfbf8d222f))
+* **vsphere:** collect host hardware, time and certificate details ([#460](https://github.com/Easonliuuuuu/vsfleet/issues/460)) ([500f971](https://github.com/Easonliuuuuu/vsfleet/commit/500f971e07795cf8acf917e7e0aee0adc49d2d27))
+* **vsphere:** collect VM hardware version and export it to vInfo ([#444](https://github.com/Easonliuuuuu/vsfleet/issues/444)) ([dd4dd9a](https://github.com/Easonliuuuuu/vsfleet/commit/dd4dd9a3ec9584ed15f755b6fa99f5b551b6aaa3))
+
+
+### Bug Fixes
+
+* **assessment:** honour -o json in assessment delete ([#494](https://github.com/Easonliuuuuu/vsfleet/issues/494)) ([a53dcff](https://github.com/Easonliuuuuu/vsfleet/commit/a53dcfff3a55eb51a02bcd1e4e95606e984a25e9)), closes [#493](https://github.com/Easonliuuuuu/vsfleet/issues/493)
+* **assessment:** include vApp changes in assessment diff ([#449](https://github.com/Easonliuuuuu/vsfleet/issues/449)) ([42d645f](https://github.com/Easonliuuuuu/vsfleet/commit/42d645fa6aef1ae19b2c2c835355cb97ea094dce))
+* **assessment:** name a registered rule in the health help example ([#447](https://github.com/Easonliuuuuu/vsfleet/issues/447)) ([1a3a175](https://github.com/Easonliuuuuu/vsfleet/commit/1a3a17543efd3436759d6d47c969d0ba81e2f5a4))
+* **assessment:** order same-named topology subjects by their identity ([#448](https://github.com/Easonliuuuuu/vsfleet/issues/448)) ([c2600cd](https://github.com/Easonliuuuuu/vsfleet/commit/c2600cdab16eb4e21424c8649e14ee9464123caf))
+* **compatibility:** match RVTools Tools status semantics ([#463](https://github.com/Easonliuuuuu/vsfleet/issues/463)) ([a38c3f2](https://github.com/Easonliuuuuu/vsfleet/commit/a38c3f28b888b6c5aae663949a0142a90ea932b4))
+* **compatibility:** match RVTools vDisk header names ([#456](https://github.com/Easonliuuuuu/vsfleet/issues/456)) ([f46defc](https://github.com/Easonliuuuuu/vsfleet/commit/f46defc3d3bb5c725f4f2e43315d81a87c990c23))
+* **compatibility:** read thousands-formatted numbers in RVTools imports ([#458](https://github.com/Easonliuuuuu/vsfleet/issues/458)) ([4f9dd7c](https://github.com/Easonliuuuuu/vsfleet/commit/4f9dd7cb3f720837d4a317d088d8aa5b883337ef))
+* **other:** reject a split "! =" in --where expressions ([#485](https://github.com/Easonliuuuuu/vsfleet/issues/485)) ([cad7a9a](https://github.com/Easonliuuuuu/vsfleet/commit/cad7a9ae2e8248dcd62c80598e9f2b75871be1d7))
+* **tui:** class resizes as sizing and keep History spans forward ([#481](https://github.com/Easonliuuuuu/vsfleet/issues/481)) ([811f09d](https://github.com/Easonliuuuuu/vsfleet/commit/811f09ddf9d1ba67a5aa46d1d4b1d50b9769c114)), closes [#470](https://github.com/Easonliuuuuu/vsfleet/issues/470) [#471](https://github.com/Easonliuuuuu/vsfleet/issues/471)
+* **tui:** keep History hub scrolling, coverage and capture refusals in place ([#480](https://github.com/Easonliuuuuu/vsfleet/issues/480)) ([7b9897e](https://github.com/Easonliuuuuu/vsfleet/commit/7b9897eb16c01486e699bf4ff77d70be1bd8b032)), closes [#466](https://github.com/Easonliuuuuu/vsfleet/issues/466) [#467](https://github.com/Easonliuuuuu/vsfleet/issues/467) [#468](https://github.com/Easonliuuuuu/vsfleet/issues/468) [#469](https://github.com/Easonliuuuuu/vsfleet/issues/469)
+* **tui:** keep pinned runs in line and refuse run edits in the demo ([#483](https://github.com/Easonliuuuuu/vsfleet/issues/483)) ([fd81890](https://github.com/Easonliuuuuu/vsfleet/commit/fd81890a88325c1a1692b44b1945cc72c1d9e6dd)), closes [#474](https://github.com/Easonliuuuuu/vsfleet/issues/474)
+* **tui:** show History fields in operator names and record vanished VMs ([#482](https://github.com/Easonliuuuuu/vsfleet/issues/482)) ([4ccd778](https://github.com/Easonliuuuuu/vsfleet/commit/4ccd778eed69d03f0096e31254340aedeaf4a891)), closes [#472](https://github.com/Easonliuuuuu/vsfleet/issues/472) [#473](https://github.com/Easonliuuuuu/vsfleet/issues/473)
+* **tui:** unify detail sizes and give the demo complete history ([#488](https://github.com/Easonliuuuuu/vsfleet/issues/488)) ([80cdad1](https://github.com/Easonliuuuuu/vsfleet/commit/80cdad10824afac358e57e3f8ac5bc60d3105954))
+
 ## [0.6.3](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.2...v0.6.3) (2026-10-12)
 
 

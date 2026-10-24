@@ -44,8 +44,8 @@ dockers_v2:
       "index,manifest:org.opencontainers.image.version": "{{ .Version }}"
       "index,manifest:org.opencontainers.image.revision": "{{ .FullCommit }}"
       "index,manifest:org.opencontainers.image.created": "{{ .Date }}"
-      "index,manifest:org.opencontainers.image.base.name": "gcr.io/distroless/static-debian13:nonroot"
-      "index,manifest:org.opencontainers.image.base.digest": "sha256:e2e927ec666bae08560abb3c55d0659eceabb657f56b6782ab500a9fc7f555e3"
+      "index,manifest:org.opencontainers.image.base.name": "{{ .Env.BASE_IMAGE_NAME }}"
+      "index,manifest:org.opencontainers.image.base.digest": "{{ .Env.BASE_IMAGE_DIGEST }}"
 
 docker_signs:
   - id: vsfleet

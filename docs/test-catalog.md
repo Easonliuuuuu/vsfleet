@@ -229,8 +229,10 @@ native Windows installation.
 
 - `Dockerfile` and `Dockerfile.vcsim` use different base images, or the base
   image is not pinned by digest;
-- the `base.name`/`base.digest` OCI annotations in `.goreleaser.yaml` differ
-  from the `Dockerfile` (Dependabot bumps only the Dockerfiles);
+- the `base.name`/`base.digest` OCI annotations in `.goreleaser.yaml` stop
+  reading `BASE_IMAGE_NAME`/`BASE_IMAGE_DIGEST`, which
+  `scripts/base-image-env.sh` derives from the `Dockerfile` at release time
+  (Dependabot bumps only the Dockerfiles);
 - any `ghcr.io/easonliuuuuu/vsfleet:vX.Y.Z` pin in `README.md`, `docs/`, or
   `deploy/` differs from `.release-please-manifest.json`, or sits in a file
   that release-please does not bump;

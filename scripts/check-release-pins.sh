@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Fail when a value that must agree across release files has drifted.
 #
-# - Dependabot bumps the distroless digest in the Dockerfiles only, so the
-#   OCI base-image annotation in .goreleaser.yaml must be checked against it.
+# - Dependabot bumps the distroless digest in the Dockerfiles only, so
+#   Dockerfile.vcsim must match Dockerfile, and the OCI base-image annotations
+#   in .goreleaser.yaml must read the digest from scripts/base-image-env.sh
+#   rather than repeat it.
 # - release-please bumps the extra-files listed in release-please-config.json,
 #   so every pinned image tag in the docs and the shipped CronJob must match
 #   the released version in .release-please-manifest.json.
@@ -23,7 +25,6 @@ base_ref() {
 
 product_base="$(base_ref Dockerfile)"
 [[ "$product_base" == *@sha256:* ]] || fail "Dockerfile base image is not pinned by digest: $product_base"
-base_name="${product_base%@*}"
 base_digest="${product_base#*@}"
 
 vcsim_base="$(base_ref Dockerfile.vcsim)"
@@ -31,8 +32,8 @@ vcsim_base="$(base_ref Dockerfile.vcsim)"
 
 annotated_name="$(sed -n 's/.*org\.opencontainers\.image\.base\.name": "\([^"]*\)".*/\1/p' .goreleaser.yaml)"
 annotated_digest="$(sed -n 's/.*org\.opencontainers\.image\.base\.digest": "\([^"]*\)".*/\1/p' .goreleaser.yaml)"
-[[ "$annotated_name" == "$base_name" ]] || fail ".goreleaser.yaml base.name $annotated_name differs from Dockerfile $base_name"
-[[ "$annotated_digest" == "$base_digest" ]] || fail ".goreleaser.yaml base.digest $annotated_digest differs from Dockerfile $base_digest"
+[[ "$annotated_name" == '{{ .Env.BASE_IMAGE_NAME }}' ]] || fail ".goreleaser.yaml base.name is $annotated_name, expected {{ .Env.BASE_IMAGE_NAME }}"
+[[ "$annotated_digest" == '{{ .Env.BASE_IMAGE_DIGEST }}' ]] || fail ".goreleaser.yaml base.digest is $annotated_digest, expected {{ .Env.BASE_IMAGE_DIGEST }}"
 
 version="$(sed -n 's/^ *"\." *: *"\([^"]*\)".*/\1/p' .release-please-manifest.json)"
 [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || fail "unreadable version in .release-please-manifest.json: $version"

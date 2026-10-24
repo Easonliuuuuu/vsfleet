@@ -63,6 +63,9 @@ jobs:
 
       - uses: sigstore/cosign-installer@v3
 
+      - name: Read the base image from the Dockerfile
+        run: scripts/base-image-env.sh >> "$GITHUB_ENV"
+
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"

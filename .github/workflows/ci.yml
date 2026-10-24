@@ -253,6 +253,9 @@ jobs:
       - name: Derive the snapshot configuration
         run: sed 's/"index,manifest:/"manifest:/' .goreleaser.yaml > "${RUNNER_TEMP}/goreleaser-snapshot.yaml"
 
+      - name: Read the base image from the Dockerfile
+        run: scripts/base-image-env.sh >> "$GITHUB_ENV"
+
       - name: Build every release artifact without publishing
         uses: goreleaser/goreleaser-action@v7
         with:

@@ -3,6 +3,7 @@ package assessment
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -215,10 +216,13 @@ func verifySQLiteFile(path string) error {
 	return rows.Err()
 }
 
+// ErrRestoreNeedsForce reports a restore that would replace existing history
+// without the caller confirming it.
+var ErrRestoreNeedsForce = errors.New("restoring over existing assessment history requires --force")
+
+// Restore replaces the history database with source. Without force it only
+// restores into a history database that holds no data yet.
 func (s *Store) Restore(ctx context.Context, source string, force bool) (string, error) {
-	if !force {
-		return "", fmt.Errorf("restoring assessment history requires --force")
-	}
 	if strings.TrimSpace(source) == "" {
 		return "", fmt.Errorf("restore source is required")
 	}
@@ -232,6 +236,15 @@ func (s *Store) Restore(ctx context.Context, source string, force bool) (string,
 	defer s.ReleaseCaptureLease(context.Background(), lease)
 	if s.path == "" {
 		return "", fmt.Errorf("history database path is unavailable")
+	}
+	if !force {
+		empty, err := s.historyEmpty(ctx)
+		if err != nil {
+			return "", fmt.Errorf("inspect current history: %w", err)
+		}
+		if !empty {
+			return "", ErrRestoreNeedsForce
+		}
 	}
 	safety := fmt.Sprintf("%s.pre-restore-%s.db", s.path, time.Now().UTC().Format("20060102T150405.000000000Z"))
 	if err := s.backupFile(ctx, safety, false); err != nil {
@@ -283,6 +296,39 @@ func (s *Store) Restore(ctx context.Context, source string, force bool) (string,
 	s.db = reopened.db
 	s.path = reopened.path
 	return safety, nil
+}
+
+// historyEmpty reports whether every history table is empty. The capture
+// lease is coordination state, not history, so it does not count.
+func (s *Store) historyEmpty(ctx context.Context) (bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name<>'capture_lease'`)
+	if err != nil {
+		return false, err
+	}
+	var tables []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return false, err
+		}
+		tables = append(tables, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	for _, table := range tables {
+		var exists int
+		query := `SELECT EXISTS(SELECT 1 FROM "` + strings.ReplaceAll(table, `"`, `""`) + `")`
+		if err := s.db.QueryRowContext(ctx, query).Scan(&exists); err != nil {
+			return false, fmt.Errorf("count %s: %w", table, err)
+		}
+		if exists != 0 {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func copyFile(source, destination string) error {

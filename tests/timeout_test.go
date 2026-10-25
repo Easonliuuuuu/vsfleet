@@ -29,7 +29,7 @@ func TestTimeoutBoundsInventoryEnumeration(t *testing.T) {
 	r := newRunner(t)
 	r.addContext("lab", vc)
 
-	// Installed only once the context is saved: "context add" runs the
+	// Installed only once the context is saved: "config set-context" runs the
 	// connection test, whose liveness probe is itself a property read.
 	vc.Service.AddFaultRule(&simulator.FaultInjectionRule{
 		MethodName:  "RetrievePropertiesEx",

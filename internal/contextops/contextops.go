@@ -58,7 +58,7 @@ type Input struct {
 	// DropReplacedKeyring, with Replace, deletes the keyring entry the
 	// replaced context used when the new one no longer refers to it. Once
 	// the reference is gone nothing would ever remove that password — not
-	// even "context remove --with-credential" — so an edit that moves a
+	// even "config delete-context --with-credential" — so an edit that moves a
 	// context off the keyring asks for it to be cleaned up.
 	DropReplacedKeyring bool
 }

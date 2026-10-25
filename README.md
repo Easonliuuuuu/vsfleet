@@ -109,10 +109,10 @@ To open the wizard directly, or to check a context from the command line:
 
 ```sh
 # Launch the setup wizard
-vsfleet context add
+vsfleet config set-context
 
 # Test connectivity, routes, and authentication
-vsfleet context test prod
+vsfleet doctor prod
 ```
 
 ### 3. Search and inspect inventory

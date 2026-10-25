@@ -243,8 +243,8 @@ func NewRootCommand(a *App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "vsfleet",
 		Short: "Read-only vSphere estate assessment and diagnostics across every vCenter",
-		Long: `vsfleet treats every vCenter as a named context, the way kubectl treats
-clusters. Each context carries its own endpoint, credential reference,
+		Long: `vsfleet treats every vCenter as a named context, and a context as its
+namespace: -n picks one, -A spans them all. Each context carries its own endpoint, credential reference,
 network route and TLS policy, so a lab reached directly and a customer
 vCenter reached through a SOCKS5 proxy work side by side in one process.
 
@@ -258,17 +258,17 @@ at production.`,
   vsfleet demo
 
   # Add a vCenter and make it current
-  vsfleet context add --name prod --endpoint https://vcsa.example.internal --username svc-ro@vsphere.local --use
+  vsfleet config set-context prod --endpoint https://vcsa.example.internal --username svc-ro@vsphere.local --use
 
   # List VMs on one context, then on every context at once
-  vsfleet vm list --context prod
-  vsfleet vm list --all-contexts
+  vsfleet vm list -n prod
+  vsfleet vm list -A
 
   # Find an object when you do not know which vCenter holds it
-  vsfleet search ubuntu-golden --all-contexts
+  vsfleet search ubuntu-golden -A
 
   # Capture history, then compare the two most recent captures
-  vsfleet assessment run --all-contexts --label nightly
+  vsfleet assessment run -A --label nightly
   vsfleet assessment diff`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -306,8 +306,9 @@ at production.`,
 
 	f := root.PersistentFlags()
 	f.StringVar(&a.ConfigPath, "config", "", "path to the configuration file (default: platform user config directory)")
-	f.StringSliceVar(&a.ContextNames, "context", nil, "context to act on, repeatable (default: the current context)")
-	f.BoolVar(&a.AllContexts, "all-contexts", false, "act on every configured context")
+	// A context is vsfleet's namespace, so kubectl's -n and -A pick them.
+	f.StringSliceVarP(&a.ContextNames, "context", "n", nil, "context to act on, repeatable (default: the current context)")
+	f.BoolVarP(&a.AllContexts, "all-contexts", "A", false, "act on every configured context")
 	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json")
 	f.DurationVar(&a.Timeout, "timeout", 30*time.Second, "per-vCenter timeout")
 	f.StringVar(&a.HistoryPath, "history-db", "", "path to the local assessment database")
@@ -320,7 +321,7 @@ at production.`,
 	root.AddCommand(
 		inGroup(groupStart, newUICommand(a)),
 		inGroup(groupStart, newDemoCommand(a)),
-		inGroup(groupStart, newContextCommand(a)),
+		inGroup(groupStart, newConfigCommand(a)),
 		inGroup(groupStart, newStatusCommand(a)),
 		inGroup(groupInventory, newSearchCommand(a)),
 		inGroup(groupInventory, newAPIResourcesCommand(a)),
@@ -336,6 +337,7 @@ at production.`,
 	for _, cmd := range newInventoryCommands(a) {
 		root.AddCommand(inGroup(groupInventory, cmd))
 	}
+	root.AddCommand(newContextRenamedCommand())
 	root.AddCommand(renamedCommand("portgroup", []string{"portgroups"},
 		`use "vsfleet network list" for networks, or "vsfleet host portgroup list" for standard-switch port groups`))
 	return root

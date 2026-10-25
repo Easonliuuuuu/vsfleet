@@ -150,7 +150,7 @@ Press `Ctrl+C` to exit the setup form without adding a context.
 You can also open the wizard with:
 
 ```sh
-vsfleet context add
+vsfleet config set-context
 ```
 
 Name the context `prod` to follow the commands below, or replace `prod` with
@@ -173,8 +173,8 @@ run, an environment variable, a file, or a helper such as `vault`. See
 ## Explore inventory
 
 ```sh
-vsfleet context list
-vsfleet context test prod
+vsfleet config get-contexts
+vsfleet doctor prod
 vsfleet status
 
 vsfleet vm list
@@ -186,8 +186,8 @@ vsfleet datastore list
 vsfleet search ubuntu --all-contexts
 ```
 
-Replace `prod` with your context name. Use `--all-contexts` to query the estate
-or `--context NAME` to select one context. See the [CLI reference](commands.md)
+Replace `prod` with your context name. Use `-A` (`--all-contexts`) to query
+the estate or `-n NAME` (`--context NAME`) to select one context. See the [CLI reference](commands.md)
 for filtering and output, or open the [terminal UI](tui.md) with `vsfleet`.
 
 ## Capture your first assessment

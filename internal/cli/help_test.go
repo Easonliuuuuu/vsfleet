@@ -51,7 +51,7 @@ func TestUnknownSubcommandFails(t *testing.T) {
 		{"vm"},
 		{"host"},
 		{"network"},
-		{"context"},
+		{"config"},
 		{"compatibility"},
 	} {
 		args := append(append([]string{}, parent...), "no-such-subcommand")

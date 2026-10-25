@@ -654,7 +654,6 @@ type trendFlags struct {
 	from, to       string
 	limit          int
 	includePartial bool
-	contexts       []string
 }
 
 func (f *trendFlags) add(cmd *cobra.Command) {
@@ -662,25 +661,12 @@ func (f *trendFlags) add(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.to, "to", "", "last assessment ID or label (inclusive)")
 	cmd.Flags().IntVar(&f.limit, "limit", 30, "number of complete assessments (0 means unlimited)")
 	cmd.Flags().BoolVar(&f.includePartial, "include-partial", false, "include partial assessments")
-	cmd.Flags().StringSliceVar(&f.contexts, "context", nil, "limit trend data to context(s)")
 }
 
 // options resolves trend scope with the same --all-contexts precedence as
-// every other stored-evidence command: --all-contexts wins outright, even
-// over an explicit trend-local --context, since a raw --context value must
-// not keep narrowing or validating the stored scope once --all-contexts is
-// present.
+// every other stored-evidence command.
 func (f trendFlags) options(ctx context.Context, s *assessment.Store, a *App) (assessment.TrendOptions, error) {
-	var contexts []string
-	switch {
-	case a.AllContexts:
-		contexts = nil
-	case len(f.contexts) > 0:
-		contexts = f.contexts
-	default:
-		contexts = a.ContextNames
-	}
-	opts := assessment.TrendOptions{Limit: f.limit, IncludePartial: f.includePartial, Contexts: contexts}
+	opts := assessment.TrendOptions{Limit: f.limit, IncludePartial: f.includePartial, Contexts: a.StoredContextNames()}
 	var err error
 	if f.from != "" {
 		opts.FromID, err = s.ResolveRun(ctx, f.from)

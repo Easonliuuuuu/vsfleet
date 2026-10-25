@@ -342,7 +342,7 @@ func promptsForPassword(cc *config.Context) bool {
 
 // fetchCertificate performs a TLS handshake and returns the leaf certificate.
 // When trustAny is set the context's TLS policy is bypassed, which is how
-// "vsfleet context add" discovers a thumbprint to pin.
+// "vsfleet config set-context" discovers a thumbprint to pin.
 func fetchCertificate(ctx context.Context, cc *config.Context, dialer transport.Dialer, addr string, trustAny bool) (*x509.Certificate, error) {
 	var cfg *tls.Config
 	if trustAny {

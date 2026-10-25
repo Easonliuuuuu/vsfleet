@@ -17,8 +17,8 @@ import (
 func (r *runner) addNonInteractiveContext(name string, vc *vcenter, ref string, extra ...string) {
 	r.t.Helper()
 	args := []string{
-		"context", "add",
-		"--name", name,
+		"config", "set-context",
+		name,
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", ref,
@@ -35,7 +35,7 @@ func TestContextResolvesAnEnvironmentCredential(t *testing.T) {
 
 	r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
 
-	show := r.mustRun("", "context", "show", "lab")
+	show := r.mustRun("", "config", "view", "--minify", "-n", "lab")
 	if !strings.Contains(show, "env:VSFLEET_E2E_PASSWORD") {
 		t.Fatalf("the saved context does not reference the environment variable:\n%s", show)
 	}
@@ -51,8 +51,8 @@ func TestContextResolvesAnEnvironmentCredential(t *testing.T) {
 
 	// Empty standard input: a prompt would have nothing to read, so a
 	// successful connection proves the variable answered.
-	if out := r.mustRun("", "context", "test", "lab"); !strings.Contains(out, "Connection successful.") {
-		t.Errorf("context test did not use the environment credential:\n%s", out)
+	if out := r.mustRun("", "doctor", "lab"); !strings.Contains(out, "API available") {
+		t.Errorf("doctor did not use the environment credential:\n%s", out)
 	}
 }
 
@@ -66,8 +66,8 @@ func TestContextResolvesAFileCredential(t *testing.T) {
 
 	r.addNonInteractiveContext("lab", vc, "file:"+path)
 
-	if out := r.mustRun("", "context", "test", "lab"); !strings.Contains(out, "Connection successful.") {
-		t.Errorf("context test did not use the file credential:\n%s", out)
+	if out := r.mustRun("", "doctor", "lab"); !strings.Contains(out, "API available") {
+		t.Errorf("doctor did not use the file credential:\n%s", out)
 	}
 }
 
@@ -87,8 +87,8 @@ func TestContextResolvesAnExecCredential(t *testing.T) {
 
 	r.addNonInteractiveContext("lab", vc, "exec:"+helper)
 
-	if out := r.mustRun("", "context", "test", "lab"); !strings.Contains(out, "Connection successful.") {
-		t.Errorf("context test did not use the exec credential:\n%s", out)
+	if out := r.mustRun("", "doctor", "lab"); !strings.Contains(out, "API available") {
+		t.Errorf("doctor did not use the exec credential:\n%s", out)
 	}
 }
 
@@ -106,7 +106,7 @@ func TestNonInteractiveCredentialMissDoesNotConsumeStandardInput(t *testing.T) {
 	r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_ABSENT", "--no-test")
 
 	const piped = "this-is-not-a-password\n"
-	stdout, stderr, err := r.run(piped, "context", "test", "lab")
+	stdout, stderr, err := r.run(piped, "doctor", "lab")
 	if err == nil {
 		t.Fatalf("a missing environment variable should fail the connection:\nstdout:\n%s", stdout)
 	}
@@ -126,8 +126,8 @@ func TestPasswordStdinIsRejectedForReadOnlySchemes(t *testing.T) {
 	vc := startVCenter(t, nil)
 	r := newRunner(t)
 
-	_, stderr, err := r.run(testPassword+"\n", "context", "add",
-		"--name", "lab",
+	_, stderr, err := r.run(testPassword+"\n", "config", "set-context",
+		"lab",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "env:VSFLEET_E2E_PASSWORD",
@@ -143,7 +143,7 @@ func TestPasswordStdinIsRejectedForReadOnlySchemes(t *testing.T) {
 	}
 	// Rejected before anything was saved.
 	if _, statErr := os.Stat(r.configPath); statErr == nil {
-		t.Error("a rejected context add still wrote a configuration file")
+		t.Error("a rejected set-context still wrote a configuration file")
 	}
 }
 
@@ -151,8 +151,8 @@ func TestUnknownCredentialSchemeNamesTheSupportedOnes(t *testing.T) {
 	vc := startVCenter(t, nil)
 	r := newRunner(t)
 
-	_, _, err := r.run("", "context", "add",
-		"--name", "lab",
+	_, _, err := r.run("", "config", "set-context",
+		"lab",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "vault:secret/vcenter",

@@ -20,8 +20,8 @@ func TestSOCKS5WithRemoteDNS(t *testing.T) {
 	}
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n"+testPassword+"\n", "context", "add",
-		"--name", "customer-a",
+	r.mustRun(testPassword+"\n"+testPassword+"\n", "config", "set-context",
+		"customer-a",
 		"--endpoint", "https://"+net.JoinHostPort(remoteOnlyHost, vc.Port),
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -33,15 +33,15 @@ func TestSOCKS5WithRemoteDNS(t *testing.T) {
 		"--thumbprint", vc.Thumbprint,
 	)
 
-	out := r.mustRun(testPassword+"\n", "context", "test", "customer-a")
-	if !strings.Contains(out, "Connection successful.") {
+	out := r.mustRun(testPassword+"\n", "doctor", "customer-a")
+	if !strings.Contains(out, "API available") {
 		t.Fatalf("connection through the proxy failed:\n%s", out)
 	}
-	if !strings.Contains(out, "Remote") {
-		t.Errorf("context test did not report remote DNS:\n%s", out)
+	if !strings.Contains(out, "resolved at the proxy") {
+		t.Errorf("doctor did not report remote DNS:\n%s", out)
 	}
 	if !strings.Contains(out, "SOCKS5") {
-		t.Errorf("context test did not report the proxy route:\n%s", out)
+		t.Errorf("doctor did not report the proxy route:\n%s", out)
 	}
 
 	// The proxy must have been asked for the hostname, not for an address the
@@ -72,8 +72,8 @@ func TestSOCKS5WithoutRemoteDNSCannotResolve(t *testing.T) {
 	}
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "customer-a",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"customer-a",
 		"--endpoint", "https://"+net.JoinHostPort(remoteOnlyHost, vc.Port),
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -85,7 +85,7 @@ func TestSOCKS5WithoutRemoteDNSCannotResolve(t *testing.T) {
 		"--no-test",
 	)
 
-	stdout, _, err := r.run(testPassword+"\n", "context", "test", "customer-a")
+	stdout, _, err := r.run(testPassword+"\n", "doctor", "customer-a")
 	if err == nil {
 		t.Fatalf("expected local resolution of %s to fail:\n%s", remoteOnlyHost, stdout)
 	}
@@ -101,8 +101,8 @@ func TestSOCKS5ProxyOffline(t *testing.T) {
 	proxy.listener.Close()
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "customer-b",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"customer-b",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -133,8 +133,8 @@ func TestTLSThumbprintMismatch(t *testing.T) {
 	wrong := strings.Repeat("AB:", 31) + "AB"
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "rotated",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"rotated",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -144,7 +144,7 @@ func TestTLSThumbprintMismatch(t *testing.T) {
 		"--no-test",
 	)
 
-	stdout, _, err := r.run(testPassword+"\n", "context", "test", "rotated")
+	stdout, _, err := r.run(testPassword+"\n", "doctor", "rotated")
 	if err == nil {
 		t.Fatalf("a pinned certificate that does not match must not connect:\n%s", stdout)
 	}
@@ -158,8 +158,8 @@ func TestTLSThumbprintMismatch(t *testing.T) {
 func TestTLSSystemRejectsSelfSignedCertificate(t *testing.T) {
 	vc := startVCenter(t, nil)
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "unverified",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"unverified",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -168,7 +168,7 @@ func TestTLSSystemRejectsSelfSignedCertificate(t *testing.T) {
 		"--no-test",
 	)
 
-	stdout, _, err := r.run(testPassword+"\n", "context", "test", "unverified")
+	stdout, _, err := r.run(testPassword+"\n", "doctor", "unverified")
 	if err == nil {
 		t.Fatalf("system trust must reject the simulator's self-signed certificate:\n%s", stdout)
 	}
@@ -182,8 +182,8 @@ func TestTLSSystemRejectsSelfSignedCertificate(t *testing.T) {
 func TestTLSThumbprintDiscovery(t *testing.T) {
 	vc := startVCenter(t, nil)
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n"+testPassword+"\n", "context", "add",
-		"--name", "pinned",
+	r.mustRun(testPassword+"\n"+testPassword+"\n", "config", "set-context",
+		"pinned",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -191,7 +191,7 @@ func TestTLSThumbprintDiscovery(t *testing.T) {
 		"--tls", "thumbprint",
 	)
 
-	show := r.mustRun("", "context", "show", "pinned")
+	show := r.mustRun("", "config", "view", "--minify", "-n", "pinned")
 	if !strings.Contains(show, vc.Thumbprint) {
 		t.Errorf("the discovered thumbprint was not stored:\n%s", show)
 	}
@@ -208,8 +208,8 @@ func TestSOCKS5BasicAuth(t *testing.T) {
 	proxy.RequireAuth = &socksAuth{Username: "svc-proxy", Password: "proxy-secret"}
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\nproxy-secret\n", "context", "add",
-		"--name", "via-authed-socks5",
+	r.mustRun(testPassword+"\nproxy-secret\n", "config", "set-context",
+		"via-authed-socks5",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -224,11 +224,11 @@ func TestSOCKS5BasicAuth(t *testing.T) {
 	)
 
 	// The same credential is asked for again here, in a fresh process with
-	// nothing carried over from "context add" — proof that resolving it
+	// nothing carried over from "config set-context" — proof that resolving it
 	// happens exactly once per run rather than once per dialer it happens
 	// to build along the way.
-	out := r.mustRun(testPassword+"\nproxy-secret\n", "context", "test", "via-authed-socks5")
-	if !strings.Contains(out, "Connection successful.") {
+	out := r.mustRun(testPassword+"\nproxy-secret\n", "doctor", "via-authed-socks5")
+	if !strings.Contains(out, "API available") {
 		t.Fatalf("connection through the authenticated socks5 proxy failed:\n%s", out)
 	}
 }
@@ -239,8 +239,8 @@ func TestSOCKS5WrongCredentialFails(t *testing.T) {
 	proxy.RequireAuth = &socksAuth{Username: "svc-proxy", Password: "proxy-secret"}
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "via-wrong-socks5-password",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"via-wrong-socks5-password",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",

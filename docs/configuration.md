@@ -102,7 +102,7 @@ a test entry. If unavailable, they explain the failure and offer `prompt`,
 `env`, `file`, and `exec`. Unattended sources ask for a reference, then test
 the connection through it.
 
-With `--password-stdin` and no `--credential`, unattended `context add`
+With `--password-stdin` and no `--credential`, unattended `config set-context`
 still attempts keyring storage. If the write fails, it saves
 `credential = "prompt"` and warns.
 
@@ -126,7 +126,7 @@ the source on the failure line and offers a fix in its
 
 Proxy authentication can use a separate credential reference of any scheme
 above, set with `--proxy-credential`. The unattended setup flags are documented
-by `vsfleet context add --help`.
+by `vsfleet config set-context --help`.
 
 ## SSH
 

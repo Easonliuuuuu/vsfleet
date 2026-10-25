@@ -91,7 +91,7 @@ func TestSaveKeepsAKeyringEntryInEveryOtherCase(t *testing.T) {
 		key      string
 		flag     bool
 	}{
-		// "context add --force" replaces without asking for the cleanup:
+		// "config set-context" replaces without asking for the cleanup:
 		// deleting a stored password stays an explicit choice there.
 		{"not asked", []Input{input("prod", prodKR)}, input("prod", envRef), "prod", false},
 		{"still referenced", []Input{input("prod", prodKR)}, input("prod", prodKR), "prod", true},

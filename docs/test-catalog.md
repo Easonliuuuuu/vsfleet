@@ -65,7 +65,7 @@ The untagged `tests/` suite drives the CLI against an in-process
 | File | Situation | Asserts |
 | --- | --- | --- |
 | `cli_test.go` | context lifecycle, cross-vCenter search, one vCenter failing | inventory still lists, failures are isolated, `vsfleet` with no subcommand opens the UI |
-| `cli_credentials_test.go`, `cli_keyring_test.go`, `contextops_test.go` | `env:`, `file:`, `exec:` credentials, keyring storage, `context add` with `--password-stdin` | non-interactive misses never read stdin, read-only schemes reject `--password-stdin`, a failed connection test blocks saving unless overridden |
+| `cli_credentials_test.go`, `cli_keyring_test.go`, `contextops_test.go` | `env:`, `file:`, `exec:` credentials, keyring storage, `config set-context` with `--password-stdin` | non-interactive misses never read stdin, read-only schemes reject `--password-stdin`, a failed connection test blocks saving unless overridden |
 | `socks5_test.go`, `httpproxy_test.go` | SOCKS5 with and without remote DNS, HTTP/HTTPS proxies, basic auth | wrong proxy credentials fail, offline proxies fail clearly, untrusted HTTPS proxy certificates are rejected, TLS thumbprint mismatch and discovery |
 | `timeout_test.go` | a vCenter that stops answering mid-enumeration | `--timeout` bounds the whole listing |
 | `session_invalidation_test.go` | a context edited or removed while a session is open | the edited context talks to the new vCenter; removal closes the session |

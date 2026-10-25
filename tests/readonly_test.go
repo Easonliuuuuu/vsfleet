@@ -227,8 +227,8 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 	endpoint, rec := startRecordingVCenter(t)
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n"+testPassword+"\n", "context", "add",
-		"--name", "audit",
+	r.mustRun(testPassword+"\n"+testPassword+"\n", "config", "set-context",
+		"audit",
 		"--endpoint", endpoint,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -239,7 +239,7 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 	// Every command that reaches a vCenter, including the ones that connect
 	// as a side effect of doing something else.
 	for _, args := range [][]string{
-		{"context", "test", "audit"},
+		{"doctor", "audit"},
 		{"doctor", "audit"},
 		{"status"},
 		{"vm", "list"},

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/search"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -40,7 +41,7 @@ output rather than the whole answer.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			parsed := make([]vsphere.Kind, 0, len(kinds))
 			for _, k := range kinds {
-				kind, err := vsphere.ParseKind(strings.ToLower(strings.TrimSpace(k)))
+				kind, err := apiresource.ParseInventory(k, vsphere.AllKinds)
 				if err != nil {
 					return err
 				}

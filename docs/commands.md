@@ -33,6 +33,7 @@ history, and output.
 | `vsfleet network compare <source-cluster> <target-cluster> [run]` | Compare stored network reachability and policy between clusters |
 | `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
 | `vsfleet search <text>` | Search every vCenter at once |
+| `vsfleet api-resources` | List every object kind with its short names and whether it is live, stored, or both |
 | `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
 | `vsfleet <kind> show <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail |
 | `vsfleet host hba\|pnic\|vswitch\|portgroup\|vmkernel\|multipath list [--host <name>]` | List one host storage/network subresource, across every host or narrowed to one |
@@ -54,12 +55,19 @@ history, and output.
 
 ## Inventory and search
 
-Resource kinds include `vm`, `template`, `host`, `cluster`, `vapp`,
-`datastore`, `network`, `dvswitch`, and `resourcepool`. Use `--filter` /
-`-f` for text matching, repeatable `--where` for predicates, and `--wide`
-for metadata columns:
+`vsfleet api-resources` lists every object kind, the way
+`kubectl api-resources` does. Each kind accepts its singular, plural and short
+names (`node` for `host`, `cl` for `cluster`, `ds` for `datastore`, `net` for
+`network`) everywhere a kind is taken: as the command, in `--kind`, and as the
+`KIND` argument of `topology`, `dependencies` and `blast-radius`. `portgroup`
+means standard-switch port groups only (`vsfleet host portgroup list`); use
+`network` for the vCenter network inventory.
+
+Use `--filter` / `-f` for text matching, repeatable `--where` for predicates,
+and `--wide` for metadata columns:
 
 ```sh
+vsfleet api-resources
 vsfleet host list --context prod --filter esxi-07
 vsfleet datastore list --all-contexts -f nvme
 vsfleet vapp list --all-contexts

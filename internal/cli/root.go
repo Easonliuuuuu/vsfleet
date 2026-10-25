@@ -323,6 +323,7 @@ at production.`,
 		inGroup(groupStart, newContextCommand(a)),
 		inGroup(groupStart, newStatusCommand(a)),
 		inGroup(groupInventory, newSearchCommand(a)),
+		inGroup(groupInventory, newAPIResourcesCommand(a)),
 		inGroup(groupHistory, newImportCommand(a)),
 		inGroup(groupHistory, newAssessmentCommand(a)),
 		inGroup(groupHistory, newHealthCommand(a)),
@@ -335,6 +336,8 @@ at production.`,
 	for _, cmd := range newInventoryCommands(a) {
 		root.AddCommand(inGroup(groupInventory, cmd))
 	}
+	root.AddCommand(renamedCommand("portgroup", []string{"portgroups"},
+		`use "vsfleet network list" for networks, or "vsfleet host portgroup list" for standard-switch port groups`))
 	return root
 }
 

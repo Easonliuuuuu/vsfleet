@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/easonliuuuuu/vsfleet/internal/topology"
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 )
 
 // runArgs executes the command tree without touching the machine: every
@@ -27,10 +27,13 @@ func runArgs(t *testing.T, args ...string) (string, string, error) {
 	return out.String(), errOut.String(), err
 }
 
-// walk visits every command in the tree except the ones cobra generates.
+// walk visits every command in the tree except the ones cobra generates and
+// the hidden ones.
 func walk(cmd *cobra.Command, fn func(*cobra.Command)) {
 	for _, sub := range cmd.Commands() {
-		if sub.Name() == "help" || sub.Name() == "completion" {
+		// Hidden commands, such as the stubs left for renamed commands, never
+		// appear in help, so help's rules do not apply to them.
+		if sub.Name() == "help" || sub.Name() == "completion" || sub.Hidden {
 			continue
 		}
 		fn(sub)
@@ -163,7 +166,7 @@ func TestEveryTopLevelCommandIsGrouped(t *testing.T) {
 		groups[g.ID] = true
 	}
 	for _, cmd := range root.Commands() {
-		if cmd.Name() == "help" || cmd.Name() == "completion" {
+		if cmd.Name() == "help" || cmd.Name() == "completion" || cmd.Hidden {
 			continue
 		}
 		if !groups[cmd.GroupID] {
@@ -207,7 +210,7 @@ func TestLeafCommandsStillShowTheirUsageLine(t *testing.T) {
 }
 
 // KIND is a closed vocabulary, so completion should offer it. The values have
-// to stay in step with topology.ParseKind, which is what actually enforces them.
+// to stay in step with apiresource.ParseInventory, which is what enforces them.
 func TestTopologyKindsAreOfferedForCompletion(t *testing.T) {
 	root := NewRootCommand(&App{})
 	for _, name := range []string{"topology", "dependencies", "blast-radius"} {
@@ -226,11 +229,11 @@ func TestTopologyKindsAreOfferedForCompletion(t *testing.T) {
 	}
 }
 
-// Completion and help advertise the kinds; topology.ParseKind is what actually
-// accepts them. A kind offered but not parsed is worse than one never offered.
+// Completion and help advertise the kinds; apiresource.ParseInventory is what
+// actually accepts them. A kind offered but not parsed is worse than one never offered.
 func TestOfferedTopologyKindsAllParse(t *testing.T) {
 	for _, kind := range topologyKinds {
-		if _, err := topology.ParseKind(kind); err != nil {
+		if _, err := apiresource.ParseInventory(kind, topologyInventoryKinds); err != nil {
 			t.Errorf("kind %q is offered in help but rejected by ParseKind: %v", kind, err)
 		}
 	}

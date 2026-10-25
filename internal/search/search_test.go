@@ -64,23 +64,3 @@ func TestMatchEmptyQueryReturnsEverything(t *testing.T) {
 		t.Fatalf("expected the whole inventory, got %d", len(got))
 	}
 }
-
-func TestParseKind(t *testing.T) {
-	for in, want := range map[string]vsphere.Kind{
-		"vm":         vsphere.KindVM,
-		"vms":        vsphere.KindVM,
-		"templates":  vsphere.KindTemplate,
-		"esxi":       vsphere.KindHost,
-		"ds":         vsphere.KindDatastore,
-		"portgroups": vsphere.KindNetwork,
-		"vapps":      vsphere.KindVApp,
-	} {
-		got, err := vsphere.ParseKind(in)
-		if err != nil || got != want {
-			t.Errorf("ParseKind(%q) = %q, %v; want %q", in, got, err, want)
-		}
-	}
-	if _, err := vsphere.ParseKind("resourcepool"); err == nil {
-		t.Error("expected an unknown kind to be rejected")
-	}
-}

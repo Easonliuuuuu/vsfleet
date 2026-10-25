@@ -32,29 +32,6 @@ const (
 // AllKinds lists every browsable kind the inventory API can enumerate.
 var AllKinds = []Kind{KindVM, KindTemplate, KindHost, KindCluster, KindDatastore, KindNetwork, KindVApp}
 
-// ParseKind maps a user-supplied string onto a Kind, tolerating plurals.
-// KindResourcePool is intentionally omitted because it is capture-only.
-func ParseKind(s string) (Kind, error) {
-	switch s {
-	case "vm", "vms", "virtualmachine", "virtualmachines":
-		return KindVM, nil
-	case "template", "templates":
-		return KindTemplate, nil
-	case "host", "hosts", "esxi":
-		return KindHost, nil
-	case "cluster", "clusters":
-		return KindCluster, nil
-	case "vapp", "vapps", "virtualapp", "virtualapps":
-		return KindVApp, nil
-	case "datastore", "datastores", "ds":
-		return KindDatastore, nil
-	case "network", "networks", "portgroup", "portgroups":
-		return KindNetwork, nil
-	default:
-		return "", fmt.Errorf("unknown resource kind %q (supported: vm, template, host, cluster, vapp, datastore, network)", s)
-	}
-}
-
 // Location says where in the world an object lives. Every domain object embeds
 // it, because with several vCenters in play "which one" is part of identity.
 type Location struct {

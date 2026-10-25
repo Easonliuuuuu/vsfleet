@@ -13,6 +13,7 @@ import (
 
 	"github.com/pelletier/go-toml/v2"
 
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -142,21 +143,7 @@ func (d Definition) Compile() (Compiled, error) {
 
 // ParseKind accepts every kind an assessment stores metadata for.
 func ParseKind(raw string) (vsphere.Kind, error) {
-	value := strings.ToLower(strings.TrimSpace(raw))
-	switch value {
-	case "resourcepool", "resourcepools":
-		return vsphere.KindResourcePool, nil
-	case "dvswitch", "dvswitches":
-		return vsphere.KindDVSwitch, nil
-	}
-	kind, err := vsphere.ParseKind(value)
-	if err != nil {
-		return "", err
-	}
-	if !isMetadataKind(kind) {
-		return "", fmt.Errorf("kind %q is not stored in assessments", raw)
-	}
-	return kind, nil
+	return apiresource.ParseInventory(raw, MetadataKinds)
 }
 
 func parseColumn(name string, kinds []vsphere.Kind) (column, error) {

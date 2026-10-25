@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
@@ -938,7 +939,7 @@ type Model struct {
 func New(ctx context.Context, backend Backend, opts Options) *Model {
 	contexts := backend.Contexts()
 	kind := vsphere.KindVM
-	if k, err := vsphere.ParseKind(opts.Kind); err == nil {
+	if k, err := apiresource.ParseInventory(opts.Kind, vsphere.AllKinds); err == nil {
 		kind = k
 	}
 	sm := sortByName

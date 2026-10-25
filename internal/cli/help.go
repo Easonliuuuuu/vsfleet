@@ -6,6 +6,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // Command groups for the root help listing. A flat alphabetical list of every
@@ -38,7 +41,12 @@ func inGroup(id string, cmd *cobra.Command) *cobra.Command {
 // topologyKinds are the subjects the topology, dependencies and blast-radius
 // queries accept. Listing them in help and in ValidArgs is the difference
 // between "KIND NAME" being a shape and being an instruction.
-var topologyKinds = []string{"vm", "template", "host", "cluster", "datastore", "network", "dvswitch", "resourcepool"}
+var topologyInventoryKinds = []vsphere.Kind{
+	vsphere.KindVM, vsphere.KindTemplate, vsphere.KindHost, vsphere.KindCluster,
+	vsphere.KindDatastore, vsphere.KindNetwork, vsphere.KindDVSwitch, vsphere.KindResourcePool,
+}
+
+var topologyKinds = apiresource.InventoryNames(topologyInventoryKinds)
 
 // unknownSubcommandError reports a mistyped command the way a user can act on:
 // the name that failed, the closest matches, and where to look for the rest.

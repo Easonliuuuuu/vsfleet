@@ -85,10 +85,10 @@ func hostSubresourceCommand[T any](a *App, short string, headers []string, extra
 // one piece of storage or network evidence, e.g. "host hba list". path is
 // the full command path ("host hba"), used only to generate an example —
 // Use holds just this command's own name, the way cobra expects.
-func hostSubgroup(name string, aliases []string, short, path string, list *cobra.Command) *cobra.Command {
+func hostSubgroup(name, short, path string, list *cobra.Command) *cobra.Command {
 	cmd := requireSubcommand(&cobra.Command{
 		Use:     name,
-		Aliases: aliases,
+		Aliases: kindAliases(name),
 		Short:   short,
 		Example: fmt.Sprintf(`  # List on the current context
   vsfleet %[1]s list

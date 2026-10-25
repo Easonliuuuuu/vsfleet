@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -226,35 +227,35 @@ func objectMetadata(value any) (vsphere.Metadata, bool) {
 // newInventoryCommands builds one command group per resource kind. They all
 // share the same shape so that "vsfleet <kind> list" is predictable.
 func newInventoryCommands(a *App) []*cobra.Command {
-	vm := group("vm", []string{"vms", "virtualmachine"}, "Virtual machines", newVMListCommand(a))
+	vm := group("vm", "Virtual machines", newVMListCommand(a))
 	vm.AddCommand(newVMShowCommand(a))
 	vm.AddCommand(newVMHistoryCommand(a))
 	vm.AddCommand(newVMEventsCommand(a))
 	vm.AddCommand(newVMDecommissionCheckCommand(a))
-	tmpl := group("template", []string{"templates", "tpl"}, "VM templates", newTemplateListCommand(a))
+	tmpl := group("template", "VM templates", newTemplateListCommand(a))
 	tmpl.AddCommand(newTemplateShowCommand(a))
-	host := group("host", []string{"hosts", "esxi"}, "ESXi hosts", newHostListCommand(a))
+	host := group("host", "ESXi hosts", newHostListCommand(a))
 	host.AddCommand(newHostShowCommand(a))
-	host.AddCommand(hostSubgroup("hba", []string{"hbas"}, "Host bus adapters", "host hba", newHostHBAListCommand(a)))
-	host.AddCommand(hostSubgroup("multipath", []string{"multipaths", "mp"}, "Host/LUN multipath aggregates", "host multipath", newHostMultipathListCommand(a)))
-	host.AddCommand(hostSubgroup("pnic", []string{"pnics"}, "Physical NICs", "host pnic", newHostPNICListCommand(a)))
-	host.AddCommand(hostSubgroup("vswitch", []string{"vswitches", "vss"}, "Standard virtual switches", "host vswitch", newHostVSwitchListCommand(a)))
-	host.AddCommand(hostSubgroup("portgroup", []string{"portgroups", "pg"}, "Standard-switch port groups", "host portgroup", newHostPortGroupListCommand(a)))
-	host.AddCommand(hostSubgroup("vmkernel", []string{"vmkernels", "vmk", "vmks"}, "VMkernel adapters", "host vmkernel", newHostVMKernelListCommand(a)))
-	cluster := group("cluster", []string{"clusters"}, "Compute clusters", newClusterListCommand(a))
+	host.AddCommand(hostSubgroup("hba", "Host bus adapters", "host hba", newHostHBAListCommand(a)))
+	host.AddCommand(hostSubgroup("multipath", "Host/LUN multipath aggregates", "host multipath", newHostMultipathListCommand(a)))
+	host.AddCommand(hostSubgroup("pnic", "Physical NICs", "host pnic", newHostPNICListCommand(a)))
+	host.AddCommand(hostSubgroup("vswitch", "Standard virtual switches", "host vswitch", newHostVSwitchListCommand(a)))
+	host.AddCommand(hostSubgroup("portgroup", "Standard-switch port groups", "host portgroup", newHostPortGroupListCommand(a)))
+	host.AddCommand(hostSubgroup("vmkernel", "VMkernel adapters", "host vmkernel", newHostVMKernelListCommand(a)))
+	cluster := group("cluster", "Compute clusters", newClusterListCommand(a))
 	cluster.AddCommand(newClusterShowCommand(a))
-	vapp := group("vapp", []string{"vapps", "virtualapp"}, "vSphere vApps", newVAppListCommand(a))
+	vapp := group("vapp", "vSphere vApps", newVAppListCommand(a))
 	vapp.AddCommand(newVAppShowCommand(a))
-	netw := group("network", []string{"networks", "portgroup"}, "Networks and port groups", newNetworkListCommand(a))
+	netw := group("network", "Networks and port groups", newNetworkListCommand(a))
 	netw.AddCommand(newNetworkShowCommand(a))
 	netw.AddCommand(newNetworkCompareCommand(a))
-	ds := group("datastore", []string{"datastores", "ds"}, "Datastores", newDatastoreListCommand(a))
+	ds := group("datastore", "Datastores", newDatastoreListCommand(a))
 	ds.AddCommand(newDatastoreShowCommand(a))
 	ds.AddCommand(newDatastoreFilesCommand(a))
-	dvswitch := group("dvswitch", []string{"dvswitches", "vds"}, "Distributed virtual switches", newDVSwitchListCommand(a))
-	dvportgroup := group("dvportgroup", []string{"dvportgroups", "dvpg"}, "Distributed port groups", newDVPortGroupListCommand(a))
-	resourcepool := group("resourcepool", []string{"resourcepools", "rp"}, "Resource pools", newResourcePoolListCommand(a))
-	snapshot := group("snapshot", []string{"snapshots", "snap"}, "VM snapshots", newSnapshotListCommand(a))
+	dvswitch := group("dvswitch", "Distributed virtual switches", newDVSwitchListCommand(a))
+	dvportgroup := group("dvportgroup", "Distributed port groups", newDVPortGroupListCommand(a))
+	resourcepool := group("resourcepool", "Resource pools", newResourcePoolListCommand(a))
+	snapshot := group("snapshot", "VM snapshots", newSnapshotListCommand(a))
 	return []*cobra.Command{
 		vm,
 		tmpl,
@@ -322,10 +323,16 @@ vCenter.`), Example: `  # Every recorded change for a VM
 	return cmd
 }
 
-func group(name string, aliases []string, short string, sub *cobra.Command) *cobra.Command {
+// kindAliases returns every spelling of a registered kind except its
+// canonical name, so a command and a --kind flag accept the same words.
+func kindAliases(name string) []string {
+	return apiresource.Get(name).Names()[1:]
+}
+
+func group(name, short string, sub *cobra.Command) *cobra.Command {
 	cmd := requireSubcommand(&cobra.Command{
 		Use:     name,
-		Aliases: aliases,
+		Aliases: kindAliases(name),
 		Short:   short,
 		Example: fmt.Sprintf(`  # List on the current context
   vsfleet %[1]s list

@@ -17,6 +17,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
@@ -97,6 +98,10 @@ type storedInventoryItem struct {
 	Object  json.RawMessage `json:"object"`
 }
 
+// storedInventoryKinds are the inventory kinds an assessment capture records
+// and "assessment inventory --kind" can select.
+var storedInventoryKinds = append(append([]vsphere.Kind(nil), vsphere.AllKinds...), vsphere.KindResourcePool, vsphere.KindDVSwitch)
+
 func newAssessmentInventoryCommand(a *App) *cobra.Command {
 	var kinds, where []string
 	var wide bool
@@ -107,17 +112,9 @@ func newAssessmentInventoryCommand(a *App) *cobra.Command {
   vsfleet assessment inventory --kind host,datastore --where 'cpu_cores>=8'`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		parsed := make([]vsphere.Kind, 0, len(kinds))
 		for _, value := range kinds {
-			value = strings.ToLower(strings.TrimSpace(value))
-			kind, err := vsphere.ParseKind(value)
+			kind, err := apiresource.ParseInventory(value, storedInventoryKinds)
 			if err != nil {
-				switch value {
-				case "resourcepool", "resourcepools":
-					kind = vsphere.KindResourcePool
-				case "dvswitch", "dvswitches":
-					kind = vsphere.KindDVSwitch
-				default:
-					return err
-				}
+				return err
 			}
 			parsed = append(parsed, kind)
 		}

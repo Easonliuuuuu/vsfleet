@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 	"github.com/easonliuuuuu/vsfleet/internal/topology"
 )
 
@@ -89,12 +90,8 @@ func newTopologyQueryCommand(a *App, direction topologyDirection, use string, al
 		// Only the first positional argument comes from a fixed vocabulary;
 		// NAME and RUN are estate data, so completion stops after KIND rather
 		// than offering the kind list again in their place.
-		ValidArgs: topologyKinds,
-		ArgAliases: []string{
-			"vms", "virtualmachine", "templates", "tpl", "hosts", "esxi",
-			"clusters", "datastores", "ds", "networks", "portgroup",
-			"dvswitches", "resourcepools", "pool",
-		},
+		ValidArgs:  topologyKinds,
+		ArgAliases: apiresource.InventoryAliases(topologyInventoryKinds),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTopologyQuery(cmd, a, args, direction, 1)
 		},
@@ -102,10 +99,11 @@ func newTopologyQueryCommand(a *App, direction topologyDirection, use string, al
 }
 
 func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topologyDirection, depth int) error {
-	kind, err := topology.ParseKind(args[0])
+	inventoryKind, err := apiresource.ParseInventory(args[0], topologyInventoryKinds)
 	if err != nil {
 		return err
 	}
+	kind := topology.Kind(inventoryKind)
 	if depth < 1 || depth > 5 {
 		return fmt.Errorf("--depth must be between 1 and 5")
 	}

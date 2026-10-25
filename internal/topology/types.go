@@ -3,11 +3,6 @@
 // sessions, or a live vCenter.
 package topology
 
-import (
-	"fmt"
-	"strings"
-)
-
 type Kind string
 
 const (
@@ -20,31 +15,6 @@ const (
 	KindDVSwitch     Kind = "dvswitch"
 	KindResourcePool Kind = "resourcepool"
 )
-
-// ParseKind accepts the query vocabulary, including capture-only kinds and
-// their common plurals.
-func ParseKind(value string) (Kind, error) {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "vm", "vms", "virtualmachine", "virtualmachines":
-		return KindVM, nil
-	case "template", "templates", "tpl":
-		return KindTemplate, nil
-	case "host", "hosts", "esxi":
-		return KindHost, nil
-	case "cluster", "clusters":
-		return KindCluster, nil
-	case "datastore", "datastores", "ds":
-		return KindDatastore, nil
-	case "network", "networks", "portgroup", "portgroups":
-		return KindNetwork, nil
-	case "dvswitch", "dvswitches", "distributed-switch", "distributed-switches":
-		return KindDVSwitch, nil
-	case "resourcepool", "resourcepools", "resource-pool", "resource-pools", "pool", "pools":
-		return KindResourcePool, nil
-	default:
-		return "", fmt.Errorf("unknown kind %q (supported: vm, template, host, cluster, datastore, network, dvswitch, resourcepool)", value)
-	}
-}
 
 type Relation string
 

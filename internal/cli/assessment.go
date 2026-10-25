@@ -976,10 +976,10 @@ func newAssessmentBackupCommand(a *App) *cobra.Command {
 
 func newAssessmentRestoreCommand(a *App) *cobra.Command {
 	var force bool
-	cmd := &cobra.Command{Use: "restore FILE", Short: "Restore SQLite history from a backup", Example: `  # Restore into a fresh history database
+	cmd := &cobra.Command{Use: "restore FILE", Short: "Restore SQLite history from a backup", Example: `  # Restore into a history database that holds no history yet
   vsfleet assessment restore ./vsfleet-history.db
 
-  # Replace the history database in place (destructive, so it must be confirmed)
+  # Replace existing history in place (destructive, so it must be confirmed)
   vsfleet assessment restore ./vsfleet-history.db --force`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if err := rejectStoredContextSelection(cmd, "restore"); err != nil {
 			return err
@@ -998,7 +998,7 @@ func newAssessmentRestoreCommand(a *App) *cobra.Command {
 		fmt.Fprintf(a.out(), "history restored from %s\npre-restore safety backup: %s\n", args[0], safety)
 		return nil
 	}}
-	cmd.Flags().BoolVar(&force, "force", false, "confirm in-place restore")
+	cmd.Flags().BoolVar(&force, "force", false, "confirm replacing existing history")
 	return cmd
 }
 

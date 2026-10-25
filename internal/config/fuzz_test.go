@@ -10,7 +10,7 @@ import (
 
 // FuzzLoadSaveRoundTrip loads arbitrary configuration text. Anything Load
 // accepts must survive vsfleet's own Save and load back to the same
-// contexts: `context add` and `context remove` rewrite the file this way, so
+// contexts: `config set-context` and `config delete-context` rewrite the file this way, so
 // a lossy round trip would silently change an operator's configuration.
 func FuzzLoadSaveRoundTrip(f *testing.F) {
 	f.Add(sample)

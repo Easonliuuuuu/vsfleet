@@ -22,8 +22,7 @@ job. Store its reference in `config.toml`, never the password.
 
 ```sh
 VCENTER_PASSWORD="$CI_VCENTER_SECRET" \
-  vsfleet context add \
-  --name prod \
+  vsfleet config set-context prod \
   --endpoint https://vcsa.example.internal \
   --username administrator@vsphere.local \
   --credential env:VCENTER_PASSWORD \
@@ -54,7 +53,7 @@ exec cat "$CREDENTIALS_DIRECTORY/vcenter"
 Configure the context before starting the unit:
 
 ```sh
-vsfleet context add --name prod \
+vsfleet config set-context prod \
   --endpoint https://vcsa.example.internal \
   --username administrator@vsphere.local \
   --credential exec:/usr/local/bin/vsfleet-systemd-credential \
@@ -78,7 +77,7 @@ exec vault read -field=password "secret/vcenter/$VSFLEET_CONTEXT"
 ```
 
 ```sh
-vsfleet context add --name prod \
+vsfleet config set-context prod \
   --endpoint https://vcsa.example.internal \
   --username administrator@vsphere.local \
   --credential exec:/usr/local/bin/vsfleet-credential \
@@ -128,8 +127,7 @@ confidence. See [Capacity projection](assessments.md#capacity-attribution-and-pr
 Resolve a hostname inside an isolated network through a bastion:
 
 ```sh
-vsfleet context add \
-  --name customer-a \
+vsfleet config set-context customer-a \
   --endpoint https://vcsa.customer-a.internal \
   --username operator@vsphere.local \
   --credential keyring:customer-a \

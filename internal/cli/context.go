@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/contextops"
@@ -16,48 +17,8 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-func newContextCommand(a *App) *cobra.Command {
-	cmd := requireSubcommand(&cobra.Command{
-		Use:     "context",
-		Aliases: []string{"contexts", "ctx"},
-		Short:   "Manage vCenter contexts",
-		Long: strings.TrimSpace(`
-A context names one vCenter and everything needed to reach it: endpoint,
-credential reference, network route and TLS policy. Contexts are independent,
-so a lab reached directly and a customer vCenter reached through a SOCKS5
-proxy work side by side.
-
-Passwords are never written to the configuration file. The file records a
-reference; the secret lives in the OS keyring or comes from a prompt, an
-environment variable, a file or a program at the moment it is needed.`),
-		Example: `  # Add a context interactively
-  vsfleet context add
-
-  # Add one unattended, from a provisioning script
-  vsfleet context add --name prod \
-    --endpoint https://vcsa.example.internal \
-    --username svc-ro@vsphere.local --password-stdin < secret.txt
-
-  # See what is configured and which one is current
-  vsfleet context list
-
-  # Switch the current context, then confirm it works
-  vsfleet context use prod
-  vsfleet context test prod`,
-	})
-	cmd.AddCommand(
-		newContextAddCommand(a),
-		newContextListCommand(a),
-		newContextUseCommand(a),
-		newContextShowCommand(a),
-		newContextRemoveCommand(a),
-		newContextTestCommand(a),
-	)
-	return cmd
-}
-
-// contextFlags mirror every field of a context so that "context add" works
-// unattended in a provisioning script as well as interactively.
+// contextFlags mirror every field of a context so that "config set-context"
+// works unattended in a provisioning script as well as interactively.
 type contextFlags struct {
 	name               string
 	endpoint           string
@@ -78,14 +39,20 @@ type contextFlags struct {
 	skipTest           bool
 	force              bool
 	setCurrent         bool
+	// editing is set when the named context already exists, so the wizard
+	// offers its current values and a blank password keeps the stored one.
+	editing bool
 }
+
+// contextBehaviourFlags change how set-context runs, not what it saves, so
+// passing only these to an existing context leaves nothing to change.
+var contextBehaviourFlags = map[string]bool{"no-test": true, "force": true}
 
 func (f *contextFlags) register(cmd *cobra.Command) {
 	fl := cmd.Flags()
-	fl.StringVar(&f.name, "name", "", "context name")
 	fl.StringVar(&f.endpoint, "endpoint", "", "vCenter endpoint, e.g. https://vcsa.example.internal")
 	fl.StringVar(&f.username, "username", "", "vCenter username, e.g. administrator@vsphere.local")
-	fl.StringVar(&f.via, "via", "", "parent context this was added from (context add --force drops it unless --via is passed again)")
+	fl.StringVar(&f.via, "via", "", "parent context this was added from")
 	fl.StringVar(&f.viaMoRef, "via-moref", "", "managed object reference of the VM this was added from")
 	fl.StringVar(&f.credential, "credential", "", "credential reference: keyring:<key>, prompt, env:<VAR>, file:<path> or exec:<program>")
 	fl.StringVar(&f.datacenter, "datacenter", "", "default datacenter for inventory queries")
@@ -99,81 +66,157 @@ func (f *contextFlags) register(cmd *cobra.Command) {
 	fl.BoolVar(&f.passwordStdin, "password-stdin", false, "read the password from standard input")
 	fl.BoolVar(&f.proxyPasswordStdin, "proxy-password-stdin", false, "read the proxy password from standard input, after the vCenter password if both are piped in")
 	fl.BoolVar(&f.skipTest, "no-test", false, "save without testing the connection")
-	fl.BoolVar(&f.force, "force", false, "replace an existing context of the same name")
+	fl.BoolVar(&f.force, "force", false, "save even if the connection test fails")
 	fl.BoolVar(&f.setCurrent, "use", false, "make this the current context")
 }
 
-func newContextAddCommand(a *App) *cobra.Command {
+// apply copies the flags that were passed onto an existing context. A flag
+// left out keeps the saved value, so changing one setting does not mean
+// restating the rest. Switching the route or the certificate policy starts
+// that section clean: a proxy address or a pinned fingerprint means nothing
+// under a different one.
+func (f *contextFlags) apply(cc *config.Context, fl *pflag.FlagSet) {
+	set := func(name string, dst *string, v string) {
+		if fl.Changed(name) {
+			*dst = v
+		}
+	}
+	set("endpoint", &cc.Endpoint, f.endpoint)
+	set("username", &cc.Username, f.username)
+	set("via", &cc.Via, f.via)
+	set("via-moref", &cc.ViaMoRef, f.viaMoRef)
+	set("datacenter", &cc.Datacenter, f.datacenter)
+	if fl.Changed("transport") && f.transport != cc.Transport.Type {
+		cc.Transport = config.TransportConfig{Type: f.transport}
+	}
+	set("proxy-address", &cc.Transport.Address, f.proxyAddress)
+	set("proxy-username", &cc.Transport.Username, f.proxyUsername)
+	if fl.Changed("remote-dns") {
+		cc.Transport.RemoteDNS = f.remoteDNS
+	}
+	if fl.Changed("tls") && f.tlsMode != cc.TLS.Mode {
+		cc.TLS = config.TLSConfig{Mode: f.tlsMode}
+	}
+	set("thumbprint", &cc.TLS.Thumbprint, f.thumbprint)
+}
+
+// changesSettings reports whether any flag that alters the saved context was
+// passed. fl holds the command's own flags; --config and the other global
+// flags never change a context.
+func changesSettings(fl *pflag.FlagSet) bool {
+	changed := false
+	fl.VisitAll(func(fl *pflag.Flag) {
+		if fl.Changed && !contextBehaviourFlags[fl.Name] {
+			changed = true
+		}
+	})
+	return changed
+}
+
+func newSetContextCommand(a *App) *cobra.Command {
 	var f contextFlags
 	cmd := &cobra.Command{
-		Use:   "add",
-		Short: "Add a vCenter context",
+		Use:   "set-context [name]",
+		Short: "Add a vCenter context or change one",
 		Example: `  # Interactive wizard
-  vsfleet context add
+  vsfleet config set-context
 
   # Unattended, password piped in and stored in the OS keyring
-  vsfleet context add --name prod \
+  vsfleet config set-context prod \
     --endpoint https://vcsa.example.internal \
     --username svc-ro@vsphere.local --password-stdin < secret.txt
 
+  # Change one setting of an existing context; the rest is kept
+  vsfleet config set-context prod --datacenter DC1
+
+  # Rotate the stored password
+  vsfleet config set-context prod --password-stdin < secret.txt
+
   # Through a SOCKS5 proxy, resolving DNS at the proxy
-  vsfleet context add --name customer-a \
+  vsfleet config set-context customer-a \
     --endpoint https://vcsa.internal --username svc-ro@vsphere.local \
     --transport socks5 --proxy-address bastion.example.net:1080 --remote-dns
 
   # Pin the presented certificate instead of trusting the system store
-  vsfleet context add --name lab --endpoint https://vcsa.lab \
+  vsfleet config set-context lab --endpoint https://vcsa.lab \
     --username administrator@vsphere.local --tls thumbprint
 
   # Take the password from a secret manager at connect time
-  vsfleet context add --name ci --endpoint https://vcsa.example.internal \
+  vsfleet config set-context ci --endpoint https://vcsa.example.internal \
     --username svc-ro@vsphere.local --credential "exec:vault-read vsphere/ci"`,
-		Long: `Add a vCenter context.
+		Long: `Add a vCenter context, or change one that exists.
 
-Run without flags for an interactive wizard. Pass --name, --endpoint and
---username to add a context unattended, which is what a provisioning script
-wants. The password is never written to the configuration file: it goes to
-the operating system keyring, and the file records only a reference to it.`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runContextAdd(cmd.Context(), a, &f)
+A new context needs a name, --endpoint and --username; on a terminal, the
+wizard asks for whatever is missing. For an existing context, only the flags
+passed change and everything else is kept. Run it on a terminal with no flags
+to walk the wizard with the current values filled in.
+
+The connection is tested before anything is saved. The password is never
+written to the configuration file: it goes to the operating system keyring,
+and the file records only a reference to it.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				f.name = args[0]
+			}
+			return runSetContext(cmd.Context(), a, &f, cmd.LocalFlags())
 		},
 	}
 	f.register(cmd)
 	return cmd
 }
 
-func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
+func runSetContext(ctx context.Context, a *App, f *contextFlags, fl *pflag.FlagSet) error {
 	cfg, err := a.Config()
 	if err != nil {
 		return err
 	}
-	interactive := f.name == "" || f.endpoint == "" || f.username == ""
-	p := a.Prompt()
-	if interactive && !p.Interactive() {
-		return errors.New("context add needs --name, --endpoint and --username when standard input is not a terminal")
+	var existing *config.Context
+	if f.name != "" {
+		if c, err := cfg.Context(f.name); err == nil {
+			existing = c
+		}
+	}
+	f.editing = existing != nil
+
+	var cc *config.Context
+	if existing != nil {
+		c := *existing
+		cc = &c
+		f.apply(cc, fl)
+	} else {
+		cc = &config.Context{
+			Name:       f.name,
+			Endpoint:   f.endpoint,
+			Username:   f.username,
+			Via:        f.via,
+			ViaMoRef:   f.viaMoRef,
+			Datacenter: f.datacenter,
+			Transport: config.TransportConfig{
+				Type:      f.transport,
+				Address:   f.proxyAddress,
+				Username:  f.proxyUsername,
+				RemoteDNS: f.remoteDNS,
+			},
+			TLS: config.TLSConfig{Mode: f.tlsMode, Thumbprint: f.thumbprint},
+		}
 	}
 
-	cc := &config.Context{
-		Name:       f.name,
-		Endpoint:   f.endpoint,
-		Username:   f.username,
-		Via:        f.via,
-		ViaMoRef:   f.viaMoRef,
-		Datacenter: f.datacenter,
-		Transport: config.TransportConfig{
-			Type:      f.transport,
-			Address:   f.proxyAddress,
-			Username:  f.proxyUsername,
-			RemoteDNS: f.remoteDNS,
-		},
-		TLS: config.TLSConfig{Mode: f.tlsMode, Thumbprint: f.thumbprint},
+	interactive := cc.Name == "" || cc.Endpoint == "" || cc.Username == "" ||
+		(existing != nil && !changesSettings(fl))
+	p := a.Prompt()
+	if interactive && !p.Interactive() {
+		if existing != nil {
+			return fmt.Errorf("set-context %s: nothing to change; pass the settings to change, or run it on a terminal for the wizard", existing.Name)
+		}
+		return errors.New("set-context needs a name, --endpoint and --username when standard input is not a terminal")
 	}
 
 	// The credential references are parsed before any password is read, so a
 	// reference that cannot hold a password rejects the request without first
-	// consuming the operator's standard input.
-	var credRef credentials.Ref
+	// consuming the operator's standard input. An existing context keeps the
+	// references it has unless new ones are passed.
+	credRef := cc.Credential
 	if f.credential != "" {
 		ref, err := credentials.ParseRef(f.credential)
 		if err != nil {
@@ -181,7 +224,7 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		}
 		credRef = ref
 	}
-	var proxyCredRef credentials.Ref
+	proxyCredRef := cc.Transport.Credential
 	if f.proxyCredential != "" {
 		ref, err := credentials.ParseRef(f.proxyCredential)
 		if err != nil {
@@ -223,7 +266,7 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		if err := runAddWizard(ctx, a, cc, f); err != nil {
 			return err
 		}
-		if credRef.IsZero() {
+		if f.credential == "" {
 			credRef = cc.Credential
 		}
 		// env, file and exec resolve the password themselves, and the
@@ -232,18 +275,19 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		// unattended run. A password typed here would be tested instead and
 		// then thrown away.
 		if !havePassword && !credRef.NonInteractive() {
-			s, err := p.ReadSecret(fmt.Sprintf("Password for %s: ", cc.Username))
+			s, err := readWizardSecret(p, fmt.Sprintf("Password for %s", cc.Username), existing != nil)
 			if err != nil {
 				return err
 			}
-			password, havePassword = s, true
+			password, havePassword = s, s != "" || existing == nil
 		}
 		if cc.Transport.Username != "" && !haveProxyPassword {
-			s, err := p.ReadSecret(fmt.Sprintf("Password for proxy user %s: ", cc.Transport.Username))
+			keep := existing != nil && existing.Transport.Username != ""
+			s, err := readWizardSecret(p, fmt.Sprintf("Password for proxy user %s", cc.Transport.Username), keep)
 			if err != nil {
 				return err
 			}
-			proxyPassword, haveProxyPassword = s, true
+			proxyPassword, haveProxyPassword = s, s != "" || !keep
 		}
 	}
 
@@ -261,7 +305,10 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 		Transport: cc.Transport, TLS: cc.TLS, Credential: credRef,
 		Password: password, HavePassword: havePassword,
 		ProxyCredential: proxyCredRef, ProxyPassword: proxyPassword, HaveProxyPassword: haveProxyPassword,
-		Replace: f.force, SaveOnTestFailure: f.force, SetCurrent: f.setCurrent,
+		Replace: existing != nil, SaveOnTestFailure: f.force, SetCurrent: f.setCurrent,
+		// Moving a context to another password source is an explicit choice,
+		// so the keyring entry it leaves behind goes with it.
+		DropReplacedKeyring: existing != nil && f.credential != "",
 	}
 
 	if !f.skipTest {
@@ -280,16 +327,34 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 	}
 	if err != nil {
 		if res != nil && res.Diagnosis != nil && !res.Diagnosis.OK() {
-			return fmt.Errorf("connection test failed; fix the problem or pass --no-test to save anyway")
+			return fmt.Errorf("connection test failed; fix the problem, or pass --force to save anyway or --no-test to skip the test")
 		}
 		return err
 	}
 	if res.StoreWarning != nil {
 		fmt.Fprintf(a.errOut(), "warning: %v\n", res.StoreWarning)
-		fmt.Fprintf(a.errOut(), "vsfleet will ask for it on each run. To run unattended instead, add the context again with --force and\n--credential env:<VAR>, file:<path> or exec:<program>.\n")
+		fmt.Fprintf(a.errOut(), "vsfleet will ask for it on each run. To run unattended instead, run \"vsfleet config set-context %s\" with\n--credential env:<VAR>, file:<path> or exec:<program>.\n", res.Context.Name)
 	}
-	fmt.Fprintf(a.out(), "Saved context %q to %s\n", res.Context.Name, cfg.Path())
+	if res.DropWarning != nil {
+		fmt.Fprintf(a.errOut(), "warning: %v\n", res.DropWarning)
+	} else if !res.Dropped.IsZero() {
+		fmt.Fprintf(a.errOut(), "Removed the old password %s from the keyring.\n", res.Dropped)
+	}
+	verb := "created"
+	if existing != nil {
+		verb = "modified"
+	}
+	fmt.Fprintf(a.out(), "Context %q %s in %s\n", res.Context.Name, verb, cfg.Path())
 	return nil
+}
+
+// readWizardSecret asks for a password. When keep is set a stored one already
+// exists, and a blank answer keeps it.
+func readWizardSecret(p *credentials.Prompt, label string, keep bool) (string, error) {
+	if keep {
+		label += " (Enter keeps the current one)"
+	}
+	return p.ReadSecret(label + ": ")
 }
 
 // runAddWizard fills in whatever the flags left empty. Editing TOML by hand is
@@ -297,7 +362,11 @@ func runContextAdd(ctx context.Context, a *App, f *contextFlags) error {
 func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFlags) error {
 	p := a.Prompt()
 	out := a.errOut()
-	fmt.Fprintln(out, "Add vCenter")
+	if f.editing {
+		fmt.Fprintf(out, "Edit vCenter %s\n", cc.Name)
+	} else {
+		fmt.Fprintln(out, "Add vCenter")
+	}
 	fmt.Fprintln(out)
 
 	ask := func(label, current string, required bool) (string, error) {
@@ -359,8 +428,12 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 	}
 
 	var err error
-	if cc.Name, err = ask("Name", cc.Name, true); err != nil {
-		return err
+	// A name given on the command line is not asked again; an existing
+	// context cannot be renamed here.
+	if cc.Name == "" {
+		if cc.Name, err = ask("Name", cc.Name, true); err != nil {
+			return err
+		}
 	}
 	if cc.Endpoint, err = ask("Endpoint", cc.Endpoint, true); err != nil {
 		return err
@@ -373,7 +446,8 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 	// rather than taking the password, failing to store it, and downgrading
 	// to a prompt on every run behind a warning. A password already piped in
 	// with --password-stdin is a request for the keyring; leave it to Save.
-	if f.credential == "" && !f.passwordStdin {
+	// An existing context keeps the source it has.
+	if f.credential == "" && !f.passwordStdin && cc.Credential.IsZero() {
 		if perr := a.Resolver().CheckAvailable(ctx, credentials.SchemeKeyring); perr != nil {
 			if cc.Credential, err = chooseCredentialSource(ask, choose, out, perr); err != nil {
 				return err
@@ -383,16 +457,19 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 	if f.transport == "" {
 		if cc.Transport.Type, err = choose("Connection", []string{
 			config.TransportDirect, config.TransportSOCKS5, config.TransportHTTPProxy, config.TransportHTTPSProxy,
-		}, config.TransportDirect); err != nil {
+		}, firstNonEmpty(cc.Transport.Type, config.TransportDirect)); err != nil {
 			return err
 		}
 	}
-	if cc.Transport.Type != config.TransportDirect {
+	if cc.Transport.Type == config.TransportDirect {
+		// An edit that drops the proxy drops its settings with it.
+		cc.Transport = config.TransportConfig{Type: config.TransportDirect}
+	} else {
 		if cc.Transport.Address, err = ask("Proxy address", firstNonEmpty(cc.Transport.Address, "127.0.0.1:1080"), true); err != nil {
 			return err
 		}
 		if cc.Transport.Type == config.TransportSOCKS5 && !f.remoteDNS {
-			if cc.Transport.RemoteDNS, err = yes("Resolve DNS through the proxy?", true); err != nil {
+			if cc.Transport.RemoteDNS, err = yes("Resolve DNS through the proxy?", !f.editing || cc.Transport.RemoteDNS); err != nil {
 				return err
 			}
 		}
@@ -401,7 +478,7 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 		}
 	}
 	if f.tlsMode == "" {
-		if cc.TLS.Mode, err = choose("Certificate policy", []string{config.TLSSystem, config.TLSThumbprint, config.TLSInsecure}, config.TLSSystem); err != nil {
+		if cc.TLS.Mode, err = choose("Certificate policy", []string{config.TLSSystem, config.TLSThumbprint, config.TLSInsecure}, firstNonEmpty(cc.TLS.Mode, config.TLSSystem)); err != nil {
 			return err
 		}
 	}
@@ -496,260 +573,4 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
-}
-
-func newContextListCommand(a *App) *cobra.Command {
-	return &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   "List configured contexts",
-		Example: `  # Every context, with the current one marked
-  vsfleet context list
-
-  # As JSON
-  vsfleet context list -o json`,
-		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := a.Config()
-			if err != nil {
-				return err
-			}
-			if a.json() {
-				return writeJSON(a.out(), cfg.Contexts)
-			}
-			if len(cfg.Contexts) == 0 {
-				fmt.Fprintf(a.out(), "No contexts configured. Run \"vsfleet context add\".\n")
-				return nil
-			}
-			t := newTable(a.out(), "", "NAME", "ENDPOINT", "USERNAME", "ROUTE", "TLS")
-			for _, c := range cfg.Contexts {
-				marker := " "
-				if c.Name == cfg.CurrentContext {
-					marker = "*"
-				}
-				t.row(marker, c.Name, c.Endpoint, c.Username, c.Transport.Describe(), c.TLS.Mode)
-			}
-			t.flush()
-			return nil
-		},
-	}
-}
-
-func newContextUseCommand(a *App) *cobra.Command {
-	return &cobra.Command{
-		Use: "use <name>",
-		Example: `  # Make prod the current context
-  vsfleet context use prod`,
-		Short: "Set the current context",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := a.Config()
-			if err != nil {
-				return err
-			}
-			c, err := cfg.Context(args[0])
-			if err != nil {
-				return err
-			}
-			cfg.CurrentContext = c.Name
-			if err := cfg.Save(); err != nil {
-				return err
-			}
-			fmt.Fprintf(a.out(), "Current context is now %q\n", c.Name)
-			return nil
-		},
-	}
-}
-
-func newContextShowCommand(a *App) *cobra.Command {
-	return &cobra.Command{
-		Use:   "show [name]",
-		Short: "Show one context in full",
-		Example: `  # The current context
-  vsfleet context show
-
-  # A named context
-  vsfleet context show prod
-
-  # As JSON, to diff against expected configuration
-  vsfleet context show prod -o json`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var name string
-			if len(args) == 1 {
-				name = args[0]
-			}
-			c, err := a.SingleContext(name)
-			if err != nil {
-				return err
-			}
-			if a.json() {
-				return writeJSON(a.out(), c)
-			}
-			fmt.Fprintf(a.out(), "Context: %s\n", c.Name)
-			f := newFields(a.out())
-			f.add("Endpoint", c.Endpoint)
-			f.add("Added from", c.Via)
-			f.add("Username", c.Username)
-			f.add("Credential", dash(c.Credential.String()))
-			f.add("Datacenter", c.Datacenter)
-			f.add("Route", c.Transport.Describe())
-			if c.Transport.Username != "" {
-				f.add("Proxy username", c.Transport.Username)
-				f.add("Proxy credential", dash(c.Transport.Credential.String()))
-			}
-			f.add("TLS", c.TLS.Describe())
-			f.add("Thumbprint", c.TLS.Thumbprint)
-			f.flush()
-			return nil
-		},
-	}
-}
-
-func newContextRemoveCommand(a *App) *cobra.Command {
-	var alsoCredential bool
-	cmd := &cobra.Command{
-		Use:     "remove <name>",
-		Aliases: []string{"rm", "delete"},
-		Short:   "Remove a context",
-		Example: `  # Remove a context and invalidate its session
-  vsfleet context remove lab`,
-		Args: cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := a.Config()
-			if err != nil {
-				return err
-			}
-			c, err := contextops.Remove(cfg, args[0])
-			if err != nil {
-				return err
-			}
-			if alsoCredential {
-				if err := contextops.DeleteCredentials(cmd.Context(), a.Resolver(), c); err != nil {
-					fmt.Fprintf(a.errOut(), "warning: could not remove stored password(s): %v\n", err)
-				}
-			}
-			fmt.Fprintf(a.out(), "Removed context %q\n", c.Name)
-			return nil
-		},
-	}
-	cmd.Flags().BoolVar(&alsoCredential, "with-credential", false, "also delete the stored password from the system keyring")
-	return cmd
-}
-
-func newContextTestCommand(a *App) *cobra.Command {
-	return &cobra.Command{
-		Use:   "test [name]",
-		Short: "Test the connection to a context",
-		Example: `  # Test the current context
-  vsfleet context test
-
-  # Test a named context with a short timeout
-  vsfleet context test prod --timeout 5s`,
-		Long: `Test the connection to a context.
-
-Every stage of the path is checked separately, because "cannot connect" is
-not a diagnosis: a dead proxy, an expired password and a rotated certificate
-all look the same from the outside.`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var name string
-			if len(args) == 1 {
-				name = args[0]
-			}
-			c, err := a.SingleContext(name)
-			if err != nil {
-				return err
-			}
-			ctx := cmd.Context()
-			diag, client := vsphere.Diagnose(ctx, c, a.ConnectOptions())
-			if client != nil {
-				_ = client.Close(context.WithoutCancel(ctx))
-			}
-			if a.json() {
-				if err := writeJSON(a.out(), diagnosisJSON(diag)); err != nil {
-					return err
-				}
-				return diag.Err()
-			}
-			printContextTest(a, diag)
-			return diag.Err()
-		},
-	}
-}
-
-// printContextTest renders the compact summary of a connection test.
-func printContextTest(a *App, d *vsphere.Diagnosis) {
-	out := a.out()
-	fmt.Fprintf(out, "Context: %s\n", d.Context)
-	f := newFields(out)
-	f.add("Endpoint", d.Endpoint)
-	f.add("Route", d.Route)
-	f.add("DNS", dnsSummary(d))
-	f.add("TLS", tlsSummary(d))
-	f.add("Auth", stageSummary(d, "Authentication"))
-	if d.About.Version != "" {
-		f.add("vCenter", d.About.FullVersion())
-	}
-	if d.Latency > 0 {
-		f.add("Latency", humanDuration(d.Latency))
-	}
-	f.flush()
-	if d.OK() {
-		fmt.Fprintln(out, "Connection successful.")
-		return
-	}
-	fmt.Fprintln(out)
-	printDiagnosis(a, d, false)
-}
-
-func stage(d *vsphere.Diagnosis, name string) *vsphere.Check {
-	for i := range d.Checks {
-		if d.Checks[i].Name == name {
-			return &d.Checks[i]
-		}
-	}
-	return nil
-}
-
-func stageSummary(d *vsphere.Diagnosis, name string) string {
-	c := stage(d, name)
-	switch {
-	case c == nil:
-		return ""
-	case c.Status == vsphere.CheckPass:
-		return "OK"
-	case c.Status == vsphere.CheckSkip:
-		return "not reached"
-	default:
-		return "failed"
-	}
-}
-
-func dnsSummary(d *vsphere.Diagnosis) string {
-	c := stage(d, "DNS resolution")
-	if c == nil {
-		return ""
-	}
-	if c.Status == vsphere.CheckSkip && c.Detail == "resolved at the proxy" {
-		return "Remote"
-	}
-	if c.Status == vsphere.CheckPass {
-		return "Local (" + c.Detail + ")"
-	}
-	return stageSummary(d, "DNS resolution")
-}
-
-func tlsSummary(d *vsphere.Diagnosis) string {
-	c := stage(d, "TLS certificate")
-	switch {
-	case c == nil:
-		return ""
-	case c.Status == vsphere.CheckPass:
-		return "Verified (" + d.TLS + ")"
-	case c.Status == vsphere.CheckSkip:
-		return c.Detail
-	default:
-		return "failed"
-	}
 }

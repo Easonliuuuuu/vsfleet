@@ -159,8 +159,8 @@ func TestHTTPProxyUnauthenticated(t *testing.T) {
 	proxy := startHTTPProxy(t, "", nil)
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "via-http-proxy",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"via-http-proxy",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -171,12 +171,12 @@ func TestHTTPProxyUnauthenticated(t *testing.T) {
 		"--thumbprint", vc.Thumbprint,
 	)
 
-	out := r.mustRun(testPassword+"\n", "context", "test", "via-http-proxy")
-	if !strings.Contains(out, "Connection successful.") {
+	out := r.mustRun(testPassword+"\n", "doctor", "via-http-proxy")
+	if !strings.Contains(out, "API available") {
 		t.Fatalf("connection through the http proxy failed:\n%s", out)
 	}
 	if !strings.Contains(out, "HTTP proxy") {
-		t.Errorf("context test did not report the proxy route:\n%s", out)
+		t.Errorf("doctor did not report the proxy route:\n%s", out)
 	}
 
 	reqs := proxy.Requests()
@@ -200,8 +200,8 @@ func TestHTTPProxyBasicAuth(t *testing.T) {
 	proxy := startHTTPProxy(t, want, nil)
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\nproxy-secret\n", "context", "add",
-		"--name", "via-authed-proxy",
+	r.mustRun(testPassword+"\nproxy-secret\n", "config", "set-context",
+		"via-authed-proxy",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -215,8 +215,8 @@ func TestHTTPProxyBasicAuth(t *testing.T) {
 		"--thumbprint", vc.Thumbprint,
 	)
 
-	out := r.mustRun(testPassword+"\nproxy-secret\n", "context", "test", "via-authed-proxy")
-	if !strings.Contains(out, "Connection successful.") {
+	out := r.mustRun(testPassword+"\nproxy-secret\n", "doctor", "via-authed-proxy")
+	if !strings.Contains(out, "API available") {
 		t.Fatalf("connection through the authenticated proxy failed:\n%s", out)
 	}
 
@@ -232,8 +232,8 @@ func TestHTTPProxyWrongCredentialFails(t *testing.T) {
 	proxy := startHTTPProxy(t, want, nil)
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "via-wrong-proxy-password",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"via-wrong-proxy-password",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -264,8 +264,8 @@ func TestHTTPProxyOffline(t *testing.T) {
 	proxy.listener.Close()
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "via-offline-http-proxy",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"via-offline-http-proxy",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -300,8 +300,8 @@ func TestHTTPSProxyOffline(t *testing.T) {
 	proxy.listener.Close()
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "via-offline-https-proxy",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"via-offline-https-proxy",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -337,8 +337,8 @@ func TestHTTPSProxyRejectsUntrustedCertificate(t *testing.T) {
 	proxy := startHTTPProxy(t, "", &tls.Config{Certificates: []tls.Certificate{cert}})
 
 	r := newRunner(t)
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "via-https-proxy",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"via-https-proxy",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",

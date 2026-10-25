@@ -145,8 +145,8 @@ func (r *runner) mustRun(stdin string, args ...string) string {
 func (r *runner) addContext(name string, vc *vcenter, extra ...string) {
 	r.t.Helper()
 	args := []string{
-		"context", "add",
-		"--name", name,
+		"config", "set-context",
+		name,
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -168,18 +168,18 @@ func TestContextLifecycleAndInventory(t *testing.T) {
 	r := newRunner(t)
 	r.addContext("lab", vc)
 
-	list := r.mustRun("", "context", "list")
+	list := r.mustRun("", "config", "get-contexts")
 	if !strings.Contains(list, "lab") {
-		t.Fatalf("context list did not show the context:\n%s", list)
+		t.Fatalf("get-contexts did not show the context:\n%s", list)
 	}
 	if !strings.Contains(list, "Direct") {
-		t.Errorf("context list did not show the route:\n%s", list)
+		t.Errorf("get-contexts did not show the route:\n%s", list)
 	}
 
-	test := r.mustRun(testPassword+"\n", "context", "test", "lab")
-	for _, want := range []string{"Context: lab", "Connection successful."} {
+	test := r.mustRun(testPassword+"\n", "doctor", "lab")
+	for _, want := range []string{"Context: lab", "API available"} {
 		if !strings.Contains(test, want) {
-			t.Errorf("context test output is missing %q:\n%s", want, test)
+			t.Errorf("doctor output is missing %q:\n%s", want, test)
 		}
 	}
 
@@ -250,8 +250,8 @@ func TestFailureIsolation(t *testing.T) {
 
 	// A context pointing at a port nothing is listening on.
 	broken := &vcenter{URL: "https://127.0.0.1:1", Thumbprint: good.Thumbprint}
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "unreachable",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"unreachable",
 		"--endpoint", broken.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",
@@ -287,8 +287,8 @@ func TestFailureIsolation(t *testing.T) {
 // integration test the expected first failure is the missing TTY itself.
 func TestUIStartsTheInterfaceBeforeResolvingCredentials(t *testing.T) {
 	r := newRunner(t)
-	r.mustRun("", "context", "add",
-		"--name", "lab",
+	r.mustRun("", "config", "set-context",
+		"lab",
 		"--endpoint", "https://vcsa.example.internal",
 		"--username", "operator@vsphere.local",
 		"--credential", "prompt",

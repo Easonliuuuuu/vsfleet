@@ -15,8 +15,8 @@ import (
 // capture spanning it is partial rather than complete.
 func addUnreachableContext(r *runner, name string) {
 	r.t.Helper()
-	r.mustRun("", "context", "add",
-		"--name", name,
+	r.mustRun("", "config", "set-context",
+		name,
 		"--endpoint", "https://127.0.0.1:1",
 		"--username", "operator@vsphere.local",
 		"--credential", "env:VSFLEET_E2E_PASSWORD",

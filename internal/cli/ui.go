@@ -60,7 +60,7 @@ disconnected until selected.
 	is on.
 
 With no contexts configured yet, this opens straight into the setup form
-instead of asking you to run "vsfleet context add" first.
+instead of asking you to run "vsfleet config set-context" first.
 
 The context, resource tab and sort order are remembered between runs, so
 closing vsfleet and opening it again picks up where you left off. --context

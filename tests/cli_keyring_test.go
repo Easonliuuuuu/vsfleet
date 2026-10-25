@@ -1,4 +1,4 @@
-// This file covers "vsfleet context add" against the OS keyring itself
+// This file covers "vsfleet config set-context" against the OS keyring itself
 // (github.com/easonliuuuuu/vsfleet/tests/cli_test.go only ever exercises
 // --credential prompt, since a real secret store is rarely available in CI).
 // go-keyring's own in-memory mock stands in for the OS keyring here, so the
@@ -24,8 +24,8 @@ func TestContextAddPasswordStdinWithExplicitKeyringCredential(t *testing.T) {
 	// The requested keyring key deliberately differs from the context name,
 	// so a bug that stores under the context's default key instead of the
 	// one actually requested would show up as a lookup miss below.
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "lab",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"lab",
 		"--endpoint", vc.URL,
 		"--username", "operator@vsphere.local",
 		"--credential", "keyring:lab-secret",
@@ -34,7 +34,7 @@ func TestContextAddPasswordStdinWithExplicitKeyringCredential(t *testing.T) {
 		"--thumbprint", vc.Thumbprint,
 	)
 
-	list := r.mustRun("", "context", "show", "lab")
+	list := r.mustRun("", "config", "view", "--minify", "-n", "lab")
 	if !strings.Contains(list, "keyring:lab-secret") {
 		t.Fatalf("saved context does not reference keyring:lab-secret:\n%s", list)
 	}
@@ -49,9 +49,9 @@ func TestContextAddPasswordStdinWithExplicitKeyringCredential(t *testing.T) {
 
 	// A later command must resolve the password from the keyring on its own,
 	// with no prompt: empty stdin proves nothing was read interactively.
-	test := r.mustRun("", "context", "test", "lab")
-	if !strings.Contains(test, "Connection successful.") {
-		t.Errorf("context test did not succeed using the stored keyring credential:\n%s", test)
+	test := r.mustRun("", "doctor", "lab")
+	if !strings.Contains(test, "API available") {
+		t.Errorf("doctor did not succeed using the stored keyring credential:\n%s", test)
 	}
 }
 
@@ -60,8 +60,8 @@ func TestContextAddPasswordStdinWithExplicitKeyringCredentialNoTest(t *testing.T
 
 	r := newRunner(t)
 
-	r.mustRun(testPassword+"\n", "context", "add",
-		"--name", "lab",
+	r.mustRun(testPassword+"\n", "config", "set-context",
+		"lab",
 		"--endpoint", "https://vcsa.example.internal",
 		"--username", "operator@vsphere.local",
 		"--credential", "keyring:lab-secret",
@@ -70,7 +70,7 @@ func TestContextAddPasswordStdinWithExplicitKeyringCredentialNoTest(t *testing.T
 		"--no-test",
 	)
 
-	show := r.mustRun("", "context", "show", "lab")
+	show := r.mustRun("", "config", "view", "--minify", "-n", "lab")
 	if !strings.Contains(show, "keyring:lab-secret") {
 		t.Fatalf("saved context does not reference keyring:lab-secret:\n%s", show)
 	}

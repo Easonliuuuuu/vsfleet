@@ -94,7 +94,8 @@ func TestShowReportsNotFound(t *testing.T) {
 // "show resolves exact identities correctly across duplicate names" and
 // "--context narrows ambiguous names": two separately simulated vCenters
 // produce the same default VM name, so "vm show" across both must refuse to
-// guess, and naming --context must resolve it.
+// guess, and naming --context must resolve it. It uses kubectl's -A and -n
+// spellings, the short forms of --all-contexts and --context.
 func TestShowIsAmbiguousAcrossContextsUntilNarrowed(t *testing.T) {
 	t.Setenv("VSFLEET_E2E_PASSWORD", testPassword)
 	tune := func(m *simulator.Model) { m.Datacenter = 1; m.Machine = 2 }
@@ -105,7 +106,7 @@ func TestShowIsAmbiguousAcrossContextsUntilNarrowed(t *testing.T) {
 	r.addNonInteractiveContext("right", right, "env:VSFLEET_E2E_PASSWORD")
 
 	stdin := strings.Repeat(testPassword+"\n", 4)
-	stdout, stderr, err := r.run(stdin, "vm", "show", "DC0_H0_VM0", "--all-contexts")
+	stdout, stderr, err := r.run(stdin, "vm", "show", "DC0_H0_VM0", "-A")
 	if err == nil {
 		t.Fatalf("an ambiguous show should fail, got success:\n%s", stdout)
 	}
@@ -116,7 +117,7 @@ func TestShowIsAmbiguousAcrossContextsUntilNarrowed(t *testing.T) {
 		t.Errorf("candidates table should list both contexts:\n%s", stderr)
 	}
 
-	narrowed := r.mustRun(stdin, "vm", "show", "DC0_H0_VM0", "--context", "left")
+	narrowed := r.mustRun(stdin, "vm", "show", "DC0_H0_VM0", "-n", "left")
 	if !strings.Contains(narrowed, "Context") || !strings.Contains(narrowed, "left") {
 		t.Errorf("narrowed show did not resolve to the requested context:\n%s", narrowed)
 	}

@@ -6,18 +6,24 @@ Run `vsfleet` to open the terminal UI, or add a subcommand for scripts.
 [Persistent flags](#persistent-flags) set context, timeout, configuration,
 history, and output.
 
+A context is one vCenter, and it plays the part of a kubectl namespace:
+commands act on the current context, `-n NAME` picks others, and `-A` spans
+every context. The `config` verbs match kubectl's: `get-contexts`,
+`current-context`, `use-context`, `set-context`, `delete-context` and
+`view`. `ctx` is an alias of `config`.
+
 ## Common commands
 
 | Command | Purpose |
 |---|---|
 | `vsfleet` / `vsfleet ui` | Open the terminal UI |
 | `vsfleet demo` | Open the terminal UI on sample data, with no vCenter and nothing written |
-| `vsfleet context add` | Add a vCenter context via the wizard or flags |
-| `vsfleet context list` | List configured contexts |
-| `vsfleet context show [name]` | Show endpoint, route, and TLS settings |
-| `vsfleet context use <name>` | Select the current context |
-| `vsfleet context test <name>` | Test connectivity and authentication |
-| `vsfleet context remove <name>` | Remove a context and invalidate its session |
+| `vsfleet config set-context [name]` | Add a vCenter context via the wizard or flags, or change one |
+| `vsfleet config get-contexts` | List configured contexts |
+| `vsfleet config current-context` | Print the current context |
+| `vsfleet config use-context <name>` | Select the current context |
+| `vsfleet config view [--minify]` | Show the configuration; credentials appear as references |
+| `vsfleet config delete-context <name>` | Delete a context and invalidate its session |
 | `vsfleet status` | Check selected contexts |
 | `vsfleet doctor [context...]` | Diagnose the connection stage by stage |
 | `vsfleet health [run]` | Assess the estate described by a stored assessment |
@@ -407,8 +413,8 @@ vsfleet search nvme --kind datastore -o json | jq
 
 | Option | Description |
 |---|---|
-| `--context <name>` | Scope a command to one or more named contexts |
-| `--all-contexts` | Target every configured context |
+| `-n, --context <name>` | Scope a command to one or more named contexts; repeatable |
+| `-A, --all-contexts` | Target every configured context |
 | `--config <path>` | Override the TOML configuration path |
 | `--history-db <path>` | Override the SQLite assessment database |
 | `--timeout <duration>` | Per-vCenter request timeout (default `30s`) |

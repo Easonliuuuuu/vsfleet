@@ -3,8 +3,7 @@
 Inspect the context, test its connection, and locate the failing stage:
 
 ```sh
-vsfleet context show prod
-vsfleet context test prod
+vsfleet config view --minify -n prod
 vsfleet doctor prod
 vsfleet status
 ```

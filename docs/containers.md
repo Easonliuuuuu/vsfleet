@@ -81,7 +81,7 @@ For a vCenter signed by a private CA, mount a PEM bundle and set
 docker run --rm \
   --mount type=bind,src="$PWD/ca.pem",dst=/etc/vsfleet/ca.pem,readonly \
   --env SSL_CERT_FILE=/etc/vsfleet/ca.pem \
-  ghcr.io/easonliuuuuu/vsfleet:v0.6.3 context list
+  ghcr.io/easonliuuuuu/vsfleet:v0.6.3 config get-contexts
 ```
 
 You can also configure `thumbprint` or `insecure` TLS. Prefer a private CA or

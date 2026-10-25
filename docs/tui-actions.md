@@ -25,7 +25,7 @@ or HTTP routes. `vsfleet demo` disables process and browser launches.
 A VM qualifies as a vCenter when a component of its name or guest DNS name
 starts with `vcsa`, `vcenter`, or `vcentre`, or equals `vc` or `vc` plus digits.
 A saved nested context also qualifies. Add other vCenters with
-`vsfleet context add` or the [Contexts screen](tui.md#contexts-and-vapps).
+`vsfleet config set-context` or the [Contexts screen](tui.md#contexts-and-vapps).
 
 “Show VMs on this …” keeps the table scoped until `Esc` clears that scope
 before clearing anything else.

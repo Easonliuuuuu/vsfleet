@@ -72,7 +72,7 @@ func DefaultPath() (string, error) {
 
 // Load reads the configuration from path. An empty path means DefaultPath. A
 // missing file is not an error: it yields an empty configuration, so a fresh
-// install can run "vsfleet context add" immediately.
+// install can run "vsfleet config set-context" immediately.
 func Load(path string) (*Config, error) {
 	if path == "" {
 		p, err := DefaultPath()
@@ -145,9 +145,9 @@ func (c *Config) Context(name string) (*Context, error) {
 		case len(c.Contexts) == 1:
 			return c.Contexts[0], nil
 		case len(c.Contexts) == 0:
-			return nil, fmt.Errorf("no contexts configured: run \"vsfleet context add\"")
+			return nil, fmt.Errorf("no contexts configured: run \"vsfleet config set-context\"")
 		default:
-			return nil, fmt.Errorf("no context selected: pass --context or run \"vsfleet context use <name>\"")
+			return nil, fmt.Errorf("no context selected: pass -n (--context) or run \"vsfleet config use-context <name>\"")
 		}
 	}
 	for _, ctx := range c.Contexts {
@@ -173,7 +173,7 @@ func (c *Config) Names() []string {
 func (c *Config) Resolve(names []string, all bool) ([]*Context, error) {
 	if all {
 		if len(c.Contexts) == 0 {
-			return nil, fmt.Errorf("no contexts configured: run \"vsfleet context add\"")
+			return nil, fmt.Errorf("no contexts configured: run \"vsfleet config set-context\"")
 		}
 		out := make([]*Context, len(c.Contexts))
 		copy(out, c.Contexts)

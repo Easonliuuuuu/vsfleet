@@ -4,14 +4,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strconv"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
-	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -72,7 +71,7 @@ func gather[T any](ctx context.Context, a *App, fn func(context.Context, *vspher
 		all = append(all, r.items...)
 	}
 	if len(all) == 0 && len(failures) == len(contexts) && len(failures) > 0 {
-		return nil, failures, fmt.Errorf("no context could be queried")
+		return nil, failures, errNoContextAnswered
 	}
 	return all, failures, nil
 }
@@ -91,6 +90,9 @@ func reportFailures(a *App, failures []contextFailure) {
 
 // multiContext reports whether output should carry a CONTEXT column.
 func (a *App) multiContext() bool {
+	if a.capture != nil && !a.AllContexts && len(a.ContextNames) <= 1 {
+		return len(a.capture.Contexts) > 1
+	}
 	if a.AllContexts || len(a.ContextNames) > 1 {
 		return true
 	}
@@ -121,10 +123,6 @@ func metadataAttributes(m vsphere.Metadata) string {
 	return strings.Join(parts, ",")
 }
 
-func metadataFromSubject(s query.Subject) vsphere.Metadata {
-	return vsphere.Metadata{Tags: s.Tags, CustomAttributes: s.CustomAttributes, TagsStatus: s.TagsStatus, CustomAttributesStatus: s.CustomStatus}
-}
-
 // metadataWarning describes a metadata source that was not read completely.
 // A source that was never part of the evidence (empty status) is silent here;
 // stored-capture readers report it as not recorded instead.
@@ -139,12 +137,14 @@ func metadataWarning(source, status, message string) (string, bool) {
 	return fmt.Sprintf("metadata %s %s: %s", source, label, message), true
 }
 
-func reportMetadataWarnings(a *App, values any) {
+// metadataWarnings lists, once each, the metadata sources the objects in
+// values were not read completely from.
+func metadataWarnings(values any) []string {
 	rv := reflect.ValueOf(values)
 	if rv.Kind() != reflect.Slice {
-		return
+		return nil
 	}
-	seen := map[string]bool{}
+	var out []string
 	for i := 0; i < rv.Len(); i++ {
 		m, ok := objectMetadata(rv.Index(i).Interface())
 		if !ok {
@@ -152,12 +152,12 @@ func reportMetadataWarnings(a *App, values any) {
 		}
 		for _, item := range [][3]string{{"tags", m.TagsStatus, m.TagsError}, {"custom attributes", m.CustomAttributesStatus, m.CustomAttributesError}} {
 			source, status, message := item[0], item[1], item[2]
-			if line, ok := metadataWarning(source, status, message); ok && !seen[line] {
-				fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, line)
-				seen[line] = true
+			if line, ok := metadataWarning(source, status, message); ok && !slices.Contains(out, line) {
+				out = append(out, line)
 			}
 		}
 	}
+	return out
 }
 
 func objectMetadata(value any) (vsphere.Metadata, bool) {
@@ -184,16 +184,18 @@ func objectMetadata(value any) (vsphere.Metadata, bool) {
 }
 
 // newKindCommands builds the type-first groups that still hold commands with
-// no kubectl verb yet: VM history and decommission checks, datastore file
+// no kubectl verb yet: VM decommission checks, datastore file
 // browsing and network comparison. Their listing and detail commands moved to
 // "get" and "describe" and answer only with where they went; every other
 // type-first group is replaced outright by renamedKindCommand.
 func newKindCommands(a *App) []*cobra.Command {
-	vm := kindGroup("vm", "Virtual machines: stored history and decommission checks",
-		newVMHistoryCommand(a), newVMDecommissionCheckCommand(a))
+	vm := kindGroup("vm", "Virtual machines: decommission checks", newVMDecommissionCheckCommand(a))
 	ds := kindGroup("datastore", "Datastores: file browsing", newDatastoreFilesCommand(a))
 	netw := kindGroup("network", "Networks: cluster comparison", newNetworkCompareCommand(a))
-	vm.AddCommand(renamedCommand("events", nil, `use "vsfleet events --for vm/NAME"`))
+	vm.AddCommand(
+		renamedCommand("events", nil, `use "vsfleet events --for vm/NAME"`),
+		renamedCommand("history", nil, `use "vsfleet describe vm NAME --history"`),
+	)
 	return []*cobra.Command{vm, ds, netw}
 }
 
@@ -244,58 +246,6 @@ func renamedKindCommand(name string) *cobra.Command {
 
 // removedKindGroups are the type-first groups that held only list and show.
 var removedKindGroups = []string{"template", "host", "cluster", "vapp", "dvswitch", "dvportgroup", "resourcepool", "snapshot"}
-
-func newVMHistoryCommand(a *App) *cobra.Command {
-	var allObservations, includeRuntime bool
-	cmd := &cobra.Command{Use: "history NAME_OR_UUID", Short: "Show a VM's stored assessment timeline", Long: strings.TrimSpace(`
-Show how one VM changed across every stored assessment.
-
-The VM may be named or given by instance UUID; a UUID is the stable choice,
-because it survives a rename. Reads stored evidence only and never contacts a
-vCenter.`), Example: `  # Every recorded change for a VM
-  vsfleet vm history web-01
-
-  # By instance UUID, which survives a rename
-  vsfleet vm history 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52
-
-  # Include unchanged captures, and volatile runtime fields
-  vsfleet vm history web-01 --all-observations --include-runtime`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		events, err := s.TimelineForContexts(cmd.Context(), args[0], a.StoredContextNames(), allObservations, includeRuntime)
-		if err != nil {
-			return err
-		}
-		if len(events) == 0 {
-			return fmt.Errorf("no stored VM history matched %q", args[0])
-		}
-		if a.json() {
-			return writeJSON(a.out(), events)
-		}
-		t := newTable(a.out(), "RUN", "DATE", "EVENT", "CONTEXT", "VM", "DETAIL")
-		for _, e := range events {
-			detail := ""
-			if len(e.Changes) > 0 {
-				parts := make([]string, len(e.Changes))
-				for i, f := range e.Changes {
-					parts[i] = f.Field + ":" + f.Before + "→" + f.After
-				}
-				detail = strings.Join(parts, " ")
-			}
-			if detail == "" && e.Observation != nil {
-				detail = dash(e.Observation.VM.Host)
-			}
-			t.row(strconv.FormatInt(e.Run.ID, 10), e.Run.StartedAt.Local().Format("2006-01-02 15:04"), e.Kind, e.Context, e.Name, detail)
-		}
-		t.flush()
-		return nil
-	}}
-	cmd.Flags().BoolVar(&allObservations, "all-observations", false, "include unchanged observations")
-	cmd.Flags().BoolVar(&includeRuntime, "include-runtime", false, "include volatile runtime fields in modified events")
-	return cmd
-}
 
 // kindAliases returns every spelling of a registered kind except its
 // canonical name, so a command and a --kind flag accept the same words.

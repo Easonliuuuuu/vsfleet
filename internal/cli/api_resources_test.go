@@ -68,6 +68,9 @@ func TestRemovedCommandsPointAtReplacements(t *testing.T) {
 		{[]string{"status", "-A"}, []string{"vsfleet cluster-info"}},
 		{[]string{"compatibility", "report", "--sheet", "vInfo"}, []string{"vsfleet explain rvtools.SHEET"}},
 		{[]string{"assessment", "perf", "show", "latest"}, []string{`"assessment perf show" was renamed`, "vsfleet top vm"}},
+		{[]string{"search", "ubuntu-golden", "-A"}, []string{`"search" was renamed`, "vsfleet get all '*TEXT*' -A"}},
+		{[]string{"vm", "history", "web-01"}, []string{`"vm history" was renamed`, "vsfleet describe vm NAME --history"}},
+		{[]string{"assessment", "inventory", "--kind", "host"}, []string{`"assessment inventory" was renamed`, "vsfleet get KIND --run RUN"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			out, _, err := runCLI(t, db, tc.args...)

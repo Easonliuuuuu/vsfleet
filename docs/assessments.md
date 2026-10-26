@@ -13,7 +13,7 @@ vsfleet assessment run --all-contexts \
   --label nightly --note "pre-change baseline" --pin
 vsfleet assessment list
 vsfleet assessment report latest
-vsfleet vm history billing --all-observations
+vsfleet describe vm billing --history --all-observations
 ```
 
 Label recurring baselines and pin those you want to keep. Retention cleanup

@@ -127,8 +127,8 @@ vsfleet get hosts -n prod
 vsfleet get vms -n prod -o json
 vsfleet describe vm web-01
 
-# Search across every configured vCenter at once
-vsfleet search ubuntu --all-contexts
+# Find a name across every kind and every configured vCenter
+vsfleet get all '*ubuntu*' -A
 ```
 
 ### 4. Capture and export

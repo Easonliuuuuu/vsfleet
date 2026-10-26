@@ -325,10 +325,9 @@ const (
 	searchPathMin = 20
 )
 
-// searchColumns are the columns of the estate-wide search result table: the
-// same five, in the same order, that "vsfleet search" prints. It lists seven
-// kinds at once, so it can only use what every object has — which vCenter,
-// what it is, its name, and where it sits. The widths here are the fallback
+// searchColumns are the columns of the estate-wide search result table. It
+// lists seven kinds at once, so it can only use what every object has —
+// which vCenter, what it is, its name, and where it sits. The widths here are the fallback
 // for a terminal too narrow to draw PATH; layoutSearch sizes them to the
 // results otherwise.
 func searchColumns() []column {

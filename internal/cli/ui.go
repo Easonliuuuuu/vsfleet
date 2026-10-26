@@ -50,7 +50,7 @@ opens a masked password overlay inside the interface. Untouched contexts remain
 disconnected until selected.
 
 	"/" filters the table in front of you and "tab" widens the same query into
-	every vCenter and every kind at once, which is "vsfleet search" without
+	every vCenter and every kind at once, which is "vsfleet get all -A" without
 	leaving the interface. A vCenter that has not answered is reported as not
 	searched rather than quietly narrowing the result.
 

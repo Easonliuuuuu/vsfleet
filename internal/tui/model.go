@@ -103,7 +103,7 @@ const (
 )
 
 // searchState is one estate-wide search: every kind, every vCenter, matched
-// on name the same way "vsfleet search" matches on the command line.
+// on the text anywhere in an object's name.
 //
 // It is answered from the inventories already in memory rather than by going
 // back to the vCenters. A vCenter or kind that has not been selected or

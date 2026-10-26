@@ -221,9 +221,9 @@ func TestContextLifecycleAndInventory(t *testing.T) {
 	if !strings.Contains(vappsJSON, `"direct_vm_count"`) {
 		t.Errorf("vApp JSON did not use the domain model:\n%s", vappsJSON)
 	}
-	searchVApp := r.mustRun(testPassword+"\n", "search", "APP0", "--context", "lab")
-	if !strings.Contains(searchVApp, "vapp") {
-		t.Errorf("global search did not include vApps:\n%s", searchVApp)
+	allVApp := r.mustRun(testPassword+"\n", "get", "all", "*APP0", "--context", "lab", "-o", "name")
+	if !strings.HasPrefix(allVApp, "vapp/") || strings.Count(allVApp, "\n") != 1 {
+		t.Errorf("get all did not find the vApp, and only it:\n%s", allVApp)
 	}
 
 	stores := r.mustRun(testPassword+"\n", "get", "datastores")
@@ -239,7 +239,7 @@ func TestContextLifecycleAndInventory(t *testing.T) {
 	}
 }
 
-func TestSearchAcrossVCenters(t *testing.T) {
+func TestGetAllAcrossVCenters(t *testing.T) {
 	a := startVCenter(t, func(m *simulator.Model) { m.Datacenter = 1; m.Machine = 2 })
 	b := startVCenter(t, func(m *simulator.Model) { m.Datacenter = 1; m.Machine = 2 })
 	r := newRunner(t)
@@ -247,17 +247,28 @@ func TestSearchAcrossVCenters(t *testing.T) {
 	r.addContext("beta", b)
 
 	stdin := strings.Repeat(testPassword+"\n", 4)
-	out := r.mustRun(stdin, "search", "DC0_H0_VM0")
-	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
-		t.Fatalf("search did not cover both vCenters:\n%s", out)
+	out, stderr, err := r.run(stdin, "get", "all", "DC0_H0_VM0", "-A")
+	if err != nil {
+		t.Fatalf("get all: %v\n%s", err, stderr)
 	}
-	if !strings.Contains(out, "2 match(es) across 2 vCenter(s)") {
-		t.Errorf("search summary is wrong:\n%s", out)
+	if !strings.Contains(out, "alpha") || !strings.Contains(out, "beta") {
+		t.Fatalf("get all did not cover both vCenters:\n%s", out)
+	}
+	// Neither simulator serves tagging, which every kind listed would
+	// report: once is enough.
+	_, stderr, err = r.run(stdin, "get", "all", "DC0*", "-A")
+	if err != nil {
+		t.Fatalf("get all: %v\n%s", err, stderr)
+	}
+	if n := strings.Count(stderr, "metadata tags unsupported"); n != 1 {
+		t.Errorf("the tags warning was printed %d times; want once:\n%s", n, stderr)
 	}
 
-	kinds := r.mustRun(stdin, "search", "DC0", "--kind", "datastore")
-	if strings.Contains(kinds, "\tvm\t") || strings.Contains(kinds, " vm ") {
-		t.Errorf("--kind datastore returned virtual machines:\n%s", kinds)
+	// An exact name asked of every kind is missing only if no kind holds it,
+	// and then it is reported once.
+	_, _, err = r.run(stdin, "get", "all", "no-such-object", "-A")
+	if err == nil || err.Error() != `no object matched "no-such-object"` {
+		t.Errorf("get all for a missing name: err = %v; want one no-match error", err)
 	}
 }
 
@@ -281,9 +292,9 @@ func TestFailureIsolation(t *testing.T) {
 	)
 
 	stdin := strings.Repeat(testPassword+"\n", 4)
-	stdout, stderr, err := r.run(stdin, "search", "DC0", "--all-contexts")
+	stdout, stderr, err := r.run(stdin, "get", "all", "DC0*", "--all-contexts")
 	if err != nil {
-		t.Fatalf("search failed outright instead of isolating the broken context: %v\n%s", err, stderr)
+		t.Fatalf("get all failed outright instead of isolating the broken context: %v\n%s", err, stderr)
 	}
 	if !strings.Contains(stdout, "healthy") {
 		t.Errorf("results from the healthy vCenter were lost:\n%s", stdout)

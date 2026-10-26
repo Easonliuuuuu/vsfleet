@@ -11,14 +11,19 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 func newDescribeCommand(a *App) *cobra.Command {
-	return &cobra.Command{
+	var (
+		run     string
+		history historyFlags
+	)
+	cmd := &cobra.Command{
 		Use:   "describe KIND NAME... | KIND/NAME...",
-		Short: "Show one object's detailed evidence, read live from vCenter",
+		Short: "Show one object's detailed evidence, live or from a capture",
 		Long: strings.TrimSpace(`
 Show an object's full collected evidence, the way "kubectl describe" does:
 identity, configuration, capacity and, for a VM or template, every disk, NIC
@@ -31,7 +36,12 @@ on several contexts lists them and fails; narrow with -n.
 
 Host storage and network subresources are listed with "vsfleet get", e.g.
 "vsfleet get hbas --host NAME", so describing a host never costs more than
-listing hosts already does.`),
+listing hosts already does.
+
+The object is read live from vCenter. --run reads it from a stored capture
+instead, the way "vsfleet get --run" does. --history shows how a VM changed
+across every stored capture rather than how it is now; it reads stored
+evidence only and never contacts vCenter.`),
 		Example: `  # Describe a VM on the current context
   vsfleet describe vm web-01
 
@@ -45,7 +55,13 @@ listing hosts already does.`),
   vsfleet describe vm 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52
 
   # As JSON, for a script
-  vsfleet describe datastore nvme-01 -o json`,
+  vsfleet describe datastore nvme-01 -o json
+
+  # The VM as the capture labelled pre-migration recorded it
+  vsfleet describe vm web-01 --run pre-migration
+
+  # Every recorded change to a VM, including unchanged captures
+  vsfleet describe vm web-01 --history --all-observations`,
 		Args: cobra.MinimumNArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if len(args) > 0 {
@@ -58,7 +74,13 @@ listing hosts already does.`),
 			if err != nil {
 				return err
 			}
+			if err := history.check(cmd, run); err != nil {
+				return err
+			}
 			for _, r := range reqs {
+				if r.all {
+					return errors.New(`"all" lists with get; describe takes one KIND`)
+				}
 				if _, ok := describers[r.kind.Name]; !ok {
 					return fmt.Errorf("%s cannot be described (supported: %s)", r.kind.Plural, strings.Join(describableKinds(), ", "))
 				}
@@ -66,9 +88,20 @@ listing hosts already does.`),
 					return fmt.Errorf("describe needs a NAME: \"vsfleet describe %s NAME\"", r.kind.Name)
 				}
 			}
+			if history.on {
+				return describeHistory(cmd.Context(), a, reqs, history)
+			}
+			if run != "" {
+				if err := a.loadCapture(cmd.Context(), run); err != nil {
+					return err
+				}
+			}
 			return runDescribe(cmd.Context(), a, reqs)
 		},
 	}
+	cmd.Flags().StringVar(&run, "run", "", "read a stored capture instead of vCenter: ID, label, latest, previous or date")
+	history.add(cmd)
+	return cmd
 }
 
 // describer resolves and prints objects of one kind.
@@ -79,13 +112,16 @@ type describer interface {
 
 // detail describes objects of one kind whose evidence is T.
 type detail[T any] struct {
-	fetch func(context.Context, *vsphere.Client) ([]T, error)
-	find  func(a *App, query string, items []T) (T, error)
-	show  func(io.Writer, T)
+	// kind is the capture collection that records T.
+	kind   string
+	fetch  func(context.Context, *vsphere.Client) ([]T, error)
+	stored func(*assessment.ExportData) ([]T, error)
+	find   func(a *App, query string, items []T) (T, error)
+	show   func(io.Writer, T)
 }
 
 func (d detail[T]) resolve(ctx context.Context, a *App, names []string) ([]any, []contextFailure, error) {
-	items, failures, err := gather(ctx, a, d.fetch)
+	items, failures, err := read(ctx, a, d.kind, d.fetch, d.stored)
 	if err != nil {
 		return nil, failures, err
 	}
@@ -116,45 +152,59 @@ func byName[T any](kind string, nameOf, contextOf, pathOf func(T) string) func(*
 
 var describers = map[string]describer{
 	"vm": detail[vsphere.VM]{
-		fetch: func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListVMs(ctx) },
-		find:  func(a *App, q string, items []vsphere.VM) (vsphere.VM, error) { return resolveVM(a, "vm", q, items) },
-		show:  printVMDetail,
+		kind:   "vm",
+		fetch:  func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListVMs(ctx) },
+		stored: storedVMs(false),
+		find:   func(a *App, q string, items []vsphere.VM) (vsphere.VM, error) { return resolveVM(a, "vm", q, items) },
+		show:   printVMDetail,
 	},
 	"template": detail[vsphere.VM]{
-		fetch: func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListTemplates(ctx) },
+		kind:   "vm",
+		fetch:  func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListTemplates(ctx) },
+		stored: storedVMs(true),
 		find: func(a *App, q string, items []vsphere.VM) (vsphere.VM, error) {
 			return resolveVM(a, "template", q, items)
 		},
 		show: printVMDetail,
 	},
 	"host": detail[vsphere.Host]{
-		fetch: func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) { return c.ListHosts(ctx) },
+		kind:   "host",
+		fetch:  func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) { return c.ListHosts(ctx) },
+		stored: storedObjects[vsphere.Host](vsphere.KindHost),
 		find: byName("host", func(h vsphere.Host) string { return h.Name },
 			func(h vsphere.Host) string { return h.Context }, func(h vsphere.Host) string { return h.Path }),
 		show: printHostDetail,
 	},
 	"cluster": detail[vsphere.Cluster]{
-		fetch: func(ctx context.Context, c *vsphere.Client) ([]vsphere.Cluster, error) { return c.ListClusters(ctx) },
+		kind:   "cluster",
+		fetch:  func(ctx context.Context, c *vsphere.Client) ([]vsphere.Cluster, error) { return c.ListClusters(ctx) },
+		stored: storedObjects[vsphere.Cluster](vsphere.KindCluster),
 		find: byName("cluster", func(c vsphere.Cluster) string { return c.Name },
 			func(c vsphere.Cluster) string { return c.Context }, func(c vsphere.Cluster) string { return c.Path }),
 		show: printClusterDetail,
 	},
 	"vapp": detail[vsphere.VApp]{
-		fetch: func(ctx context.Context, c *vsphere.Client) ([]vsphere.VApp, error) { return c.ListVApps(ctx) },
+		kind:   "vapp",
+		fetch:  func(ctx context.Context, c *vsphere.Client) ([]vsphere.VApp, error) { return c.ListVApps(ctx) },
+		stored: storedObjects[vsphere.VApp](vsphere.KindVApp),
 		find: byName("vapp", func(v vsphere.VApp) string { return v.Name },
 			func(v vsphere.VApp) string { return v.Context }, func(v vsphere.VApp) string { return v.Path }),
 		show: printVAppDetail,
 	},
 	"datastore": detail[vsphere.Datastore]{
+		kind: "datastore",
 		fetch: func(ctx context.Context, c *vsphere.Client) ([]vsphere.Datastore, error) {
 			return c.ListDatastores(ctx)
 		},
+		stored: storedObjects[vsphere.Datastore](vsphere.KindDatastore),
 		find: byName("datastore", func(d vsphere.Datastore) string { return d.Name },
 			func(d vsphere.Datastore) string { return d.Context }, func(d vsphere.Datastore) string { return d.Path }),
 		show: printDatastoreDetail,
 	},
 	"network": detail[vsphere.Network]{
-		fetch: func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) },
+		kind:   "network",
+		fetch:  func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) },
+		stored: storedObjects[vsphere.Network](vsphere.KindNetwork),
 		find: byName("network", func(n vsphere.Network) string { return n.Name },
 			func(n vsphere.Network) string { return n.Context }, func(n vsphere.Network) string { return n.Path }),
 		show: printNetworkDetail,
@@ -283,7 +333,7 @@ func vmPathOf(v vsphere.VM) string    { return v.Path }
 func vmNameOf(v vsphere.VM) string    { return v.Name }
 
 // resolveVM finds exactly one VM (or template) matching query by name,
-// instance UUID or BIOS UUID, mirroring "vm history NAME_OR_UUID".
+// instance UUID or BIOS UUID, as "describe vm NAME --history" does.
 func resolveVM(a *App, kind, query string, vms []vsphere.VM) (vsphere.VM, error) {
 	matches := filterSlice(append([]vsphere.VM(nil), vms...), func(v vsphere.VM) bool {
 		return strings.EqualFold(v.Name, query) ||

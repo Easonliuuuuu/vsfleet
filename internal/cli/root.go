@@ -47,6 +47,9 @@ type App struct {
 	mgr       *session.Manager
 	history   *assessment.Store
 	collector *assessment.Collector
+	// capture is what get and describe read instead of vCenter when --run
+	// names one; nil reads live.
+	capture *assessment.ExportData
 
 	// upd is the release check for this run (see updates); updateDone closes
 	// when a check started before the command has finished.
@@ -259,7 +262,7 @@ at production.`,
   vsfleet describe vm web-01
 
   # Find an object when you do not know which vCenter holds it
-  vsfleet search ubuntu-golden -A
+  vsfleet get all 'ubuntu-golden*' -A
 
   # Capture history, then compare the two most recent captures
   vsfleet assessment run -A --label nightly
@@ -320,10 +323,9 @@ at production.`,
 		inGroup(groupStart, newVersionCommand(a)),
 		inGroup(groupInventory, newGetCommand(a)),
 		inGroup(groupInventory, newDescribeCommand(a)),
-		inGroup(groupInventory, newEventsCommand(a)),
-		inGroup(groupInventory, newTopCommand(a)),
+		inGroup(groupInventory, refuseRun(newEventsCommand(a), "vCenter keeps the event log, so events are read live")),
+		inGroup(groupInventory, refuseRun(newTopCommand(a), "perf collections are stored apart from captures; pick one with --window")),
 		inGroup(groupInventory, newExplainCommand(a)),
-		inGroup(groupInventory, newSearchCommand(a)),
 		inGroup(groupInventory, newAPIResourcesCommand(a)),
 		inGroup(groupHistory, newImportCommand(a)),
 		inGroup(groupHistory, newAssessmentCommand(a)),
@@ -340,6 +342,7 @@ at production.`,
 		root.AddCommand(renamedKindCommand(name))
 	}
 	root.AddCommand(readOnlyVerbCommands()...)
+	root.AddCommand(renamedCommand("search", nil, `use "vsfleet get all '*TEXT*' -A", with -l for tags and --field-selector for fields`))
 	root.AddCommand(newContextRenamedCommand())
 	root.AddCommand(renamedCommand("portgroup", []string{"portgroups"},
 		`use "vsfleet get networks" for networks, or "vsfleet get portgroups" for standard-switch port groups`))

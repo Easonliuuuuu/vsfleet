@@ -106,7 +106,7 @@ func TestVCSIMHistoryDiffVMHistoryAndCapacity(t *testing.T) {
 	if !strings.Contains(diffJSON, "power_state") && !strings.Contains(diffJSON, "modified") {
 		t.Fatalf("diff omitted power mutation: %s", diffJSON)
 	}
-	historyJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "vm", "history", "DC0_C0_RP0_VM0", "--all-observations", "--include-runtime")
+	historyJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "describe", "vm", "DC0_C0_RP0_VM0", "--history", "--all-observations", "--include-runtime")
 	if !strings.Contains(historyJSON, strconv.FormatInt(first.ID, 10)) || !strings.Contains(historyJSON, strconv.FormatInt(second.ID, 10)) {
 		t.Fatalf("VM history omitted captures: %s", historyJSON)
 	}
@@ -182,7 +182,7 @@ func TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved(t *testing.T) {
 	// Both contexts hold the same generated VM name, so every history query is
 	// scoped to one context.
 	historyEvents := func(contextName string) []assessment.VMHistoryEvent {
-		raw := vcsimJSON(t, r, "--history-db", historyDB, "--context", contextName, "-o", "json", "vm", "history", "DC0_C0_RP0_VM0", "--all-observations", "--include-runtime")
+		raw := vcsimJSON(t, r, "--history-db", historyDB, "--context", contextName, "-o", "json", "describe", "vm", "DC0_C0_RP0_VM0", "--history", "--all-observations", "--include-runtime")
 		var events []assessment.VMHistoryEvent
 		if err := json.Unmarshal([]byte(raw), &events); err != nil {
 			t.Fatalf("decode %s VM history: %v\n%s", contextName, err, raw)

@@ -24,7 +24,8 @@ const (
 // is worth stating wherever a user lands.
 const topologyQueryLong = `
 KIND is one of vm, template, host, cluster, datastore, network, dvswitch or
-resourcepool. NAME is the object's name in the estate. RUN selects which
+resourcepool. NAME is the object's name in the estate. The subject may be
+given as KIND NAME or, as in kubectl, KIND/NAME. RUN selects which
 stored assessment to read and defaults to the most recent one; pass an
 assessment ID or label from "vsfleet assessment list".
 
@@ -32,7 +33,7 @@ The query reads stored evidence and never contacts a vCenter, so it answers
 the same way whether or not the site is reachable.`
 
 func newTopologyCommand(a *App) *cobra.Command {
-	cmd := newTopologyQueryCommand(a, directionTopology, "topology KIND NAME [RUN]", nil, "Show a subject's containment and attachments")
+	cmd := newTopologyQueryCommand(a, directionTopology, "topology KIND NAME|KIND/NAME [RUN]", nil, "Show a subject's containment and attachments")
 	cmd.Example = `  # Where a VM sits and what is attached to it
   vsfleet topology vm web-01
 
@@ -46,7 +47,7 @@ func newTopologyCommand(a *App) *cobra.Command {
 
 func newDependenciesCommand(a *App) *cobra.Command {
 	var depth int
-	cmd := newTopologyQueryCommand(a, directionDependencies, "dependencies KIND NAME [RUN]", []string{"deps"}, "Show what a subject depends on")
+	cmd := newTopologyQueryCommand(a, directionDependencies, "dependencies KIND NAME|KIND/NAME [RUN]", []string{"deps"}, "Show what a subject depends on")
 	cmd.Example = `  # What a VM needs in order to run
   vsfleet dependencies vm web-01
 
@@ -64,9 +65,12 @@ func newDependenciesCommand(a *App) *cobra.Command {
 
 func newBlastRadiusCommand(a *App) *cobra.Command {
 	var depth int
-	cmd := newTopologyQueryCommand(a, directionBlastRadius, "blast-radius KIND NAME [RUN]", []string{"blast"}, "Show the objects affected by a subject")
+	cmd := newTopologyQueryCommand(a, directionBlastRadius, "blast-radius KIND NAME|KIND/NAME [RUN]", []string{"blast"}, "Show the objects affected by a subject")
 	cmd.Example = `  # What breaks if this host goes down
   vsfleet blast-radius host esxi-07
+
+  # The same, in kubectl's KIND/NAME form
+  vsfleet blast-radius host/esxi-07
 
   # What a datastore outage would reach, two hops out
   vsfleet blast-radius datastore ds-nvme-01 --depth 2
@@ -86,7 +90,16 @@ func newTopologyQueryCommand(a *App, direction topologyDirection, use string, al
 		Aliases: aliases,
 		Short:   short,
 		Long:    strings.TrimSpace(short + ".\n" + topologyQueryLong),
-		Args:    cobra.RangeArgs(2, 3),
+		Args: func(_ *cobra.Command, args []string) error {
+			_, _, rest, err := parseSubject(args)
+			if err != nil {
+				return err
+			}
+			if len(rest) > 1 {
+				return fmt.Errorf("accepts at most one RUN after the subject, received %d", len(rest))
+			}
+			return nil
+		},
 		// Only the first positional argument comes from a fixed vocabulary;
 		// NAME and RUN are estate data, so completion stops after KIND rather
 		// than offering the kind list again in their place.
@@ -99,7 +112,11 @@ func newTopologyQueryCommand(a *App, direction topologyDirection, use string, al
 }
 
 func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topologyDirection, depth int) error {
-	inventoryKind, err := apiresource.ParseInventory(args[0], topologyInventoryKinds)
+	kindName, name, run, err := parseSubject(args)
+	if err != nil {
+		return err
+	}
+	inventoryKind, err := apiresource.ParseInventory(kindName, topologyInventoryKinds)
 	if err != nil {
 		return err
 	}
@@ -107,7 +124,7 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if depth < 1 || depth > 5 {
 		return fmt.Errorf("--depth must be between 1 and 5")
 	}
-	data, err := loadRunExportData(cmd, a, args[2:])
+	data, err := loadRunExportData(cmd, a, run)
 	if err != nil {
 		return err
 	}
@@ -120,11 +137,11 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 		}
 	}
 	graph := topology.Build(data)
-	subjects := graph.Resolve(kind, args[1], storedContextNames)
+	subjects := graph.Resolve(kind, name, storedContextNames)
 	result := topology.Result{
 		SchemaVersion: 1,
 		RunID:         data.Run.ID,
-		Query:         args[1],
+		Query:         name,
 		Kind:          string(kind),
 		Direction:     string(direction),
 		Ambiguous:     len(subjects) > 1,
@@ -145,7 +162,7 @@ func runTopologyQuery(cmd *cobra.Command, a *App, args []string, direction topol
 	if len(result.Subjects) == 0 {
 		// Keep a machine-readable unknown result rather than turning an absent
 		// object into a successful empty answer.
-		result.Subjects = append(result.Subjects, graph.Unknown(kind, args[1], storedContextNames))
+		result.Subjects = append(result.Subjects, graph.Unknown(kind, name, storedContextNames))
 	}
 	result.CheckedContexts, result.Blind = topologyResultCoverage(result.Subjects)
 	if len(result.CheckedContexts) == 0 {

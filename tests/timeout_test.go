@@ -42,7 +42,7 @@ func TestTimeoutBoundsInventoryEnumeration(t *testing.T) {
 	})
 
 	start := time.Now()
-	_, stderr, err := r.run(testPassword+"\n", "vm", "list", "--timeout", "300ms")
+	_, stderr, err := r.run(testPassword+"\n", "get", "vms", "--timeout", "300ms")
 	elapsed := time.Since(start)
 
 	if err == nil {

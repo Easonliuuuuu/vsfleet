@@ -261,8 +261,11 @@ at production.`,
   vsfleet config set-context prod --endpoint https://vcsa.example.internal --username svc-ro@vsphere.local --use
 
   # List VMs on one context, then on every context at once
-  vsfleet vm list -n prod
-  vsfleet vm list -A
+  vsfleet get vms -n prod
+  vsfleet get vms -A
+
+  # Everything vsfleet collected for one VM
+  vsfleet describe vm web-01
 
   # Find an object when you do not know which vCenter holds it
   vsfleet search ubuntu-golden -A
@@ -314,7 +317,7 @@ at production.`,
 	f.StringVar(&a.HistoryPath, "history-db", "", "path to the local assessment database")
 	// A bare "vsfleet" opens the interface, so the interface's own flag
 	// belongs here too — on root's own flags, not the persistent set, so
-	// "vsfleet vm list --refresh" is still the error it should be.
+	// "vsfleet get vms --refresh" is still the error it should be.
 	addRefreshFlag(root, a)
 
 	registerCommandGroups(root)
@@ -322,7 +325,13 @@ at production.`,
 		inGroup(groupStart, newUICommand(a)),
 		inGroup(groupStart, newDemoCommand(a)),
 		inGroup(groupStart, newConfigCommand(a)),
-		inGroup(groupStart, newStatusCommand(a)),
+		inGroup(groupStart, newClusterInfoCommand(a)),
+		inGroup(groupStart, newVersionCommand(a)),
+		inGroup(groupInventory, newGetCommand(a)),
+		inGroup(groupInventory, newDescribeCommand(a)),
+		inGroup(groupInventory, newEventsCommand(a)),
+		inGroup(groupInventory, newTopCommand(a)),
+		inGroup(groupInventory, newExplainCommand(a)),
 		inGroup(groupInventory, newSearchCommand(a)),
 		inGroup(groupInventory, newAPIResourcesCommand(a)),
 		inGroup(groupHistory, newImportCommand(a)),
@@ -331,15 +340,21 @@ at production.`,
 		inGroup(groupAnalysis, newTopologyCommand(a)),
 		inGroup(groupAnalysis, newDependenciesCommand(a)),
 		inGroup(groupAnalysis, newBlastRadiusCommand(a)),
-		inGroup(groupAnalysis, newCompatibilityCommand(a)),
 		inGroup(groupDiagnose, newDoctorCommand(a)),
 	)
-	for _, cmd := range newInventoryCommands(a) {
+	for _, cmd := range newKindCommands(a) {
 		root.AddCommand(inGroup(groupInventory, cmd))
 	}
+	for _, name := range removedKindGroups {
+		root.AddCommand(renamedKindCommand(name))
+	}
+	root.AddCommand(readOnlyVerbCommands()...)
 	root.AddCommand(newContextRenamedCommand())
 	root.AddCommand(renamedCommand("portgroup", []string{"portgroups"},
-		`use "vsfleet network list" for networks, or "vsfleet host portgroup list" for standard-switch port groups`))
+		`use "vsfleet get networks" for networks, or "vsfleet get portgroups" for standard-switch port groups`))
+	root.AddCommand(renamedCommand("status", nil, `use "vsfleet cluster-info"`))
+	root.AddCommand(renamedCommand("compatibility", []string{"compat"},
+		`use "vsfleet explain rvtools", or "vsfleet explain rvtools.SHEET" for one worksheet`))
 	return root
 }
 

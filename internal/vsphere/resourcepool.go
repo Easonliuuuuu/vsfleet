@@ -13,7 +13,7 @@ var resourcePoolProps = []string{"name", "parent", "owner", "vm", "config", "sum
 // ListResourcePools returns resource pool configuration records. It is kept
 // separate from ListInventory because resource pools are capture-only for
 // the browsable inventory (see KindResourcePool), even though they are their
-// own scriptable "resourcepool list" command.
+// own scriptable "get resourcepools" listing.
 func (c *Client) ListResourcePools(ctx context.Context) ([]ResourcePool, error) {
 	idx, err := newIndex(ctx, c)
 	if err != nil {

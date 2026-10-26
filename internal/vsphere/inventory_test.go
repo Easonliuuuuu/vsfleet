@@ -459,7 +459,7 @@ func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
 	check("network", netNames)
 
 	// The single-kind listers thread the same scoping through idx.root, not
-	// only ListInventory's own path — "vsfleet host list" must be scoped the
+	// only ListInventory's own path — "vsfleet get hosts" must be scoped the
 	// same way "vsfleet ui" is.
 	hosts, err := c.ListHosts(context.Background())
 	if err != nil {

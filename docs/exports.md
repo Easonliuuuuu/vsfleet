@@ -180,13 +180,13 @@ Workbooks also include vsfleet's `vsfleetCoverage` and
 Compatibility covers these names and columns only. Pipelines requiring other
 worksheets are unsupported.
 
-`vsfleet compatibility report` lists every column's type, unit, and empty-cell
+`vsfleet explain rvtools` lists every column's type, unit, and empty-cell
 conditions from the exporter definitions. It runs without configuration,
 keyring, or vCenter:
 
 ```sh
-vsfleet compatibility report --sheet vPartition
-vsfleet compatibility report -o json | jq
+vsfleet explain rvtools.vPartition
+vsfleet explain rvtools -o json | jq
 ```
 
 Same-vCenter comparisons used RVTools 4.8.1.4
@@ -262,7 +262,7 @@ predating this sheet are `not recorded`.
 `vRP` lists resource pools in the datacenter scope, including root
 `Resources` pools, then vApps. vApps share resource-pool allocation fields;
 their `VMs`/`vCPUs` count direct members. Live pools are also available
-through `vsfleet resourcepool list`.
+through `vsfleet get resourcepools`.
 
 The sheet covers identity and configured CPU/memory allocation, excluding
 volatile or unavailable RVTools QuickStats.
@@ -315,5 +315,5 @@ with default VLAN, teaming, security, and shaping policy; runtime ports are
 outside the profile. Captures before inventory schema 10 mark both sheets
 `not recorded` in `vsfleetCoverage`.
 
-`vsfleet network list` includes parent switch and VLAN for distributed port
+`vsfleet get networks` includes parent switch and VLAN for distributed port
 groups without an assessment.

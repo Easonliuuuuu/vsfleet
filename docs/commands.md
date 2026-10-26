@@ -24,10 +24,11 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet config use-context <name>` | Select the current context |
 | `vsfleet config view [--minify]` | Show the configuration; credentials appear as references |
 | `vsfleet config delete-context <name>` | Delete a context and invalidate its session |
-| `vsfleet status` | Check selected contexts |
+| `vsfleet cluster-info [dump]` | Show each context's connection; `dump` writes every live kind as one JSON document |
+| `vsfleet version` | Print the vsfleet version |
 | `vsfleet doctor [context...]` | Diagnose the connection stage by stage |
 | `vsfleet health [run]` | Assess the estate described by a stored assessment |
-| `vsfleet topology <kind> <name> [run]` | Show containment and attachments for a stored subject |
+| `vsfleet topology <kind> <name> [run]` | Show containment and attachments for a stored subject; `<kind>/<name>` also works |
 | `vsfleet dependencies <kind> <name> [run]` | Show what a stored subject depends on |
 | `vsfleet blast-radius <kind> <name> [run]` | Show stored subjects affected by a dependency |
 | `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
@@ -40,50 +41,61 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
 | `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet api-resources` | List every object kind with its short names and whether it is live, stored, or both |
-| `vsfleet <kind> list` | List VMs, templates, hosts, clusters, vApps, datastores, or networks |
-| `vsfleet <kind> show <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail |
-| `vsfleet host hba\|pnic\|vswitch\|portgroup\|vmkernel\|multipath list [--host <name>]` | List one host storage/network subresource, across every host or narrowed to one |
-| `vsfleet dvswitch list` | List distributed virtual switches |
-| `vsfleet dvportgroup list [--switch <name>]` | List distributed port groups, across every switch or narrowed to one |
-| `vsfleet resourcepool list` | List resource pools |
-| `vsfleet snapshot list [--vm <name>]` | List VM snapshots, across every VM or narrowed to one |
+| `vsfleet get <kind>[,<kind>...] [name...]` | List objects of any live kind, live from vCenter; names may be globs, and `<kind>/<name>` also works |
+| `vsfleet describe <kind> <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail |
+| `vsfleet events --for vm/<name> [--all]` | Show a VM's live vCenter event log: migrations, reconfigurations, snapshots and failures, with who and when; task results come from the VM's task history, and a deleted VM is found through stored history |
+| `vsfleet top vm [name...]` | Show VM CPU and memory use from stored performance collections; see [performance history](performance.md) |
+| `vsfleet explain <kind>[.<field>]` | Document a kind's columns and the RVTools worksheets it feeds |
 | `vsfleet datastore files list <datastore> [path]` | List one datastore directory |
 | `vsfleet datastore files find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
 | `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
-| `vsfleet vm events <name-or-uuid> [--all]` | Show a VM's live vCenter event log: migrations, reconfigurations, snapshots and failures, with who and when; task results come from the VM's task history, and a deleted VM is found through stored history |
 | `vsfleet vm decommission-check <name-or-uuid> [run]` | Review stored evidence before decommissioning a VM |
 | `vsfleet assessment ...` | Capture and compare historical observations |
 | `vsfleet assessment export --profile <name> [--pseudonymize --pseudonymize-key-file <file>] [--preview]` | Export a scoped `sizing-summary` or `full-inventory` workbook, optionally pseudonymized; see [scoped sharing profiles](sharing.md) |
 | `vsfleet assessment metadata [run] [--kind ...] [--source tag\|custom] [--where ...] [--format csv]` | Export stored tags and custom attributes in a fixed long-format schema; see [metadata exports](metadata.md#export-metadata) |
 | `vsfleet assessment metadata-report <definition> [run] [--base <run>]` | Run a saved tag/custom-attribute report against an assessment, optionally listing membership changes since `--base` |
 | `vsfleet import rvtools <file.xlsx>` | Import an RVTools-compatible export as a new offline assessment run |
-| `vsfleet compatibility report` | Describe every worksheet and column the export writes |
+| `vsfleet explain rvtools[.<sheet>]` | Describe every worksheet and column the export writes, or one worksheet |
 
 ## Inventory and search
 
-`vsfleet api-resources` lists every object kind, the way
+The inventory verbs follow kubectl: `get` lists, `describe` shows one object,
+`events` reads a VM's log, `top` reads performance, and `explain` documents a
+kind. `vsfleet api-resources` lists every kind, the way
 `kubectl api-resources` does. Each kind accepts its singular, plural and short
 names (`node` for `host`, `cl` for `cluster`, `ds` for `datastore`, `net` for
-`network`) everywhere a kind is taken: as the command, in `--kind`, and as the
-`KIND` argument of `topology`, `dependencies` and `blast-radius`. `portgroup`
-means standard-switch port groups only (`vsfleet host portgroup list`); use
-`network` for the vCenter network inventory.
+`network`) everywhere a kind is taken: in `get`, `describe` and `explain`, in
+`--kind`, and as the `KIND` argument of `topology`, `dependencies` and
+`blast-radius`. `portgroup` means standard-switch port groups only
+(`vsfleet get portgroups`); use `network` for the vCenter network inventory.
 
-Use `--filter` / `-f` for text matching, repeatable `--where` for predicates,
-and `--wide` for metadata columns:
+vsfleet never changes a vCenter, so kubectl's mutating verbs (`apply`,
+`delete`, `edit`, `scale`, `exec` and the rest) fail with a read-only error.
+
+`get` takes the kubectl argument forms: `KIND`, `KIND NAME...`,
+`KIND,KIND` and `KIND/NAME...`. A name is matched exactly, ignoring case, or
+as a shell glob such as `'web*'`; quote a glob so the shell leaves it alone. A
+VM or template may also be named by instance or BIOS UUID. An exact name that
+matches nothing fails; a glob that matches nothing prints
+`No resources found.` on stderr. Repeatable `--where` adds predicates, and
+`--wide` adds metadata columns:
 
 ```sh
 vsfleet api-resources
-vsfleet host list --context prod --filter esxi-07
-vsfleet datastore list --all-contexts -f nvme
-vsfleet vapp list --all-contexts
-vsfleet vm list --where 'tag=Production' --where 'cpu>=8' --wide
-vsfleet datastore list --where 'free_percent<15'
+vsfleet get hosts -n prod
+vsfleet get ds 'nvme*' -A
+vsfleet get vm/web-01 host/esxi-07
+vsfleet get vms,hosts -o json
+vsfleet get vms --where 'tag=Production' --where 'cpu>=8' --wide
+vsfleet get datastores --where 'free_percent<15'
 
 vsfleet search ubuntu --all-contexts
 vsfleet search --tag migration-wave-2 --wide
 vsfleet search nvme --kind datastore --limit 20
 ```
+
+With one kind, `-o json` writes an array. With several, it writes one object
+holding an array per kind, keyed by the kind's plural.
 
 `--where` uses `field operator value`, with `=`, `!=`, `<`, `<=`, `>` and
 `>=`. Repeat the flag to AND predicates. Values may be quoted when they contain
@@ -112,32 +124,55 @@ failure is reported separately with its context and diagnostic information.
 
 ## Object detail and infrastructure subresources
 
-`vsfleet <kind> show <name>` prints identity, provenance, and configuration.
-Ambiguous names return candidates; use `--context` to narrow them:
+`vsfleet describe <kind> <name>` prints identity, provenance, and
+configuration. Ambiguous names return candidates; use `-n` to narrow them:
 
 ```sh
-vsfleet vm show web-01
-vsfleet vm show 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52   # by instance UUID
-vsfleet host show esxi-01 --context prod
-vsfleet datastore show nvme-01 -o json
+vsfleet describe vm web-01
+vsfleet describe vm/web-01
+vsfleet describe vm 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52   # by instance UUID
+vsfleet describe host esxi-01 -n prod
+vsfleet describe datastore nvme-01 -o json
 ```
 
-Query host HBAs, NICs, switches, port groups, VMkernel adapters, and
-multipath LUNs across a context or select one host with `--host`:
+Host HBAs, physical NICs, standard switches, port groups, VMkernel adapters,
+and multipath LUNs are kinds of their own. `get` lists them across every host,
+or `--host` selects one:
 
 ```sh
-vsfleet host hba list --host esxi-01
-vsfleet host vswitch list
-vsfleet host multipath list --host esxi-01 -o json
+vsfleet get hbas --host esxi-01
+vsfleet get vswitches
+vsfleet get multipaths --host esxi-01 -o json
 ```
 
-Distributed switch, resource pool and snapshot evidence work the same way:
+Distributed port groups and snapshots narrow the same way, with `--switch`
+and `--vm`:
 
 ```sh
-vsfleet dvswitch list
-vsfleet dvportgroup list --switch dvs-prod
-vsfleet resourcepool list --wide
-vsfleet snapshot list --vm web-01
+vsfleet get dvswitches
+vsfleet get dvportgroups --switch dvs-prod
+vsfleet get resourcepools --wide
+vsfleet get snapshots --vm web-01
+```
+
+`vsfleet explain <kind>` lists the columns `get` shows for a kind and the
+RVTools worksheets the export writes from it; `vsfleet explain <kind>.<field>`
+documents one column. `vsfleet cluster-info` shows each context's route,
+state, latency and vCenter version, and `vsfleet cluster-info dump` writes
+every live kind for the selected contexts as one JSON document for a bug
+report.
+
+### VM events
+
+`vsfleet events --for vm/<name>` reads what vCenter logged for one VM, bounded
+by what vCenter still keeps, usually 30 days. Routine power, guest, tools and
+task events are hidden unless `--all` is given. A VM no longer in inventory is
+found through stored history, and its events are read under the ID history
+recorded, which shows who deleted it and when.
+
+```sh
+vsfleet events --for vm/web-01
+vsfleet events --for vm/web-01 --all -o json
 ```
 
 ## Datastore file browsing
@@ -337,14 +372,17 @@ vsfleet vm decommission-check legacy-db01 --fail-on-blockers
 
 ## Export compatibility
 
-`vsfleet compatibility report` describes what the `rvtools` export profile
-writes: every worksheet, every column, each cell's type and unit, and when a
-cell is left empty.
+<span id="compatibility-report"></span>
+
+`vsfleet explain rvtools` describes what the `rvtools` export profile writes:
+every worksheet, every column, each cell's type and unit, and when a cell is
+left empty.
 
 ```sh
-vsfleet compatibility report                      # every worksheet
-vsfleet compatibility report --sheet vHBA         # one of them
-vsfleet compatibility report -o json | jq         # for a pipeline
+vsfleet explain rvtools                 # every worksheet
+vsfleet explain rvtools.vHBA            # one of them
+vsfleet explain rvtools -o json | jq    # for a pipeline
+vsfleet explain vm.annotation           # one column, on every VM worksheet
 ```
 
 The report is generated from exporter definitions and runs without
@@ -405,7 +443,7 @@ Partial captures exit `0` unless `--fail-on-partial` is set.
 Use `-o json` for automation:
 
 ```sh
-vsfleet vm list --all-contexts -o json
+vsfleet get vms --all-contexts -o json
 vsfleet search nvme --kind datastore -o json | jq
 ```
 

@@ -99,7 +99,7 @@ wait_for_no_ready_endpoints() {
 wait_for_reachable_vcenters() {
   local args attempt
   args="$(kubectl -n "$namespace" get cronjob vsfleet-assessment -o json | jq -c '.spec.jobTemplate.spec.template.spec.containers[] | select(.name == "vsfleet") | .args')"
-  kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"template":{"spec":{"containers":[{"name":"vsfleet","args":["--timeout","5s","--all-contexts","-o","json","status"]}]}}}}}}'
+  kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"template":{"spec":{"containers":[{"name":"vsfleet","args":["--timeout","5s","--all-contexts","-o","json","cluster-info"]}]}}}}}}'
   for attempt in {1..15}; do
     run_job "vsfleet-reachable-$attempt" >/dev/null
     if wait_complete "vsfleet-reachable-$attempt" 2>/dev/null &&

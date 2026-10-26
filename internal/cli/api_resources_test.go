@@ -46,46 +46,51 @@ func TestAPIResources(t *testing.T) {
 	})
 }
 
-// A short name works as a command alias wherever the registry lists it, and
-// "portgroup" now names only standard-switch port groups under host.
-func TestInventoryCommandsAcceptRegistryNames(t *testing.T) {
-	root := NewRootCommand(&App{})
+// Every removed command, under any spelling the registry gives its kind,
+// fails with the command that replaced it instead of "unknown command".
+func TestRemovedCommandsPointAtReplacements(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "history.db")
 	for _, tc := range []struct {
 		args []string
-		want string
+		want []string
 	}{
-		{[]string{"node", "list"}, "vsfleet host list"},
-		{[]string{"cl", "list"}, "vsfleet cluster list"},
-		{[]string{"net", "list"}, "vsfleet network list"},
-		{[]string{"tmpl", "list"}, "vsfleet template list"},
-		{[]string{"host", "pg", "list"}, "vsfleet host portgroup list"},
+		{[]string{"vm", "list", "--filter", "web"}, []string{`"vm list" was renamed`, "vsfleet get vms"}},
+		{[]string{"vms", "show", "web-01"}, []string{"vsfleet describe vm NAME"}},
+		{[]string{"vm", "events", "web-01"}, []string{"vsfleet events --for vm/NAME"}},
+		{[]string{"net", "list"}, []string{"vsfleet get networks"}},
+		{[]string{"node", "list"}, []string{`"host list" was renamed`, "vsfleet get hosts"}},
+		{[]string{"host", "show", "esxi-07"}, []string{"vsfleet describe host NAME"}},
+		{[]string{"host", "pg", "list", "--host", "esxi-07"}, []string{"vsfleet get portgroups --host HOST"}},
+		{[]string{"tmpl", "list"}, []string{"vsfleet get templates"}},
+		{[]string{"snapshot", "list", "--vm", "web-01"}, []string{"vsfleet get snapshots"}},
+		{[]string{"portgroup", "list"}, []string{"vsfleet get networks", "vsfleet get portgroups"}},
+		{[]string{"portgroups", "list", "-o", "json"}, []string{"vsfleet get networks", "vsfleet get portgroups"}},
+		{[]string{"status", "-A"}, []string{"vsfleet cluster-info"}},
+		{[]string{"compatibility", "report", "--sheet", "vInfo"}, []string{"vsfleet explain rvtools.SHEET"}},
+		{[]string{"assessment", "perf", "show", "latest"}, []string{`"assessment perf show" was renamed`, "vsfleet top vm"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
-			cmd, _, err := root.Find(tc.args)
-			if err != nil {
-				t.Fatal(err)
+			out, _, err := runCLI(t, db, tc.args...)
+			if err == nil {
+				t.Fatalf("succeeded with output %q; want an error", out)
 			}
-			if cmd.CommandPath() != tc.want {
-				t.Fatalf("resolved to %q; want %q", cmd.CommandPath(), tc.want)
+			for _, want := range tc.want {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not mention %q", err, want)
+				}
 			}
 		})
 	}
 }
 
-// "portgroup" used to be an alias of network. It now fails with the two
-// commands that replace it instead of quietly listing networks.
-func TestRemovedPortgroupAliasPointsAtReplacements(t *testing.T) {
-	db := filepath.Join(t.TempDir(), "history.db")
-	for _, args := range [][]string{{"portgroup", "list"}, {"portgroups", "list", "-o", "json"}} {
-		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			out, _, err := runCLI(t, db, args...)
-			if err == nil {
-				t.Fatalf("succeeded with output %q; want an error", out)
-			}
-			for _, want := range []string{"vsfleet network list", "vsfleet host portgroup list"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error %q does not mention %q", err, want)
-				}
+// kubectl's mutating verbs are a habit worth answering: vsfleet is read-only,
+// and the error says so rather than "unknown command".
+func TestMutatingVerbsSayVsfleetIsReadOnly(t *testing.T) {
+	for _, args := range [][]string{{"delete", "vm", "web-01"}, {"apply", "-f", "x.yaml"}, {"logs", "web-01"}} {
+		t.Run(args[0], func(t *testing.T) {
+			_, _, err := runArgs(t, args...)
+			if err == nil || !strings.Contains(err.Error(), "read-only: vsfleet never changes a vCenter") {
+				t.Fatalf("%v: error = %v; want a read-only refusal", args, err)
 			}
 		})
 	}

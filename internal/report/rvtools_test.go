@@ -897,7 +897,7 @@ func TestWriteRVToolsHealthCoverageStates(t *testing.T) {
 }
 
 // TestEveryExportedColumnIsDocumented is the guard that keeps the
-// compatibility report honest. Profile walks the real exporter output, so a
+// explain rvtools report honest. Profile walks the real exporter output, so a
 // column added to a worksheet without a description in compatibility.go fails
 // here rather than shipping a report that quietly omits it.
 func TestEveryExportedColumnIsDocumented(t *testing.T) {

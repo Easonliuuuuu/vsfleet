@@ -188,7 +188,7 @@ func TestHTTPProxyUnauthenticated(t *testing.T) {
 	}
 
 	// Inventory has to work over the tunnel too, not just the handshake.
-	vms := r.mustRun(testPassword+"\n", "vm", "list")
+	vms := r.mustRun(testPassword+"\n", "get", "vms")
 	if !strings.Contains(vms, "DC0") {
 		t.Errorf("vm list over the http proxy returned nothing:\n%s", vms)
 	}

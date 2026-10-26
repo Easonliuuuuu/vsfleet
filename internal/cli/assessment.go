@@ -333,7 +333,7 @@ func newAssessmentExportCommand(a *App) *cobra.Command {
   vsfleet assessment export nightly --file estate.xlsx --force
 
   # See what the workbook will contain before exporting
-  vsfleet compatibility report
+  vsfleet explain rvtools
 
   # Preview a scoped sizing summary, then write it with pseudonymized names
   vsfleet assessment export --profile sizing-summary --pseudonymize --preview

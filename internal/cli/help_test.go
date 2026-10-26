@@ -49,10 +49,9 @@ func TestUnknownSubcommandFails(t *testing.T) {
 		{"assessment"},
 		{"assessment", "trends"},
 		{"vm"},
-		{"host"},
+		{"datastore"},
 		{"network"},
 		{"config"},
-		{"compatibility"},
 	} {
 		args := append(append([]string{}, parent...), "no-such-subcommand")
 		t.Run(strings.Join(parent, " "), func(t *testing.T) {
@@ -96,7 +95,7 @@ func TestBareRootWithoutTerminalPrintsHelp(t *testing.T) {
 // opens the terminal interface. That choice should not also cost the near miss.
 func TestTyposSuggestTheIntendedCommand(t *testing.T) {
 	for _, tc := range []struct{ args, want []string }{
-		{[]string{"statas"}, []string{"status"}},
+		{[]string{"descibe"}, []string{"describe"}},
 		{[]string{"assessment", "lst"}, []string{"list"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
@@ -178,11 +177,13 @@ func TestEveryTopLevelCommandIsGrouped(t *testing.T) {
 // Giving a parent a RunE is what makes the unknown-subcommand check possible,
 // but it also makes cobra think the parent is worth invoking on its own. The
 // usage line must not start advertising "vsfleet assessment [flags]", which
-// does nothing but print the help the reader is already looking at.
+// does nothing but print the help the reader is already looking at. A parent
+// that does real work bare, such as "cluster-info" beside "cluster-info dump",
+// keeps cobra's template and is rightly advertised both ways.
 func TestParentsDoNotAdvertiseABareFlagsInvocation(t *testing.T) {
 	root := NewRootCommand(&App{})
 	walk(root, func(cmd *cobra.Command) {
-		if !cmd.HasAvailableSubCommands() {
+		if !cmd.HasAvailableSubCommands() || cmd.UsageTemplate() != parentUsageTemplate {
 			return
 		}
 		usage := cmd.UsageString()

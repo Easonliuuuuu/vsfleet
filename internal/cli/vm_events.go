@@ -15,12 +15,15 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-func newVMEventsCommand(a *App) *cobra.Command {
+func newEventsCommand(a *App) *cobra.Command {
 	var all bool
 	var limit int
-	cmd := &cobra.Command{Use: "events NAME_OR_UUID", Short: "Show a VM's live vCenter event log", Long: strings.TrimSpace(`
-Show what vCenter logged for one VM: migrations, reconfigurations, renames,
-snapshot tasks and failures, with who did them and when.
+	var target string
+	cmd := &cobra.Command{Use: "events --for vm/NAME", Short: "Show an object's live vCenter event log", Long: strings.TrimSpace(`
+Show what vCenter logged for one object, the way "kubectl events --for" does:
+migrations, reconfigurations, renames, snapshot tasks and failures, with who
+did them and when. --for takes KIND/NAME; vm is the kind supported today, and
+NAME may also be an instance or BIOS UUID.
 
 This reads vCenter live and is bounded by what vCenter still keeps, usually
 the last 30 days. For changes across your stored assessments, which go back as
@@ -30,13 +33,17 @@ guest and tools state, task progress) are hidden unless --all is given.
 A VM that is no longer in inventory is found in stored history instead, and
 its events are read under the managed object ID that history recorded for it.
 That is how to see who deleted a VM, and when.`), Example: `  # What vCenter logged for a VM
-  vsfleet vm events web-01
+  vsfleet events --for vm/web-01
 
   # Include power, guest and other routine events
-  vsfleet vm events web-01 --all
+  vsfleet events --for vm/web-01 --all
 
   # As JSON, for a script
-  vsfleet vm events web-01 -o json`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+  vsfleet events --for vm/web-01 -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		name, err := eventsTarget(target)
+		if err != nil {
+			return err
+		}
 		vms, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) {
 			return c.ListVMs(ctx)
 		})
@@ -48,13 +55,13 @@ That is how to see who deleted a VM, and when.`), Example: `  # What vCenter log
 		// name, so say so even when the lookup found one.
 		defer reportFailures(a, failures)
 		var listing vsphere.VMEventListing
-		vm, err := resolveVM(a, "vm", args[0], vms)
+		vm, err := resolveVM(a, "vm", name, vms)
 		var none *noMatchError
 		switch {
 		case err == nil:
 			listing, err = vmEvents(cmd.Context(), a, vm.Context, vm.ID, limit)
 		case errors.As(err, &none):
-			listing, err = storedVMEvents(cmd.Context(), a, args[0], limit, err)
+			listing, err = storedVMEvents(cmd.Context(), a, name, limit, err)
 		}
 		if err != nil {
 			return err
@@ -91,9 +98,30 @@ That is how to see who deleted a VM, and when.`), Example: `  # What vCenter log
 		}
 		return nil
 	}}
+	cmd.Flags().StringVar(&target, "for", "", "the object to show events for, as KIND/NAME (required)")
 	cmd.Flags().BoolVar(&all, "all", false, "include routine power, guest, tools and task events")
 	cmd.Flags().IntVar(&limit, "limit", vsphere.DefaultVMEventLimit, "most events to read from vCenter, routine ones included")
 	return cmd
+}
+
+// eventsTarget reads --for. Events are read per VM today, so any other kind
+// is refused by name rather than answered with an empty log.
+func eventsTarget(target string) (string, error) {
+	if target == "" {
+		return "", errors.New(`--for is required, e.g. "vsfleet events --for vm/web-01"`)
+	}
+	kindName, name, err := splitKindName(target)
+	if err != nil {
+		return "", fmt.Errorf("--for: %w", err)
+	}
+	kind, err := lookupKind(kindName)
+	if err != nil {
+		return "", fmt.Errorf("--for: %w", err)
+	}
+	if kind.Name != "vm" {
+		return "", fmt.Errorf("--for: events are read for VMs only, not %s", kind.Plural)
+	}
+	return name, nil
 }
 
 // vmEvents reads one VM's event log, identified by its managed object ID on

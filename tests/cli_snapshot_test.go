@@ -54,24 +54,24 @@ func TestSnapshotListing(t *testing.T) {
 	r := newRunner(t)
 	r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
 
-	all := r.mustRun(testPassword+"\n", "snapshot", "list")
+	all := r.mustRun(testPassword+"\n", "get", "snapshots")
 	if !strings.Contains(all, "DC0_C0_RP0_VM0") || !strings.Contains(all, "baseline") {
-		t.Fatalf("snapshot list did not show the simulated snapshot:\n%s", all)
+		t.Fatalf("get snapshots did not show the simulated snapshot:\n%s", all)
 	}
 
-	narrowed := r.mustRun(testPassword+"\n", "snapshot", "list", "--vm", "DC0_C0_RP0_VM0")
+	narrowed := r.mustRun(testPassword+"\n", "get", "snapshots", "--vm", "DC0_C0_RP0_VM0")
 	if !strings.Contains(narrowed, "baseline") {
 		t.Fatalf("--vm did not return the VM's snapshot:\n%s", narrowed)
 	}
 
-	empty := r.mustRun(testPassword+"\n", "snapshot", "list", "--vm", "DC0_C0_RP0_VM1")
+	empty := r.mustRun(testPassword+"\n", "get", "snapshots", "--vm", "DC0_C0_RP0_VM1")
 	if strings.Contains(empty, "baseline") {
 		t.Fatalf("--vm on a snapshot-free VM leaked another VM's snapshot:\n%s", empty)
 	}
 
-	// The same evidence also appears inline on "vm show".
-	detail := r.mustRun(testPassword+"\n", "vm", "show", "DC0_C0_RP0_VM0")
+	// The same evidence also appears inline on "describe vm".
+	detail := r.mustRun(testPassword+"\n", "describe", "vm", "DC0_C0_RP0_VM0")
 	if !strings.Contains(detail, "Snapshots:") || !strings.Contains(detail, "baseline") {
-		t.Errorf("vm show did not include its snapshot evidence:\n%s", detail)
+		t.Errorf("describe vm did not include its snapshot evidence:\n%s", detail)
 	}
 }

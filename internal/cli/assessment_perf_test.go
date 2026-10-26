@@ -72,6 +72,15 @@ func seedPerformance(t *testing.T, dbPath string) {
 	}
 }
 
+func mustTopVM(t *testing.T, dbPath string, args ...string) string {
+	t.Helper()
+	out, errOut, err := runCLI(t, dbPath, append([]string{"top", "vm"}, args...)...)
+	if err != nil {
+		t.Fatalf("top vm %v: %v\nstderr: %s", args, err, errOut)
+	}
+	return out
+}
+
 func mustAssessment(t *testing.T, dbPath string, args ...string) string {
 	t.Helper()
 	out, errOut, err := runCLI(t, dbPath, append([]string{"assessment"}, args...)...)
@@ -81,10 +90,10 @@ func mustAssessment(t *testing.T, dbPath string, args ...string) string {
 	return out
 }
 
-func TestPerfShowDoesNotInferSizingFromOneSampleOrMissingData(t *testing.T) {
+func TestTopDoesNotInferSizingFromOneSampleOrMissingData(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	seedPerformance(t, dbPath)
-	out := mustAssessment(t, dbPath, "perf", "show", "latest")
+	out := mustTopVM(t, dbPath)
 	lines := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		if f := strings.Fields(line); len(f) > 1 {
@@ -131,10 +140,10 @@ func TestAssessmentReportStatesWhichContextsHavePerformanceHistory(t *testing.T)
 
 // At statistics level 1 the table fills active memory from mem.usage, marks
 // it, and drops the hint to raise the level, which would change nothing.
-func TestPerfShowReadsActiveMemoryFromMemUsage(t *testing.T) {
+func TestTopReadsActiveMemoryFromMemUsage(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	seedPerformance(t, dbPath)
-	out := mustAssessment(t, dbPath, "perf", "show", "latest")
+	out := mustTopVM(t, dbPath)
 	var row []string
 	for _, line := range strings.Split(out, "\n") {
 		if f := strings.Fields(line); len(f) > 1 && f[0] == "leveled" {
@@ -156,5 +165,32 @@ func TestPerfShowReadsActiveMemoryFromMemUsage(t *testing.T) {
 	}
 	if strings.Contains(out, "hint:") {
 		t.Errorf("no VM needs a higher level, so there is no hint:\n%s", out)
+	}
+}
+
+func TestTopNarrowsAndRefuses(t *testing.T) {
+	dbPath := newTopologyTestHistoryDB(t)
+	seedPerformance(t, dbPath)
+	t.Run("glob narrows the VMs", func(t *testing.T) {
+		out := mustTopVM(t, dbPath, "sp*")
+		if !strings.Contains(out, "spiky") || !strings.Contains(out, "sparse") || strings.Contains(out, "leveled") {
+			t.Fatalf("top vm 'sp*':\n%s", out)
+		}
+	})
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{"unknown VM", []string{"top", "vm", "no-such-vm"}, `no vm matched "no-such-vm"`},
+		{"hosts are not collected", []string{"top", "host"}, "sample VMs only"},
+		{"missing window", []string{"top", "vm", "--window", "99"}, "no performance window 99"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := runCLI(t, dbPath, tc.args...)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("%v: error = %v; want %q", tc.args, err, tc.wantErr)
+			}
+		})
 	}
 }

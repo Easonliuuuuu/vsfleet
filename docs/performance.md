@@ -7,7 +7,7 @@ Performance collection never rewrites or references a capture.
 ```sh
 vsfleet assessment perf collect --window 7d            # contacts vCenter, read-only
 vsfleet assessment perf list
-vsfleet assessment perf show latest                    # offline
+vsfleet top vm                                         # offline
 vsfleet assessment report                              # lists collected/not collected per context
 vsfleet assessment export --format rvtools --file e.xlsx   # adds the vsfleetPerformance sheet
 ```
@@ -37,7 +37,7 @@ Where `mem.active` is not kept, active memory is read from `mem.usage`
 instead. For a VM, `mem.usage` is active memory divided by configured memory,
 although vCenter labels it "Host consumed %". On Server 8.0.3 the two agree to
 within 0.01 percentage points. A sparse `mem.active` is never replaced. The
-signal reason, the `perf collect` summary, `perf show` (marked `*`), and the VM
+signal reason, the `perf collect` summary, `top vm` (marked `*`), and the VM
 and vApp dashboards' "Memory active" charts name `mem.usage` as the source.
 
 When neither counter is kept, set the interval to level 2 in

@@ -79,7 +79,7 @@ go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest
 The official GitHub Container Registry image supports Linux amd64 and arm64:
 
 ```sh
-docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest compatibility report --sheet vInfo -o json
+docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest explain rvtools.vInfo -o json
 ```
 
 Use a version tag such as <!-- x-release-please-start-version -->`v0.6.1`<!-- x-release-please-end --> for repeatable deployments, or pin the
@@ -175,13 +175,14 @@ run, an environment variable, a file, or a helper such as `vault`. See
 ```sh
 vsfleet config get-contexts
 vsfleet doctor prod
-vsfleet status
+vsfleet cluster-info
 
-vsfleet vm list
-vsfleet vm list --context prod -o json
-vsfleet vapp list
-vsfleet host list
-vsfleet datastore list
+vsfleet get vms
+vsfleet get vms -n prod -o json
+vsfleet get vapps
+vsfleet get hosts
+vsfleet get datastores
+vsfleet describe vm web-01
 
 vsfleet search ubuntu --all-contexts
 ```

@@ -183,21 +183,21 @@ func TestContextLifecycleAndInventory(t *testing.T) {
 		}
 	}
 
-	vms := r.mustRun(testPassword+"\n", "vm", "list")
+	vms := r.mustRun(testPassword+"\n", "get", "vms")
 	if !strings.Contains(vms, "poweredOn") {
-		t.Errorf("vm list did not show any running VM:\n%s", vms)
+		t.Errorf("get vms did not show any running VM:\n%s", vms)
 	}
 
-	hosts := r.mustRun(testPassword+"\n", "host", "list")
+	hosts := r.mustRun(testPassword+"\n", "get", "hosts")
 	if !strings.Contains(hosts, "connected") {
 		t.Errorf("host list did not show a connected host:\n%s", hosts)
 	}
 
-	vapps := r.mustRun(testPassword+"\n", "vapp", "list", "--context", "lab")
+	vapps := r.mustRun(testPassword+"\n", "get", "vapps", "--context", "lab")
 	if !strings.Contains(vapps, "APP0") || !strings.Contains(vapps, "PATH") {
 		t.Errorf("vApp list did not show the simulated vApp and path:\n%s", vapps)
 	}
-	vappsJSON := r.mustRun(testPassword+"\n", "vapps", "list", "--context", "lab", "-o", "json")
+	vappsJSON := r.mustRun(testPassword+"\n", "get", "vapps", "--context", "lab", "-o", "json")
 	if !strings.Contains(vappsJSON, `"direct_vm_count"`) {
 		t.Errorf("vApp JSON did not use the domain model:\n%s", vappsJSON)
 	}
@@ -206,7 +206,7 @@ func TestContextLifecycleAndInventory(t *testing.T) {
 		t.Errorf("global search did not include vApps:\n%s", searchVApp)
 	}
 
-	stores := r.mustRun(testPassword+"\n", "datastore", "list")
+	stores := r.mustRun(testPassword+"\n", "get", "datastores")
 	if !strings.Contains(stores, "LocalDS_0") {
 		t.Errorf("datastore list did not show the simulated datastore:\n%s", stores)
 	}
@@ -272,7 +272,7 @@ func TestFailureIsolation(t *testing.T) {
 		t.Errorf("the broken context was not reported:\n%s", stderr)
 	}
 
-	stdout, stderr, _ = r.run(stdin, "status")
+	stdout, stderr, _ = r.run(stdin, "cluster-info")
 	if !strings.Contains(stdout, "connected") {
 		t.Errorf("status did not show the healthy vCenter as connected:\n%s", stdout)
 	}

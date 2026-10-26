@@ -47,7 +47,7 @@ func TestVCSIMContextIsolation(t *testing.T) {
 	}
 
 	for _, direction := range []string{"topology", "dependencies", "blast-radius"} {
-		stdout, stderr, err := r.run("", "--history-db", historyDB, "-o", "json", "--context", "does-not-exist", direction, "vm", "DC0_C0_RP0_VM0", "latest")
+		stdout, stderr, err := r.run("", "--history-db", historyDB, "-o", "json", "--context", "does-not-exist", "analyze", direction, "vm", "DC0_C0_RP0_VM0", "--run", "latest")
 		errMsg := ""
 		if err != nil {
 			errMsg = err.Error()

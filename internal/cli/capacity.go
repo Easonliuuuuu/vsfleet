@@ -31,52 +31,72 @@ type capacityFlags struct {
 	minFreeBytes     string
 	top              int
 	failOnProjection string
+	trend            bool
+	kind             string
 }
 
-func newAssessmentCapacityCommand(a *App) *cobra.Command {
+// projectionFlags are the capacity flags that only the projection reads.
+var projectionFlags = []string{"since", "datastore", "min-free", "min-free-bytes", "top", "fail-on-projection"}
+
+func newAnalyzeCapacityCommand(a *App) *cobra.Command {
 	var flags capacityFlags
 	cmd := &cobra.Command{
-		Use:   "capacity [RUN]",
+		Use:   "capacity",
 		Short: "Attribute datastore growth and project free-space thresholds",
 		Long: strings.TrimSpace(`
 Attribute datastore growth to the VMs driving it and project when each
-datastore crosses a free-space floor, using the stored assessment history.
+datastore crosses a free-space floor, from the captures up to --run.
 
 Projection needs more than one capture to extrapolate from, so run this after
-history has accumulated rather than against a single capture.`),
+history has accumulated rather than against a single capture. --trend
+instead tabulates compute and storage capacity for every capture in the
+window, per host, cluster or datastore.`),
 		Example: `  # Growth and projections across the stored history
-  vsfleet assessment capacity
+  vsfleet analyze capacity
 
   # Narrow to the last 30 days and two datastores
-  vsfleet assessment capacity --since 30d --datastore ds-nvme-01 --datastore ds-nvme-02
+  vsfleet analyze capacity --since 30d --datastore ds-nvme-01 --datastore ds-nvme-02
 
   # Project against a 20% floor, showing the top 10 contributors
-  vsfleet assessment capacity --min-free 20 --top 10
+  vsfleet analyze capacity --min-free 20 --top 10
 
   # Gate a pipeline: exit 2 when a floor is projected within 90 days
-  vsfleet assessment capacity --fail-on-projection 90d`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+  vsfleet analyze capacity --fail-on-projection 90d
+
+  # Datastore capacity across the most recent 20 captures
+  vsfleet analyze capacity --trend --kind datastore --limit 20`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireTrend(cmd, flags.trend, "kind"); err != nil {
+				return err
+			}
+			if flags.trend {
+				for _, name := range projectionFlags {
+					if cmd.Flags().Changed(name) {
+						return fmt.Errorf("--%s applies to the projection, not --trend", name)
+					}
+				}
+			}
 			s, err := a.History()
 			if err != nil {
 				return err
 			}
-			selector, err := capacitySelector(args, flags.to, cmd.Flags().Changed("to"))
+			if flags.trend {
+				return capacityTrend(cmd.Context(), a, s, flags.trendFlags, flags.kind)
+			}
+			selector := flags.run
+			if selector == "" {
+				selector = "latest"
+			}
+			id, err := s.ResolveRun(cmd.Context(), selector)
+			if err != nil {
+				return fmt.Errorf("--run: %w", err)
+			}
+			asOf, err := s.GetRun(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
-			asOf := assessment.Run{}
-			if selector != "" {
-				id, resolveErr := s.ResolveRun(cmd.Context(), selector)
-				if resolveErr != nil {
-					return resolveErr
-				}
-				asOf, err = s.GetRun(cmd.Context(), id)
-				if err != nil {
-					return err
-				}
-				flags.to = strconv.FormatInt(id, 10)
-			}
+			flags.run = strconv.FormatInt(id, 10)
 			opts, err := flags.trendFlags.options(cmd.Context(), s, a)
 			if err != nil {
 				return err
@@ -156,20 +176,10 @@ history has accumulated rather than against a single capture.`),
 	cmd.Flags().StringVar(&flags.minFreeBytes, "min-free-bytes", "", "project against this minimum free-space floor")
 	cmd.Flags().IntVar(&flags.top, "top", 5, "contributors to show per datastore (0 means all)")
 	cmd.Flags().StringVar(&flags.failOnProjection, "fail-on-projection", "", "exit 2 when a floor is projected within this duration")
+	cmd.Flags().BoolVar(&flags.trend, "trend", false, "tabulate capacity for every capture in the window instead of projecting")
+	cmd.Flags().StringVar(&flags.kind, "kind", "all", "with --trend, the kind to tabulate: host, cluster, datastore, or all")
+	renameFlags(cmd, flagRename{name: "to", hint: "use --run, the last capture in the window"})
 	return cmd
-}
-
-func capacitySelector(args []string, to string, toChanged bool) (string, error) {
-	if len(args) == 1 && toChanged {
-		return "", fmt.Errorf("RUN and --to cannot both be specified")
-	}
-	if len(args) == 1 {
-		return args[0], nil
-	}
-	if to != "" {
-		return to, nil
-	}
-	return "latest", nil
 }
 
 func filterCapacityReport(report *assessment.CapacityReport, names []string, top int) {

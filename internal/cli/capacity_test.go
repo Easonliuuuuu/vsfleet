@@ -14,7 +14,7 @@ import (
 
 func TestCapacityCommandJSONAndFilters(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
-	stdout, _, err := runCLI(t, dbPath, "assessment", "capacity", "latest", "-o", "json")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "capacity", "--run", "latest", "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,17 +25,17 @@ func TestCapacityCommandJSONAndFilters(t *testing.T) {
 	if len(report.Datastores) != 2 || report.SchemaVersion != 1 {
 		t.Fatalf("report=%+v", report)
 	}
-	stdout, _, err = runCLI(t, dbPath, "assessment", "capacity", "latest", "--datastore", "missing", "-o", "json")
+	stdout, _, err = runCLI(t, dbPath, "analyze", "capacity", "--run", "latest", "--datastore", "missing", "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Contains([]byte(stdout), []byte(`"datastores": []`)) {
 		t.Fatalf("filtered report=%s", stdout)
 	}
-	if _, _, err := runCLI(t, dbPath, "assessment", "capacity", "latest", "--min-free-bytes", "not-a-size"); err == nil {
+	if _, _, err := runCLI(t, dbPath, "analyze", "capacity", "--run", "latest", "--min-free-bytes", "not-a-size"); err == nil {
 		t.Fatal("invalid --min-free-bytes unexpectedly succeeded")
 	}
-	if _, _, err := runCLI(t, dbPath, "assessment", "capacity", "latest", "--to", "latest"); err == nil {
+	if _, _, err := runCLI(t, dbPath, "analyze", "capacity", "--run", "latest", "--to", "latest"); err == nil {
 		t.Fatal("positional RUN and --to unexpectedly succeeded")
 	}
 }
@@ -58,7 +58,7 @@ func newProjectionCapacityHistoryDB(t *testing.T) string {
 
 func TestCapacityCommandFailOnProjection(t *testing.T) {
 	dbPath := newProjectionCapacityHistoryDB(t)
-	_, _, err := runCLI(t, dbPath, "assessment", "capacity", "latest", "--since", "10d", "--fail-on-projection", "30d")
+	_, _, err := runCLI(t, dbPath, "analyze", "capacity", "--run", "latest", "--since", "10d", "--fail-on-projection", "30d")
 	var coded interface{ ExitCode() int }
 	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
 		t.Fatalf("err=%v, want exit code 2", err)

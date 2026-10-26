@@ -45,10 +45,10 @@ func TestAllContextsOverridesContextForAssessmentReport(t *testing.T) {
 func TestAssessmentSnapshotsValidatesAtID(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 
-	if _, _, err := runCLI(t, dbPath, "assessment", "snapshots", "--at", "1", "-o", "json"); err != nil {
+	if _, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--run", "1", "-o", "json"); err != nil {
 		t.Fatalf("existing --at: %v", err)
 	}
-	if _, _, err := runCLI(t, dbPath, "assessment", "snapshots", "-o", "json"); err != nil {
+	if _, _, err := runCLI(t, dbPath, "analyze", "snapshots", "-o", "json"); err != nil {
 		t.Fatalf("default --at (latest): %v", err)
 	}
 	for _, tc := range []struct {
@@ -57,7 +57,7 @@ func TestAssessmentSnapshotsValidatesAtID(t *testing.T) {
 	}{
 		{"unknown positive ID", "999999"},
 	} {
-		_, _, err := runCLI(t, dbPath, "assessment", "snapshots", "--at", tc.at, "-o", "json")
+		_, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--run", tc.at, "-o", "json")
 		if err == nil {
 			t.Fatalf("%s: unexpectedly succeeded", tc.name)
 		}
@@ -90,9 +90,9 @@ func TestValidatePercent(t *testing.T) {
 func TestPercentFlagsAreValidated(t *testing.T) {
 	healthDB, capacityDB := newHealthTestHistoryDB(t, false), newTopologyTestHistoryDB(t)
 	for _, args := range [][]string{
-		{healthDB, "health", "--min-datastore-free"},
-		{healthDB, "health", "--min-guest-disk-free"},
-		{capacityDB, "assessment", "capacity", "latest", "--min-free"},
+		{healthDB, "analyze", "health", "--min-datastore-free"},
+		{healthDB, "analyze", "health", "--min-guest-disk-free"},
+		{capacityDB, "analyze", "capacity", "--run", "latest", "--min-free"},
 	} {
 		_, _, err := runCLI(t, args[0], append(args[1:], "NaN")...)
 		if err == nil || !strings.Contains(err.Error(), "must be between 0 and 100") {
@@ -105,14 +105,14 @@ func TestPercentFlagsAreValidated(t *testing.T) {
 
 func TestTopologyDepthValidation(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
-	for _, direction := range []string{"dependencies", "blast-radius"} {
+	for _, direction := range []string{"deps", "blast-radius"} {
 		for _, depth := range []string{"1", "5"} {
-			if _, _, err := runCLI(t, dbPath, "--context", "prod", direction, "datastore", "datastore1", "--depth", depth, "-o", "json"); err != nil {
+			if _, _, err := runCLI(t, dbPath, "--context", "prod", "analyze", direction, "datastore", "datastore1", "--depth", depth, "-o", "json"); err != nil {
 				t.Fatalf("%s --depth %s: %v", direction, depth, err)
 			}
 		}
 		for _, depth := range []string{"0", "6"} {
-			_, _, err := runCLI(t, dbPath, "--context", "prod", direction, "datastore", "datastore1", "--depth", depth, "-o", "json")
+			_, _, err := runCLI(t, dbPath, "--context", "prod", "analyze", direction, "datastore", "datastore1", "--depth", depth, "-o", "json")
 			if err == nil || !strings.Contains(err.Error(), "--depth must be between 1 and 5") {
 				t.Fatalf("%s --depth %s: err=%v, want depth-range failure", direction, depth, err)
 			}

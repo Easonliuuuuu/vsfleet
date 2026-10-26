@@ -35,7 +35,7 @@ func historyGuide(pane int) []guideEntry {
 			{"UNKNOWN", "migration rules unjudged"},
 			{"READY", "no blockers, all judged"},
 			{"CONFIDENCE", "orphaned disks only"},
-			{"thresholds", "tune: vsfleet health"},
+			{"thresholds", "tune: vsfleet analyze health"},
 		}
 	case historyPaneChanges:
 		return []guideEntry{

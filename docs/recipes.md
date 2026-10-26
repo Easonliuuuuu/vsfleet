@@ -109,7 +109,7 @@ JSON and exits `2` if a datastore is projected to cross either floor within
 30 days:
 
 ```sh
-vsfleet assessment capacity latest --since 90d \
+vsfleet analyze capacity --since 90d \
   --min-free 10 --min-free-bytes 500Gi \
   --fail-on-projection 30d -o json > capacity.json
 case $? in

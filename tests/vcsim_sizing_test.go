@@ -66,7 +66,7 @@ func TestVCSIMSizingCompleteAndPartialRuns(t *testing.T) {
 	// Every generated VM has one vCPU, so vCPU demand equals VM count: 12 in
 	// vc-prod (two datacenters x three pool VMs and three vApp VMs) plus 2 in
 	// vc-edge. The target is generous enough to fit either subset.
-	roomy := []string{"-o", "json", "assessment", "sizing", completeID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB"}
+	roomy := []string{"-o", "json", "analyze", "sizing", "--run", completeID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB"}
 	all := sizingJSON(t, r, historyDB, roomy...)
 	if all.Verdict != sizing.VerdictFit || all.RunID != complete.ID || all.RunStatus != string(assessment.RunComplete) || len(all.Coverage) != 0 {
 		t.Fatalf("complete run verdict=%s status=%s coverage=%v, want fit on a complete run with no gaps: %+v", all.Verdict, all.RunStatus, all.Coverage, all)
@@ -103,7 +103,7 @@ func TestVCSIMSizingCompleteAndPartialRuns(t *testing.T) {
 	// One usable host of 13 cores: the real 14 vCPU demand does not fit, but
 	// the 12 vCPU that vc-prod alone contributes would.
 	tight := []string{"--hosts", "2", "--host-cores", "13", "--host-ram-gib", "512", "--datastore-capacity", "40TiB"}
-	full := sizingJSON(t, r, historyDB, append([]string{"-o", "json", "assessment", "sizing", completeID}, tight...)...)
+	full := sizingJSON(t, r, historyDB, append([]string{"-o", "json", "analyze", "sizing", "--run", completeID}, tight...)...)
 	if cpu := sizingDimension(t, full, "cpu"); full.Verdict != sizing.VerdictInsufficient || cpu.Verdict != sizing.VerdictInsufficient {
 		t.Fatalf("complete run on the tight target verdict=%s cpu=%s, want insufficient: %+v", full.Verdict, cpu.Verdict, full)
 	}
@@ -115,7 +115,7 @@ func TestVCSIMSizingCompleteAndPartialRuns(t *testing.T) {
 	}
 	partialID := strconv.FormatInt(partial.ID, 10)
 
-	blindRoomy := sizingJSON(t, r, historyDB, "-o", "json", "assessment", "sizing", partialID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB")
+	blindRoomy := sizingJSON(t, r, historyDB, "-o", "json", "analyze", "sizing", "--run", partialID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB")
 	if blindRoomy.RunStatus != string(assessment.RunPartial) || blindRoomy.Scope.VMsInScope != 12 || sizingMeasure(t, blindRoomy, "vcpu-allocated") != 12 {
 		t.Fatalf("partial run status=%s scope=%+v, want only the 12 VMs of vc-prod: %+v", blindRoomy.RunStatus, blindRoomy.Scope, blindRoomy)
 	}
@@ -132,16 +132,16 @@ func TestVCSIMSizingCompleteAndPartialRuns(t *testing.T) {
 		t.Fatalf("partial run coverage gaps=%q, want the partial status and vc-edge (and not the healthy vc-prod) named", gaps)
 	}
 
-	blindTight := sizingJSON(t, r, historyDB, append([]string{"-o", "json", "assessment", "sizing", partialID}, tight...)...)
+	blindTight := sizingJSON(t, r, historyDB, append([]string{"-o", "json", "analyze", "sizing", "--run", partialID}, tight...)...)
 	if cpu := sizingDimension(t, blindTight, "cpu"); blindTight.Verdict == sizing.VerdictFit || cpu.Verdict == sizing.VerdictFit {
 		t.Fatalf("partial run on the tight target verdict=%s cpu=%s: the 12 visible vCPU fit 13 cores, but a blind context must never make the result look fit: %+v", blindTight.Verdict, cpu.Verdict, blindTight)
 	}
 
-	_, _, gateErr := r.run("", "--history-db", historyDB, "-o", "json", "assessment", "sizing", partialID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit")
+	_, _, gateErr := r.run("", "--history-db", historyDB, "-o", "json", "analyze", "sizing", "--run", partialID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit")
 	if exitCode(gateErr) != 2 {
 		t.Fatalf("--fail-unless-fit on a partial run exit=%d err=%v, want 2", exitCode(gateErr), gateErr)
 	}
-	if _, _, err := r.run("", "--history-db", historyDB, "-o", "json", "assessment", "sizing", completeID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit"); err != nil {
+	if _, _, err := r.run("", "--history-db", historyDB, "-o", "json", "analyze", "sizing", "--run", completeID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit"); err != nil {
 		t.Fatalf("--fail-unless-fit on the complete run: %v", err)
 	}
 }

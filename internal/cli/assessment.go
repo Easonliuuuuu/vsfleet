@@ -17,7 +17,6 @@ import (
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
-	"github.com/easonliuuuuu/vsfleet/internal/humanize"
 	"github.com/easonliuuuuu/vsfleet/internal/report"
 	"github.com/easonliuuuuu/vsfleet/internal/version"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -78,88 +77,23 @@ always describe the estate as it was when the capture was taken.`),
   vsfleet assessment diff --fail-on removed
 
   # Read a capture without touching a vCenter
-  vsfleet assessment findings
+  vsfleet analyze health
   vsfleet assessment export --file estate.xlsx`,
 	})
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentSnapshotsCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentTrendsCommand(a), newAssessmentCapacityCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentFindingsCommand(a), newAssessmentMetadataCommand(a), newAssessmentMetadataReportCommand(a), newAssessmentOrphansCommand(a), newAssessmentReadinessCommand(a), newAssessmentNetworkReadinessCommand(a), newAssessmentSizingCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a), newAssessmentPerfCommand(a))
+	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentMetadataCommand(a), newAssessmentMetadataReportCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a), newAssessmentPerfCommand(a))
+	for _, r := range []struct{ name, hint string }{
+		{"findings", `use "vsfleet analyze health"`},
+		{"readiness", `use "vsfleet analyze readiness"`},
+		{"network-readiness", `use "vsfleet analyze readiness network cl/SOURCE cl/TARGET"`},
+		{"sizing", `use "vsfleet analyze sizing"`},
+		{"capacity", `use "vsfleet analyze capacity"`},
+		{"orphans", `use "vsfleet analyze orphans"`},
+		{"snapshots", `use "vsfleet analyze snapshots"`},
+	} {
+		cmd.AddCommand(renamedCommand(r.name, nil, r.hint))
+	}
+	cmd.AddCommand(renamedTrendsCommand())
 	cmd.AddCommand(renamedCommand("inventory", nil, `use "vsfleet get KIND --run RUN", e.g. "vsfleet get vms,hosts --run latest -A"`))
-	return cmd
-}
-
-func newAssessmentFindingsCommand(a *App) *cobra.Command {
-	cmd := newFindingsCommand(a, "findings [RUN]", "Show health findings for a stored assessment")
-	cmd.Long = strings.TrimSpace(`
-List the individual health findings behind a stored assessment.
-
-This is the itemised form of "vsfleet health", which reports the same rules as
-a single verdict. Reads stored evidence only and never contacts a vCenter.`)
-	cmd.Example = `  # Findings for the most recent capture
-  vsfleet assessment findings
-
-  # Findings for a labelled capture, as JSON
-  vsfleet assessment findings nightly -o json
-
-  # Capacity findings of warning severity or worse
-  vsfleet assessment findings --category capacity --severity warning`
-	return cmd
-}
-
-func newAssessmentReadinessCommand(a *App) *cobra.Command {
-	var flags healthFlags
-	var failOnBlockers bool
-	cmd := &cobra.Command{Use: "readiness [RUN]", Short: "Assess migration readiness from a stored assessment", Example: `  # Readiness verdict for the most recent capture
-  vsfleet assessment readiness
-
-  # Verdict for a labelled capture, as JSON
-  vsfleet assessment readiness pre-migration -o json
-
-  # Gate a migration pipeline: exit 2 when blockers remain
-  vsfleet assessment readiness --fail-on-blockers`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		// Readiness always considers every category and severity. The tuning and
-		// disable flags still apply because they change the evaluated report.
-		flags.minimumSeverity = "info"
-		flags.category = ""
-		report, err := evaluateHealthCommand(cmd, a, args, flags)
-		if err != nil {
-			return err
-		}
-		readiness := health.Readiness(report)
-		if a.json() {
-			if err := writeJSON(a.out(), readiness); err != nil {
-				return err
-			}
-		} else {
-			fmt.Fprintf(a.out(), "Migration readiness: %s\n", strings.ToUpper(readiness.Verdict))
-			if len(readiness.Blockers) > 0 {
-				fmt.Fprintln(a.out(), "Blockers:")
-				for _, finding := range readiness.Blockers {
-					fmt.Fprintf(a.out(), "  %s [%s] %s — %s\n", finding.Rule, finding.Object.Kind+"/"+finding.Object.Name, finding.Message, finding.Recommendation)
-				}
-			}
-			if len(readiness.Advisories) > 0 {
-				fmt.Fprintln(a.out(), "Advisories:")
-				for _, finding := range readiness.Advisories {
-					fmt.Fprintf(a.out(), "  %s [%s] %s — %s\n", finding.Rule, finding.Object.Kind+"/"+finding.Object.Name, finding.Message, finding.Recommendation)
-				}
-			}
-			if len(readiness.Unresolved) > 0 {
-				fmt.Fprintln(a.out(), "Not evaluated:")
-				for _, rule := range readiness.Unresolved {
-					reason := rule.Reason
-					if len(rule.Blind) > 0 {
-						reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind vCenters: " + strings.Join(rule.Blind, ", "))
-					}
-					fmt.Fprintf(a.out(), "  %s — %s\n", rule.Rule, reason)
-				}
-			}
-		}
-		if failOnBlockers && len(readiness.Blockers) > 0 {
-			return &readinessExitError{blockers: len(readiness.Blockers)}
-		}
-		return nil
-	}}
-	flags.add(cmd, false)
-	cmd.Flags().BoolVar(&failOnBlockers, "fail-on-blockers", false, "exit 2 when migration blockers are present")
 	return cmd
 }
 
@@ -499,190 +433,6 @@ func nonemptyExport(value, fallback string) string {
 	return fallback
 }
 
-func newAssessmentTrendsCommand(a *App) *cobra.Command {
-	cmd := requireSubcommand(&cobra.Command{
-		Use:   "trends",
-		Short: "Show historical estate trends",
-		Long: strings.TrimSpace(`
-Plot one dimension of the estate across every stored capture, rather than
-comparing two captures against each other.`),
-		Example: `  # VM population and churn over the stored history
-  vsfleet assessment trends churn
-
-  # Snapshot age, narrowed to a window
-  vsfleet assessment trends snapshots --from 2026-01-01 --to 2026-03-31
-
-  # Compute and storage capacity, most recent 20 captures
-  vsfleet assessment trends capacity --limit 20`,
-	})
-	cmd.AddCommand(newAssessmentChurnTrendCommand(a), newAssessmentSnapshotTrendCommand(a), newAssessmentCapacityTrendCommand(a))
-	return cmd
-}
-
-type trendFlags struct {
-	from, to       string
-	limit          int
-	includePartial bool
-}
-
-func (f *trendFlags) add(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&f.from, "from", "", "first assessment ID or label (inclusive)")
-	cmd.Flags().StringVar(&f.to, "to", "", "last assessment ID or label (inclusive)")
-	cmd.Flags().IntVar(&f.limit, "limit", 30, "number of complete assessments (0 means unlimited)")
-	cmd.Flags().BoolVar(&f.includePartial, "include-partial", false, "include partial assessments")
-}
-
-// options resolves trend scope with the same --all-contexts precedence as
-// every other stored-evidence command.
-func (f trendFlags) options(ctx context.Context, s *assessment.Store, a *App) (assessment.TrendOptions, error) {
-	opts := assessment.TrendOptions{Limit: f.limit, IncludePartial: f.includePartial, Contexts: a.StoredContextNames()}
-	var err error
-	if f.from != "" {
-		opts.FromID, err = s.ResolveRun(ctx, f.from)
-		if err != nil {
-			return opts, fmt.Errorf("--from: %w", err)
-		}
-	}
-	if f.to != "" {
-		opts.ToID, err = s.ResolveRun(ctx, f.to)
-		if err != nil {
-			return opts, fmt.Errorf("--to: %w", err)
-		}
-	}
-	return opts, nil
-}
-
-func newAssessmentChurnTrendCommand(a *App) *cobra.Command {
-	var flags trendFlags
-	cmd := &cobra.Command{Use: "churn", Short: "Show VM population and churn over time", Example: `  # VM population across the stored history
-  vsfleet assessment trends churn
-
-  # A window, by label or ID
-  vsfleet assessment trends churn --from pre-migration --to nightly
-
-  # One context, most recent 10 captures, as JSON
-  vsfleet assessment trends churn --context prod --limit 10 -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		opts, err := flags.options(cmd.Context(), s, a)
-		if err != nil {
-			return err
-		}
-		trend, err := s.ChurnTrend(cmd.Context(), opts)
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), trend)
-		}
-		t := newTable(a.out(), "RUN", "DATE", "VMS", "+APPEARED", "-VANISHED", "→MOVED", "~MODIFIED")
-		for _, p := range trend.Points {
-			t.row(strconv.FormatInt(p.Run.ID, 10), p.Run.StartedAt.Local().Format("2006-01-02"), itoa(p.VMCount), itoa(p.Appeared), itoa(p.Vanished), itoa(p.Moved), itoa(p.Modified))
-		}
-		t.flush()
-		return nil
-	}}
-	flags.add(cmd)
-	return cmd
-}
-
-func newAssessmentSnapshotTrendCommand(a *App) *cobra.Command {
-	var flags trendFlags
-	var older string
-	cmd := &cobra.Command{Use: "snapshots", Short: "Show snapshot-age trends", Example: `  # Snapshot-age trend across the stored history
-  vsfleet assessment trends snapshots
-
-  # Count snapshots older than 90 days instead of the 30-day default
-  vsfleet assessment trends snapshots --older-than 90d
-
-  # A window, including partial captures
-  vsfleet assessment trends snapshots --from 2026-01-01 --include-partial`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		opts, err := flags.options(cmd.Context(), s, a)
-		if err != nil {
-			return err
-		}
-		age, err := parseHumanDuration(older)
-		if err != nil {
-			return fmt.Errorf("--older-than: %w", err)
-		}
-		trend, err := s.SnapshotTrend(cmd.Context(), opts, age)
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), trend)
-		}
-		t := newTable(a.out(), "RUN", "DATE", "TOTAL", "STALE", "OLDEST", "TREND")
-		values := make([]float64, len(trend.Points))
-		for i, p := range trend.Points {
-			values[i] = float64(p.Total)
-			t.row(strconv.FormatInt(p.Run.ID, 10), p.Run.StartedAt.Local().Format("2006-01-02"), itoa(p.Total), itoa(p.Stale), humanize.Age(p.OldestAge), "")
-		}
-		t.flush()
-		if len(values) > 0 {
-			fmt.Fprintf(a.out(), "snapshot totals: %s\n", sparkline(values))
-		}
-		return nil
-	}}
-	flags.add(cmd)
-	cmd.Flags().StringVar(&older, "older-than", "30d", "stale snapshot threshold (e.g. 30d, 2w)")
-	return cmd
-}
-
-func newAssessmentCapacityTrendCommand(a *App) *cobra.Command {
-	var flags trendFlags
-	var kind string
-	cmd := &cobra.Command{Use: "capacity", Short: "Show compute and storage capacity trends", Example: `  # Compute and storage capacity across the stored history
-  vsfleet assessment trends capacity
-
-  # Datastores only, most recent 20 captures
-  vsfleet assessment trends capacity --kind datastore --limit 20
-
-  # Hosts in one context, as JSON
-  vsfleet assessment trends capacity --kind host --context prod -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		opts, err := flags.options(cmd.Context(), s, a)
-		if err != nil {
-			return err
-		}
-		kind = strings.ToLower(strings.TrimSpace(kind))
-		if kind != "all" && kind != "host" && kind != "cluster" && kind != "datastore" {
-			return fmt.Errorf("--kind must be host, cluster, datastore, or all")
-		}
-		kinds := []string{kind}
-		if kind == "all" {
-			kinds = []string{"host", "cluster", "datastore"}
-		}
-		trend, err := s.CapacityTrend(cmd.Context(), opts, kinds)
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), trend)
-		}
-		t := newTable(a.out(), "KIND", "SCOPE", "NAME", "RUN", "CPU CAP", "CPU USED", "CPU%", "MEM CAP", "MEM USED", "MEM%", "STORAGE", "USED", "FREE", "DS%")
-		for _, series := range trend.Series {
-			for _, p := range series.Points {
-				t.row(series.Kind, series.Scope, dash(series.Name), strconv.FormatInt(p.Run.ID, 10), capacityCell(p.CPUCapacity), capacityCell(p.CPUUsed), percentCell(p.CPUUtilization), capacityCell(p.MemoryCapacity), capacityCell(p.MemoryUsed), percentCell(p.MemoryUtilization), capacityCell(p.StorageCapacity), capacityCell(p.StorageUsed), capacityCell(p.StorageFree), percentCell(p.StorageUtilization))
-			}
-		}
-		t.flush()
-		return nil
-	}}
-	flags.add(cmd)
-	cmd.Flags().StringVar(&kind, "kind", "all", "resource kind: host, cluster, datastore, or all")
-	return cmd
-}
-
 func newAssessmentReportCommand(a *App) *cobra.Command {
 	var older string
 	cmd := &cobra.Command{Use: "report [RUN]", Short: "Render a point-in-time assessment report", Example: `  # Report on the most recent capture
@@ -949,7 +699,7 @@ all is stored as partial and says so.`), Example: `  # Capture the current conte
   # Capture the whole estate under a stable label
   vsfleet assessment run --all-contexts --label nightly
 
-  # Also record datastore VMDK files, so "assessment orphans" has evidence
+  # Also record datastore VMDK files, so "analyze orphans" has evidence
   vsfleet assessment run --all-contexts --browse-datastores
 
   # Also record license products, usage, expiration and host assignments for a
@@ -1182,52 +932,6 @@ structural changes.`), Example: `  # The two most recent captures
 	return cmd
 }
 
-func newAssessmentSnapshotsCommand(a *App) *cobra.Command {
-	var at int64
-	var older string
-	cmd := &cobra.Command{Use: "snapshots", Short: "Show snapshot ages in an assessment", Example: `  # Snapshots in the most recent capture
-  vsfleet assessment snapshots
-
-  # Only snapshots at least 90 days old
-  vsfleet assessment snapshots --older-than 90d
-
-  # Snapshots in a specific capture, as JSON
-  vsfleet assessment snapshots --at 42 -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		if at == 0 {
-			at, err = resolveRunPairTarget(cmd.Context(), s)
-			if err != nil {
-				return err
-			}
-		} else if _, err := s.GetRun(cmd.Context(), at); err != nil {
-			return err
-		}
-		olderDuration, err := parseHumanDuration(older)
-		if err != nil {
-			return fmt.Errorf("--older-than: %w", err)
-		}
-		ages, err := s.SnapshotAgesForContexts(cmd.Context(), at, olderDuration, a.StoredContextNames())
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), ages)
-		}
-		t := newTable(a.out(), "VM", "CONTEXT", "SNAPSHOT", "CREATED", "AGE", "FIRST SEEN", "LAST SEEN")
-		for _, v := range ages {
-			t.row(v.VMName, v.Context, v.Name, v.CreateTime.Local().Format("2006-01-02"), humanize.Age(v.Age), v.FirstSeen.Local().Format("2006-01-02"), v.LastSeen.Local().Format("2006-01-02"))
-		}
-		t.flush()
-		return nil
-	}}
-	cmd.Flags().Int64Var(&at, "at", 0, "assessment ID (default: latest)")
-	cmd.Flags().StringVar(&older, "older-than", "", "only snapshots at least this old (e.g. 30d, 2w)")
-	return cmd
-}
-
 func newAssessmentDeleteCommand(a *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{Use: "delete RUN", Short: "Delete one stored assessment", Example: `  # Delete one capture by ID (deletion must be confirmed)
@@ -1351,16 +1055,6 @@ func resolveRunPair(ctx context.Context, s *assessment.Store, args []string) (in
 		return 0, 0, err
 	}
 	return base, target, nil
-}
-func resolveRunPairTarget(ctx context.Context, s *assessment.Store) (int64, error) {
-	runs, err := s.Runs(ctx)
-	if err != nil {
-		return 0, err
-	}
-	if len(runs) == 0 {
-		return 0, fmt.Errorf("no assessments stored")
-	}
-	return runs[0].ID, nil
 }
 func runSelector(v string, runs []assessment.Run) (int64, error) {
 	if v == "latest" {

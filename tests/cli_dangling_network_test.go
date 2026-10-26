@@ -57,7 +57,7 @@ func TestAssessmentReportsDeletedPortGroupAsDanglingReference(t *testing.T) {
 		}
 	}
 
-	findingsJSON := r.mustRun("", "--history-db", historyDB, "-o", "json", "assessment", "findings", "latest")
+	findingsJSON := r.mustRun("", "--history-db", historyDB, "-o", "json", "analyze", "health", "--run", "latest")
 	var findings health.Report
 	if err := json.Unmarshal([]byte(findingsJSON), &findings); err != nil {
 		t.Fatal(err)

@@ -54,7 +54,7 @@ func topologyJSON(t *testing.T, r *runner, historyDB, contextName, direction, ki
 	if contextName != "" {
 		args = append(args, "--context", contextName)
 	}
-	args = append(args, direction, kind, name, "latest")
+	args = append(args, "analyze", direction, kind, name, "--run", "latest")
 	stdout := vcsimJSON(t, r, args...)
 	var result topology.Result
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {

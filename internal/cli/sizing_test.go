@@ -33,7 +33,7 @@ func newSizingHistoryDB(t *testing.T, datastoreStatus string) string {
 
 func TestSizingCommandFitAndInsufficient(t *testing.T) {
 	dbPath := newSizingHistoryDB(t, "success")
-	base := []string{"assessment", "sizing", "latest", "--host-cores", "16", "--host-ram-gib", "64", "--datastore-capacity", "1TiB"}
+	base := []string{"analyze", "sizing", "--run", "latest", "--host-cores", "16", "--host-ram-gib", "64", "--datastore-capacity", "1TiB"}
 	stdout, _, err := runCLI(t, dbPath, append(base, "--hosts", "3", "-o", "json")...)
 	if err != nil {
 		t.Fatal(err)
@@ -57,15 +57,15 @@ func TestSizingCommandFitAndInsufficient(t *testing.T) {
 }
 
 func TestSizingCommandMissingInputsAndCoverageAreUnknown(t *testing.T) {
-	stdout, _, err := runCLI(t, newSizingHistoryDB(t, "success"), "assessment", "sizing")
+	stdout, _, err := runCLI(t, newSizingHistoryDB(t, "success"), "analyze", "sizing")
 	if err != nil || !strings.Contains(stdout, "UNKNOWN") {
 		t.Fatalf("err=%v output=%s", err, stdout)
 	}
-	stdout, _, err = runCLI(t, newSizingHistoryDB(t, "failed"), "assessment", "sizing", "--hosts", "9", "--host-cores", "64", "--host-ram-gib", "1024", "--datastore-capacity", "100TiB")
+	stdout, _, err = runCLI(t, newSizingHistoryDB(t, "failed"), "analyze", "sizing", "--hosts", "9", "--host-cores", "64", "--host-ram-gib", "1024", "--datastore-capacity", "100TiB")
 	if err != nil || !strings.Contains(stdout, "UNKNOWN") || !strings.Contains(stdout, "Coverage gaps") {
 		t.Fatalf("err=%v output=%s", err, stdout)
 	}
-	if _, _, err := runCLI(t, newSizingHistoryDB(t, "success"), "assessment", "sizing", "--datastore-capacity", "lots"); err == nil {
+	if _, _, err := runCLI(t, newSizingHistoryDB(t, "success"), "analyze", "sizing", "--datastore-capacity", "lots"); err == nil {
 		t.Fatal("invalid --datastore-capacity unexpectedly succeeded")
 	}
 }

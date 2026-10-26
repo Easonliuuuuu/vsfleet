@@ -19,8 +19,9 @@ func (e *sizingExitError) Error() string {
 }
 func (e *sizingExitError) ExitCode() int { return 2 }
 
-func newAssessmentSizingCommand(a *App) *cobra.Command {
+func newAnalyzeSizingCommand(a *App) *cobra.Command {
 	var (
+		run                              string
 		hosts, hostCores, failures       int
 		hostRAM, cpuRatio, memRatio, gro float64
 		datastoreCap, rdmCap             string
@@ -28,7 +29,7 @@ func newAssessmentSizingCommand(a *App) *cobra.Command {
 		includeOff, failUnlessFit        bool
 	)
 	cmd := &cobra.Command{
-		Use:   "sizing [RUN]",
+		Use:   "sizing",
 		Short: "Test whether stored VMs fit a proposed destination (allocation based)",
 		Long: strings.TrimSpace(`
 Evaluate a read-only, offline destination-capacity scenario against a stored
@@ -50,15 +51,15 @@ identity gives unknown, never fit. This is a generic planning scenario, not a
 claim of compatibility with any named platform. Nothing is changed in vCenter
 or in the stored assessment.`),
 		Example: `  # Can everything in the latest assessment fit on 4 hosts, tolerating one failure?
-  vsfleet assessment sizing --hosts 4 --host-cores 32 --host-ram-gib 512 \
+  vsfleet analyze sizing --hosts 4 --host-cores 32 --host-ram-gib 512 \
     --datastore-capacity 40TiB --cpu-ratio 4
 
   # Two clusters, 20% growth, RDM LUN capacity available, gate a pipeline
-  vsfleet assessment sizing pre-migration --cluster cluster-a --cluster cluster-b \
+  vsfleet analyze sizing --run pre-migration --cluster cluster-a --cluster cluster-b \
     --hosts 3 --host-cores 48 --host-ram-gib 768 --datastore-capacity 60TiB \
     --rdm-capacity 2TiB --growth-pct 20 --fail-unless-fit -o json`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			flags := cmd.Flags()
 			sc := sizing.Scenario{Clusters: clusters, IncludePoweredOff: includeOff}
 			if flags.Changed("hosts") {
@@ -101,7 +102,7 @@ or in the stored assessment.`),
 				v := n
 				*item.dst = &v
 			}
-			data, err := loadRunExportData(cmd, a, args)
+			data, err := loadRunExportData(cmd, a, run)
 			if err != nil {
 				return err
 			}
@@ -119,6 +120,7 @@ or in the stored assessment.`),
 			return nil
 		},
 	}
+	addRunFlag(cmd, &run)
 	f := cmd.Flags()
 	f.IntVar(&hosts, "hosts", 0, "target host count")
 	f.IntVar(&hostCores, "host-cores", 0, "usable cores per target host")

@@ -73,7 +73,7 @@ func TestAssessmentNetworkComparisonUsesCrossVCenterEvidence(t *testing.T) {
 		t.Fatalf("assessment run: %v", err)
 	}
 
-	stdout := r.mustRun("", "--history-db", historyDB, "network", "compare", "cluster-source", "cluster-target", "-o", "json")
+	stdout := r.mustRun("", "--history-db", historyDB, "analyze", "readiness", "network", "cluster-source", "cluster-target", "-o", "json")
 	var result struct {
 		Matched []struct {
 			Source struct {
@@ -104,7 +104,7 @@ func TestAssessmentNetworkComparisonUsesCrossVCenterEvidence(t *testing.T) {
 		t.Fatalf("offline context was absent from blind coverage:\n%s", stdout)
 	}
 
-	stdout, _, err := r.run("", "--history-db", historyDB, "assessment", "network-readiness", "--source", "cluster-source", "--target", "cluster-target", "--fail-on-blockers")
+	stdout, _, err := r.run("", "--history-db", historyDB, "analyze", "readiness", "network", "cl/cluster-source", "cl/cluster-target", "--fail-on-blockers")
 	if err != nil {
 		t.Fatalf("network readiness should not fail on an unknown result: %v\n%s", err, stdout)
 	}

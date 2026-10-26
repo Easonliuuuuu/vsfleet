@@ -127,14 +127,14 @@ func TestImportedRunIsMarkedAndWorksWithStoredEvidenceCommands(t *testing.T) {
 		t.Errorf("assessment list does not show the imports' capture dates:\n%s", list)
 	}
 	for _, args := range [][]string{
-		{"diff", "pre-migration", "wave-1"},
-		{"report", "wave-1"},
-		{"findings", "wave-1"},
-		{"trends", "snapshots"},
-		{"trends", "capacity"},
+		{"assessment", "diff", "pre-migration", "wave-1"},
+		{"assessment", "report", "wave-1"},
+		{"analyze", "health", "--run", "wave-1"},
+		{"analyze", "snapshots", "--trend"},
+		{"analyze", "capacity", "--trend"},
 	} {
-		if _, _, err := runCLI(t, dbPath, append([]string{"assessment"}, args...)...); err != nil {
-			t.Errorf("assessment %v on an imported run: %v", args, err)
+		if _, _, err := runCLI(t, dbPath, args...); err != nil {
+			t.Errorf("%v on an imported run: %v", args, err)
 		}
 	}
 }

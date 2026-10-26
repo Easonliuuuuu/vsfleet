@@ -110,9 +110,9 @@ func TestVCSIMHistoryDiffVMHistoryAndCapacity(t *testing.T) {
 	if !strings.Contains(historyJSON, strconv.FormatInt(first.ID, 10)) || !strings.Contains(historyJSON, strconv.FormatInt(second.ID, 10)) {
 		t.Fatalf("VM history omitted captures: %s", historyJSON)
 	}
-	trendJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "trends", "capacity", "--kind", "all", "--limit", "0")
+	trendJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "analyze", "capacity", "--trend", "--kind", "all", "--limit", "0")
 	assertCapacityRunIDs(t, trendJSON, 3)
-	contextTrendJSON := vcsimJSON(t, r, "--history-db", historyDB, "--context", "history", "-o", "json", "assessment", "trends", "capacity", "--kind", "host", "--limit", "0")
+	contextTrendJSON := vcsimJSON(t, r, "--history-db", historyDB, "--context", "history", "-o", "json", "analyze", "capacity", "--trend", "--kind", "host", "--limit", "0")
 	assertCapacityRunIDs(t, contextTrendJSON, 3)
 	if !strings.Contains(contextTrendJSON, `"scope": "context"`) || !strings.Contains(contextTrendJSON, `"name": "history"`) {
 		t.Fatalf("context-scoped capacity trend omitted context series: %s", contextTrendJSON)

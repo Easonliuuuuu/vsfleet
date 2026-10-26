@@ -2,9 +2,9 @@
 
 ## Migration readiness
 
-`vsfleet assessment findings [RUN]` is equivalent to `vsfleet health`.
-`vsfleet assessment readiness [RUN]` returns `ready`, `blocked`, or
-`unknown` from stored evidence. Warning/critical migration findings block;
+`vsfleet analyze readiness` returns `ready`, `blocked`, or `unknown` from the
+[health rules](health.md) over a stored capture, the most recent unless `--run`
+names another. Warning/critical migration findings block;
 informational findings are advisories. `--fail-on-blockers` exits 2 for blockers.
 
 Failed or missing collectors force `unknown`, with blind vCenters named in
@@ -27,7 +27,7 @@ its VMs has the evidence, as in an RVTools import.
 
 ## VM decommission review
 
-`vsfleet vm decommission-check NAME_OR_UUID [RUN]` combines VM safety gates
+`vsfleet analyze decommission vm/NAME` combines VM safety gates
 and stored topology. It reports only and performs no decommissioning action.
 
 - `blocked`: powered-on/suspended VM, snapshots, connected CD-ROM/USB, or
@@ -42,8 +42,9 @@ them. `--fail-on-blockers` exits 2 only for `blocked`.
 
 ## Topology and dependency queries
 
-`topology`, `dependencies`, and `blast-radius` query stored evidence
-offline. Cross-context merges require matching VM instance/BIOS UUIDs,
+`analyze topology`, `analyze deps`, and `analyze blast-radius` query stored
+evidence offline. Each takes a subject as `KIND/NAME` or `KIND NAME`, and
+`deps` and `blast-radius` take `--depth` (1 to 5). Cross-context merges require matching VM instance/BIOS UUIDs,
 datastore backing identity, distributed switch/port-group keys, or NSX IDs.
 Names are context-scoped fallbacks marked `inferred`.
 
@@ -61,14 +62,14 @@ NIC references. Results name the schema gap and remain at most `partial`.
 
 ## Cross-cluster network readiness
 
-`vsfleet network compare SOURCE TARGET [RUN]` compares cluster-reachable
-networks offline: VLAN, parent switch, MTU, teaming, security, uplinks, and
+`vsfleet analyze readiness network SOURCE TARGET` compares cluster-reachable
+networks offline, with each cluster given as `cl/NAME` or `NAME`: VLAN, parent switch, MTU, teaming, security, uplinks, and
 host coverage. Matching uses VLAN, then name. JSON separates matched pairs,
 source-only gaps, target-only networks, and field differences. Source-only
 gaps list affected VMs using topology attachment evidence and confidence.
 
-`vsfleet assessment network-readiness --source SOURCE --target TARGET [RUN]`
-derives a verdict:
+The table output is the verdict; `-o wide` adds the comparison behind it, and
+`-o json` always carries both:
 
 | Verdict | Meaning |
 | --- | --- |
@@ -82,13 +83,13 @@ pre-schema-12 evidence is partial; blind contexts force unknown.
 
 ## Destination sizing scenarios
 
-`vsfleet assessment sizing [RUN]` checks whether stored VMs fit a proposed
+`vsfleet analyze sizing` checks whether stored VMs fit a proposed
 destination. It reads one assessment offline and changes nothing. The result
 is `allocation-based`, without a compatibility claim for any hypervisor or
 cloud platform.
 
 ```sh
-vsfleet assessment sizing pre-migration --cluster cluster-a --cluster cluster-b \
+vsfleet analyze sizing --run pre-migration --cluster cluster-a --cluster cluster-b \
   --hosts 3 --host-cores 48 --host-ram-gib 768 --datastore-capacity 60TiB \
   --rdm-capacity 2TiB --cpu-ratio 4 --growth-pct 20 --ha-host-failures 1
 ```

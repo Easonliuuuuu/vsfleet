@@ -14,7 +14,7 @@ func TestAssessmentOrphansNamesDeniedPrivilegeNotFlag(t *testing.T) {
 
 	// Requested but denied: name the privilege, never suggest the flag again.
 	db := newOrphanCoverageHistoryDB(t, "11", vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Accessible: true, Backing: strong, BrowseStatus: "denied", BrowseError: denied})
-	stdout, stderr, err := runCLI(t, db, "assessment", "orphans", "latest")
+	stdout, stderr, err := runCLI(t, db, "analyze", "orphans", "--run", "latest")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestAssessmentOrphansNamesDeniedPrivilegeNotFlag(t *testing.T) {
 
 	// Requested but failed for another reason: show the failure, no flag hint.
 	db = newOrphanCoverageHistoryDB(t, "11", vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-2", Name: "datastore2", Accessible: true, Backing: strong, BrowseStatus: "failed", BrowseError: "host unreachable"})
-	stdout, _, err = runCLI(t, db, "assessment", "orphans", "latest")
+	stdout, _, err = runCLI(t, db, "analyze", "orphans", "--run", "latest")
 	if err != nil {
 		t.Fatal(err)
 	}

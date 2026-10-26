@@ -12,7 +12,7 @@ func TestGetFlagMistakesFailFast(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"health", "-o", "yaml"}, `-o yaml is not supported by "vsfleet health", which takes table or json`},
+		{[]string{"analyze", "health", "-o", "yaml"}, `-o yaml is not supported by "vsfleet analyze health", which takes table, wide or json`},
 		{[]string{"get", "vms", "-o", "xml"}, `unknown output format "xml"`},
 		{[]string{"get", "vms", "-o", "jsonpath"}, "-o jsonpath needs a template"},
 		{[]string{"get", "vms", "-o", "yaml=x"}, "-o yaml takes no argument"},
@@ -30,6 +30,16 @@ func TestGetFlagMistakesFailFast(t *testing.T) {
 		{[]string{"describe", "all", "web-01"}, `"all" lists with get`},
 		{[]string{"events", "--for", "vm/web-01", "--run", "latest"}, "events are read live"},
 		{[]string{"top", "vm", "--run", "latest"}, "pick one with --window"},
+		{[]string{"analyze", "health", "--wide"}, "--wide was renamed: use -o wide"},
+		{[]string{"analyze", "health", "--where", "cpu>=8"}, "--where was renamed"},
+		{[]string{"analyze", "readiness", "-o", "wide"}, "which takes table or json"},
+		{[]string{"analyze", "capacity", "--kind", "host"}, "--kind applies with --trend"},
+		{[]string{"analyze", "capacity", "--trend", "--min-free", "20"}, "--min-free applies to the projection, not --trend"},
+		{[]string{"analyze", "snapshots", "--from", "1"}, "--from applies with --trend"},
+		{[]string{"analyze", "snapshots", "--at", "1"}, "--at was renamed: use --run"},
+		{[]string{"analyze", "churn", "--to", "1"}, "--to was renamed: use --run"},
+		{[]string{"analyze", "topology", "vm", "web-01", "nightly"}, "select the capture with --run"},
+		{[]string{"analyze", "decommission", "host/esxi-07"}, "decommission reviews VMs"},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			_, _, err := runArgs(t, tc.args...)

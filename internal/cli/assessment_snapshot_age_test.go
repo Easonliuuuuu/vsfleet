@@ -31,7 +31,7 @@ func newSnapshotAgeTestHistoryDB(t *testing.T) string {
 
 func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 	dbPath := newSnapshotAgeTestHistoryDB(t)
-	stdout, _, err := runCLI(t, dbPath, "assessment", "snapshots")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "snapshots")
 	if err != nil {
 		t.Fatalf("assessment snapshots: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 		t.Fatalf("snapshot age should be compactly rendered as 12w, got:\n%s", stdout)
 	}
 
-	stdout, _, err = runCLI(t, dbPath, "assessment", "snapshots", "-o", "json")
+	stdout, _, err = runCLI(t, dbPath, "analyze", "snapshots", "-o", "json")
 	if err != nil {
 		t.Fatalf("assessment snapshots JSON: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 
 func TestAssessmentSnapshotTrendOldestUsesCompactAge(t *testing.T) {
 	dbPath := newSnapshotAgeTestHistoryDB(t)
-	stdout, _, err := runCLI(t, dbPath, "assessment", "trends", "snapshots")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--trend")
 	if err != nil {
 		t.Fatalf("assessment snapshot trend: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestAssessmentSnapshotTrendOldestUsesCompactAge(t *testing.T) {
 }
 
 func TestAssessmentSnapshotsRejectsAnInvalidOlderThan(t *testing.T) {
-	_, _, err := runCLI(t, newSnapshotAgeTestHistoryDB(t), "assessment", "snapshots", "--older-than", "soon")
+	_, _, err := runCLI(t, newSnapshotAgeTestHistoryDB(t), "analyze", "snapshots", "--older-than", "soon")
 	if err == nil || !strings.Contains(err.Error(), "--older-than") {
 		t.Fatalf("err = %v, want an --older-than failure", err)
 	}

@@ -169,7 +169,7 @@ names vCenters the assessment did not collect and rules it could not
 evaluate; the rules are listed after the findings. `Enter` opens a finding's
 full message, evidence, fix and rule. `/` filters findings by severity,
 category, rule, vCenter, object or message.
-Use [`vsfleet health`](health.md) to tune thresholds.
+Use [`vsfleet analyze health`](health.md) to tune thresholds.
 
 Changes starts with the newest two assessments. Its run axis goes oldest to
 newest and marks baseline `b` and target `t`. The baseline is always the

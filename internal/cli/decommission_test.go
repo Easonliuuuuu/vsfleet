@@ -21,7 +21,7 @@ func newDecommissionTestHistoryDB(t *testing.T, vm vsphere.VM) string {
 
 func TestVMDecommissionCheckUsesStoredEvidence(t *testing.T) {
 	dbPath := newDecommissionTestHistoryDB(t, vsphere.VM{ID: "vm-1", Name: "app", PowerState: "poweredOn", ConnectionState: "connected", ConfigurationAvailable: true})
-	stdout, _, err := runCLI(t, dbPath, "vm", "decommission-check", "app", "--fail-on-blockers", "-o", "json")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "decommission", "vm/app", "--fail-on-blockers", "-o", "json")
 	if err == nil || !strings.Contains(err.Error(), "decommission check blocked") {
 		t.Fatalf("err = %v, output = %s", err, stdout)
 	}
@@ -39,7 +39,7 @@ func TestVMDecommissionCheckUsesStoredEvidence(t *testing.T) {
 
 func TestVMDecommissionCheckNoMatchIsUnknown(t *testing.T) {
 	dbPath := newDecommissionTestHistoryDB(t, vsphere.VM{ID: "vm-1", Name: "app", PowerState: "poweredOff", ConnectionState: "connected", ConfigurationAvailable: true})
-	stdout, _, err := runCLI(t, dbPath, "vm", "decommission-check", "missing", "-o", "json")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "decommission", "vm/missing", "-o", "json")
 	if err != nil {
 		t.Fatalf("err = %v, output = %s", err, stdout)
 	}

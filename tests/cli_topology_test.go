@@ -22,7 +22,7 @@ func TestAssessmentTopologyQueriesUseCrossVCenterEvidence(t *testing.T) {
 		t.Fatalf("assessment run: %v", err)
 	}
 
-	stdout := r.mustRun("", "--history-db", historyDB, "--context", "left", "blast-radius", "datastore", "LocalDS_0", "-o", "json")
+	stdout := r.mustRun("", "--history-db", historyDB, "--context", "left", "analyze", "blast-radius", "datastore/LocalDS_0", "-o", "json")
 	var result struct {
 		Subjects []struct {
 			Edges []struct {

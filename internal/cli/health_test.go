@@ -53,7 +53,7 @@ func TestAssessmentOrphansReportsMissingBrowseEvidence(t *testing.T) {
 	// Captured without --browse-datastores: an empty candidate list must not
 	// read as a clean estate.
 	noBrowse := newOrphanCoverageHistoryDB(t, "11", vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Accessible: true, Backing: strong})
-	stdout, stderr, err := runCLI(t, noBrowse, "assessment", "orphans", "latest")
+	stdout, stderr, err := runCLI(t, noBrowse, "analyze", "orphans", "--run", "latest")
 	if err != nil {
 		t.Fatalf("orphans err=%v", err)
 	}
@@ -65,14 +65,14 @@ func TestAssessmentOrphansReportsMissingBrowseEvidence(t *testing.T) {
 	}
 
 	// --fail-on-unknown makes the incomplete coverage a non-zero exit.
-	_, _, gateErr := runCLI(t, noBrowse, "assessment", "orphans", "latest", "--fail-on-unknown")
+	_, _, gateErr := runCLI(t, noBrowse, "analyze", "orphans", "--run", "latest", "--fail-on-unknown")
 	var coded interface{ ExitCode() int }
 	if !errors.As(gateErr, &coded) || coded.ExitCode() != 2 {
 		t.Fatalf("fail-on-unknown err=%v code=%v", gateErr, coded)
 	}
 
 	// JSON exposes coverage even with entries == [].
-	jsonOut, _, err := runCLI(t, noBrowse, "assessment", "orphans", "latest", "-o", "json")
+	jsonOut, _, err := runCLI(t, noBrowse, "analyze", "orphans", "--run", "latest", "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,14 +95,14 @@ func TestAssessmentOrphansReportsMissingBrowseEvidence(t *testing.T) {
 
 	// A truncated listing with zero candidates is still not a clean result.
 	truncated := newOrphanCoverageHistoryDB(t, "11", vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-2", Name: "datastore2", Accessible: true, Backing: strong, BrowseStatus: "success", BrowseTruncated: true})
-	stdout, _, err = runCLI(t, truncated, "assessment", "orphans", "latest")
+	stdout, _, err = runCLI(t, truncated, "analyze", "orphans", "--run", "latest")
 	if err != nil || strings.Contains(stdout, "No browsed VMDK orphan candidates.") || !strings.Contains(stdout, "NOT EVALUATED") {
 		t.Fatalf("truncated err=%v stdout=%q", err, stdout)
 	}
 
 	// A fully browsed, genuinely clean estate still prints a clean result and exits 0.
 	clean := newOrphanCoverageHistoryDB(t, "11", vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-3", Name: "datastore3", Accessible: true, Backing: strong, BrowseStatus: "success"})
-	stdout, _, err = runCLI(t, clean, "assessment", "orphans", "latest", "--fail-on-unknown")
+	stdout, _, err = runCLI(t, clean, "analyze", "orphans", "--run", "latest", "--fail-on-unknown")
 	if err != nil {
 		t.Fatalf("clean estate failed: %v", err)
 	}
@@ -113,7 +113,7 @@ func TestAssessmentOrphansReportsMissingBrowseEvidence(t *testing.T) {
 
 func TestAssessmentOrphansCommandAndConfidenceFiltering(t *testing.T) {
 	db := newOrphanTestHistoryDB(t)
-	stdout, _, err := runCLI(t, db, "assessment", "orphans", "latest")
+	stdout, _, err := runCLI(t, db, "analyze", "orphans", "--run", "latest")
 	if err != nil || !strings.Contains(stdout, "SUSPECTED") || !strings.Contains(stdout, "orphan.vmdk") {
 		t.Fatalf("orphans output err=%v output=%s", err, stdout)
 	}
@@ -123,18 +123,18 @@ func TestAssessmentOrphansCommandAndConfidenceFiltering(t *testing.T) {
 			t.Fatalf("orphan header should name the datastore once: %q", line)
 		}
 	}
-	stdout, _, err = runCLI(t, db, "assessment", "orphans", "latest", "-o", "json", "--confidence", string(health.ConfidenceSuspected))
+	stdout, _, err = runCLI(t, db, "analyze", "orphans", "--run", "latest", "-o", "json", "--confidence", string(health.ConfidenceSuspected))
 	if err != nil || !strings.Contains(stdout, `"confidence": "suspected-unreferenced"`) {
 		t.Fatalf("orphans JSON err=%v output=%s", err, stdout)
 	}
-	if healthOut, healthErr, gateErr := runCLI(t, db, "health", "latest", "--severity", "warning", "--fail-on-findings"); gateErr != nil {
+	if healthOut, healthErr, gateErr := runCLI(t, db, "analyze", "health", "--run", "latest", "--severity", "warning", "--fail-on-findings"); gateErr != nil {
 		t.Fatalf("suspected-only estate failed warning gate: %v stdout=%s stderr=%s", gateErr, healthOut, healthErr)
 	}
 }
 
 func TestHealthCommandExitCodes(t *testing.T) {
 	findingsDB := newHealthTestHistoryDB(t, true)
-	stdout, _, err := runCLI(t, findingsDB, "health", "latest", "--fail-on-findings")
+	stdout, _, err := runCLI(t, findingsDB, "analyze", "health", "--run", "latest", "--fail-on-findings")
 	var coded interface{ ExitCode() int }
 	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
 		t.Fatalf("health findings error=%v, code=%v, output=%s", err, coded, stdout)
@@ -147,17 +147,17 @@ func TestHealthCommandExitCodes(t *testing.T) {
 	}
 
 	cleanDB := newHealthTestHistoryDB(t, false)
-	if _, _, err := runCLI(t, cleanDB, "health", "latest", "--fail-on-findings"); err != nil {
+	if _, _, err := runCLI(t, cleanDB, "analyze", "health", "--run", "latest", "--fail-on-findings"); err != nil {
 		t.Fatalf("clean health returned %v", err)
 	}
-	if _, _, err := runCLI(t, cleanDB, "health", "does-not-exist"); err == nil {
+	if _, _, err := runCLI(t, cleanDB, "analyze", "health", "--run", "does-not-exist"); err == nil {
 		t.Fatal("bad selector unexpectedly succeeded")
 	}
 }
 
 func TestHealthCommandJSONAndRuleListing(t *testing.T) {
 	db := newHealthTestHistoryDB(t, false)
-	stdout, stderr, err := runCLI(t, db, "health", "latest", "-o", "json")
+	stdout, stderr, err := runCLI(t, db, "analyze", "health", "--run", "latest", "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestHealthCommandJSONAndRuleListing(t *testing.T) {
 		t.Fatalf("health output did not explain skipped datastore browsing: %s", stderr)
 	}
 
-	stdout, _, err = runCLI(t, db, "health", "--list-rules")
+	stdout, _, err = runCLI(t, db, "analyze", "health", "--list-rules")
 	if err != nil || !strings.Contains(stdout, "datastore-inaccessible") || !strings.Contains(stdout, "datastore-zombie-vmdk") || !strings.Contains(stdout, "vm-orphaned") || !strings.Contains(stdout, "tools-outdated") {
 		t.Fatalf("rule listing err=%v output=%s", err, stdout)
 	}
@@ -182,7 +182,7 @@ func TestAssessmentReadinessBlocksAndHasExitCode(t *testing.T) {
 	connected := true
 	vm := vsphere.VM{ID: "vm-1", Name: "app", PowerState: "poweredOn", CDROMs: []vsphere.VMCDROM{{Label: "installer", Connected: &connected}}}
 	dbPath := seedVMHistory(t, vm, []assessment.CollectionResult{{Kind: "vm", Status: "success", ItemCount: 1}})
-	stdout, _, err := runCLI(t, dbPath, "assessment", "readiness", "latest", "--fail-on-blockers")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "readiness", "--run", "latest", "--fail-on-blockers")
 	var coded interface{ ExitCode() int }
 	if !errors.As(err, &coded) || coded.ExitCode() != 2 {
 		t.Fatalf("readiness error=%v, code=%v, output=%s", err, coded, stdout)
@@ -196,11 +196,50 @@ func TestHealthCommandReportsConnectedDevicesFromStoredEvidence(t *testing.T) {
 	connected := true
 	vm := vsphere.VM{ID: "vm-1", Name: "app", CDROMs: []vsphere.VMCDROM{{Key: 301, Label: "CD/DVD drive 1", Connected: &connected, BackingType: "iso", BackingPath: "[ds] app/install.iso"}}, USBs: []vsphere.VMUSB{{Key: 401, Label: "USB device 1", Connected: &connected, BackingType: "remoteHost", BackingHost: "esx-1"}}}
 	dbPath := seedVMHistory(t, vm, []assessment.CollectionResult{{Kind: "vm", Status: "success", ItemCount: 1}})
-	stdout, _, err := runCLI(t, dbPath, "health", "latest", "-o", "json")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "health", "--run", "latest", "-o", "json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(stdout, `"rule": "cdrom-connected"`) || !strings.Contains(stdout, `"rule": "usb-connected"`) || !strings.Contains(stdout, "install.iso") || !strings.Contains(stdout, "esx-1") {
 		t.Fatalf("health JSON missing connected-device findings: %s", stdout)
+	}
+}
+
+// -o wide adds the recommendation and evidence columns, and both selectors
+// keep only the findings whose object, as captured, matches.
+func TestAnalyzeHealthWideAndSelectors(t *testing.T) {
+	db := seedVMHistory(t, vsphere.VM{
+		ID: "vm-1", Name: "app", PowerState: "poweredOn", ConnectionState: "orphaned",
+		Metadata: vsphere.Metadata{TagsStatus: vsphere.MetadataAvailable, Tags: []vsphere.Tag{{Category: "env", Name: "prod"}}},
+	}, nil)
+	for _, tc := range []struct {
+		name     string
+		args     []string
+		want     []string
+		dontWant []string
+	}{
+		{name: "table", want: []string{"vm/app"}, dontWant: []string{"RECOMMENDATION"}},
+		{name: "wide", args: []string{"-o", "wide"}, want: []string{"vm/app", "RECOMMENDATION", "EVIDENCE", "env/prod"}},
+		{name: "field selector keeps", args: []string{"--field-selector", "name=app"}, want: []string{"vm/app"}},
+		{name: "field selector drops", args: []string{"--field-selector", "name=other"}, dontWant: []string{"vm/app"}},
+		{name: "label selector keeps", args: []string{"-l", "env=prod"}, want: []string{"vm/app"}},
+		{name: "label selector drops", args: []string{"-l", "env=dev"}, dontWant: []string{"vm/app"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, _, err := runCLI(t, db, append([]string{"analyze", "health"}, tc.args...)...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(stdout, want) {
+					t.Errorf("output lacks %q:\n%s", want, stdout)
+				}
+			}
+			for _, dontWant := range tc.dontWant {
+				if strings.Contains(stdout, dontWant) {
+					t.Errorf("output has %q:\n%s", dontWant, stdout)
+				}
+			}
+		})
 	}
 }

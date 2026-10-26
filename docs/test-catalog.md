@@ -183,7 +183,7 @@ vcsim Deployments, `prod` and `edge`.
 | `vsfleet-complete` | both vCenters up | assessment status `complete`, 2 of 2 contexts |
 | `vsfleet-history` | `assessment list` on the persistent volume | the earlier run was persisted |
 | `vsfleet-partial` | `edge` scaled to zero, `--fail-on-partial` | the job fails with exit code 3 and the result is `partial`, 1 of 2 contexts |
-| `vsfleet-readiness` | `assessment readiness latest` | the verdict is not `ready` and unresolved items are listed |
+| `vsfleet-readiness` | `analyze readiness` | the verdict is not `ready` and unresolved items are listed |
 
 This tier checks ConfigMap mounts, Secret-backed `file:` credentials, PVC
 ownership, and Service DNS.

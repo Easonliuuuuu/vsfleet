@@ -29,11 +29,11 @@ func newTopologyTestHistoryDB(t *testing.T) string {
 
 func TestTopologyCommandAmbiguityAndContextNarrowing(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
-	stdout, _, err := runCLI(t, dbPath, "topology", "datastore", "datastore1")
+	stdout, _, err := runCLI(t, dbPath, "analyze", "topology", "datastore", "datastore1")
 	if err != nil || !strings.Contains(stdout, "[AMBIGUOUS] 2 distinct datastores") || !strings.Contains(stdout, "prod") || !strings.Contains(stdout, "edge") {
 		t.Fatalf("ambiguity err=%v output=%s", err, stdout)
 	}
-	stdout, _, err = runCLI(t, dbPath, "--context", "prod", "topology", "datastore", "datastore1", "-o", "json")
+	stdout, _, err = runCLI(t, dbPath, "--context", "prod", "analyze", "topology", "datastore", "datastore1", "-o", "json")
 	if err != nil || strings.Contains(stdout, `"ambiguous": true`) {
 		t.Fatalf("narrowed err=%v output=%s", err, stdout)
 	}
@@ -45,7 +45,7 @@ func TestTopologyCommandAmbiguityAndContextNarrowing(t *testing.T) {
 
 func TestTopologyCommandRejectsBadKind(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
-	_, _, err := runCLI(t, dbPath, "topology", "widget", "anything")
+	_, _, err := runCLI(t, dbPath, "analyze", "topology", "widget", "anything")
 	if err == nil || !strings.Contains(err.Error(), `unknown kind "widget"`) {
 		t.Fatalf("bad kind error=%v", err)
 	}

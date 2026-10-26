@@ -20,7 +20,7 @@ func TestHelpExplainsWhatEachHistoryPaneShows(t *testing.T) {
 	}{
 		{"changes", historyPaneChanges, []string{"b / t", "VMs", "partial", "infra", "1 blocks", "2 sizing", "3 growth", "4 churn"}},
 		{"runs", historyPaneRuns, []string{"complete", "partial", "failed", "pinned"}},
-		{"health", historyPaneHealth, []string{"BLOCKED", "UNKNOWN", "READY", "CONFIDENCE", "vsfleet health"}},
+		{"health", historyPaneHealth, []string{"BLOCKED", "UNKNOWN", "READY", "CONFIDENCE", "vsfleet analyze health"}},
 		{"trends", historyPaneTrends, nil},
 	}
 	for _, tc := range cases {

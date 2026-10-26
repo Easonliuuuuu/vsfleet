@@ -76,23 +76,22 @@ func TestVCSIMMultiContextInventoryAndProvenance(t *testing.T) {
 		t.Fatalf("capture=%+v, want complete two-context run", run)
 	}
 
-	var search struct {
-		Matches []struct {
-			Context string `json:"context"`
-			Name    string `json:"name"`
-		} `json:"matches"`
+	// "get all" spans every kind, so the answer is keyed by kind.
+	var found map[string][]struct {
+		Context string `json:"context"`
+		Name    string `json:"name"`
 	}
-	if err := json.Unmarshal([]byte(vcsimJSON(t, r, "--all-contexts", "-o", "json", "search", "DC0_C0_RP0_VM0")), &search); err != nil {
+	if err := json.Unmarshal([]byte(vcsimJSON(t, r, "--all-contexts", "-o", "json", "get", "all", "DC0_C0_RP0_VM0")), &found); err != nil {
 		t.Fatal(err)
 	}
 	seen := map[string]bool{}
-	for _, match := range search.Matches {
+	for _, match := range found["vms"] {
 		if match.Name == "DC0_C0_RP0_VM0" {
 			seen[match.Context] = true
 		}
 	}
 	if !seen["vc-prod"] || !seen["vc-edge"] {
-		t.Fatalf("live search provenance=%v, matches=%+v", seen, search.Matches)
+		t.Fatalf("live get all provenance=%v, matches=%+v", seen, found)
 	}
 
 	result := topologyJSON(t, r, historyDB, "", "topology", "vm", "DC0_C0_RP0_VM0")

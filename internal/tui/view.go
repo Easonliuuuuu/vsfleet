@@ -528,8 +528,7 @@ func (m *Model) viewSearchHeader() string {
 }
 
 // viewSearch is the estate-wide result table: every kind and every vCenter in
-// one list. It is the interface catching up with "vsfleet search", which has
-// been able to answer this from the command line all along.
+// one list, the interface's counterpart of "vsfleet get all -A".
 //
 // A vCenter with no inventory loaded, or a kind that has not finished, is
 // named under the results rather than silently left out. Returning fewer

@@ -23,6 +23,13 @@ func TestGetFlagMistakesFailFast(t *testing.T) {
 		{[]string{"get", "vms", "--refresh", "1m"}, "--refresh applies with -w"},
 		{[]string{"get", "vms", "--where", "cpu>=8"}, "--where was renamed"},
 		{[]string{"get", "vms", "--wide"}, "use -o wide"},
+		{[]string{"get", "vms", "-w", "--run", "latest"}, "a capture --run names never changes"},
+		{[]string{"describe", "vm", "web-01", "--history", "--run", "latest"}, "--history reads every capture; --run picks one"},
+		{[]string{"describe", "vm", "web-01", "--include-runtime"}, "apply with --history"},
+		{[]string{"describe", "host", "esxi-07", "--history"}, "--history describes one VM at a time"},
+		{[]string{"describe", "all", "web-01"}, `"all" lists with get`},
+		{[]string{"events", "--for", "vm/web-01", "--run", "latest"}, "events are read live"},
+		{[]string{"top", "vm", "--run", "latest"}, "pick one with --window"},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			_, _, err := runArgs(t, tc.args...)

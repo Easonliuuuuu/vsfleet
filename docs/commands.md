@@ -32,23 +32,21 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet dependencies <kind> <name> [run]` | Show what a stored subject depends on |
 | `vsfleet blast-radius <kind> <name> [run]` | Show stored subjects affected by a dependency |
 | `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
-| `vsfleet assessment inventory [run]` | Query inventory stored in an assessment |
 | `vsfleet assessment orphans [run]` | Explain estate-wide browsed VMDK orphan evidence |
 | `vsfleet assessment capacity [run]` | Attribute datastore growth and project free-space thresholds |
 | `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
 | `vsfleet assessment sizing [run]` | Test whether stored VMs fit a proposed destination (allocation based, offline) |
 | `vsfleet network compare <source-cluster> <target-cluster> [run]` | Compare stored network reachability and policy between clusters |
 | `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
-| `vsfleet search <text>` | Search every vCenter at once |
 | `vsfleet api-resources` | List every object kind with its short names and whether it is live, stored, or both |
-| `vsfleet get <kind>[,<kind>...] [name...]` | List objects of any live kind, live from vCenter; names may be globs, and `<kind>/<name>` also works |
-| `vsfleet describe <kind> <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail |
+| `vsfleet get <kind>[,<kind>...] [name...]` | List objects of any kind, or `all` inventory kinds, live or from a capture with `--run`; names may be globs, and `<kind>/<name>` also works |
+| `vsfleet describe <kind> <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail, live or with `--run` |
+| `vsfleet describe vm <name-or-uuid> --history` | Show how a VM changed across every stored capture |
 | `vsfleet events --for vm/<name> [--all]` | Show a VM's live vCenter event log: migrations, reconfigurations, snapshots and failures, with who and when; task results come from the VM's task history, and a deleted VM is found through stored history |
 | `vsfleet top vm [name...]` | Show VM CPU and memory use from stored performance collections; see [performance history](performance.md) |
 | `vsfleet explain <kind>[.<field>]` | Document a kind's columns and the RVTools worksheets it feeds |
 | `vsfleet datastore files list <datastore> [path]` | List one datastore directory |
 | `vsfleet datastore files find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
-| `vsfleet vm history <name-or-uuid>` | Show a VM's stored assessment timeline |
 | `vsfleet vm decommission-check <name-or-uuid> [run]` | Review stored evidence before decommissioning a VM |
 | `vsfleet assessment ...` | Capture and compare historical observations |
 | `vsfleet assessment export --profile <name> [--pseudonymize --pseudonymize-key-file <file>] [--preview]` | Export a scoped `sizing-summary` or `full-inventory` workbook, optionally pseudonymized; see [scoped sharing profiles](sharing.md) |
@@ -73,11 +71,14 @@ vsfleet never changes a vCenter, so kubectl's mutating verbs (`apply`,
 `delete`, `edit`, `scale`, `exec` and the rest) fail with a read-only error.
 
 `get` takes the kubectl argument forms: `KIND`, `KIND NAME...`,
-`KIND,KIND` and `KIND/NAME...`. A name is matched exactly, ignoring case, or
-as a shell glob such as `'web*'`; quote a glob so the shell leaves it alone. A
-VM or template may also be named by instance or BIOS UUID. An exact name that
-matches nothing fails; a glob that matches nothing prints
-`No resources found.` on stderr.
+`KIND,KIND` and `KIND/NAME...`. `all` stands for every inventory kind (VMs,
+templates, hosts, clusters, vApps, datastores, networks, distributed switches
+and resource pools), so `get all NAME -A` finds an object without knowing its
+kind or vCenter. A name is matched exactly, ignoring case, or as a shell glob
+such as `'web*'`; quote a glob so the shell leaves it alone. A VM or template
+may also be named by instance or BIOS UUID. An exact name that matches
+nothing fails, once however many kinds `all` searched; a glob that matches
+nothing prints `No resources found.` on stderr.
 
 ```sh
 vsfleet api-resources
@@ -87,10 +88,44 @@ vsfleet get vm/web-01 host/esxi-07
 vsfleet get vms -l Environment=Production --field-selector 'cpu>=8' -o wide
 vsfleet get datastores --field-selector 'free_percent<15' --sort-by .free_percent
 
-vsfleet search ubuntu --all-contexts
-vsfleet search --tag migration-wave-2 --wide
-vsfleet search nvme --kind datastore --limit 20
+vsfleet get all '*ubuntu*' -A
+vsfleet get all -l migration-wave=2 -A -o wide
 ```
+
+<span id="get-run"></span>
+
+### Reading a capture
+
+`get` and `describe` read live from vCenter. `--run` reads a stored
+[capture](assessments.md) instead, offline and without contacting vCenter.
+It takes a capture ID, a label, `latest`, `previous`, or a date:
+`2026-03-31` picks the newest capture started that day or before, and
+`2026-03-31T18:00` the newest started by that minute. A label wins over a
+date that reads the same.
+
+`--run` changes where objects come from, never which contexts are read: the
+current context, `-n` or `-A` as for a live read. Every selector, sort and
+output format works the same. A context whose capture did not record a kind,
+or failed to, is reported after the rows the way an unreachable vCenter is.
+
+A live read never falls back to stored data. When no vCenter answers, the
+error suggests `--run latest`; `-w` does not combine with `--run`, because a
+capture never changes. `events` reads only live data, and `top` reads
+[performance collections](performance.md), which are stored apart from
+captures.
+
+```sh
+vsfleet get vms -A --run nightly
+vsfleet get hosts,datastores --run 2026-03-31 -n prod -o yaml
+vsfleet describe vm web-01 --run pre-migration
+vsfleet describe vm web-01 --history
+vsfleet describe vm 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52 --history --all-observations --include-runtime
+```
+
+`--history` shows a VM's change log across every capture: when it appeared,
+what changed and when it went. Give it by instance UUID to follow it through
+a rename. `--all-observations` includes captures in which nothing changed and
+`--include-runtime` includes volatile fields such as power state.
 
 <span id="get-selectors"></span>
 
@@ -165,7 +200,7 @@ metadata never matches, including a negative predicate.
 Stored captures are queried offline with the same evaluator:
 
 ```sh
-vsfleet assessment inventory latest --where 'custom.environment=prod' --wide
+vsfleet get vms --run latest --field-selector 'custom.environment=prod' -o wide
 vsfleet assessment findings latest --where 'tag=PCI' -o json
 ```
 
@@ -265,7 +300,7 @@ vsfleet import rvtools estate.xlsx --timezone America/Los_Angeles
 
 # Once imported, every stored-evidence command works on it like a live capture
 vsfleet assessment list
-vsfleet vm history web-01
+vsfleet describe vm web-01 --history
 vsfleet assessment diff pre-migration wave-1
 ```
 
@@ -500,7 +535,7 @@ Use `-o json` for automation:
 
 ```sh
 vsfleet get vms --all-contexts -o json
-vsfleet search nvme --kind datastore -o json | jq
+vsfleet get datastores 'nvme*' -A -o json | jq
 ```
 
 ## Persistent flags

@@ -14,6 +14,22 @@ import (
 type resourceRequest struct {
 	kind  apiresource.Kind
 	names []string
+	// all marks a kind that "all" asked for, where a name is missing only if
+	// no such kind holds it.
+	all bool
+}
+
+// allKinds are the kinds "all" stands for: every inventory kind, the way
+// kubectl's "all" means the common top-level kinds and leaves subresources
+// out.
+func allKinds() []apiresource.Kind {
+	var out []apiresource.Kind
+	for _, k := range apiresource.All() {
+		if k.Inventory != "" {
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // parseResourceArgs reads the kubectl argument forms: "KIND[,KIND...]
@@ -49,12 +65,23 @@ func parseResourceArgs(args []string) ([]resourceRequest, error) {
 	}
 	var out []resourceRequest
 	for _, kindName := range strings.Split(args[0], ",") {
+		if kindName == "all" {
+			for _, kind := range allKinds() {
+				if indexOfKind(out, kind) < 0 {
+					out = append(out, resourceRequest{kind: kind, all: true})
+				}
+			}
+			continue
+		}
 		kind, err := lookupKind(kindName)
 		if err != nil {
 			return nil, err
 		}
-		if indexOfKind(out, kind) < 0 {
+		if i := indexOfKind(out, kind); i < 0 {
 			out = append(out, resourceRequest{kind: kind})
+		} else {
+			// Named as well as implied by "all": its own names count.
+			out[i].all = false
 		}
 	}
 	for _, name := range args[1:] {

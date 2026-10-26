@@ -27,7 +27,7 @@ NAME may also be an instance or BIOS UUID.
 
 This reads vCenter live and is bounded by what vCenter still keeps, usually
 the last 30 days. For changes across your stored assessments, which go back as
-far as your history does, use "vsfleet vm history". Routine events (power,
+far as your history does, use "vsfleet describe vm NAME --history". Routine events (power,
 guest and tools state, task progress) are hidden unless --all is given.
 
 A VM that is no longer in inventory is found in stored history instead, and
@@ -148,7 +148,7 @@ func vmEvents(ctx context.Context, a *App, contextName, vmID string, limit int) 
 
 // storedVMEvents reads the events of a VM that is no longer in inventory but
 // that vCenter still logs events for, such as its removal and who did it. The
-// VM is found the way "vsfleet vm history" finds it, and its events are read
+// VM is found the way "vsfleet describe vm NAME --history" finds it, and its events are read
 // under each managed object ID that history recorded for it, on each vCenter.
 // notFound is returned when history does not know the VM either.
 func storedVMEvents(ctx context.Context, a *App, query string, limit int, notFound error) (vsphere.VMEventListing, error) {

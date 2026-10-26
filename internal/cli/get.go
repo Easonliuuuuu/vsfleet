@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/jsonpath"
 	"github.com/easonliuuuuu/vsfleet/internal/query"
 	"github.com/easonliuuuuu/vsfleet/internal/tui"
@@ -44,6 +45,11 @@ type kindListing struct {
 	objects []any
 	names   []string
 	missing []string
+	// all is set when the kind came from "all".
+	all bool
+	// warnings are the metadata sources these objects were not fully read
+	// from.
+	warnings []string
 }
 
 // kindLister lists one kind for "get" and "cluster-info dump".
@@ -102,7 +108,6 @@ func (l lister[T]) list(ctx context.Context, a *App, names []string, opt getOpti
 	if err != nil {
 		return nil, failures, err
 	}
-	reportMetadataWarnings(a, items)
 	items = filterSlice(items, func(v T) bool {
 		if !patterns.match(l.names(v)...) {
 			return false
@@ -113,7 +118,7 @@ func (l lister[T]) list(ctx context.Context, a *App, names []string, opt getOpti
 		subject, err := query.SubjectFromObject(l.inventory, v)
 		return err == nil && fields.Match(subject) && opt.labels.Match(subject)
 	})
-	out := &kindListing{missing: patterns.missing()}
+	out := &kindListing{missing: patterns.missing(), warnings: metadataWarnings(items)}
 	var shaped any = items
 	if l.json != nil {
 		shaped = l.json(items)
@@ -174,7 +179,7 @@ func decodeObjects(shaped any, out *kindListing) error {
 var listers = map[string]kindLister{
 	"vm": lister[vsphere.VM]{
 		inventory: vsphere.KindVM,
-		fetch:     gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListVMs(ctx) }),
+		fetch:     readAll("vm", func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListVMs(ctx) }, storedVMs(false)),
 		names:     vmNames,
 		context:   vmContextOf,
 		metadata:  func(v vsphere.VM) vsphere.Metadata { return v.Metadata },
@@ -185,7 +190,7 @@ var listers = map[string]kindLister{
 	},
 	"template": lister[vsphere.VM]{
 		inventory: vsphere.KindTemplate,
-		fetch:     gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListTemplates(ctx) }),
+		fetch:     readAll("vm", func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) { return c.ListTemplates(ctx) }, storedVMs(true)),
 		names:     vmNames,
 		context:   vmContextOf,
 		metadata:  func(v vsphere.VM) vsphere.Metadata { return v.Metadata },
@@ -196,7 +201,7 @@ var listers = map[string]kindLister{
 	},
 	"host": lister[vsphere.Host]{
 		inventory: vsphere.KindHost,
-		fetch:     gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) { return c.ListHosts(ctx) }),
+		fetch:     readAll("host", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) { return c.ListHosts(ctx) }, storedObjects[vsphere.Host](vsphere.KindHost)),
 		names:     func(h vsphere.Host) []string { return []string{h.Name} },
 		context:   func(h vsphere.Host) string { return h.Context },
 		metadata:  func(h vsphere.Host) vsphere.Metadata { return h.Metadata },
@@ -211,7 +216,7 @@ var listers = map[string]kindLister{
 	},
 	"cluster": lister[vsphere.Cluster]{
 		inventory: vsphere.KindCluster,
-		fetch:     gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.Cluster, error) { return c.ListClusters(ctx) }),
+		fetch:     readAll("cluster", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Cluster, error) { return c.ListClusters(ctx) }, storedObjects[vsphere.Cluster](vsphere.KindCluster)),
 		names:     func(c vsphere.Cluster) []string { return []string{c.Name} },
 		context:   func(c vsphere.Cluster) string { return c.Context },
 		metadata:  func(c vsphere.Cluster) vsphere.Metadata { return c.Metadata },
@@ -226,7 +231,7 @@ var listers = map[string]kindLister{
 	},
 	"vapp": lister[vsphere.VApp]{
 		inventory: vsphere.KindVApp,
-		fetch:     gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.VApp, error) { return c.ListVApps(ctx) }),
+		fetch:     readAll("vapp", func(ctx context.Context, c *vsphere.Client) ([]vsphere.VApp, error) { return c.ListVApps(ctx) }, storedObjects[vsphere.VApp](vsphere.KindVApp)),
 		names:     func(v vsphere.VApp) []string { return []string{v.Name} },
 		context:   func(v vsphere.VApp) string { return v.Context },
 		metadata:  func(v vsphere.VApp) vsphere.Metadata { return v.Metadata },
@@ -238,9 +243,9 @@ var listers = map[string]kindLister{
 	},
 	"datastore": lister[vsphere.Datastore]{
 		inventory: vsphere.KindDatastore,
-		fetch: gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.Datastore, error) {
+		fetch: readAll("datastore", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Datastore, error) {
 			return c.ListDatastores(ctx)
-		}),
+		}, storedObjects[vsphere.Datastore](vsphere.KindDatastore)),
 		names:    func(d vsphere.Datastore) []string { return []string{d.Name} },
 		context:  func(d vsphere.Datastore) string { return d.Context },
 		metadata: func(d vsphere.Datastore) vsphere.Metadata { return d.Metadata },
@@ -255,7 +260,7 @@ var listers = map[string]kindLister{
 	},
 	"network": lister[vsphere.Network]{
 		inventory: vsphere.KindNetwork,
-		fetch:     gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) }),
+		fetch:     readAll("network", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) }, storedObjects[vsphere.Network](vsphere.KindNetwork)),
 		names:     func(n vsphere.Network) []string { return []string{n.Name} },
 		context:   func(n vsphere.Network) string { return n.Context },
 		metadata:  func(n vsphere.Network) vsphere.Metadata { return n.Metadata },
@@ -266,7 +271,7 @@ var listers = map[string]kindLister{
 	},
 	"dvswitch": lister[vsphere.DVSwitch]{
 		inventory: vsphere.KindDVSwitch,
-		fetch:     gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) { return c.ListDVSwitches(ctx) }),
+		fetch:     readAll("dvswitch", func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) { return c.ListDVSwitches(ctx) }, storedObjects[vsphere.DVSwitch](vsphere.KindDVSwitch)),
 		names:     func(d vsphere.DVSwitch) []string { return []string{d.Name} },
 		context:   func(d vsphere.DVSwitch) string { return d.Context },
 		metadata:  func(d vsphere.DVSwitch) vsphere.Metadata { return d.Metadata },
@@ -277,9 +282,9 @@ var listers = map[string]kindLister{
 	},
 	"resourcepool": lister[vsphere.ResourcePool]{
 		inventory: vsphere.KindResourcePool,
-		fetch: gatherAll(func(ctx context.Context, c *vsphere.Client) ([]vsphere.ResourcePool, error) {
+		fetch: readAll("resourcepool", func(ctx context.Context, c *vsphere.Client) ([]vsphere.ResourcePool, error) {
 			return c.ListResourcePools(ctx)
-		}),
+		}, storedObjects[vsphere.ResourcePool](vsphere.KindResourcePool)),
 		names:    func(p vsphere.ResourcePool) []string { return []string{p.Name} },
 		context:  func(p vsphere.ResourcePool) string { return p.Context },
 		metadata: func(p vsphere.ResourcePool) vsphere.Metadata { return p.Metadata },
@@ -328,11 +333,11 @@ var listers = map[string]kindLister{
 		}),
 }
 
-// gatherAll adapts a per-vCenter listing to a lister's fetch, for kinds that
-// have no parent to narrow to.
-func gatherAll[T any](fn func(context.Context, *vsphere.Client) ([]T, error)) func(context.Context, *App, string) ([]T, []contextFailure, error) {
+// readAll adapts a live listing and its stored counterpart to a lister's
+// fetch, for kinds that have no parent to narrow to.
+func readAll[T any](kind string, live func(context.Context, *vsphere.Client) ([]T, error), stored func(*assessment.ExportData) ([]T, error)) func(context.Context, *App, string) ([]T, []contextFailure, error) {
 	return func(ctx context.Context, a *App, _ string) ([]T, []contextFailure, error) {
-		return gather(ctx, a, fn)
+		return read(ctx, a, kind, live, stored)
 	}
 }
 
@@ -352,9 +357,9 @@ func hostItemLister[T any](headers []string, extract func(vsphere.Host) []T, nam
 	return lister[hostItem[T]]{
 		scopeFlag: "host",
 		fetch: func(ctx context.Context, a *App, hostName string) ([]hostItem[T], []contextFailure, error) {
-			hosts, failures, err := gather(ctx, a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) {
+			hosts, failures, err := read(ctx, a, "host", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) {
 				return c.ListHostsWithConfig(ctx)
-			})
+			}, storedObjects[vsphere.Host](vsphere.KindHost))
 			if err != nil {
 				return nil, failures, err
 			}
@@ -404,9 +409,9 @@ func snapshotLister() kindLister {
 	return lister[vmSnapshot]{
 		scopeFlag: "vm",
 		fetch: func(ctx context.Context, a *App, vmName string) ([]vmSnapshot, []contextFailure, error) {
-			vms, failures, err := gather(ctx, a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) {
+			vms, failures, err := read(ctx, a, "vm", func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) {
 				return c.ListVMs(ctx)
-			})
+			}, storedVMs(false))
 			if err != nil {
 				return nil, failures, err
 			}
@@ -456,9 +461,9 @@ func dvPortGroupLister() kindLister {
 	return lister[switchPortGroup]{
 		scopeFlag: "switch",
 		fetch: func(ctx context.Context, a *App, switchName string) ([]switchPortGroup, []contextFailure, error) {
-			switches, failures, err := gather(ctx, a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) {
+			switches, failures, err := read(ctx, a, "dvswitch", func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) {
 				return c.ListDVSwitches(ctx)
-			})
+			}, storedObjects[vsphere.DVSwitch](vsphere.KindDVSwitch))
 			if err != nil {
 				return nil, failures, err
 			}
@@ -516,6 +521,7 @@ type getFlags struct {
 	sortBy        string
 	noHeaders     bool
 	watch         bool
+	run           string
 	// where and wide are the removed spellings, kept only to say where they
 	// went.
 	where []string
@@ -527,11 +533,12 @@ func newGetCommand(a *App) *cobra.Command {
 	scopes := make([]string, len(scopeFlags))
 	cmd := &cobra.Command{
 		Use:   "get KIND[,KIND...] [NAME...] | KIND/NAME...",
-		Short: "List objects of one or more kinds, read live from vCenter",
+		Short: "List objects of one or more kinds, live or from a capture",
 		Long: strings.TrimSpace(`
 List objects the way "kubectl get" does. KIND is any name or short name
 "vsfleet api-resources" shows, and several kinds can be listed at once,
-separated by commas. NAME narrows the listing: an exact name (ignoring case),
+separated by commas; "all" lists every inventory kind. NAME narrows the
+listing: an exact name (ignoring case),
 a VM's instance or BIOS UUID, or a shell glob such as 'web*'. Quote a glob so
 the shell does not expand it. An exact name that matches nothing is an error;
 a glob that matches nothing is an empty answer.
@@ -554,6 +561,12 @@ holding an array per kind, keyed by the kind's plural. jsonpath sees
 whenever more than one is in play. A context that cannot be reached is
 reported after the rows that could be read, never instead of them.
 
+Objects are read live from vCenter. --run reads them from a stored capture
+instead: an ID, a label, latest, previous, or a date (2026-03-31, or
+2026-03-31T18:00) for the newest capture started by then. It reads the same
+contexts a live read would, and never contacts vCenter; a live read never
+falls back to stored data.
+
 -w re-reads and re-renders on the interface's refresh interval (--refresh)
 until interrupted.`),
 		Example: `  # Every VM on the current context
@@ -567,6 +580,12 @@ until interrupted.`),
 
   # One VM and one host, by KIND/NAME
   vsfleet get vm/web-01 host/esxi-07
+
+  # Find a name anywhere in the estate, in every kind
+  vsfleet get all '*golden*' -A
+
+  # The same VMs, as the capture labelled nightly recorded them
+  vsfleet get vms -A --run nightly
 
   # Production VMs with eight or more vCPUs, biggest first
   vsfleet get vms -l env=prod --field-selector 'cpu>=8' --sort-by .cpu
@@ -592,7 +611,7 @@ until interrupted.`),
 			if len(args) > 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return gettableKindNames(), cobra.ShellCompDirectiveNoFileComp
+			return append(gettableKindNames(), "all"), cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := f.rejectRemoved(cmd); err != nil {
@@ -618,6 +637,14 @@ until interrupted.`),
 			if cmd.Flags().Changed("refresh") && !f.watch {
 				return errors.New("--refresh applies with -w")
 			}
+			if f.run != "" {
+				if f.watch {
+					return errors.New("-w re-reads vCenter; a capture --run names never changes")
+				}
+				if err := a.loadCapture(cmd.Context(), f.run); err != nil {
+					return err
+				}
+			}
 			g := getRun{a: a, reqs: reqs, opt: opt, spec: spec, noHeaders: f.noHeaders}
 			if f.watch {
 				return g.watch(cmd.Context())
@@ -631,6 +658,7 @@ until interrupted.`),
 	fl.StringVar(&f.sortBy, "sort-by", "", "sort by a JSONPath expression, e.g. .name or .cpu")
 	fl.BoolVar(&f.noHeaders, "no-headers", false, "leave out the header row of table, wide, csv and custom-columns output")
 	fl.BoolVarP(&f.watch, "watch", "w", false, "re-read and re-render on the refresh interval until interrupted")
+	fl.StringVar(&f.run, "run", "", "read a stored capture instead of vCenter: ID, label, latest, previous or date")
 	fl.DurationVar(&a.RefreshInterval, "refresh", 0, "with -w, how often to re-read (0 for the interface's default of "+tui.DefaultRefreshInterval.String()+")")
 	for i, s := range scopeFlags {
 		fl.StringVar(&scopes[i], s.flag, "", s.usage)
@@ -721,6 +749,7 @@ func (g getRun) once(ctx context.Context) error {
 		return err
 	}
 	defer reportFailures(g.a, failures)
+	defer reportWarnings(g.a, listings)
 	if err := render(g.a.out(), g.spec, listings, g.noHeaders, g.single()); err != nil {
 		return err
 	}
@@ -731,6 +760,21 @@ func (g getRun) once(ctx context.Context) error {
 		}
 	}
 	return missingError(listings)
+}
+
+// reportWarnings prints each listing's metadata warnings, once across all of
+// them: every kind reads tags the same way, so one failure would otherwise
+// repeat for each kind listed.
+func reportWarnings(a *App, listings []*kindListing) {
+	var seen []string
+	for _, l := range listings {
+		for _, w := range l.warnings {
+			if !slices.Contains(seen, w) {
+				seen = append(seen, w)
+				fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, w)
+			}
+		}
+	}
 }
 
 // single reports whether exactly one object was asked for by name.
@@ -771,7 +815,7 @@ func (g getRun) list(ctx context.Context) ([]*kindListing, []contextFailure, err
 		if err != nil {
 			return nil, failures.list, err
 		}
-		l.kind = p.req.kind
+		l.kind, l.all = p.req.kind, p.req.all
 		listings = append(listings, l)
 	}
 	return listings, failures.list, nil
@@ -819,11 +863,34 @@ func (g getRun) watch(ctx context.Context) error {
 	}
 }
 
+// missingError reports the exact names that matched nothing. A name asked of
+// "all" is missing only when every kind it stands for lacks it, and is
+// reported once.
 func missingError(listings []*kindListing) error {
-	var errs []error
+	var (
+		errs    []error
+		fromAll []string
+		misses  = map[string]int{}
+		kinds   int
+	)
 	for _, l := range listings {
+		if l.all {
+			kinds++
+		}
 		for _, name := range l.missing {
-			errs = append(errs, &noMatchError{kind: l.kind.Name, query: name})
+			if !l.all {
+				errs = append(errs, &noMatchError{kind: l.kind.Name, query: name})
+				continue
+			}
+			if misses[name] == 0 {
+				fromAll = append(fromAll, name)
+			}
+			misses[name]++
+		}
+	}
+	for _, name := range fromAll {
+		if misses[name] == kinds {
+			errs = append(errs, &noMatchError{kind: "object", query: name})
 		}
 	}
 	return errors.Join(errs...)

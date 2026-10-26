@@ -1258,9 +1258,44 @@ func (s *Store) ResolveRun(ctx context.Context, selector string) (int64, error) 
 	var id int64
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM runs WHERE label=? COLLATE NOCASE`, selector).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, fmt.Errorf("assessment selector %q not found", selector)
+		if end, ok := parseRunDate(selector); ok {
+			return s.runBefore(ctx, selector, end)
+		}
+		return 0, fmt.Errorf("assessment selector %q not found; give an ID, label, date, latest or previous", selector)
 	}
 	return id, err
+}
+
+// parseRunDate reads a date selector as the instant it ends: a day
+// (2026-03-31) ends at the following local midnight, a minute
+// (2026-03-31T18:00) at the end of that minute, and an RFC 3339 time at
+// itself. A label that looks like a date is matched as a label first.
+func parseRunDate(selector string) (time.Time, bool) {
+	if day, err := time.ParseInLocation(time.DateOnly, selector, time.Local); err == nil {
+		return day.AddDate(0, 0, 1), true
+	}
+	if at, err := time.ParseInLocation("2006-01-02T15:04", selector, time.Local); err == nil {
+		return at.Add(time.Minute), true
+	}
+	if at, err := time.Parse(time.RFC3339, selector); err == nil {
+		return at.Add(time.Nanosecond), true
+	}
+	return time.Time{}, false
+}
+
+// runBefore picks the newest assessment started before end: the estate as
+// the history last saw it by that date.
+func (s *Store) runBefore(ctx context.Context, selector string, end time.Time) (int64, error) {
+	runs, err := s.Runs(ctx)
+	if err != nil {
+		return 0, err
+	}
+	for _, r := range runs {
+		if r.StartedAt.Before(end) {
+			return r.ID, nil
+		}
+	}
+	return 0, fmt.Errorf("no assessment was started by %s", selector)
 }
 
 func (s *Store) DeleteRun(ctx context.Context, id int64) error {

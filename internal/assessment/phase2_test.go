@@ -42,6 +42,58 @@ func TestRunMetadataSelectorsAndPinning(t *testing.T) {
 	}
 }
 
+func TestResolveRunByDate(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	start := func(at time.Time, label string) int64 {
+		t.Helper()
+		r, err := s.StartRunWithMetadata(ctx, "test", []*config.Context{testContext("prod")}, at, RunMetadata{Label: label})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.FinishRun(ctx, r.ID, at.Add(time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		return r.ID
+	}
+	march := start(time.Date(2026, 3, 31, 18, 0, 0, 0, time.Local), "")
+	april := start(time.Date(2026, 4, 2, 9, 30, 0, 0, time.Local), "2026-04-05")
+
+	for _, tc := range []struct {
+		selector string
+		want     int64
+		wantErr  string
+	}{
+		{selector: "2026-03-31", want: march},
+		{selector: "2026-04-01", want: march},
+		{selector: "2026-04-02", want: april},
+		{selector: "2026-04-02T09:29", want: march},
+		{selector: "2026-04-02T09:30", want: april},
+		{selector: time.Date(2026, 4, 2, 9, 30, 0, 0, time.Local).Format(time.RFC3339), want: april},
+		// A label that reads as a date is the label, not the date.
+		{selector: "2026-04-05", want: april},
+		{selector: "2026-03-30", wantErr: "no assessment was started by 2026-03-30"},
+		{selector: "nightly", wantErr: `"nightly" not found; give an ID, label, date, latest or previous`},
+	} {
+		t.Run(tc.selector, func(t *testing.T) {
+			id, err := s.ResolveRun(ctx, tc.selector)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("ResolveRun(%q) = %d, %v; want error %q", tc.selector, id, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil || id != tc.want {
+				t.Fatalf("ResolveRun(%q) = %d, %v; want %d", tc.selector, id, err, tc.want)
+			}
+		})
+	}
+}
+
 func TestCaptureLeaseFencesConcurrentWriters(t *testing.T) {
 	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {

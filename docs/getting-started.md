@@ -184,7 +184,7 @@ vsfleet get hosts
 vsfleet get datastores
 vsfleet describe vm web-01
 
-vsfleet search ubuntu --all-contexts
+vsfleet get all '*ubuntu*' -A
 ```
 
 Replace `prod` with your context name. Use `-A` (`--all-contexts`) to query

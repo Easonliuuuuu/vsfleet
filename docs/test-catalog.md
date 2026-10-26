@@ -31,7 +31,7 @@ Packages needing a vCenter use an in-process simulator.
 
 | Package | What it covers | Situations simulated |
 | --- | --- | --- |
-| `internal/assessment` | History, diffs, trends, capacity, timelines, policy, perf, migrations | interruption, writer leases, renamed/moved VMs, missing contexts, failed collections, old schemas |
+| `internal/assessment` | History, capture selectors (ID, label, date), diffs, trends, capacity, timelines, policy, perf, migrations | interruption, writer leases, renamed/moved VMs, missing contexts, failed collections, old schemas |
 | `internal/cli` | Commands, flags, exits, JSON, examples | invalid inputs, offline import/export, no clobbering, add-context credential choices without a keyring |
 | `internal/config` | Load/save validation, SSH routes, thumbprints | future versions, duplicate names, dangling `via`, route preservation |
 | `internal/contextops` | CLI/TUI context saving | keyring cleanup only after save and when requested; shared keys preserved; cleanup failure cannot undo edit |
@@ -47,7 +47,6 @@ Packages needing a vCenter use an in-process simulator.
 | `internal/query` | `--where` predicates, `-l` and `--field-selector` | numeric comparisons, type errors, named tag/custom fields, set and existence selectors, unread tags matching nothing |
 | `internal/report` | XLSX/CSV, sharing, licenses, `vFileInfo`, `vSource` | deterministic export, fail-closed pseudonymization, key redaction, old evidence, row limits |
 | `internal/rvimport` | RVTools import | missing/extra fields, duplicate identities, size limits, malformed/repeated imports, no mutation client |
-| `internal/search` | Cross-vCenter search matching | case-insensitive substring matching, kind restriction |
 | `internal/session` | Operation deadlines and streaming idle timeouts | long work that keeps streaming, silent streams, timeout errors naming their stage |
 | `internal/sizing` | Destination sizing (N-1, growth, storage) | partial coverage that is never *fit*, shared RDMs counted once, missing assumptions reported as unknown |
 | `internal/sshalias` | OpenSSH alias discovery | nested/cyclic includes, depth/file/byte/candidate limits, stale aliases |
@@ -65,7 +64,7 @@ The untagged `tests/` suite drives the CLI against an in-process
 
 | File | Situation | Asserts |
 | --- | --- | --- |
-| `cli_test.go` | context lifecycle, cross-vCenter search, one vCenter failing | inventory still lists, failures are isolated, `vsfleet` with no subcommand opens the UI |
+| `cli_test.go` | context lifecycle, `get all` across vCenters, one vCenter failing | inventory still lists, failures are isolated, `vsfleet` with no subcommand opens the UI |
 | `cli_credentials_test.go`, `cli_keyring_test.go`, `contextops_test.go` | `env:`, `file:`, `exec:` credentials, keyring storage, `config set-context` with `--password-stdin` | non-interactive misses never read stdin, read-only schemes reject `--password-stdin`, a failed connection test blocks saving unless overridden |
 | `socks5_test.go`, `httpproxy_test.go` | SOCKS5 with and without remote DNS, HTTP/HTTPS proxies, basic auth | wrong proxy credentials fail, offline proxies fail clearly, untrusted HTTPS proxy certificates are rejected, TLS thumbprint mismatch and discovery |
 | `timeout_test.go` | a vCenter that stops answering mid-enumeration | `--timeout` bounds the whole listing |
@@ -73,7 +72,7 @@ The untagged `tests/` suite drives the CLI against an in-process
 | `readonly_test.go` | every command run against a SOAP-auditing simulator | no command issues a mutating call, and no mutation-capable govmomi package is imported |
 | `cli_exitcode_test.go` | complete and partial captures | partial exits 0 by default and 3 with `--fail-on-partial` |
 | `cli_dangling_network_test.go` | a VM NIC still backed by a deleted port group | the capture stays complete and the stale backing is an informational finding, not permission-hidden inventory |
-| `cli_get_test.go`, `cli_get_output_test.go`, `cli_describe_test.go`, `cli_snapshot_test.go`, `cli_network_test.go`, `cli_topology_test.go`, `cli_dvswitch_resourcepool_test.go`, `cli_host_inventory_test.go`, `cli_host_subresource_test.go` | `get` argument forms and globs, `get` output formats, tag and field selectors, sorting and watch, `describe`, snapshots, networks, topology, distributed switches, resource pools, host storage and network sheets | stable identities in JSON, ambiguity across contexts until narrowed, host-scoped device evidence that never leaks across hosts |
+| `cli_get_test.go`, `cli_get_output_test.go`, `cli_get_run_test.go`, `cli_describe_test.go`, `cli_snapshot_test.go`, `cli_network_test.go`, `cli_topology_test.go`, `cli_dvswitch_resourcepool_test.go`, `cli_host_inventory_test.go`, `cli_host_subresource_test.go` | `get` argument forms and globs, `get` output formats, tag and field selectors, sorting and watch, `get` and `describe` from a capture with `--run` while vCenter is down, `describe`, snapshots, networks, topology, distributed switches, resource pools, host storage and network sheets | stable identities in JSON, ambiguity across contexts until narrowed, host-scoped device evidence that never leaks across hosts |
 | `cli_datastore_files_test.go`, `cli_file_inventory_test.go` | datastore browsing and the opt-in file inventory | a default capture never browses, limit flags do not enable browsing, denial and truncation are visible in human and JSON output, export is byte-identical |
 | `cli_license_test.go`, `cli_vsource_test.go` | license metadata and `vSource` attribution | planted license keys appear nowhere; denied or empty license answers read as unavailable |
 
@@ -91,7 +90,7 @@ Tagged `integration`. Each loopback endpoint runs in its own
 | `TestVCSIMCLIJSONAndExitContract` | `topology` | the JSON and exit-code contract across processes | stable shapes and exit codes |
 | `TestVCSIMTopologyAncestryAndAttachments` | `topology` | hierarchy and attachment queries | exact ancestry and datastore/network attachments |
 | `TestVCSIMBlastRadiusNeverCrossesDuplicateNameContexts` | `topology` | blast radius with colliding names | impact never crosses into the other vCenter |
-| `TestVCSIMHistoryDiffVMHistoryAndCapacity` | `history` | three captures with power and name changes between them | diff, VM history, and capacity follow the changes |
+| `TestVCSIMHistoryDiffVMHistoryAndCapacity` | `history` | three captures with power and name changes between them | diff, `describe vm --history`, and capacity follow the changes |
 | `TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved` | `history` | a context missing from the second capture | its VMs are *not covered*, not *removed* |
 | `TestVCSIMPartialCoverageSurvivesProcessLoss` | `partial-failure` | an endpoint process killed during an assessment | the run is partial and the healthy context's data is kept |
 | `TestVCSIMPerfCollectRecordsProvenanceAndFailures` | `basic-multivcenter` | `assessment perf collect` with one endpoint taken down | per-context status and provenance; values are not asserted because vcsim samples are random |

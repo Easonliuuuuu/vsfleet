@@ -155,7 +155,7 @@ Schedule file inventory only with appropriate database/export protection.
 ## Importing an RVTools export
 
 `vsfleet import rvtools` loads compatible workbooks into assessment history
-for `diff`, `vm history`, `trends`, and `topology`. Missing worksheets and
+for `diff`, `describe vm --history`, `get --run`, `trends`, and `topology`. Missing worksheets and
 columns become explicit coverage gaps, never confirmed zeroes. See [Importing RVTools
 exports](commands.md#importing-rvtools-exports).
 

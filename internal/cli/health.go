@@ -29,16 +29,18 @@ func (e *readinessExitError) Error() string {
 func (e *readinessExitError) ExitCode() int { return 2 }
 
 type healthFlags struct {
+	run                                string
 	maxSnapshotAge                     string
 	minDatastoreFree, minGuestDiskFree float64
 	minDatastoreFreeBytes              string
 	disabled                           []string
 	minimumSeverity, category          string
-	failOnFindings, listRules, wide    bool
-	where                              []string
+	failOnFindings, listRules          bool
+	fieldSelector, labelSelector       string
 }
 
 func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
+	addRunFlag(cmd, &f.run)
 	cmd.Flags().StringVar(&f.maxSnapshotAge, "max-snapshot-age", "30d", "report snapshots at least this old (e.g. 30d, 2w)")
 	cmd.Flags().Float64Var(&f.minDatastoreFree, "min-datastore-free", 10, "report datastores with less than this percent free space")
 	cmd.Flags().StringVar(&f.minDatastoreFreeBytes, "min-datastore-free-bytes", "", "report datastores with less than this many free bytes")
@@ -47,82 +49,89 @@ func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
 	cmd.Flags().StringVar(&f.minimumSeverity, "severity", "info", "minimum severity to report: info, warning, or critical")
 	cmd.Flags().StringVar(&f.category, "category", "", "limit findings to a category: migration, availability, security, capacity, or hygiene")
 	cmd.Flags().BoolVar(&f.failOnFindings, "fail-on-findings", false, "exit 2 when a reported finding meets --severity")
-	cmd.Flags().BoolVar(&f.wide, "wide", false, "include recommendations and structured evidence")
-	cmd.Flags().StringArrayVar(&f.where, "where", nil, "structured predicate on the finding's object (repeatable)")
+	cmd.Flags().StringVar(&f.fieldSelector, "field-selector", "", "only findings whose object matches, e.g. 'cpu>=8,power_state=poweredOn'")
+	cmd.Flags().StringVarP(&f.labelSelector, "selector", "l", "", "only findings whose object carries these vSphere tags, CATEGORY=NAME")
+	renameFlags(cmd,
+		flagRename{name: "where", hint: "use --field-selector for fields and -l CATEGORY=NAME for tags"},
+		flagRename{name: "wide", boolean: true, hint: "use -o wide"},
+	)
 	if listRules {
 		cmd.Flags().BoolVar(&f.listRules, "list-rules", false, "list health rules and exit")
 	}
 }
 
-func newHealthCommand(a *App) *cobra.Command {
-	cmd := newFindingsCommand(a, "health [RUN]", "Assess the estate described by a stored assessment")
-	cmd.Long = strings.TrimSpace(`
-Run every health rule against a stored assessment and report a verdict.
+func newAnalyzeHealthCommand(a *App) *cobra.Command {
+	var flags healthFlags
+	cmd := &cobra.Command{
+		Use:   "health",
+		Short: "Run the health rules against a capture and list the findings",
+		Long: strings.TrimSpace(`
+Run every health rule against a stored capture and list what they find, with
+a count by severity. -o wide adds each finding's recommendation, structured
+evidence, tags and custom attributes.
 
-RUN selects which assessment to read and defaults to the most recent one; pass
-an assessment ID or label from "vsfleet assessment list". Reads stored
-evidence only and never contacts a vCenter.`)
-	cmd.Example = `  # See what the rules check before running them
-  vsfleet health --list-rules
+--field-selector and -l keep the findings whose object matches, in the
+language "vsfleet get" uses. --fail-on-findings exits 2 when a finding at
+--severity or above remains, for a pipeline gate.`),
+		Example: `  # See what the rules check before running them
+  vsfleet analyze health --list-rules
 
   # Assess the most recent capture
-  vsfleet health
+  vsfleet analyze health
 
   # Critical findings only, with recommendations and evidence
-  vsfleet health --severity critical --wide
+  vsfleet analyze health --severity critical -o wide
 
-  # One category, against a labelled capture
-  vsfleet health nightly --category migration
+  # Migration findings on production VMs, in a labelled capture
+  vsfleet analyze health --run nightly --category migration -l env=prod
 
   # Gate a pipeline: exit 2 on any warning or worse
-  vsfleet health --severity warning --fail-on-findings
+  vsfleet analyze health --severity warning --fail-on-findings
 
   # Loosen a threshold and turn one rule off
-  vsfleet health --max-snapshot-age 90d --disable-rule guest-disk-space-low`
-	return cmd
-}
-
-func newFindingsCommand(a *App, use, short string) *cobra.Command {
-	var flags healthFlags
-	cmd := &cobra.Command{Use: use, Short: short, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if flags.listRules {
-			if err := rejectStoredContextSelection(cmd, "rule listing"); err != nil {
-				return err
-			}
-			return printHealthRules(a)
-		}
-		report, err := evaluateHealthCommand(cmd, a, args, flags)
-		if err != nil {
-			return err
-		}
-		for _, rule := range report.Rules {
-			if rule.Status == "not-evaluated" || rule.Result == "unknown" {
-				reason := rule.Reason
-				if len(rule.Blind) > 0 {
-					reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
+  vsfleet analyze health --max-snapshot-age 90d --disable-rule guest-disk-space-low`,
+		Annotations: map[string]string{annotationWideOutput: "true"},
+		Args:        cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if flags.listRules {
+				if err := rejectStoredContextSelection(cmd, "rule listing"); err != nil {
+					return err
 				}
-				fmt.Fprintf(a.errOut(), "%s %s: %s\n", glyphFail, rule.Rule, reason)
-			} else if len(rule.Partial) > 0 {
-				fmt.Fprintf(a.errOut(), "%s %s: %s\n", glyphSkip, rule.Rule, rule.Reason)
+				return printHealthRules(a)
 			}
-		}
-		if a.json() {
-			if err := writeJSON(a.out(), report); err != nil {
+			report, err := evaluateHealthCommand(cmd, a, flags)
+			if err != nil {
 				return err
 			}
-		} else {
-			printHealthTable(a, report, flags.wide)
-		}
-		if flags.failOnFindings && report.Counts.Total > 0 {
-			return &healthExitError{findings: report.Counts.Total}
-		}
-		return nil
-	}}
+			for _, rule := range report.Rules {
+				if rule.Status == "not-evaluated" || rule.Result == "unknown" {
+					reason := rule.Reason
+					if len(rule.Blind) > 0 {
+						reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
+					}
+					fmt.Fprintf(a.errOut(), "%s %s: %s\n", glyphFail, rule.Rule, reason)
+				} else if len(rule.Partial) > 0 {
+					fmt.Fprintf(a.errOut(), "%s %s: %s\n", glyphSkip, rule.Rule, rule.Reason)
+				}
+			}
+			if a.json() {
+				if err := writeJSON(a.out(), report); err != nil {
+					return err
+				}
+			} else {
+				printHealthTable(a, report, a.wide())
+			}
+			if flags.failOnFindings && report.Counts.Total > 0 {
+				return &healthExitError{findings: report.Counts.Total}
+			}
+			return nil
+		},
+	}
 	flags.add(cmd, true)
 	return cmd
 }
 
-func evaluateHealthCommand(cmd *cobra.Command, a *App, args []string, flags healthFlags) (health.Report, error) {
+func evaluateHealthCommand(cmd *cobra.Command, a *App, flags healthFlags) (health.Report, error) {
 	age, err := parseHumanDuration(flags.maxSnapshotAge)
 	if err != nil {
 		return health.Report{}, fmt.Errorf("--max-snapshot-age: %w", err)
@@ -152,26 +161,32 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, args []string, flags heal
 	if err != nil {
 		return health.Report{}, err
 	}
-	selector := "latest"
-	if len(args) == 1 {
-		selector = args[0]
+	var fields query.Filter
+	if flags.fieldSelector != "" {
+		if fields, err = query.ParseFieldSelector(flags.fieldSelector, []vsphere.Kind{vsphere.KindVM, vsphere.KindHost, vsphere.KindDatastore}); err != nil {
+			return health.Report{}, fmt.Errorf("--field-selector: %w", err)
+		}
 	}
-	data, err := loadRunExportData(cmd, a, []string{selector})
+	var labels query.LabelSelector
+	if flags.labelSelector != "" {
+		if labels, err = query.ParseLabelSelector(flags.labelSelector); err != nil {
+			return health.Report{}, fmt.Errorf("-l: %w", err)
+		}
+	}
+	data, err := loadRunExportData(cmd, a, flags.run)
 	if err != nil {
 		return health.Report{}, err
 	}
 	report := health.Evaluate(data, health.Options{Thresholds: health.Thresholds{SnapshotAge: age, DatastoreFreePct: flags.minDatastoreFree, DatastoreFreeBytes: minDatastoreFreeBytes, GuestDiskFreePct: flags.minGuestDiskFree}, Disabled: disabledIDs})
-	filter, err := query.Parse(flags.where, []vsphere.Kind{vsphere.KindVM, vsphere.KindHost, vsphere.KindDatastore})
-	if err != nil {
-		return health.Report{}, fmt.Errorf("--where: %w", err)
-	}
-	if !filter.Empty() {
-		report = filterHealthByObject(report, data, filter)
+	if !fields.Empty() || !labels.Empty() {
+		report = filterHealthByObject(report, data, func(s query.Subject) bool { return fields.Match(s) && labels.Match(s) })
 	}
 	return filterHealthReport(report, severity, category), nil
 }
 
-func filterHealthByObject(report health.Report, data assessment.ExportData, filter query.Filter) health.Report {
+// filterHealthByObject keeps the findings whose object, as the capture
+// recorded it, satisfies match.
+func filterHealthByObject(report health.Report, data assessment.ExportData, match func(query.Subject) bool) health.Report {
 	keep := make([]health.Finding, 0, len(report.Findings))
 	for _, finding := range report.Findings {
 		matched := false
@@ -180,7 +195,7 @@ func filterHealthByObject(report health.Report, data assessment.ExportData, filt
 				continue
 			}
 			subject, err := query.SubjectFromObject(vsphere.KindVM, vm.Observation.VM)
-			matched = err == nil && filter.Match(subject)
+			matched = err == nil && match(subject)
 			break
 		}
 		if !matched {
@@ -189,7 +204,7 @@ func filterHealthByObject(report health.Report, data assessment.ExportData, filt
 					continue
 				}
 				subject, err := query.SubjectFromJSON(vsphere.Kind(resource.Kind), resource.Payload)
-				matched = err == nil && filter.Match(subject)
+				matched = err == nil && match(subject)
 				break
 			}
 		}
@@ -201,10 +216,12 @@ func filterHealthByObject(report health.Report, data assessment.ExportData, filt
 	return report
 }
 
-func loadRunExportData(cmd *cobra.Command, a *App, args []string) (assessment.ExportData, error) {
-	selector := "latest"
-	if len(args) == 1 && strings.TrimSpace(args[0]) != "" {
-		selector = args[0]
+// loadRunExportData reads the capture an analysis names with --run, for every
+// captured context unless -n narrows it: analyses follow objects across
+// vCenters, such as a migration from one to another.
+func loadRunExportData(cmd *cobra.Command, a *App, selector string) (assessment.ExportData, error) {
+	if strings.TrimSpace(selector) == "" {
+		selector = "latest"
 	}
 	s, err := a.History()
 	if err != nil {
@@ -212,7 +229,7 @@ func loadRunExportData(cmd *cobra.Command, a *App, args []string) (assessment.Ex
 	}
 	runID, err := s.ResolveRun(cmd.Context(), selector)
 	if err != nil {
-		return assessment.ExportData{}, err
+		return assessment.ExportData{}, fmt.Errorf("--run: %w", err)
 	}
 	return s.LoadExportDataForContexts(cmd.Context(), runID, a.StoredContextNames())
 }

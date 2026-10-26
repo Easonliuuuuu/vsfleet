@@ -31,10 +31,13 @@ func (e *orphanCoverageExitError) Error() string {
 }
 func (e *orphanCoverageExitError) ExitCode() int { return 2 }
 
-func newAssessmentOrphansCommand(a *App) *cobra.Command {
-	var flags orphanFlags
+func newAnalyzeOrphansCommand(a *App) *cobra.Command {
+	var (
+		flags orphanFlags
+		run   string
+	)
 	cmd := &cobra.Command{
-		Use:   "orphans [RUN]",
+		Use:   "orphans",
 		Short: "Explain browsed datastore VMDK orphan evidence",
 		Long: strings.TrimSpace(`
 Explain the VMDK files found on datastores that no registered VM claims, with
@@ -46,15 +49,15 @@ coverage gaps are reported separately: "no candidates" is not proof of a clean
 estate unless the scan reached every datastore.`),
 		Example: `  # Capture the evidence, then explain it
   vsfleet assessment run --all-contexts --browse-datastores
-  vsfleet assessment orphans
+  vsfleet analyze orphans
 
   # Only high-confidence candidates over 10 GiB
-  vsfleet assessment orphans --confidence verified --min-size 10737418240
+  vsfleet analyze orphans --confidence verified --min-size 10737418240
 
   # Gate a cleanup pipeline on complete coverage
-  vsfleet assessment orphans --fail-on-unknown -o json`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+  vsfleet analyze orphans --fail-on-unknown -o json`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			for i := range flags.confidence {
 				flags.confidence[i] = strings.ToLower(strings.TrimSpace(flags.confidence[i]))
 				switch health.Confidence(flags.confidence[i]) {
@@ -66,7 +69,7 @@ estate unless the scan reached every datastore.`),
 			if flags.minSize < 0 {
 				return fmt.Errorf("--min-size must be zero or greater")
 			}
-			data, err := loadRunExportData(cmd, a, args)
+			data, err := loadRunExportData(cmd, a, run)
 			if err != nil {
 				return err
 			}
@@ -86,6 +89,7 @@ estate unless the scan reached every datastore.`),
 			return nil
 		},
 	}
+	addRunFlag(cmd, &run)
 	cmd.Flags().StringSliceVar(&flags.confidence, "confidence", nil, "only show confidence tier (repeat or comma-separate)")
 	cmd.Flags().Int64Var(&flags.minSize, "min-size", 0, "only show files at least this many bytes")
 	cmd.Flags().BoolVar(&flags.failOnUnknown, "fail-on-unknown", false, "exit 2 when any datastore was not fully browsed")

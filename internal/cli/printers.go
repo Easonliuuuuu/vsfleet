@@ -26,9 +26,13 @@ const (
 	FormatCustomColumns = "custom-columns"
 )
 
-// annotationAllOutputs marks a command that takes every -o format; the rest
-// take table and json only.
-const annotationAllOutputs = "vsfleet.io/all-output-formats"
+// annotationAllOutputs marks a command that takes every -o format, and
+// annotationWideOutput one that also takes wide; the rest take table and json
+// only.
+const (
+	annotationAllOutputs = "vsfleet.io/all-output-formats"
+	annotationWideOutput = "vsfleet.io/wide-output"
+)
 
 // outputSpec is a parsed -o value: a format and, for jsonpath= and
 // custom-columns=, its argument.
@@ -66,6 +70,12 @@ func (a *App) checkOutput(cmd *cobra.Command) error {
 	}
 	if spec.format == FormatTable || spec.format == FormatJSON || cmd.Annotations[annotationAllOutputs] != "" {
 		return nil
+	}
+	if cmd.Annotations[annotationWideOutput] != "" {
+		if spec.format == FormatWide {
+			return nil
+		}
+		return fmt.Errorf("-o %s is not supported by %q, which takes table, wide or json", spec.format, cmd.CommandPath())
 	}
 	return fmt.Errorf("-o %s is not supported by %q, which takes table or json", spec.format, cmd.CommandPath())
 }

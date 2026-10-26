@@ -23,7 +23,7 @@ func TestVCSIMCLIJSONAndExitContract(t *testing.T) {
 		t.Fatalf("contract setup run=%+v", partial)
 	}
 
-	stdout, stderr, err := r.run("", "--history-db", historyDB, "-o", "json", "topology", "vm", "not-present", "latest")
+	stdout, stderr, err := r.run("", "--history-db", historyDB, "-o", "json", "analyze", "topology", "vm", "not-present", "--run", "latest")
 	if err != nil {
 		t.Fatalf("unknown topology returned error: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
 	}

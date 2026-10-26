@@ -2,7 +2,8 @@
 
 ## Health findings
 
-`vsfleet health [RUN]` evaluates a stored assessment offline. Findings include
+`vsfleet analyze health` evaluates a stored capture offline, the most recent
+unless `--run` names another. Findings include
 a stable rule ID, category, severity, object, context, measured evidence, and
 recommendation. Categories are `migration`, `availability`, `security`,
 `capacity`, and `hygiene`.
@@ -11,7 +12,9 @@ Defaults are 30 days for maximum snapshot age and 10% minimum free space for
 datastores and guest filesystems. Tune them with `--max-snapshot-age`,
 `--min-datastore-free`, `--min-datastore-free-bytes`,
 `--min-guest-disk-free`, `--disable-rule`, `--severity`, and `--category`.
-`--wide` shows recommendations and evidence; JSON always includes them.
+`-o wide` shows recommendations, evidence, tags and custom attributes; JSON
+always includes them. `--field-selector` and `-l` keep the findings whose
+object matches, in the language of [`vsfleet get`](commands.md#get-selectors).
 `--list-rules` lists rules and categories. `--fail-on-findings` exits 2 for
 findings at or above the selected severity; command errors exit 1.
 
@@ -29,7 +32,7 @@ records thresholds, so identical evidence and options reproduce the export.
 ## Orphan-disk evidence
 
 Capture with `vsfleet assessment run --browse-datastores`, then inspect
-`vsfleet assessment orphans [RUN]`. Browsing requires `Datastore.Browse`
+`vsfleet analyze orphans`. Browsing requires `Datastore.Browse`
 and adds a bounded directory listing per accessible datastore.
 
 Candidates are matched estate-wide using VMFS UUIDs, extents, NFS exports,
@@ -39,8 +42,8 @@ vVol IDs, and datastore URLs where available. Verdicts are
 chains match in both directions. Truncated browse, failed relevant collection,
 or missing backing identity prevents verification.
 
-`health --fail-on-findings --severity warning` fails only on verified
-orphans; lower-confidence candidates are informational. `assessment orphans
+`analyze health --fail-on-findings --severity warning` fails only on verified
+orphans; lower-confidence candidates are informational. `analyze orphans
 -o json` includes paths, sizes, timestamps, identity keys, references, and
 coverage reasons.
 

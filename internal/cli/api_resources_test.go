@@ -71,6 +71,21 @@ func TestRemovedCommandsPointAtReplacements(t *testing.T) {
 		{[]string{"search", "ubuntu-golden", "-A"}, []string{`"search" was renamed`, "vsfleet get all '*TEXT*' -A"}},
 		{[]string{"vm", "history", "web-01"}, []string{`"vm history" was renamed`, "vsfleet describe vm NAME --history"}},
 		{[]string{"assessment", "inventory", "--kind", "host"}, []string{`"assessment inventory" was renamed`, "vsfleet get KIND --run RUN"}},
+		{[]string{"health", "--severity", "warning"}, []string{`"health" was renamed`, "vsfleet analyze health"}},
+		{[]string{"assessment", "findings", "nightly"}, []string{`"assessment findings" was renamed`, "vsfleet analyze health"}},
+		{[]string{"assessment", "readiness"}, []string{"vsfleet analyze readiness"}},
+		{[]string{"assessment", "network-readiness", "--source", "a", "--target", "b"}, []string{"vsfleet analyze readiness network cl/SOURCE cl/TARGET"}},
+		{[]string{"network", "compare", "a", "b"}, []string{`"network compare" was renamed`, "vsfleet analyze readiness network"}},
+		{[]string{"assessment", "sizing", "--hosts", "4"}, []string{"vsfleet analyze sizing"}},
+		{[]string{"assessment", "capacity"}, []string{"vsfleet analyze capacity"}},
+		{[]string{"assessment", "orphans"}, []string{"vsfleet analyze orphans"}},
+		{[]string{"assessment", "snapshots", "--at", "4"}, []string{"vsfleet analyze snapshots"}},
+		{[]string{"assessment", "trends", "churn"}, []string{`"assessment trends churn" was renamed`, "vsfleet analyze churn"}},
+		{[]string{"assessment", "trends", "capacity", "--kind", "host"}, []string{"vsfleet analyze capacity --trend"}},
+		{[]string{"topology", "vm", "web-01"}, []string{`"topology" was renamed`, "vsfleet analyze topology KIND/NAME"}},
+		{[]string{"deps", "vm", "web-01"}, []string{"vsfleet analyze deps KIND/NAME"}},
+		{[]string{"blast", "host", "esxi-07"}, []string{"vsfleet analyze blast-radius KIND/NAME"}},
+		{[]string{"vm", "decommission-check", "web-01"}, []string{`"vm decommission-check" was renamed`, "vsfleet analyze decommission vm/NAME"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			out, _, err := runCLI(t, db, tc.args...)

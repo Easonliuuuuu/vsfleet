@@ -27,17 +27,18 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet cluster-info [dump]` | Show each context's connection; `dump` writes every live kind as one JSON document |
 | `vsfleet version` | Print the vsfleet version |
 | `vsfleet doctor [context...]` | Diagnose the connection stage by stage |
-| `vsfleet health [run]` | Assess the estate described by a stored assessment |
-| `vsfleet topology <kind> <name> [run]` | Show containment and attachments for a stored subject; `<kind>/<name>` also works |
-| `vsfleet dependencies <kind> <name> [run]` | Show what a stored subject depends on |
-| `vsfleet blast-radius <kind> <name> [run]` | Show stored subjects affected by a dependency |
-| `vsfleet assessment findings [run]` | Show structured health findings for a stored assessment |
-| `vsfleet assessment orphans [run]` | Explain estate-wide browsed VMDK orphan evidence |
-| `vsfleet assessment capacity [run]` | Attribute datastore growth and project free-space thresholds |
-| `vsfleet assessment readiness [run]` | Return a migration-readiness verdict |
-| `vsfleet assessment sizing [run]` | Test whether stored VMs fit a proposed destination (allocation based, offline) |
-| `vsfleet network compare <source-cluster> <target-cluster> [run]` | Compare stored network reachability and policy between clusters |
-| `vsfleet assessment network-readiness --source <cluster> --target <cluster> [run]` | Return a cross-cluster network-readiness verdict |
+| `vsfleet analyze health` | Run the health rules against a capture and list the findings; see [health](health.md) |
+| `vsfleet analyze readiness` | Return a migration-readiness verdict |
+| `vsfleet analyze readiness network <source> <target>` | Return a cross-cluster network-readiness verdict; `-o wide` adds the full comparison |
+| `vsfleet analyze sizing` | Test whether stored VMs fit a proposed destination (allocation based, offline) |
+| `vsfleet analyze capacity [--trend]` | Attribute datastore growth and project free-space thresholds, or tabulate capacity per capture |
+| `vsfleet analyze orphans` | Explain estate-wide browsed VMDK orphan evidence |
+| `vsfleet analyze churn` | Show VM population and churn across captures |
+| `vsfleet analyze snapshots [--trend]` | Show snapshot ages in a capture, or their trend across captures |
+| `vsfleet analyze topology <kind>/<name>` | Show a subject's containment and attachments |
+| `vsfleet analyze deps <kind>/<name>` | Show what a subject depends on |
+| `vsfleet analyze blast-radius <kind>/<name>` | Show the subjects a failure would reach |
+| `vsfleet analyze decommission vm/<name>` | Review stored evidence before decommissioning a VM |
 | `vsfleet api-resources` | List every object kind with its short names and whether it is live, stored, or both |
 | `vsfleet get <kind>[,<kind>...] [name...]` | List objects of any kind, or `all` inventory kinds, live or from a capture with `--run`; names may be globs, and `<kind>/<name>` also works |
 | `vsfleet describe <kind> <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail, live or with `--run` |
@@ -47,7 +48,6 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet explain <kind>[.<field>]` | Document a kind's columns and the RVTools worksheets it feeds |
 | `vsfleet datastore files list <datastore> [path]` | List one datastore directory |
 | `vsfleet datastore files find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
-| `vsfleet vm decommission-check <name-or-uuid> [run]` | Review stored evidence before decommissioning a VM |
 | `vsfleet assessment ...` | Capture and compare historical observations |
 | `vsfleet assessment export --profile <name> [--pseudonymize --pseudonymize-key-file <file>] [--preview]` | Export a scoped `sizing-summary` or `full-inventory` workbook, optionally pseudonymized; see [scoped sharing profiles](sharing.md) |
 | `vsfleet assessment metadata [run] [--kind ...] [--source tag\|custom] [--where ...] [--format csv]` | Export stored tags and custom attributes in a fixed long-format schema; see [metadata exports](metadata.md#export-metadata) |
@@ -201,7 +201,7 @@ Stored captures are queried offline with the same evaluator:
 
 ```sh
 vsfleet get vms --run latest --field-selector 'custom.environment=prod' -o wide
-vsfleet assessment findings latest --where 'tag=PCI' -o json
+vsfleet analyze health -l compliance=PCI -o json
 ```
 
 JSON includes normalized metadata, source status, and object/context
@@ -393,8 +393,8 @@ unavailable. Diff, VM history, findings, and topology use them with coverage
 warnings. Trends require `--include-partial`:
 
 ```sh
-vsfleet assessment trends snapshots --include-partial
-vsfleet assessment trends capacity --include-partial
+vsfleet analyze snapshots --trend --include-partial
+vsfleet analyze capacity --trend --include-partial
 ```
 
 ### Capture time
@@ -418,48 +418,64 @@ Workbooks are size-limited before opening, with bounded decompression and row
 counts. Formulas are never evaluated and external links never followed. Failed
 imports leave no run.
 
-## Topology and dependencies
+<span id="analyze"></span>
 
-These queries read stored assessments without contacting vCenter:
+## Analysis
+
+`vsfleet analyze` answers questions from stored captures without contacting
+vCenter. Every subcommand reads the capture `--run` names, the most recent by
+default; `--run` takes an ID, a label, `latest`, `previous` or a date, as in
+[`get`](#get-run). A subject is `KIND/NAME` or `KIND NAME`.
+
+An analysis covers every context the capture recorded unless `-n` narrows
+it. That differs from `get --run`, which reads the current context: analyses
+follow objects across vCenters, as when a migration's source cluster is on
+one and its target on another.
+
+| Command | Answers |
+|---|---|
+| `health` | Which health rules fail, and on what; see [health](health.md) |
+| `readiness` | Whether the estate is ready to migrate: `ready`, `blocked` or `unknown` |
+| `readiness network SOURCE TARGET` | Whether two clusters' networks are ready, with the comparison under `-o wide` |
+| `sizing` | Whether the scoped VMs fit a proposed destination |
+| `capacity` | Which VMs drive datastore growth, and when each datastore crosses its floor |
+| `orphans` | Which browsed VMDK files no VM claims |
+| `churn` | How the VM population changed across captures |
+| `snapshots` | How old each snapshot is |
+| `topology`, `deps`, `blast-radius` | Where a subject sits, what it needs, and what a failure of it would reach |
+| `decommission vm/NAME` | Whether anything argues against retiring a VM |
+
+`churn`, `capacity --trend` and `snapshots --trend` read a window of captures:
+from `--from`, or the start of history, up to `--run`, or the most recent,
+capped at `--limit` complete captures. `health`, `readiness`, `readiness
+network`, `capacity`, `orphans` and `decommission` exit `2` when their
+`--fail-on-*` gate trips.
 
 ```sh
-vsfleet topology vm app01 latest
-vsfleet dependencies vm app01 --depth 2
-vsfleet dependencies network prod-vlan-210 -o json | jq
-vsfleet blast-radius datastore ds-prod-01 --all-contexts
-vsfleet network compare cluster-prod cluster-dr -o json | jq '.differences, .mapping_gaps'
-vsfleet assessment network-readiness --source cluster-prod --target cluster-dr --fail-on-blockers
+vsfleet analyze health --severity warning -o wide
+vsfleet analyze readiness --run pre-migration --fail-on-blockers
+vsfleet analyze readiness network cl/cluster-prod cl/cluster-dr -o json | jq '.differences, .mapping_gaps'
+vsfleet analyze topology vm/app01
+vsfleet analyze deps vm/app01 --depth 2
+vsfleet analyze blast-radius datastore/ds-prod-01 -n prod
+vsfleet analyze decommission vm/legacy-db01 --fail-on-blockers -o json
+vsfleet analyze churn --from 2026-01-01
 ```
 
-`topology` shows containment and attachments; `dependencies` follows what
-a subject uses; `blast-radius` follows those edges backwards. Use
-`--context` to narrow ambiguous names. Results include confidence,
-provenance, unresolved references, and coverage gaps. Older reconstructed
-network evidence is partial.
+`topology` shows containment and attachments; `deps` follows what a subject
+uses; `blast-radius` follows those edges backwards. Use `-n` to narrow an
+ambiguous name. Results include confidence, provenance, unresolved
+references, and coverage gaps. Older reconstructed network evidence is
+partial. See [planning](planning.md) for readiness, decommission and
+network joins, blockers and confidence rules.
 
-`network compare` compares two clusters' network mappings and policies;
-`network-readiness` derives `ready`, `blocked`, or `unknown`. Blind
-collections force unknown. See [planning](planning.md) for joins, blockers,
-and confidence rules.
+`decommission` returns `no-blockers`, `blocked`, or `unknown`. It performs no
+VM action; `no-blockers` is not permission to delete. Ownership, backup
+policy, and application dependencies are `not_assessed`. See
+[decommission review](planning.md#vm-decommission-review) for the gates.
 
 For diagnostics, `doctor` checks a live connection, `assessment doctor`
-checks history storage, and `health`/`assessment findings` check stored
-estate evidence.
-
-### VM decommission checks
-
-The offline report returns `no-blockers`, `blocked`, or `unknown`, using
-`latest` by default. Pass a run ID/label for reproducibility and `--context`
-for ambiguous names. `--fail-on-blockers` returns exit code 2 only for blockers.
-It performs no VM action; `no-blockers` is not permission to delete.
-Ownership, backup policy, and application dependencies are `not_assessed`.
-See [decommission review](planning.md#vm-decommission-review) for the gates.
-
-```sh
-vsfleet vm decommission-check legacy-db01 latest
-vsfleet vm decommission-check legacy-db01 --context prod -o json
-vsfleet vm decommission-check legacy-db01 --fail-on-blockers
-```
+checks history storage, and `analyze health` checks stored estate evidence.
 
 ## Export compatibility
 
@@ -488,9 +504,9 @@ Capture read-only evidence locally, then query it offline. Browsing needs
 
 ```sh
 vsfleet assessment run --all-contexts --browse-datastores
-vsfleet health latest
-vsfleet assessment orphans latest
-vsfleet assessment capacity latest
+vsfleet analyze health
+vsfleet analyze orphans
+vsfleet analyze capacity
 ```
 
 Collection options are independent:
@@ -524,7 +540,7 @@ Use exit codes to gate scheduled jobs:
 |---|---|
 | `0` | The command did what was asked |
 | `1` | vsfleet could not do its job: bad configuration, an unreachable estate, an unreadable database |
-| `2` | The tool worked and the estate did not pass: `assessment diff` policy violations, `health --fail-on-findings`, or `assessment readiness --fail-on-blockers` |
+| `2` | The tool worked and the estate did not pass: `assessment diff` policy violations, or an `analyze` gate such as `--fail-on-findings`, `--fail-on-blockers` or `--fail-on-projection` |
 | `3` | A capture stored evidence from some contexts but not all; only with `assessment run --fail-on-partial` |
 
 Partial captures exit `0` unless `--fail-on-partial` is set.
@@ -559,7 +575,7 @@ reference and examples:
 vsfleet --help                          # grouped by the job being done
 vsfleet assessment --help               # what is under a command group
 vsfleet assessment diff --help          # flags, arguments, and examples
-vsfleet assessment trends capacity -h   # four levels deep, same thing
+vsfleet analyze readiness network -h    # four levels deep, same thing
 ```
 
 `vsfleet --help` groups the tree rather than listing it alphabetically:

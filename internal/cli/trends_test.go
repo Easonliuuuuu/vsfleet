@@ -57,17 +57,17 @@ func TestStoredEvidenceCommandsScopeByContext(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	for _, args := range [][]string{
 		{"assessment", "report"},
-		{"assessment", "snapshots"},
-		{"assessment", "findings"},
-		{"assessment", "readiness"},
-		{"assessment", "orphans"},
-		{"assessment", "trends", "churn"},
-		{"assessment", "trends", "snapshots"},
-		{"assessment", "trends", "capacity"},
-		{"assessment", "capacity", "latest"},
-		{"topology", "datastore", "datastore1"},
-		{"dependencies", "datastore", "datastore1"},
-		{"blast-radius", "datastore", "datastore1"},
+		{"analyze", "snapshots"},
+		{"analyze", "health"},
+		{"analyze", "readiness"},
+		{"analyze", "orphans"},
+		{"analyze", "churn"},
+		{"analyze", "snapshots", "--trend"},
+		{"analyze", "capacity", "--trend"},
+		{"analyze", "capacity", "--run", "latest"},
+		{"analyze", "topology", "datastore", "datastore1"},
+		{"analyze", "deps", "datastore", "datastore1"},
+		{"analyze", "blast-radius", "datastore", "datastore1"},
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			_, _, err := runCLI(t, dbPath, append(args, "--context", "ghost", "-o", "json")...)

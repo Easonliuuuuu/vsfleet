@@ -18,7 +18,7 @@ import (
 // exists across the vCenters in scope. Rows are VLANs; each vCenter is a
 // column saying how many VMs use the VLAN there and how many of its clusters
 // can reach it. Picking a source and a target cluster turns it into the
-// comparison `vsfleet network compare` makes from a stored assessment, made
+// comparison `vsfleet analyze readiness network` makes from a stored assessment, made
 // here from the live inventory and topology read with the same matching
 // rules (internal/network), so the two never disagree about what is missing.
 
@@ -462,7 +462,7 @@ type vlanPairResult struct {
 	blockers   int
 	advisories int
 	// blind names what either side could not read, which makes the verdict
-	// unknown the way network compare's blind contexts do.
+	// unknown the way readiness network's blind contexts do.
 	blind []string
 	// why says why there is nothing to compare yet.
 	why string

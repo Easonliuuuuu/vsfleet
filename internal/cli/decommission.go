@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/easonliuuuuu/vsfleet/internal/apiresource"
 	"github.com/easonliuuuuu/vsfleet/internal/decommission"
 )
 
@@ -18,36 +19,46 @@ func (e *decommissionExitError) Error() string {
 
 func (e *decommissionExitError) ExitCode() int { return 2 }
 
-func newVMDecommissionCheckCommand(a *App) *cobra.Command {
-	var failOnBlockers bool
+func newAnalyzeDecommissionCommand(a *App) *cobra.Command {
+	var (
+		run            string
+		failOnBlockers bool
+	)
 	cmd := &cobra.Command{
-		Use:   "decommission-check NAME_OR_UUID [RUN]",
+		Use:   "decommission vm/NAME | vm NAME",
 		Short: "Review stored evidence before decommissioning a VM",
 		Long: strings.TrimSpace(`
 Collect the stored evidence that argues for or against retiring a VM: how long
 it has been powered off, what still depends on it, what it still consumes.
 
-Reads stored evidence only. It changes nothing in any vCenter and never powers
+The VM may be named or given by instance UUID, which survives a rename. Reads
+stored evidence only. It changes nothing in any vCenter and never powers
 anything off — the decision, and the action, stay with the operator.`),
-		Example: `  # Review a VM against the most recent assessment
-  vsfleet vm decommission-check web-01
+		Example: `  # Review a VM against the most recent capture
+  vsfleet analyze decommission vm/web-01
 
-  # Review it as it stood in a labelled assessment
-  vsfleet vm decommission-check web-01 nightly
+  # Review it as it stood in a labelled capture
+  vsfleet analyze decommission vm/web-01 --run nightly
 
   # Gate a retirement pipeline: exit 2 when blockers remain
-  vsfleet vm decommission-check web-01 --fail-on-blockers -o json`,
+  vsfleet analyze decommission vm/web-01 --fail-on-blockers -o json`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			selector := "latest"
-			if len(args) == 2 {
-				selector = args[1]
-			}
-			data, err := loadRunExportData(cmd, a, []string{selector})
+			kindName, name, rest, err := parseSubject(args)
 			if err != nil {
 				return err
 			}
-			result := decommission.Evaluate(data, args[0], a.StoredContextNames())
+			if k, ok := apiresource.Lookup(kindName); !ok || k.Name != "vm" {
+				return fmt.Errorf("decommission reviews VMs; give vm/NAME, not %s", kindName)
+			}
+			if len(rest) > 0 {
+				return fmt.Errorf("one VM is reviewed at a time; select the capture with --run, not %q", rest[0])
+			}
+			data, err := loadRunExportData(cmd, a, run)
+			if err != nil {
+				return err
+			}
+			result := decommission.Evaluate(data, name, a.StoredContextNames())
 			if a.json() {
 				if err := writeJSON(a.out(), result); err != nil {
 					return err
@@ -61,6 +72,7 @@ anything off — the decision, and the action, stay with the operator.`),
 			return nil
 		},
 	}
+	addRunFlag(cmd, &run)
 	cmd.Flags().BoolVar(&failOnBlockers, "fail-on-blockers", false, "exit 2 when decommission blockers are present")
 	return cmd
 }

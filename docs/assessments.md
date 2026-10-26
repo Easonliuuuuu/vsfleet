@@ -50,21 +50,23 @@ fields should participate in a diff.
 ## Snapshots, trends, and reports
 
 ```sh
-vsfleet assessment snapshots --older-than 30d
-vsfleet assessment trends churn
-vsfleet assessment trends snapshots --older-than 30d
-vsfleet assessment trends capacity --kind all
+vsfleet analyze snapshots --older-than 30d
+vsfleet analyze churn
+vsfleet analyze snapshots --trend --older-than 30d
+vsfleet analyze capacity --trend --kind all
 vsfleet assessment report latest
 ```
 
-Trends show estate totals, then context and resource detail. They use complete
-assessments by default; `--include-partial` includes partial runs.
+Trends show estate totals, then context and resource detail, for a window of
+captures: from `--from`, or the start of history, up to `--run`, or the most
+recent. They use complete assessments by default; `--include-partial`
+includes partial runs.
 
 ### Scope stored evidence
 
-`--context` scopes reports, snapshots, diffs, health/findings, readiness,
-orphans, exports, topology, network, decommission checks, VM history, trends,
-and capacity reports. Names come from the ledger, without current configuration,
+`--context` scopes reports, diffs, exports, VM history and every
+[`analyze`](commands.md#analyze) command. Without it, an analysis covers every
+context the capture recorded, because its questions cross vCenters. Names come from the ledger, without current configuration,
 and match case-insensitively after trimming whitespace.
 
 - Blank names or names absent from every selected run return exit code `1`.
@@ -80,8 +82,8 @@ Metadata and maintenance commands reject `--context`.
 ### Capacity attribution and projection
 
 ```sh
-vsfleet assessment capacity latest --since 30d --top 5
-vsfleet assessment capacity --min-free 10 --min-free-bytes 500Gi -o json
+vsfleet analyze capacity --since 30d --top 5
+vsfleet analyze capacity --min-free 10 --min-free-bytes 500Gi -o json
 ```
 
 Capacity growth uses used bytes (`capacity - free`) and records datastore

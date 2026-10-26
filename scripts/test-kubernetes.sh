@@ -182,7 +182,7 @@ kubectl -n "$namespace" get pod "$partial_pod" -o json | jq -e '
 ' >/dev/null
 job_json vsfleet-partial | jq -e '.status == "partial" and .requested_contexts == 2 and .successful_contexts == 1' >/dev/null
 
-kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"vsfleet","args":["-o","json","assessment","readiness","latest"]}]}}}}}}'
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"vsfleet","args":["-o","json","analyze","readiness"]}]}}}}}}'
 run_job vsfleet-readiness
 wait_complete vsfleet-readiness
 job_json vsfleet-readiness | jq -e '.verdict != "ready" and (.unresolved | length) > 0' >/dev/null

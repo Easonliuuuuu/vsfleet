@@ -75,7 +75,7 @@ func TestVCSIMPartialCoverageSurvivesProcessLoss(t *testing.T) {
 		t.Fatalf("coverage rows per context=%v, want healthy evidence and one failed row each for killable and dead-port: %s", rows, reportJSON)
 	}
 
-	findingsJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "findings", "latest")
+	findingsJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "analyze", "health", "--run", "latest")
 	var findings health.Report
 	if err := json.Unmarshal([]byte(findingsJSON), &findings); err != nil {
 		t.Fatal(err)
@@ -102,7 +102,7 @@ func TestVCSIMPartialCoverageSurvivesProcessLoss(t *testing.T) {
 	if findings.Coverage.Contexts != 3 || findings.Coverage.CompleteContexts != 1 {
 		t.Fatalf("findings coverage contexts=%d complete=%d, want 3 and 1: %s", findings.Coverage.Contexts, findings.Coverage.CompleteContexts, findingsJSON)
 	}
-	readinessJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "readiness", "latest")
+	readinessJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "analyze", "readiness", "--run", "latest")
 	var readiness health.ReadinessReport
 	if err := json.Unmarshal([]byte(readinessJSON), &readiness); err != nil {
 		t.Fatal(err)

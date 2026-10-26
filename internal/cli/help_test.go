@@ -47,10 +47,8 @@ func walk(cmd *cobra.Command, fn func(*cobra.Command)) {
 func TestUnknownSubcommandFails(t *testing.T) {
 	for _, parent := range [][]string{
 		{"assessment"},
-		{"assessment", "trends"},
-		{"vm"},
+		{"analyze"},
 		{"datastore"},
-		{"network"},
 		{"config"},
 	} {
 		args := append(append([]string{}, parent...), "no-such-subcommand")
@@ -214,8 +212,8 @@ func TestLeafCommandsStillShowTheirUsageLine(t *testing.T) {
 // to stay in step with apiresource.ParseInventory, which is what enforces them.
 func TestTopologyKindsAreOfferedForCompletion(t *testing.T) {
 	root := NewRootCommand(&App{})
-	for _, name := range []string{"topology", "dependencies", "blast-radius"} {
-		cmd, _, err := root.Find([]string{name})
+	for _, name := range []string{"topology", "deps", "blast-radius"} {
+		cmd, _, err := root.Find([]string{"analyze", name})
 		if err != nil {
 			t.Fatalf("finding %q: %v", name, err)
 		}

@@ -39,7 +39,7 @@ func newNetworkHistoryDB(t *testing.T) string {
 
 func TestNetworkCompareCommandJSONShape(t *testing.T) {
 	dbPath := newNetworkHistoryDB(t)
-	stdout, stderr, err := runCLI(t, dbPath, "network", "compare", "cluster-prod", "cluster-dr", "-o", "json")
+	stdout, stderr, err := runCLI(t, dbPath, "analyze", "readiness", "network", "cluster-prod", "cluster-dr", "-o", "json")
 	if err != nil || stderr != "" {
 		t.Fatalf("compare err=%v stderr=%q stdout=%s", err, stderr, stdout)
 	}
@@ -55,14 +55,34 @@ func TestNetworkCompareCommandJSONShape(t *testing.T) {
 	}
 }
 
+// The verdict is the answer; -o wide adds the comparison behind it, and
+// cluster/NAME names the same clusters as NAME.
+func TestNetworkReadinessVerdictAndWideComparison(t *testing.T) {
+	dbPath := newNetworkHistoryDB(t)
+	verdict, _, err := runCLI(t, dbPath, "analyze", "readiness", "network", "cl/cluster-prod", "cluster/cluster-dr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(verdict, "Network readiness:") || strings.Contains(verdict, "Matched networks:") {
+		t.Errorf("table output should be the verdict alone:\n%s", verdict)
+	}
+	wide, _, err := runCLI(t, dbPath, "analyze", "readiness", "network", "cluster-prod", "cluster-dr", "-o", "wide")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(wide, verdict) || !strings.Contains(wide, "Matched networks:") {
+		t.Errorf("-o wide should add the comparison after the verdict:\n%s", wide)
+	}
+}
+
 func TestNetworkCommandsValidateArgumentsAndFlags(t *testing.T) {
 	dbPath := newNetworkHistoryDB(t)
-	_, _, err := runCLI(t, dbPath, "network", "compare", "only-one-cluster")
-	if err == nil || !strings.Contains(err.Error(), "accepts between 2 and 3 arg") {
-		t.Fatalf("compare argument validation error=%v", err)
+	_, _, err := runCLI(t, dbPath, "analyze", "readiness", "network", "only-one-cluster")
+	if err == nil || !strings.Contains(err.Error(), "accepts 2 arg(s)") {
+		t.Fatalf("argument count validation error=%v", err)
 	}
-	_, _, err = runCLI(t, dbPath, "assessment", "network-readiness")
-	if err == nil || !strings.Contains(err.Error(), "required flag") {
-		t.Fatalf("readiness flag validation error=%v", err)
+	_, _, err = runCLI(t, dbPath, "analyze", "readiness", "network", "cl/cluster-prod", "host/esxi-01")
+	if err == nil || !strings.Contains(err.Error(), "readiness network compares clusters") {
+		t.Fatalf("subject kind validation error=%v", err)
 	}
 }

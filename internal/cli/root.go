@@ -225,6 +225,8 @@ func (a *App) errOut() io.Writer {
 
 func (a *App) json() bool { return a.Format == FormatJSON }
 
+func (a *App) wide() bool { return a.Format == FormatWide }
+
 func rejectStoredContextSelection(cmd *cobra.Command, operation string) error {
 	if cmd.Flags().Changed("context") {
 		return fmt.Errorf("--context is not supported for assessment %s", operation)
@@ -306,7 +308,7 @@ at production.`,
 	// A context is vsfleet's namespace, so kubectl's -n and -A pick them.
 	f.StringSliceVarP(&a.ContextNames, "context", "n", nil, "context to act on, repeatable (default: the current context)")
 	f.BoolVarP(&a.AllContexts, "all-contexts", "A", false, "act on every configured context")
-	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json; get also takes wide, yaml, name, csv, jsonpath=TEMPLATE and custom-columns=SPEC")
+	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json; get also takes wide, yaml, name, csv, jsonpath=TEMPLATE and custom-columns=SPEC, and analyze health and readiness network take wide")
 	f.DurationVar(&a.Timeout, "timeout", 30*time.Second, "per-vCenter timeout")
 	f.StringVar(&a.HistoryPath, "history-db", "", "path to the local assessment database")
 	// A bare "vsfleet" opens the interface, so the interface's own flag
@@ -329,17 +331,26 @@ at production.`,
 		inGroup(groupInventory, newAPIResourcesCommand(a)),
 		inGroup(groupHistory, newImportCommand(a)),
 		inGroup(groupHistory, newAssessmentCommand(a)),
-		inGroup(groupHistory, newHealthCommand(a)),
-		inGroup(groupAnalysis, newTopologyCommand(a)),
-		inGroup(groupAnalysis, newDependenciesCommand(a)),
-		inGroup(groupAnalysis, newBlastRadiusCommand(a)),
+		inGroup(groupAnalysis, newAnalyzeCommand(a)),
 		inGroup(groupDiagnose, newDoctorCommand(a)),
 	)
 	for _, cmd := range newKindCommands(a) {
 		root.AddCommand(inGroup(groupInventory, cmd))
 	}
-	for _, name := range removedKindGroups {
-		root.AddCommand(renamedKindCommand(name))
+	for _, g := range removedKindGroups {
+		root.AddCommand(renamedKindCommand(g.name, g.subs))
+	}
+	for _, r := range []struct {
+		name    string
+		aliases []string
+		hint    string
+	}{
+		{"health", nil, `use "vsfleet analyze health"`},
+		{"topology", nil, `use "vsfleet analyze topology KIND/NAME"`},
+		{"dependencies", []string{"deps"}, `use "vsfleet analyze deps KIND/NAME"`},
+		{"blast-radius", []string{"blast"}, `use "vsfleet analyze blast-radius KIND/NAME"`},
+	} {
+		root.AddCommand(renamedCommand(r.name, r.aliases, r.hint))
 	}
 	root.AddCommand(readOnlyVerbCommands()...)
 	root.AddCommand(renamedCommand("search", nil, `use "vsfleet get all '*TEXT*' -A", with -l for tags and --field-selector for fields`))

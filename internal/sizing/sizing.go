@@ -907,8 +907,8 @@ func (e *evaluator) sourceHosts(clusters map[string]bool) SourceHosts {
 
 func (e *evaluator) readiness(vms []inScopeVM) ReadinessLinks {
 	links := ReadinessLinks{
-		MigrationCommand:    "vsfleet assessment readiness " + fmt.Sprint(e.data.Run.ID),
-		NetworkCommand:      "vsfleet assessment network-readiness --source <cluster> --target <cluster> " + fmt.Sprint(e.data.Run.ID),
+		MigrationCommand:    "vsfleet analyze readiness --run " + fmt.Sprint(e.data.Run.ID),
+		NetworkCommand:      "vsfleet analyze readiness network cl/<source> cl/<target> --run " + fmt.Sprint(e.data.Run.ID),
 		NetworkNotEvaluated: "network readiness needs a source and target cluster mapping and is not evaluated here",
 	}
 	scoped := map[string]bool{}

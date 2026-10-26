@@ -75,11 +75,12 @@ func TestVCSIMVMEventsReadsADeletedVMThroughStoredHistory(t *testing.T) {
 	destroyVCSIMVM(t, fixture.Endpoints["history"], gone)
 	captureVCSIM(t, r, historyDB, false)
 
-	read := func(args ...string) (vsphere.VMEventListing, string) {
+	read := func(name string, args ...string) (vsphere.VMEventListing, string) {
 		t.Helper()
-		stdout, stderr, err := r.run("", append([]string{"--history-db", historyDB, "-o", "json", "vm", "events"}, args...)...)
+		args = append([]string{"--history-db", historyDB, "-o", "json", "events", "--for", "vm/" + name}, args...)
+		stdout, stderr, err := r.run("", args...)
 		if err != nil {
-			t.Fatalf("vsfleet vm events %s: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout, stderr)
+			t.Fatalf("vsfleet %s: %v\nstdout:\n%s\nstderr:\n%s", strings.Join(args, " "), err, stdout, stderr)
 		}
 		var listing vsphere.VMEventListing
 		if err := json.Unmarshal([]byte(stdout), &listing); err != nil {
@@ -114,7 +115,7 @@ func TestVCSIMVMEventsReadsADeletedVMThroughStoredHistory(t *testing.T) {
 		t.Fatalf("live VM: %d events, stderr %q", len(live.Events), stderr)
 	}
 
-	_, stderr, err := r.run("", "--history-db", historyDB, "vm", "events", "no-such-vm")
+	_, stderr, err := r.run("", "--history-db", historyDB, "events", "--for", "vm/no-such-vm")
 	if err == nil || !strings.Contains(err.Error(), `no vm matched "no-such-vm"`) {
 		t.Fatalf("unknown VM: err = %v, stderr %q", err, stderr)
 	}

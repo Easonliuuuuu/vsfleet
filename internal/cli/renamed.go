@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -15,8 +16,10 @@ func renamedCommand(name string, aliases []string, hint string) *cobra.Command {
 		Aliases:            aliases,
 		Hidden:             true,
 		DisableFlagParsing: true,
-		RunE: func(*cobra.Command, []string) error {
-			return fmt.Errorf("%q was renamed: %s", name, hint)
+		RunE: func(c *cobra.Command, _ []string) error {
+			// The path names a nested stub in full: "vm list", not "list".
+			path := strings.TrimPrefix(c.CommandPath(), c.Root().Name()+" ")
+			return fmt.Errorf("%q was renamed: %s", path, hint)
 		},
 	}
 }

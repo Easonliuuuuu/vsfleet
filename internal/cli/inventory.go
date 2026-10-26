@@ -101,47 +101,6 @@ func (a *App) multiContext() bool {
 	return len(a.ContextNames) == 0 && cfg.CurrentContext == "" && len(cfg.Contexts) > 1
 }
 
-// listFlags are shared by every inventory listing command.
-type listFlags struct {
-	filter   string
-	where    []string
-	wide     bool
-	compiled query.Filter
-}
-
-func (f *listFlags) register(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&f.filter, "filter", "f", "", "only show objects whose name contains this text")
-	cmd.Flags().StringArrayVar(&f.where, "where", nil, "structured predicate (repeatable; predicates are ANDed)")
-	cmd.Flags().BoolVar(&f.wide, "wide", false, "include tags and custom attributes")
-}
-
-func (f *listFlags) prepare(kinds ...vsphere.Kind) error {
-	compiled, err := query.Parse(f.where, kinds)
-	if err != nil {
-		return fmt.Errorf("--where: %w", err)
-	}
-	f.compiled = compiled
-	return nil
-}
-
-func (f *listFlags) matches(name string) bool {
-	if f.filter == "" {
-		return true
-	}
-	return strings.Contains(strings.ToLower(name), strings.ToLower(f.filter))
-}
-
-func (f *listFlags) matchesObject(kind vsphere.Kind, object any, name string) bool {
-	if !f.matches(name) {
-		return false
-	}
-	if f.compiled.Empty() {
-		return true
-	}
-	subject, err := query.SubjectFromObject(kind, object)
-	return err == nil && f.compiled.Match(subject)
-}
-
 func metadataTags(m vsphere.Metadata) string {
 	parts := make([]string, 0, len(m.Tags))
 	for _, tag := range m.Tags {
@@ -224,52 +183,67 @@ func objectMetadata(value any) (vsphere.Metadata, bool) {
 	}
 }
 
-// newInventoryCommands builds one command group per resource kind. They all
-// share the same shape so that "vsfleet <kind> list" is predictable.
-func newInventoryCommands(a *App) []*cobra.Command {
-	vm := group("vm", "Virtual machines", newVMListCommand(a))
-	vm.AddCommand(newVMShowCommand(a))
-	vm.AddCommand(newVMHistoryCommand(a))
-	vm.AddCommand(newVMEventsCommand(a))
-	vm.AddCommand(newVMDecommissionCheckCommand(a))
-	tmpl := group("template", "VM templates", newTemplateListCommand(a))
-	tmpl.AddCommand(newTemplateShowCommand(a))
-	host := group("host", "ESXi hosts", newHostListCommand(a))
-	host.AddCommand(newHostShowCommand(a))
-	host.AddCommand(hostSubgroup("hba", "Host bus adapters", "host hba", newHostHBAListCommand(a)))
-	host.AddCommand(hostSubgroup("multipath", "Host/LUN multipath aggregates", "host multipath", newHostMultipathListCommand(a)))
-	host.AddCommand(hostSubgroup("pnic", "Physical NICs", "host pnic", newHostPNICListCommand(a)))
-	host.AddCommand(hostSubgroup("vswitch", "Standard virtual switches", "host vswitch", newHostVSwitchListCommand(a)))
-	host.AddCommand(hostSubgroup("portgroup", "Standard-switch port groups", "host portgroup", newHostPortGroupListCommand(a)))
-	host.AddCommand(hostSubgroup("vmkernel", "VMkernel adapters", "host vmkernel", newHostVMKernelListCommand(a)))
-	cluster := group("cluster", "Compute clusters", newClusterListCommand(a))
-	cluster.AddCommand(newClusterShowCommand(a))
-	vapp := group("vapp", "vSphere vApps", newVAppListCommand(a))
-	vapp.AddCommand(newVAppShowCommand(a))
-	netw := group("network", "Networks and port groups", newNetworkListCommand(a))
-	netw.AddCommand(newNetworkShowCommand(a))
-	netw.AddCommand(newNetworkCompareCommand(a))
-	ds := group("datastore", "Datastores", newDatastoreListCommand(a))
-	ds.AddCommand(newDatastoreShowCommand(a))
-	ds.AddCommand(newDatastoreFilesCommand(a))
-	dvswitch := group("dvswitch", "Distributed virtual switches", newDVSwitchListCommand(a))
-	dvportgroup := group("dvportgroup", "Distributed port groups", newDVPortGroupListCommand(a))
-	resourcepool := group("resourcepool", "Resource pools", newResourcePoolListCommand(a))
-	snapshot := group("snapshot", "VM snapshots", newSnapshotListCommand(a))
-	return []*cobra.Command{
-		vm,
-		tmpl,
-		host,
-		cluster,
-		vapp,
-		ds,
-		netw,
-		dvswitch,
-		dvportgroup,
-		resourcepool,
-		snapshot,
-	}
+// newKindCommands builds the type-first groups that still hold commands with
+// no kubectl verb yet: VM history and decommission checks, datastore file
+// browsing and network comparison. Their listing and detail commands moved to
+// "get" and "describe" and answer only with where they went; every other
+// type-first group is replaced outright by renamedKindCommand.
+func newKindCommands(a *App) []*cobra.Command {
+	vm := kindGroup("vm", "Virtual machines: stored history and decommission checks",
+		newVMHistoryCommand(a), newVMDecommissionCheckCommand(a))
+	ds := kindGroup("datastore", "Datastores: file browsing", newDatastoreFilesCommand(a))
+	netw := kindGroup("network", "Networks: cluster comparison", newNetworkCompareCommand(a))
+	vm.AddCommand(renamedCommand("events", nil, `use "vsfleet events --for vm/NAME"`))
+	return []*cobra.Command{vm, ds, netw}
 }
+
+// kindGroup is a type-first parent that keeps hidden "list" and "show"
+// stubs, so a habit or script gets a pointer to "get" and "describe".
+func kindGroup(name, short string, subs ...*cobra.Command) *cobra.Command {
+	cmd := requireSubcommand(&cobra.Command{Use: name, Aliases: kindAliases(name), Short: short})
+	cmd.AddCommand(subs...)
+	k := apiresource.Get(name)
+	cmd.AddCommand(
+		renamedCommand("list", []string{"ls"}, fmt.Sprintf(`use "vsfleet get %s"`, k.Plural)),
+		renamedCommand("show", nil, fmt.Sprintf(`use "vsfleet describe %s NAME"`, k.Name)),
+	)
+	var examples []string
+	for _, sub := range subs {
+		examples = append(examples, sub.Example)
+	}
+	cmd.Example = strings.Join(examples, "\n\n")
+	return cmd
+}
+
+// renamedKindCommand answers a removed type-first group, such as
+// "vsfleet host list" or "vsfleet host hba list --host esxi-07", with the
+// "get" or "describe" command that replaced it.
+func renamedKindCommand(name string) *cobra.Command {
+	k := apiresource.Get(name)
+	cmd := renamedCommand(name, kindAliases(name), fmt.Sprintf(`use "vsfleet get %s"`, k.Plural))
+	generic := cmd.RunE
+	cmd.RunE = func(c *cobra.Command, args []string) error {
+		// Flag parsing is off, so args can hold flags given before the
+		// command too ("--history-db x host list"): look for the first word
+		// that names what was meant rather than trusting args[0].
+		for _, arg := range args {
+			switch arg {
+			case "list", "ls":
+				return fmt.Errorf("%q was renamed: use \"vsfleet get %s\"", name+" "+arg, k.Plural)
+			case "show":
+				return fmt.Errorf("%q was renamed: use \"vsfleet describe %s NAME\"", name+" show", k.Name)
+			}
+			if sub, ok := apiresource.Lookup(arg); ok && name == "host" {
+				return fmt.Errorf("%q was renamed: use \"vsfleet get %s --host HOST\"", "host "+arg, sub.Plural)
+			}
+		}
+		return generic(c, args)
+	}
+	return cmd
+}
+
+// removedKindGroups are the type-first groups that held only list and show.
+var removedKindGroups = []string{"template", "host", "cluster", "vapp", "dvswitch", "dvportgroup", "resourcepool", "snapshot"}
 
 func newVMHistoryCommand(a *App) *cobra.Command {
 	var allObservations, includeRuntime bool
@@ -327,366 +301,6 @@ vCenter.`), Example: `  # Every recorded change for a VM
 // canonical name, so a command and a --kind flag accept the same words.
 func kindAliases(name string) []string {
 	return apiresource.Get(name).Names()[1:]
-}
-
-func group(name, short string, sub *cobra.Command) *cobra.Command {
-	cmd := requireSubcommand(&cobra.Command{
-		Use:     name,
-		Aliases: kindAliases(name),
-		Short:   short,
-		Example: fmt.Sprintf(`  # List on the current context
-  vsfleet %[1]s list
-
-  # List across every configured vCenter at once
-  vsfleet %[1]s list --all-contexts
-
-  # Narrow by name, as JSON
-  vsfleet %[1]s list --context prod --filter web -o json`, name),
-	})
-	// The list subcommand is built by a shared helper that does not know its
-	// kind, so the kind-specific examples are filled in here, where it does.
-	sub.Example = fmt.Sprintf(`  # List on the current context
-  vsfleet %[1]s list
-
-  # List across every configured vCenter at once
-  vsfleet %[1]s list --all-contexts
-
-  # Narrow by name
-  vsfleet %[1]s list --context prod --filter web
-
-  # As JSON, for a script
-  vsfleet %[1]s list --all-contexts -o json`, name)
-	cmd.AddCommand(sub)
-	return cmd
-}
-
-func listCommand(a *App, short string, run func(*cobra.Command, *listFlags) error) *cobra.Command {
-	var f listFlags
-	cmd := &cobra.Command{
-		Use:     "list",
-		Aliases: []string{"ls"},
-		Short:   short,
-		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			return run(cmd, &f)
-		},
-	}
-	f.register(cmd)
-	return cmd
-}
-
-func newVMListCommand(a *App) *cobra.Command {
-	return listCommand(a, "List virtual machines", func(cmd *cobra.Command, f *listFlags) error {
-		if err := f.prepare(vsphere.KindVM); err != nil {
-			return err
-		}
-		vms, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) {
-			return c.ListVMs(ctx)
-		})
-		if err != nil {
-			reportFailures(a, failures)
-			return err
-		}
-		reportMetadataWarnings(a, vms)
-		vms = filterSlice(vms, func(v vsphere.VM) bool { return f.matchesObject(vsphere.KindVM, v, v.Name) })
-		if a.json() {
-			defer reportFailures(a, failures)
-			return writeJSON(a.out(), vms)
-		}
-		headers := []string{"NAME", "STATE", "CPU", "RAM", "HOST", "IP"}
-		if f.wide {
-			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
-		}
-		multi := a.multiContext()
-		if multi {
-			headers = append([]string{"CONTEXT"}, headers...)
-		}
-		t := newTable(a.out(), headers...)
-		for _, v := range vms {
-			row := []string{v.Name, v.PowerState, i32toa(v.CPU), humanMB(v.MemoryMB), dash(v.Host), dash(v.IPAddress)}
-			if f.wide {
-				row = append(row, dash(metadataTags(v.Metadata)), dash(metadataAttributes(v.Metadata)))
-			}
-			if multi {
-				row = append([]string{v.Context}, row...)
-			}
-			t.row(row...)
-		}
-		t.flush()
-		reportFailures(a, failures)
-		return nil
-	})
-}
-
-func newTemplateListCommand(a *App) *cobra.Command {
-	return listCommand(a, "List VM templates", func(cmd *cobra.Command, f *listFlags) error {
-		if err := f.prepare(vsphere.KindTemplate); err != nil {
-			return err
-		}
-		tmpl, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VM, error) {
-			return c.ListTemplates(ctx)
-		})
-		if err != nil {
-			reportFailures(a, failures)
-			return err
-		}
-		reportMetadataWarnings(a, tmpl)
-		tmpl = filterSlice(tmpl, func(v vsphere.VM) bool { return f.matchesObject(vsphere.KindTemplate, v, v.Name) })
-		if a.json() {
-			defer reportFailures(a, failures)
-			return writeJSON(a.out(), tmpl)
-		}
-		headers := []string{"NAME", "OS", "CPU", "RAM", "DATASTORE", "FOLDER"}
-		if f.wide {
-			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
-		}
-		multi := a.multiContext()
-		if multi {
-			headers = append([]string{"CONTEXT"}, headers...)
-		}
-		t := newTable(a.out(), headers...)
-		for _, v := range tmpl {
-			row := []string{v.Name, dash(v.GuestOS), i32toa(v.CPU), humanMB(v.MemoryMB), dash(strings.Join(v.Datastores, ",")), dash(v.Folder)}
-			if f.wide {
-				row = append(row, dash(metadataTags(v.Metadata)), dash(metadataAttributes(v.Metadata)))
-			}
-			if multi {
-				row = append([]string{v.Context}, row...)
-			}
-			t.row(row...)
-		}
-		t.flush()
-		reportFailures(a, failures)
-		return nil
-	})
-}
-
-func newHostListCommand(a *App) *cobra.Command {
-	return listCommand(a, "List ESXi hosts", func(cmd *cobra.Command, f *listFlags) error {
-		if err := f.prepare(vsphere.KindHost); err != nil {
-			return err
-		}
-		hosts, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) {
-			return c.ListHosts(ctx)
-		})
-		if err != nil {
-			reportFailures(a, failures)
-			return err
-		}
-		reportMetadataWarnings(a, hosts)
-		hosts = filterSlice(hosts, func(h vsphere.Host) bool { return f.matchesObject(vsphere.KindHost, h, h.Name) })
-		if a.json() {
-			defer reportFailures(a, failures)
-			return writeJSON(a.out(), hosts)
-		}
-		headers := []string{"NAME", "CLUSTER", "STATE", "CPU", "RAM", "VMS", "VERSION"}
-		if f.wide {
-			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
-		}
-		multi := a.multiContext()
-		if multi {
-			headers = append([]string{"CONTEXT"}, headers...)
-		}
-		t := newTable(a.out(), headers...)
-		for _, h := range hosts {
-			state := h.ConnectionState
-			if h.InMaintenance {
-				state += " (maintenance)"
-			}
-			row := []string{h.Name, dash(h.Cluster), state, i32toa(h.CPUCores) + " cores", humanMB(h.MemoryMB), itoa(h.VMCount), dash(h.Version)}
-			if f.wide {
-				row = append(row, dash(metadataTags(h.Metadata)), dash(metadataAttributes(h.Metadata)))
-			}
-			if multi {
-				row = append([]string{h.Context}, row...)
-			}
-			t.row(row...)
-		}
-		t.flush()
-		reportFailures(a, failures)
-		return nil
-	})
-}
-
-func newClusterListCommand(a *App) *cobra.Command {
-	return listCommand(a, "List compute clusters", func(cmd *cobra.Command, f *listFlags) error {
-		if err := f.prepare(vsphere.KindCluster); err != nil {
-			return err
-		}
-		clusters, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Cluster, error) {
-			return c.ListClusters(ctx)
-		})
-		if err != nil {
-			reportFailures(a, failures)
-			return err
-		}
-		reportMetadataWarnings(a, clusters)
-		clusters = filterSlice(clusters, func(c vsphere.Cluster) bool { return f.matchesObject(vsphere.KindCluster, c, c.Name) })
-		if a.json() {
-			defer reportFailures(a, failures)
-			return writeJSON(a.out(), clusters)
-		}
-		headers := []string{"NAME", "DATACENTER", "HOSTS", "CPU", "RAM", "DRS", "HA"}
-		if f.wide {
-			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
-		}
-		multi := a.multiContext()
-		if multi {
-			headers = append([]string{"CONTEXT"}, headers...)
-		}
-		t := newTable(a.out(), headers...)
-		for _, c := range clusters {
-			name := c.Name
-			if c.Standalone {
-				name += " (standalone)"
-			}
-			row := []string{name, dash(c.Datacenter), itoa(c.Hosts), dash(mhz(c.TotalCPUMHz)), humanMB(c.TotalMemoryMB), onOff(c.DRSEnabled), onOff(c.HAEnabled)}
-			if f.wide {
-				row = append(row, dash(metadataTags(c.Metadata)), dash(metadataAttributes(c.Metadata)))
-			}
-			if multi {
-				row = append([]string{c.Context}, row...)
-			}
-			t.row(row...)
-		}
-		t.flush()
-		reportFailures(a, failures)
-		return nil
-	})
-}
-
-func newVAppListCommand(a *App) *cobra.Command {
-	return listCommand(a, "List vSphere vApps", func(cmd *cobra.Command, f *listFlags) error {
-		if err := f.prepare(vsphere.KindVApp); err != nil {
-			return err
-		}
-		vapps, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.VApp, error) {
-			return c.ListVApps(ctx)
-		})
-		if err != nil {
-			reportFailures(a, failures)
-			return err
-		}
-		reportMetadataWarnings(a, vapps)
-		vapps = filterSlice(vapps, func(v vsphere.VApp) bool { return f.matchesObject(vsphere.KindVApp, v, v.Name) })
-		if a.json() {
-			defer reportFailures(a, failures)
-			return writeJSON(a.out(), vapps)
-		}
-		headers := []string{"NAME", "STATUS", "VMS", "CHILDREN", "DATACENTER", "PATH"}
-		if f.wide {
-			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
-		}
-		multi := a.multiContext()
-		if multi {
-			headers = append([]string{"CONTEXT"}, headers...)
-		}
-		t := newTable(a.out(), headers...)
-		for _, v := range vapps {
-			children := fmt.Sprintf("%d vApp / %d pool", v.ChildVAppCount, v.ChildResourcePoolCount)
-			row := []string{v.Name, dash(v.Status), itoa(v.DirectVMCount), children, dash(v.Datacenter), dash(v.Path)}
-			if f.wide {
-				row = append(row, dash(metadataTags(v.Metadata)), dash(metadataAttributes(v.Metadata)))
-			}
-			if multi {
-				row = append([]string{v.Context}, row...)
-			}
-			t.row(row...)
-		}
-		t.flush()
-		reportFailures(a, failures)
-		return nil
-	})
-}
-
-func newDatastoreListCommand(a *App) *cobra.Command {
-	return listCommand(a, "List datastores", func(cmd *cobra.Command, f *listFlags) error {
-		if err := f.prepare(vsphere.KindDatastore); err != nil {
-			return err
-		}
-		stores, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Datastore, error) {
-			return c.ListDatastores(ctx)
-		})
-		if err != nil {
-			reportFailures(a, failures)
-			return err
-		}
-		reportMetadataWarnings(a, stores)
-		stores = filterSlice(stores, func(d vsphere.Datastore) bool { return f.matchesObject(vsphere.KindDatastore, d, d.Name) })
-		if a.json() {
-			defer reportFailures(a, failures)
-			return writeJSON(a.out(), stores)
-		}
-		headers := []string{"NAME", "TYPE", "CAPACITY", "FREE", "USED", "DATACENTER"}
-		if f.wide {
-			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
-		}
-		multi := a.multiContext()
-		if multi {
-			headers = append([]string{"CONTEXT"}, headers...)
-		}
-		t := newTable(a.out(), headers...)
-		for _, d := range stores {
-			used := "-"
-			if d.CapacityBytes > 0 {
-				used = fmt.Sprintf("%.0f%%", d.UsedPercent())
-			}
-			row := []string{d.Name, dash(d.Type), humanBytes(d.CapacityBytes), humanBytes(d.FreeBytes), used, dash(d.Datacenter)}
-			if f.wide {
-				row = append(row, dash(metadataTags(d.Metadata)), dash(metadataAttributes(d.Metadata)))
-			}
-			if multi {
-				row = append([]string{d.Context}, row...)
-			}
-			t.row(row...)
-		}
-		t.flush()
-		reportFailures(a, failures)
-		return nil
-	})
-}
-
-func newNetworkListCommand(a *App) *cobra.Command {
-	return listCommand(a, "List networks and port groups", func(cmd *cobra.Command, f *listFlags) error {
-		if err := f.prepare(vsphere.KindNetwork); err != nil {
-			return err
-		}
-		nets, failures, err := gather(cmd.Context(), a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) {
-			return c.ListNetworks(ctx)
-		})
-		if err != nil {
-			reportFailures(a, failures)
-			return err
-		}
-		reportMetadataWarnings(a, nets)
-		nets = filterSlice(nets, func(n vsphere.Network) bool { return f.matchesObject(vsphere.KindNetwork, n, n.Name) })
-		if a.json() {
-			defer reportFailures(a, failures)
-			return writeJSON(a.out(), nets)
-		}
-		headers := []string{"NAME", "TYPE", "SWITCH", "VLAN", "DATACENTER", "ACCESSIBLE"}
-		if f.wide {
-			headers = append(headers, "TAGS", "CUSTOM ATTRIBUTES")
-		}
-		multi := a.multiContext()
-		if multi {
-			headers = append([]string{"CONTEXT"}, headers...)
-		}
-		t := newTable(a.out(), headers...)
-		for _, n := range nets {
-			row := []string{n.Name, n.Type, dash(n.Switch), dash(n.VLAN), dash(n.Datacenter), yesNo(n.Accessible)}
-			if f.wide {
-				row = append(row, dash(metadataTags(n.Metadata)), dash(metadataAttributes(n.Metadata)))
-			}
-			if multi {
-				row = append([]string{n.Context}, row...)
-			}
-			t.row(row...)
-		}
-		t.flush()
-		reportFailures(a, failures)
-		return nil
-	})
 }
 
 func filterSlice[T any](in []T, keep func(T) bool) []T {

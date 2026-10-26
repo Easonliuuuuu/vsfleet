@@ -411,7 +411,7 @@ func searchCells(r row) []string {
 
 // kindWord is the one-word name of a kind, matching what the command line
 // calls it: a search result reading "template" is a row you could have asked
-// for with "vsfleet template list".
+// for with "vsfleet get templates".
 func kindWord(kind vsphere.Kind) string {
 	return string(kind)
 }

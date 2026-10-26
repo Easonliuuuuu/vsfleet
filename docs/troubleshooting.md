@@ -5,7 +5,7 @@ Inspect the context, test its connection, and locate the failing stage:
 ```sh
 vsfleet config view --minify -n prod
 vsfleet doctor prod
-vsfleet status
+vsfleet cluster-info
 ```
 
 ## vsfleet is not found

@@ -117,7 +117,7 @@ The wire-level `QueryPerf` implementation lives in
 would pull mutation-capable packages across the read-only boundary.
 
 `internal/report` builds both exports and the column descriptions shown by
-`vsfleet compatibility report`. Describe new worksheet columns there so the
+`vsfleet explain`. Describe new worksheet columns there so the
 reference follows the exporter. Older captures must report missing evidence
 through coverage rather than inventing values; see [Inventory exports](exports.md).
 

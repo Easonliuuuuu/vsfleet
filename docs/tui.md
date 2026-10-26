@@ -280,7 +280,7 @@ result. If the account cannot read task history, the events still load and
 task rows show no result.
 
 The same event log is available on the command line as
-`vsfleet vm events <name-or-uuid>`.
+`vsfleet events --for vm/<name-or-uuid>`.
 
 ## Refresh and cache behavior
 

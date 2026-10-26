@@ -28,12 +28,12 @@ func TestHostSubresourceCommandsListDeviceEvidence(t *testing.T) {
 		args    []string
 		headers []string
 	}{
-		{"hba", []string{"host", "hba", "list"}, []string{"HOST", "DEVICE"}},
-		{"pnic", []string{"host", "pnic", "list"}, []string{"HOST", "DEVICE"}},
-		{"vswitch", []string{"host", "vswitch", "list"}, []string{"HOST", "NAME"}},
-		{"portgroup", []string{"host", "portgroup", "list"}, []string{"HOST", "NAME"}},
-		{"vmkernel", []string{"host", "vmkernel", "list"}, []string{"HOST", "DEVICE"}},
-		{"multipath", []string{"host", "multipath", "list"}, []string{"HOST", "LUN"}},
+		{"hba", []string{"get", "hbas"}, []string{"HOST", "DEVICE"}},
+		{"pnic", []string{"get", "pnics"}, []string{"HOST", "DEVICE"}},
+		{"vswitch", []string{"get", "vswitches"}, []string{"HOST", "NAME"}},
+		{"portgroup", []string{"get", "portgroups"}, []string{"HOST", "NAME"}},
+		{"vmkernel", []string{"get", "vmkernels"}, []string{"HOST", "DEVICE"}},
+		{"multipath", []string{"get", "multipaths"}, []string{"HOST", "LUN"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out := r.mustRun(testPassword+"\n", tc.args...)
@@ -59,7 +59,7 @@ func TestHostSubresourceHostFlagNarrowsAndNeverLeaks(t *testing.T) {
 	r := newRunner(t)
 	r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
 
-	out := r.mustRun(testPassword+"\n", "host", "vswitch", "list", "--host", "DC0_C0_H0", "-o", "json")
+	out := r.mustRun(testPassword+"\n", "get", "vswitches", "--host", "DC0_C0_H0", "-o", "json")
 	var rows []struct {
 		Host string `json:"host"`
 	}
@@ -75,7 +75,7 @@ func TestHostSubresourceHostFlagNarrowsAndNeverLeaks(t *testing.T) {
 		}
 	}
 
-	_, _, err := r.run(testPassword+"\n", "host", "vswitch", "list", "--host", "no-such-host")
+	_, _, err := r.run(testPassword+"\n", "get", "vswitches", "--host", "no-such-host")
 	if err == nil {
 		t.Fatal("an unknown --host should fail")
 	}

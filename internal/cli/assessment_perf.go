@@ -24,8 +24,8 @@ database, apart from inventory captures.
 
 "perf collect" is the only subcommand here that contacts a vCenter. It is
 opt-in and read-only, and bounded by a time window, a sample count, a VM
-count, a request count and a runtime. "perf list" and "perf show" read back
-what was stored.
+count, a request count and a runtime. "perf list" lists what was stored, and
+"vsfleet top vm" reads it back.
 
 Values are averages over the vCenter's roll-up interval (typically 5 minutes
 to 2 hours), so a reported peak is the highest interval average and can
@@ -35,9 +35,10 @@ insufficient data, never as zero.`),
 		Example: `  # Collect the last week, then read it back
   vsfleet assessment perf collect --window 7d
   vsfleet assessment perf list
-  vsfleet assessment perf show latest`,
+  vsfleet top vm`,
 	})
-	cmd.AddCommand(newAssessmentPerfCollectCommand(a), newAssessmentPerfListCommand(a), newAssessmentPerfShowCommand(a))
+	cmd.AddCommand(newAssessmentPerfCollectCommand(a), newAssessmentPerfListCommand(a),
+		renamedCommand("show", nil, `use "vsfleet top vm", or "vsfleet top vm --window ID" for an older collection`))
 	return cmd
 }
 
@@ -66,7 +67,7 @@ sampled are listed as such rather than dropped.`), Example: `  # The last week f
   vsfleet assessment perf collect --all-contexts --window 30d --max-vms 300
 
   # Read the result
-  vsfleet assessment perf show latest`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+  vsfleet top vm`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		span, err := parseHumanDuration(window)
 		if err != nil || span <= 0 {
 			return fmt.Errorf("--window must be a positive duration such as 24h or 7d")
@@ -170,7 +171,7 @@ func printPerfWindowSummary(a *App, w perf.Window) {
 	}
 	fmt.Fprintf(a.out(), "  signals:   %s\n", signalCounts(counts))
 	if len(belowLevel) > 0 {
-		fmt.Fprintf(a.out(), "  not kept:  %s, above this interval's statistics level (see \"assessment perf show %d\")\n", strings.Join(belowLevel, ", "), w.ID)
+		fmt.Fprintf(a.out(), "  not kept:  %s, above this interval's statistics level (see \"vsfleet top vm --window %d\")\n", strings.Join(belowLevel, ", "), w.ID)
 	}
 	if fromUsage > 0 {
 		fmt.Fprintf(a.out(), "  memory:    active memory read from %s for %d of %d sampled VMs, as %s is not kept\n", perf.MemUsage, fromUsage, w.VMsSampled, perf.MemActive)
@@ -180,7 +181,7 @@ func printPerfWindowSummary(a *App, w perf.Window) {
 		fmt.Fprintf(a.out(), "             history builds up from then on, so a full %s window takes that long\n", humanSpan(w.WindowEnd.Sub(w.WindowStart)))
 	}
 	if unavailable > 0 {
-		fmt.Fprintf(a.out(), "  unavailable counters: %d (see \"assessment perf show %d\")\n", unavailable, w.ID)
+		fmt.Fprintf(a.out(), "  unavailable counters: %d (see \"vsfleet top vm --window %d\")\n", unavailable, w.ID)
 	}
 	if w.Error != "" {
 		fmt.Fprintf(a.out(), "  notes:     %s\n", w.Error)
@@ -222,8 +223,8 @@ func signalCounts(counts map[perf.Signal]int) string {
 
 func newAssessmentPerfListCommand(a *App) *cobra.Command {
 	return &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List stored performance collections", Long: strings.TrimSpace(`
-List stored performance collections, newest first. The ID is what "perf show"
-accepts.`), Example: `  vsfleet assessment perf list
+List stored performance collections, newest first. The ID is what
+"vsfleet top vm --window" accepts.`), Example: `  vsfleet assessment perf list
   vsfleet assessment perf list -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		if err := rejectStoredContextSelection(cmd, "perf list"); err != nil {
 			return err
@@ -246,73 +247,6 @@ accepts.`), Example: `  vsfleet assessment perf list
 				fmt.Sprintf("%d/%d", w.VMsSampled, w.VMsRequested), itoa(w.RequestsUsed))
 		}
 		t.flush()
-		return nil
-	}}
-}
-
-func newAssessmentPerfShowCommand(a *App) *cobra.Command {
-	return &cobra.Command{Use: "show [ID|latest]", Short: "Show one performance collection", Long: strings.TrimSpace(`
-Show per-VM summaries from a stored collection: average, peak and 95th
-percentile of interval averages, the sample count behind them, and a
-conservative sizing signal.
-
-A dash means unknown, never zero. The 95th percentile appears only when
-enough samples support it. Signals other than "in-use" and "sustained-low"
-explain themselves below the table.`), Example: `  vsfleet assessment perf show latest
-  vsfleet assessment perf show 3 -o json`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		var id int64
-		if len(args) == 0 || args[0] == "latest" {
-			windows, err := s.PerfWindows(cmd.Context(), "", 1)
-			if err != nil {
-				return err
-			}
-			if len(windows) == 0 {
-				return fmt.Errorf("no performance collections are stored; run \"assessment perf collect\"")
-			}
-			id = windows[0].ID
-		} else if id, err = strconv.ParseInt(args[0], 10, 64); err != nil {
-			return fmt.Errorf("invalid performance window %q", args[0])
-		}
-		w, err := s.LoadPerfWindow(cmd.Context(), id)
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), w)
-		}
-		printPerfWindowSummary(a, w)
-		fmt.Fprintln(a.out())
-		t := newTable(a.out(), "VM", "SIGNAL", "CPU% AVG", "PEAK", "P95", "ACTIVE MiB AVG", "PEAK", "READY% PEAK", "BALLOON MiB", "SWAP MiB", "SWAP-IN KBps", "SAMPLES")
-		derived := false
-		for _, vm := range w.VMs {
-			cpu := perfSummary(vm, perf.CPUUsage)
-			memAvg, memPeak, fromUsage := perfActiveMiB(vm)
-			derived = derived || fromUsage
-			t.row(vm.Name, string(vm.Signal), perfNum(cpu.Average), perfNum(cpu.Peak), perfNum(cpu.P95),
-				memAvg, memPeak, perfNum(perfSummary(vm, perf.CPUReady).Peak),
-				perfNum(perfSummary(vm, perf.MemBalloon).Peak), perfNum(perfSummary(vm, perf.MemSwapped).Peak),
-				perfNum(perfSummary(vm, perf.MemSwapinRate).Peak), perfSamples(cpu))
-		}
-		t.flush()
-		if derived {
-			fmt.Fprintf(a.out(), "* active memory from %s × configured memory, as %s is not kept\n", perf.MemUsage, perf.MemActive)
-		}
-		notes := false
-		for _, vm := range w.VMs {
-			switch vm.Signal {
-			case perf.SignalInUse, perf.SignalSustainedLow:
-				continue
-			}
-			if !notes {
-				fmt.Fprintln(a.out(), "\nNotes:")
-				notes = true
-			}
-			fmt.Fprintf(a.out(), "  %s: %s\n", vm.Name, dash(vm.SignalReason))
-		}
 		return nil
 	}}
 }

@@ -86,7 +86,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	}
 	for name, w := range collected {
 		var shown perf.Window
-		raw := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "perf", "show", strconv.FormatInt(w.ID, 10))
+		raw := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "top", "vm", "--window", strconv.FormatInt(w.ID, 10))
 		if err := json.Unmarshal([]byte(raw), &shown); err != nil {
 			t.Fatalf("decode perf show %d: %v\n%s", w.ID, err, raw)
 		}
@@ -100,7 +100,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 		}
 	}
 	var latest perf.Window
-	if err := json.Unmarshal([]byte(vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "perf", "show", "latest")), &latest); err != nil {
+	if err := json.Unmarshal([]byte(vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "top", "vm")), &latest); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := byID[latest.ID]; !ok || latest.Status != perf.WindowSuccess {

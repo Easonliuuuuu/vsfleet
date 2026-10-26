@@ -57,7 +57,7 @@ func TestSOCKS5WithRemoteDNS(t *testing.T) {
 	}
 
 	// Inventory has to work over the proxy too, not just the handshake.
-	vms := r.mustRun(testPassword+"\n", "vm", "list")
+	vms := r.mustRun(testPassword+"\n", "get", "vms")
 	if !strings.Contains(vms, "DC0") {
 		t.Errorf("vm list over the proxy returned nothing:\n%s", vms)
 	}

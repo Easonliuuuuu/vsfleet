@@ -76,7 +76,7 @@ Scoop, release archives, and `go install` are covered in [Getting Started](https
 For unattended CLI commands and CI, use the container image (Linux amd64 and arm64):
 
 ```sh
-docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest compatibility report --sheet vInfo -o json
+docker run --rm ghcr.io/easonliuuuuu/vsfleet:latest explain rvtools.vInfo -o json
 ```
 
 The interactive TUI needs the native binary; see the [Containers guide](https://easonliuuuuu.github.io/vsfleet/containers/) for running the image.
@@ -122,9 +122,10 @@ vsfleet doctor prod
 vsfleet
 
 # List specific resources
-vsfleet vm list
-vsfleet host list --context prod
-vsfleet vm list --context prod -o json
+vsfleet get vms
+vsfleet get hosts -n prod
+vsfleet get vms -n prod -o json
+vsfleet describe vm web-01
 
 # Search across every configured vCenter at once
 vsfleet search ubuntu --all-contexts

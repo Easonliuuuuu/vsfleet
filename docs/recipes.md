@@ -9,7 +9,7 @@ These examples combine CLI commands for recurring tasks. See
 Find VMs matching an OS name and print their context, name, and IP address:
 
 ```sh
-vsfleet vm list --all-contexts -o json | \
+vsfleet get vms --all-contexts -o json | \
   jq -r '.[] | select(.Name | test("ubuntu"; "i")) | "\(.Context)\t\(.Name)\t\(.IPAddress)"'
 ```
 

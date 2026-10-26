@@ -33,7 +33,7 @@ func TestVCSIMPartialCoverageSurvivesProcessLoss(t *testing.T) {
 		t.Fatalf("post-kill capture run=%+v err=%v", second, err)
 	}
 
-	reportJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "report", "latest")
+	reportJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "describe", "capture", "latest")
 	// The report carries one coverage row per context and collection kind, so a
 	// context is judged by all of its rows rather than by a single status.
 	var report struct {

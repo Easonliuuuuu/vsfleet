@@ -7,23 +7,23 @@ vCenter.
 ## Capture and inspect
 
 ```sh
-vsfleet assessment run --all-contexts
-vsfleet assessment run --all-contexts --browse-datastores
-vsfleet assessment run --all-contexts \
+vsfleet capture run --all-contexts
+vsfleet capture run --all-contexts --browse-datastores
+vsfleet capture run --all-contexts \
   --label nightly --note "pre-change baseline" --pin
-vsfleet assessment list
-vsfleet assessment report latest
+vsfleet capture list
+vsfleet describe capture latest
 vsfleet describe vm billing --history --all-observations
 ```
 
 Label recurring baselines and pin those you want to keep. Retention cleanup
-preserves pinned runs; use `assessment update <run> --unpin` before removing one.
+preserves pinned runs; use `capture update <run> --unpin` before removing one.
 
 ## Compare runs
 
 ```sh
-vsfleet assessment diff previous latest
-vsfleet assessment diff nightly latest \
+vsfleet capture diff previous latest
+vsfleet capture diff nightly latest \
   --fail-on moved,vanished \
   --max-snapshot-age 30d \
   --require-complete
@@ -37,8 +37,8 @@ Policy flags are command-line only. A scheduled job records its policy in the
 invocation:
 
 ```sh
-vsfleet assessment run --all-contexts --label nightly
-vsfleet assessment diff nightly latest \
+vsfleet capture run --all-contexts --label nightly
+vsfleet capture diff nightly latest \
   --fail-on appeared,vanished,moved \
   --fail-on snapshot-created,snapshot-removed \
   --max-snapshot-age 30d --require-complete -o json > drift.json
@@ -54,7 +54,7 @@ vsfleet analyze snapshots --older-than 30d
 vsfleet analyze churn
 vsfleet analyze snapshots --trend --older-than 30d
 vsfleet analyze capacity --trend --kind all
-vsfleet assessment report latest
+vsfleet describe capture latest
 ```
 
 Trends show estate totals, then context and resource detail, for a window of
@@ -109,12 +109,12 @@ stay context-scoped. JSON and stderr report missing coverage.
 ## Retention and recovery
 
 ```sh
-vsfleet assessment prune --older-than 90d       # dry-run
-vsfleet assessment prune --older-than 90d --execute
+vsfleet capture prune --older-than 90d          # dry-run
+vsfleet capture prune --older-than 90d --execute
 vsfleet assessment backup ./history-backup.db
 vsfleet assessment restore ./history-backup.db --force
 vsfleet assessment doctor
-vsfleet assessment delete <run> --force
+vsfleet capture delete <run> --force
 ```
 
 Capture, prune, backup, and restore use a fenced lease that permits one writer

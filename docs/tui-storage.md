@@ -37,7 +37,7 @@ with no match proves a current file is orphaned.
 
 An unreachable datastore disables browsing with a reason. Unreadable
 directories show vCenter's error, rather than an empty listing. Browsing and
-`vsfleet assessment run --browse-datastores` use the same read-only privilege
+`vsfleet capture run --browse-datastores` use the same read-only privilege
 but run independently.
 
 ## Real-vSphere validation gate

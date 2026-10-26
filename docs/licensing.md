@@ -5,7 +5,7 @@ assignment metadata for a licensing review. Collection is read-only, off by
 default, and never stores license keys.
 
 ```sh
-vsfleet assessment run --all-contexts --include-licenses
+vsfleet capture run --all-contexts --include-licenses
 vsfleet assessment export latest --file estate.xlsx      # adds vLicense
 vsfleet assessment export latest --format csv --file ./estate-csv
 ```
@@ -56,7 +56,7 @@ hold at least an evaluation license.
 | `not recorded` | License collection exists for the run, but this context has no record |
 
 Statuses and reasons appear in `vsfleetCoverage` for `vLicense` and
-`vsfleetLicenseAssignment`, in `assessment report`, and on capture stderr.
+`vsfleetLicenseAssignment`, in `describe capture`, and on capture stderr.
 A requested but incomplete license collection makes the run `partial`;
 `--fail-on-partial` catches it.
 
@@ -105,9 +105,9 @@ with their organization's entitlement records.
 
 ## Intended workflow: licensing review handoff
 
-1. Capture with `assessment run --all-contexts --include-licenses` using an
+1. Capture with `capture run --all-contexts --include-licenses` using an
    account granted `Global.Licenses`.
-2. Check `vsfleetCoverage` or `assessment report`. Every context needs
+2. Check `vsfleetCoverage` or `describe capture`. Every context needs
    `vLicense` status `success`; `partial` or `unavailable` is incomplete.
 3. Export XLSX/CSV for the reviewer. Re-export is offline, deterministic, and
    requires no credentials.

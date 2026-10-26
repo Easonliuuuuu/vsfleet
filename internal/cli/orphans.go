@@ -43,12 +43,12 @@ func newAnalyzeOrphansCommand(a *App) *cobra.Command {
 Explain the VMDK files found on datastores that no registered VM claims, with
 the confidence behind each candidate.
 
-The evidence comes from datastore browsing, which only "assessment run
+The evidence comes from datastore browsing, which only "capture run
 --browse-datastores" records. Without it there is nothing to explain, and
 coverage gaps are reported separately: "no candidates" is not proof of a clean
 estate unless the scan reached every datastore.`),
 		Example: `  # Capture the evidence, then explain it
-  vsfleet assessment run --all-contexts --browse-datastores
+  vsfleet capture run -A --browse-datastores
   vsfleet analyze orphans
 
   # Only high-confidence candidates over 10 GiB

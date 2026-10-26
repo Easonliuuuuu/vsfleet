@@ -271,11 +271,11 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 		{"get", "resourcepools"},
 		{"get", "snapshots"},
 		{"get", "all", "DC0*"},
-		{"assessment", "run", "--browse-datastores"},
-		{"assessment", "run", "--include-licenses"},
-		{"assessment", "run", "--datastore-file-inventory"},
-		{"assessment", "perf", "collect", "--window", "24h"},
-		{"assessment", "perf", "list"},
+		{"capture", "run", "--browse-datastores"},
+		{"capture", "run", "--include-licenses"},
+		{"capture", "run", "--datastore-file-inventory"},
+		{"capture", "perf", "--window", "24h"},
+		{"get", "perfcollections"},
 		{"top", "vm"},
 	} {
 		stdout, stderr, err := r.run(testPassword+"\n", args...)

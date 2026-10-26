@@ -47,7 +47,7 @@ import (
 const ProfileVersion = "rvtools-v4"
 
 // importSource marks an imported run's Run.Source, the one field every other
-// command already reads, so "vsfleet assessment list" tells an imported run
+// command already reads, so "vsfleet capture list" tells an imported run
 // apart from a live capture without inspecting its note text.
 const importSource = "rvtools-import"
 
@@ -2083,7 +2083,7 @@ func buildNote(opts Options, report Report, importedAt time.Time) string {
 		b.WriteString(note)
 		b.WriteString("\n\n")
 	}
-	b.WriteString("Imported via \"vsfleet import rvtools\"\n")
+	b.WriteString("Imported via \"vsfleet capture import rvtools\"\n")
 	if report.SourceLabel != "" {
 		fmt.Fprintf(&b, "Source file: %s\n", report.SourceLabel)
 	}

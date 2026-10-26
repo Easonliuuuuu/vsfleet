@@ -31,7 +31,7 @@ records thresholds, so identical evidence and options reproduce the export.
 
 ## Orphan-disk evidence
 
-Capture with `vsfleet assessment run --browse-datastores`, then inspect
+Capture with `vsfleet capture run --browse-datastores`, then inspect
 `vsfleet analyze orphans`. Browsing requires `Datastore.Browse`
 and adds a bounded directory listing per accessible datastore.
 

@@ -102,7 +102,7 @@ func TestVCSIMHistoryDiffVMHistoryAndCapacity(t *testing.T) {
 		t.Fatalf("captures did not create distinct runs: %d, %d, %d", first.ID, second.ID, third.ID)
 	}
 
-	diffJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
+	diffJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
 	if !strings.Contains(diffJSON, "power_state") && !strings.Contains(diffJSON, "modified") {
 		t.Fatalf("diff omitted power mutation: %s", diffJSON)
 	}
@@ -140,7 +140,7 @@ func TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved(t *testing.T) {
 		t.Fatalf("target run=%+v, want partial with one successful context", second)
 	}
 
-	diffJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
+	diffJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
 	var diff assessment.Diff
 	if err := json.Unmarshal([]byte(diffJSON), &diff); err != nil {
 		t.Fatalf("decode diff: %v\n%s", err, diffJSON)
@@ -174,7 +174,7 @@ func TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved(t *testing.T) {
 		t.Fatalf("diff warnings do not say the killable context was not collected in the target: %s", diffJSON)
 	}
 
-	_, _, policyErr := r.run("", "--history-db", historyDB, "-o", "json", "assessment", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--require-complete")
+	_, _, policyErr := r.run("", "--history-db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--require-complete")
 	if exitCode(policyErr) != 2 {
 		t.Fatalf("--require-complete exit=%d err=%v, want 2 for an incomplete target", exitCode(policyErr), policyErr)
 	}

@@ -94,7 +94,7 @@ func TestBareRootWithoutTerminalPrintsHelp(t *testing.T) {
 func TestTyposSuggestTheIntendedCommand(t *testing.T) {
 	for _, tc := range []struct{ args, want []string }{
 		{[]string{"descibe"}, []string{"describe"}},
-		{[]string{"assessment", "lst"}, []string{"list"}},
+		{[]string{"capture", "lst"}, []string{"list"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			_, _, err := runArgs(t, tc.args...)

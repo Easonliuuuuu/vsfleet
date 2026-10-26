@@ -58,7 +58,7 @@ func TestAssessmentCaptureExportsAttributedVSource(t *testing.T) {
 	r.addNonInteractiveContext("beta", beta, "env:VSFLEET_E2E_PASSWORD")
 	addUnreachableContext(r, "down")
 	historyDB := filepath.Join(t.TempDir(), "history.db")
-	if _, _, err := r.run("", "--history-db", historyDB, "assessment", "run", "--all-contexts"); err != nil {
+	if _, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts"); err != nil {
 		t.Fatalf("assessment run: %v", err)
 	}
 

@@ -194,8 +194,8 @@ for filtering and output, or open the [terminal UI](tui.md) with `vsfleet`.
 ## Capture your first assessment
 
 ```sh
-vsfleet assessment run --all-contexts
-vsfleet assessment report latest
+vsfleet capture run --all-contexts
+vsfleet describe capture latest
 ```
 
 The capture is stored locally; the report reads it offline. Check coverage

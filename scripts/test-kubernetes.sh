@@ -164,7 +164,7 @@ run_job vsfleet-complete
 wait_complete vsfleet-complete
 job_json vsfleet-complete | jq -e '.status == "complete" and .requested_contexts == 2 and .successful_contexts == 2' >/dev/null
 
-kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"template":{"spec":{"containers":[{"name":"vsfleet","args":["-o","json","assessment","list"]}]}}}}}}'
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"template":{"spec":{"containers":[{"name":"vsfleet","args":["-o","json","capture","list"]}]}}}}}}'
 run_job vsfleet-history
 wait_complete vsfleet-history
 job_json vsfleet-history | jq -e 'length >= 1 and any(.[]; .status == "complete")' >/dev/null
@@ -172,7 +172,7 @@ job_json vsfleet-history | jq -e 'length >= 1 and any(.[]; .status == "complete"
 kubectl -n "$namespace" scale deployment/vsfleet-vcsim-edge --replicas=0
 kubectl -n "$namespace" rollout status deployment/vsfleet-vcsim-edge --timeout=90s
 wait_for_no_ready_endpoints vsfleet-vcsim-edge
-kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"vsfleet","args":["--timeout","5s","--all-contexts","-o","json","assessment","run","--fail-on-partial"]}]}}}}}}'
+kubectl -n "$namespace" patch cronjob vsfleet-assessment --type strategic -p '{"spec":{"jobTemplate":{"spec":{"backoffLimit":0,"template":{"spec":{"restartPolicy":"Never","containers":[{"name":"vsfleet","args":["--timeout","5s","--all-contexts","-o","json","capture","run","--fail-on-partial"]}]}}}}}}'
 run_job vsfleet-partial
 wait_failed vsfleet-partial
 

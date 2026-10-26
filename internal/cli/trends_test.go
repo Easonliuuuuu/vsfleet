@@ -11,7 +11,7 @@ import (
 
 func TestAssessmentReportScopesStoredEvidence(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
-	stdout, _, err := runCLI(t, dbPath, "assessment", "report", "--context", " PROD ", "-o", "json")
+	stdout, _, err := runCLI(t, dbPath, "describe", "capture", "latest", "--context", " PROD ", "-o", "json")
 	if err != nil {
 		t.Fatalf("scoped report: %v", err)
 	}
@@ -38,12 +38,12 @@ func TestAssessmentReportScopesStoredEvidence(t *testing.T) {
 func TestAssessmentMetadataCommandsRejectContext(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	for _, args := range [][]string{
-		{"list", "--context", "prod"},
-		{"doctor", "--context", "prod"},
-		{"prune", "--context", "prod"},
-		{"backup", "/tmp/vsfleet-context-test.db", "--context", "prod"},
+		{"capture", "list", "--context", "prod"},
+		{"assessment", "doctor", "--context", "prod"},
+		{"capture", "prune", "--context", "prod"},
+		{"assessment", "backup", "/tmp/vsfleet-context-test.db", "--context", "prod"},
 	} {
-		_, _, err := runCLI(t, dbPath, append([]string{"assessment"}, args...)...)
+		_, _, err := runCLI(t, dbPath, args...)
 		if err == nil || !strings.Contains(err.Error(), "--context is not supported") {
 			t.Fatalf("%v: err=%v, want unsupported-context failure", args, err)
 		}
@@ -56,7 +56,7 @@ func TestAssessmentMetadataCommandsRejectContext(t *testing.T) {
 func TestStoredEvidenceCommandsScopeByContext(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	for _, args := range [][]string{
-		{"assessment", "report"},
+		{"describe", "capture", "latest"},
 		{"analyze", "snapshots"},
 		{"analyze", "health"},
 		{"analyze", "readiness"},

@@ -24,7 +24,7 @@ func addFixtureContexts(t *testing.T, r *runner, fixture *vcsimFixture) {
 
 func captureVCSIM(t *testing.T, r *runner, historyDB string, failOnPartial bool) (assessment.Run, error) {
 	t.Helper()
-	args := []string{"--history-db", historyDB, "--all-contexts", "-o", "json", "assessment", "run"}
+	args := []string{"--history-db", historyDB, "--all-contexts", "-o", "json", "capture", "run"}
 	if failOnPartial {
 		args = append(args, "--fail-on-partial")
 	}
@@ -119,7 +119,7 @@ func TestVCSIMMultiContextInventoryAndProvenance(t *testing.T) {
 		"vc-prod": {"vm": 12, "host": 4, "cluster": 2, "datastore": 6, "resourcepool": 2, "vapp": 2, "dvswitch": 2, "network": 10},
 		"vc-edge": {"vm": 2, "host": 2, "cluster": 1, "datastore": 1, "resourcepool": 1, "vapp": 1, "dvswitch": 1, "network": 3},
 	}
-	reportJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "report", strconv.FormatInt(run.ID, 10))
+	reportJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "describe", "capture", strconv.FormatInt(run.ID, 10))
 	var report assessment.AssessmentReport
 	if err := json.Unmarshal([]byte(reportJSON), &report); err != nil {
 		t.Fatalf("decode assessment report: %v\n%s", err, reportJSON)

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -18,7 +17,6 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/report"
-	"github.com/easonliuuuuu/vsfleet/internal/version"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -53,35 +51,29 @@ func newAssessmentCommand(a *App) *cobra.Command {
 	cmd := requireSubcommand(&cobra.Command{
 		Use:     "assessment",
 		Aliases: []string{"assess", "history"},
-		Short:   "Capture and compare historical assessments",
+		Short:   "Export, back up and check stored captures",
 		Long: strings.TrimSpace(`
-Capture a point-in-time snapshot of the estate into the local history
-database, then read it back: compare two captures, render a report, export an
-RVTools workbook, or ask what changed.
+Export a stored capture as an RVTools workbook or a metadata report, and
+back up, restore or check the local history database.
 
-Every subcommand below "run" reads stored evidence only, except "perf
-collect", which reads a bounded window of performance history. They never
-contact a vCenter otherwise, so they stay usable when a site is offline and
-always describe the estate as it was when the capture was taken.`),
-		Example: `  # Capture every context and label the capture
-  vsfleet assessment run --all-contexts --label nightly
+Taking, listing, comparing and removing captures is "vsfleet capture". Every
+subcommand here reads stored evidence only and never contacts a vCenter.`),
+		Example: `  # Export the most recent capture as an RVTools workbook
+  vsfleet assessment export --file estate.xlsx
 
-  # See what has been captured, then compare the two most recent
-  vsfleet assessment list
-  vsfleet assessment diff
-
-  # Compare a labelled baseline against the latest capture
-  vsfleet assessment diff nightly latest
-
-  # Fail a pipeline when VMs were removed
-  vsfleet assessment diff --fail-on removed
-
-  # Read a capture without touching a vCenter
-  vsfleet analyze health
-  vsfleet assessment export --file estate.xlsx`,
+  # Back the history database up, then check it
+  vsfleet assessment backup history.db.bak
+  vsfleet assessment doctor`,
 	})
-	cmd.AddCommand(newAssessmentRunCommand(a), newAssessmentListCommand(a), newAssessmentDiffCommand(a), newAssessmentDeleteCommand(a), newAssessmentUpdateCommand(a), newAssessmentReportCommand(a), newAssessmentExportCommand(a), newAssessmentMetadataCommand(a), newAssessmentMetadataReportCommand(a), newAssessmentPruneCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a), newAssessmentPerfCommand(a))
+	cmd.AddCommand(newAssessmentExportCommand(a), newAssessmentMetadataCommand(a), newAssessmentMetadataReportCommand(a), newAssessmentBackupCommand(a), newAssessmentRestoreCommand(a), newAssessmentDoctorCommand(a))
 	for _, r := range []struct{ name, hint string }{
+		{"run", `use "vsfleet capture run"`},
+		{"list", `use "vsfleet capture list" or "vsfleet get captures"`},
+		{"diff", `use "vsfleet capture diff"`},
+		{"delete", `use "vsfleet capture delete RUN"`},
+		{"update", `use "vsfleet capture update RUN"`},
+		{"prune", `use "vsfleet capture prune"`},
+		{"report", `use "vsfleet describe capture RUN", e.g. "vsfleet describe capture latest"`},
 		{"findings", `use "vsfleet analyze health"`},
 		{"readiness", `use "vsfleet analyze readiness"`},
 		{"network-readiness", `use "vsfleet analyze readiness network cl/SOURCE cl/TARGET"`},
@@ -93,6 +85,7 @@ always describe the estate as it was when the capture was taken.`),
 		cmd.AddCommand(renamedCommand(r.name, nil, r.hint))
 	}
 	cmd.AddCommand(renamedTrendsCommand())
+	cmd.AddCommand(renamedPerfCommand())
 	cmd.AddCommand(renamedCommand("inventory", nil, `use "vsfleet get KIND --run RUN", e.g. "vsfleet get vms,hosts --run latest -A"`))
 	return cmd
 }
@@ -433,122 +426,6 @@ func nonemptyExport(value, fallback string) string {
 	return fallback
 }
 
-func newAssessmentReportCommand(a *App) *cobra.Command {
-	var older string
-	cmd := &cobra.Command{Use: "report [RUN]", Short: "Render a point-in-time assessment report", Example: `  # Report on the most recent capture
-  vsfleet assessment report
-
-  # Report on a labelled capture
-  vsfleet assessment report pre-migration
-
-  # Count snapshots older than 90 days as stale, as JSON
-  vsfleet assessment report --older-than 90d -o json`, Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		selector := "latest"
-		if len(args) == 1 {
-			selector = args[0]
-		}
-		runID, err := s.ResolveRun(cmd.Context(), selector)
-		if err != nil {
-			return err
-		}
-		age, err := parseHumanDuration(older)
-		if err != nil {
-			return fmt.Errorf("--older-than: %w", err)
-		}
-		report, err := s.ReportForContexts(cmd.Context(), runID, age, a.StoredContextNames())
-		if err != nil {
-			return err
-		}
-		performance, err := s.PerformanceSummary(cmd.Context(), runID, a.StoredContextNames())
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), struct {
-				assessment.AssessmentReport
-				Performance []assessment.PerfSummary `json:"performance"`
-			}{report, performance})
-		}
-		fmt.Fprintf(a.out(), "Assessment %d  %s  %s\n", report.Run.ID, report.Run.Status, report.Run.StartedAt.Local().Format("2006-01-02 15:04:05"))
-		fmt.Fprintf(a.out(), "VMs: %d  Hosts: %d  Clusters: %d  Datastores: %d  Snapshots: %d (%d stale)\n", report.VMCount, report.HostCount, report.ClusterCount, report.DatastoreCount, report.SnapshotTotal, report.SnapshotStale)
-		t := newTable(a.out(), "CONTEXT", "KIND", "STATUS", "ITEMS", "ERROR")
-		for _, c := range report.Coverage {
-			t.row(c.Context, c.Kind, c.Status, itoa(c.ItemCount), c.Error)
-		}
-		t.flush()
-		printPerformanceSummary(a, performance)
-		for _, w := range report.Warnings {
-			fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, w)
-		}
-		return nil
-	}}
-	cmd.Flags().StringVar(&older, "older-than", "30d", "stale snapshot threshold (e.g. 30d, 2w)")
-	return cmd
-}
-
-func newAssessmentPruneCommand(a *App) *cobra.Command {
-	var older string
-	var keepLast int
-	var execute bool
-	cmd := &cobra.Command{Use: "prune", Short: "Prune old assessment history", Long: strings.TrimSpace(`
-Delete old captures from the local history database.
-
-Pruning is a dry run unless --execute is passed, so the default output is a
-preview of what would go. Pinned captures are never pruned.`), Example: `  # Preview what a prune would remove (nothing is deleted)
-  vsfleet assessment prune --older-than 90d
-
-  # Actually remove them, keeping the 5 newest complete captures
-  vsfleet assessment prune --older-than 90d --keep-last 5 --execute`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := rejectStoredContextSelection(cmd, "prune"); err != nil {
-			return err
-		}
-		d, err := parseHumanDuration(older)
-		if err != nil || d <= 0 {
-			if err == nil {
-				err = fmt.Errorf("duration must be greater than zero")
-			}
-			return fmt.Errorf("--older-than: %w", err)
-		}
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		result, err := s.Prune(cmd.Context(), d, keepLast, execute)
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), result)
-		}
-		mode := "dry-run"
-		if execute {
-			mode = "deleted"
-		}
-		fmt.Fprintf(a.out(), "assessment prune %s: %d candidate(s)\n", mode, len(result.Candidates))
-		for _, c := range result.Candidates {
-			fmt.Fprintf(a.out(), "  #%d %s %s (%s)\n", c.Run.ID, c.Run.Status, c.Run.StartedAt.Local().Format("2006-01-02 15:04:05"), humanBytes(c.Bytes))
-		}
-		if result.PerfWindows > 0 {
-			fmt.Fprintf(a.out(), "performance windows older than the cutoff: %d (the newest per context is kept)\n", result.PerfWindows)
-		}
-		if execute {
-			fmt.Fprintf(a.out(), "deleted: %d\n", result.Deleted)
-			if result.PerfWindows > 0 {
-				fmt.Fprintf(a.out(), "performance windows deleted: %d\n", result.PerfDeleted)
-			}
-		}
-		return nil
-	}}
-	cmd.Flags().StringVar(&older, "older-than", "", "required age of runs to consider (e.g. 90d)")
-	cmd.Flags().IntVar(&keepLast, "keep-last", 2, "preserve this many newest completed runs")
-	cmd.Flags().BoolVar(&execute, "execute", false, "perform deletion (default is a dry run)")
-	return cmd
-}
-
 func newAssessmentBackupCommand(a *App) *cobra.Command {
 	var force bool
 	cmd := &cobra.Command{Use: "backup FILE", Short: "Create a consistent SQLite history backup", Example: `  # Back the history database up to a file
@@ -679,410 +556,6 @@ func sparkline(values []float64) string {
 	return b.String()
 }
 
-func newAssessmentRunCommand(a *App) *cobra.Command {
-	var label, note string
-	var pin bool
-	var browseDatastores, includeLicenses bool
-	var fileInventory bool
-	var inventoryMaxFiles, inventoryMaxTotal int
-	var inventoryTimeout time.Duration
-	var failOnPartial bool
-	cmd := &cobra.Command{Use: "run", Short: "Capture a point-in-time inventory assessment", Long: strings.TrimSpace(`
-Read inventory from the selected contexts and store it as one immutable
-capture in the local history database.
-
-Apart from "perf collect", this is the only assessment subcommand that contacts
-a vCenter; everything else reads back what it stored. A capture that reaches some contexts but not
-all is stored as partial and says so.`), Example: `  # Capture the current context
-  vsfleet assessment run
-
-  # Capture the whole estate under a stable label
-  vsfleet assessment run --all-contexts --label nightly
-
-  # Also record datastore VMDK files, so "analyze orphans" has evidence
-  vsfleet assessment run --all-contexts --browse-datastores
-
-  # Also record license products, usage, expiration and host assignments for a
-  # licensing review (keys are never stored or exported)
-  vsfleet assessment run --all-contexts --include-licenses
-
-  # Also list every datastore file, for the optional vFileInfo export tab.
-  # Opt-in and bounded; exports filenames and paths (see docs/assessments.md)
-  vsfleet assessment run --all-contexts --datastore-file-inventory
-
-  # Pin a baseline so pruning never removes it
-  vsfleet assessment run --all-contexts --label pre-migration --pin
-
-  # Gate a scheduled job: exit 3 when a site was unreachable
-  vsfleet assessment run --all-contexts --fail-on-partial`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		inventoryOptions, err := fileInventoryOptions(cmd, fileInventory, inventoryMaxFiles, inventoryMaxTotal, inventoryTimeout)
-		if err != nil {
-			return err
-		}
-		contexts, err := a.Contexts()
-		if err != nil {
-			return err
-		}
-		service, err := a.Assessment()
-		if err != nil {
-			return err
-		}
-		run, err := service.Capture(cmd.Context(), assessment.CaptureOptions{Contexts: contexts, Source: "cli", Label: label, Note: note, Pinned: pin, BrowseDatastores: browseDatastores, IncludeLicenses: includeLicenses, FileInventory: inventoryOptions, ToolVersion: version.String(), InventorySchemaVersion: assessment.CurrentInventorySchemaVersion, Progress: func(p assessment.ContextProgress) {
-			if p.Error != nil {
-				fmt.Fprintf(a.errOut(), "%s %s: %v\n", glyphFail, p.Context, p.Error)
-			}
-			for _, collection := range p.Collections {
-				if collection.Kind == assessment.LicenseKind && collection.Status != "success" && collection.Status != "empty" {
-					fmt.Fprintf(a.errOut(), "%s %s license collection %s: %v\n", glyphFail, p.Context, collection.Status, collection.Error)
-				}
-			}
-		}})
-		if err != nil {
-			return err
-		}
-		var coverage []assessment.FileInventoryContext
-		var browse assessment.BrowseSummary
-		if inventoryOptions != nil || browseDatastores {
-			// Read the stored evidence back rather than trusting in-memory
-			// state, so what is reported is exactly what an export will say.
-			if store, storeErr := a.History(); storeErr == nil {
-				if data, loadErr := store.LoadExportData(cmd.Context(), run.ID); loadErr == nil {
-					if inventoryOptions != nil {
-						coverage = assessment.FileInventoryCoverage(data)
-					}
-					if browseDatastores {
-						browse = assessment.SummarizeBrowse(data)
-					}
-				} else {
-					fmt.Fprintf(a.errOut(), "%s capture coverage could not be read back: %v\n", glyphFail, loadErr)
-				}
-			}
-		}
-		if a.json() {
-			payload := struct {
-				assessment.Run
-				DatastoreBrowse *assessment.BrowseSummary         `json:"datastore_browse,omitempty"`
-				FileInventory   []assessment.FileInventoryContext `json:"file_inventory,omitempty"`
-			}{Run: run, FileInventory: coverage}
-			if browse.Requested {
-				payload.DatastoreBrowse = &browse
-			}
-			if writeErr := writeJSON(a.out(), payload); writeErr != nil {
-				return writeErr
-			}
-		} else {
-			printRun(a.out(), run, browse.Note())
-			printFileInventoryCoverage(a.out(), coverage)
-		}
-		for _, warning := range fileInventoryWarnings(coverage) {
-			fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, warning)
-		}
-		if run.Status == assessment.RunFailed {
-			return fmt.Errorf("assessment %d failed: no context returned VM inventory", run.ID)
-		}
-		if failOnPartial && run.Status == assessment.RunPartial {
-			return &partialExitError{runID: run.ID, successful: run.SuccessfulContexts, total: run.RequestedContexts}
-		}
-		return nil
-	}}
-	cmd.Flags().StringVar(&label, "label", "", "stable label for this assessment (used as a selector)")
-	cmd.Flags().StringVar(&note, "note", "", "operator note stored with this assessment")
-	cmd.Flags().BoolVar(&pin, "pin", false, "pin this assessment against deletion")
-	cmd.Flags().BoolVar(&browseDatastores, "browse-datastores", false, "record VM disk files from each accessible datastore (requires Datastore.Browse; adds time on large estates)")
-	cmd.Flags().BoolVar(&includeLicenses, "include-licenses", false, "record license products, usage, expiration and host assignments (read-only; needs the Global.Licenses privilege; license keys are never stored)")
-	cmd.Flags().BoolVar(&fileInventory, "datastore-file-inventory", false, "also list every file on each accessible datastore for the optional vFileInfo export tab (opt-in; needs Datastore.Browse; exports filenames and paths; bounded by the --file-inventory-* limits; independent of --browse-datastores)")
-	cmd.Flags().IntVar(&inventoryMaxFiles, "file-inventory-max-files", vsphere.DefaultFileInventoryMaxFiles, "with --datastore-file-inventory: most file rows kept per datastore; a datastore that hits it is recorded as truncated, never complete")
-	cmd.Flags().IntVar(&inventoryMaxTotal, "file-inventory-max-total-files", vsphere.DefaultFileInventoryMaxTotalFiles, "with --datastore-file-inventory: most file rows kept per context; datastores not reached are recorded as skipped")
-	cmd.Flags().DurationVar(&inventoryTimeout, "file-inventory-timeout", vsphere.DefaultFileInventoryDatastoreTimeout, "with --datastore-file-inventory: time allowed to list one datastore before it is recorded as failed (each context also gets three times this, at most)")
-	cmd.Flags().BoolVar(&failOnPartial, "fail-on-partial", false, "exit 3 when the capture stored evidence from some contexts but not all")
-	return cmd
-}
-
-func newAssessmentListCommand(a *App) *cobra.Command {
-	return &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List stored assessments", Long: strings.TrimSpace(`
-List the captures in the local history database, newest first.
-
-The ID and label columns are what every other subcommand accepts as its RUN
-argument, alongside the selector "latest".`), Example: `  # Every stored capture, newest first
-  vsfleet assessment list
-
-  # As JSON, to pick a run ID in a script
-  vsfleet assessment list -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := rejectStoredContextSelection(cmd, "list"); err != nil {
-			return err
-		}
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		runs, err := s.Runs(cmd.Context())
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), runs)
-		}
-		t := newTable(a.out(), "ID", "LABEL", "SOURCE", "STARTED", "STATUS", "CONTEXTS", "SUCCESSFUL")
-		for _, r := range runs {
-			label := r.Label
-			if r.Pinned {
-				label = "📌 " + label
-			}
-			t.row(strconv.FormatInt(r.ID, 10), label, dash(r.Source), r.StartedAt.Local().Format("2006-01-02 15:04:05"), string(r.Status), itoa(r.RequestedContexts), itoa(r.SuccessfulContexts))
-		}
-		t.flush()
-		return nil
-	}}
-}
-
-func newAssessmentDiffCommand(a *App) *cobra.Command {
-	var runtime bool
-	var failOn []string
-	var maxAge string
-	var requireComplete bool
-	cmd := &cobra.Command{Use: "diff [BASE] [TARGET]", Short: "Compare two assessments", Long: strings.TrimSpace(`
-Compare two stored captures and report what changed between them.
-
-BASE and TARGET are assessment IDs or labels from "vsfleet assessment list",
-or the selector "latest". With no arguments the two most recent captures are
-compared; with one, it is compared against the most recent.
-
-Volatile runtime fields — power state, guest, IP, tools, storage — are left
-out unless --include-runtime is passed, so ordinary churn does not drown the
-structural changes.`), Example: `  # The two most recent captures
-  vsfleet assessment diff
-
-  # A labelled baseline against the most recent capture
-  vsfleet assessment diff pre-migration latest
-
-  # Two captures by ID, including volatile runtime fields
-  vsfleet assessment diff 41 42 --include-runtime
-
-  # Gate a pipeline: exit 2 when VMs were removed or networks changed
-  vsfleet assessment diff --fail-on removed,network-changed
-
-  # Refuse to report on captures that are not fully comparable
-  vsfleet assessment diff --require-complete`, Args: cobra.MaximumNArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		base, target, err := resolveRunPair(cmd.Context(), s, args)
-		if err != nil {
-			return err
-		}
-		d, err := s.DiffForContexts(cmd.Context(), base, target, runtime, a.StoredContextNames())
-		if err != nil {
-			return err
-		}
-		age, err := parseHumanDuration(maxAge)
-		if err != nil {
-			return fmt.Errorf("--max-snapshot-age: %w", err)
-		}
-		for _, rule := range failOn {
-			if !validPolicyRule(rule) {
-				return fmt.Errorf("unknown --fail-on rule %q", rule)
-			}
-		}
-		if len(failOn) > 0 || age > 0 || requireComplete {
-			policy := assessment.EvaluatePolicy(d, assessment.PolicyOptions{FailOn: failOn, MaxSnapshotAge: age, RequireComplete: requireComplete})
-			d.Policy = &policy
-		}
-		if a.json() {
-			if err := writeJSON(a.out(), d); err != nil {
-				return err
-			}
-			if d.Policy != nil && !d.Policy.Passed {
-				return &policyExitError{violations: d.Policy.Violations}
-			}
-			return nil
-		}
-		fmt.Fprintf(a.out(), "Assessment %d → %d  (%s → %s)\n", d.Base.ID, d.Target.ID, d.Base.Status, d.Target.Status)
-		fmt.Fprintf(a.out(), "Appeared: %d  Vanished: %d  Moved: %d  Modified: %d  Resources: %d  Snapshots: %d\n", d.Counts.Appeared, d.Counts.Vanished, d.Counts.Moved, d.Counts.Modified, d.Counts.Resources, d.Counts.Snapshots)
-		t := newTable(a.out(), "CHANGE", "RESOURCE", "CONTEXT", "DETAIL")
-		for _, v := range d.VMs {
-			t.row(strings.Join(v.Changes, ","), v.Name, v.Context, changeDetail(v))
-		}
-		for _, v := range d.Snapshots {
-			t.row("snapshot "+v.Kind, v.VMName, v.Context, v.Name)
-		}
-		for _, r := range d.Resources {
-			t.row(strings.Join(r.Changes, ","), r.Kind+"/"+r.Name, r.Context, resourceChangeDetail(r))
-		}
-		t.flush()
-		for _, w := range d.Warnings {
-			fmt.Fprintf(a.errOut(), "%s %s\n", glyphFail, w)
-		}
-		if d.Policy != nil {
-			if d.Policy.Passed {
-				fmt.Fprintln(a.out(), "policy: PASS")
-			} else {
-				for _, v := range d.Policy.Violations {
-					fmt.Fprintf(a.out(), "policy: FAIL [%s] %s\n", v.Rule, v.Message)
-				}
-				return &policyExitError{violations: d.Policy.Violations}
-			}
-		}
-		return nil
-	}}
-	cmd.Flags().BoolVar(&runtime, "include-runtime", false, "include volatile power, guest, IP, tools, and storage changes")
-	cmd.Flags().StringSliceVar(&failOn, "fail-on", nil, "fail with exit code 2 when a change category appears (repeat or comma-separate)")
-	cmd.Flags().StringVar(&maxAge, "max-snapshot-age", "", "fail when a target snapshot is at least this old (e.g. 30d, 2w)")
-	cmd.Flags().BoolVar(&requireComplete, "require-complete", false, "fail unless both runs are complete and fully comparable")
-	return cmd
-}
-
-func newAssessmentDeleteCommand(a *App) *cobra.Command {
-	var force bool
-	cmd := &cobra.Command{Use: "delete RUN", Short: "Delete one stored assessment", Example: `  # Delete one capture by ID (deletion must be confirmed)
-  vsfleet assessment delete 42 --force
-
-  # Delete a labelled capture
-  vsfleet assessment delete nightly --force`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if err := rejectStoredContextSelection(cmd, "delete"); err != nil {
-			return err
-		}
-		if !force {
-			return fmt.Errorf("deleting assessment history requires --force")
-		}
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		id, err := s.ResolveRun(cmd.Context(), args[0])
-		if err != nil {
-			return err
-		}
-		run, err := s.GetRun(cmd.Context(), id)
-		if err != nil {
-			return err
-		}
-		if err := s.DeleteRun(cmd.Context(), id); err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), map[string]assessment.Run{"deleted": run})
-		}
-		fmt.Fprintf(a.out(), "deleted assessment %s\n", args[0])
-		return nil
-	}}
-	cmd.Flags().BoolVar(&force, "force", false, "confirm deletion")
-	return cmd
-}
-
-func newAssessmentUpdateCommand(a *App) *cobra.Command {
-	var label, note string
-	var pin, unpin bool
-	cmd := &cobra.Command{Use: "update RUN", Short: "Update assessment label, note, or pin", Example: `  # Label a capture so other commands can select it by name
-  vsfleet assessment update 42 --label pre-migration
-
-  # Pin it against pruning, with a note
-  vsfleet assessment update 42 --pin --note "baseline for the Q3 migration"
-
-  # Clear the note and unpin
-  vsfleet assessment update 42 --note "" --unpin`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if err := rejectStoredContextSelection(cmd, "update"); err != nil {
-			return err
-		}
-		if pin && unpin {
-			return fmt.Errorf("--pin and --unpin cannot be combined")
-		}
-		if !cmd.Flags().Changed("label") && !cmd.Flags().Changed("note") && !pin && !unpin {
-			return fmt.Errorf("at least one metadata change is required")
-		}
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		var lp, np *string
-		var pp *bool
-		if cmd.Flags().Changed("label") {
-			lp = &label
-		}
-		if cmd.Flags().Changed("note") {
-			np = &note
-		}
-		if pin || unpin {
-			v := pin
-			pp = &v
-		}
-		run, err := s.UpdateRunFields(cmd.Context(), args[0], lp, np, pp)
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), run)
-		}
-		printRun(a.out(), run)
-		return nil
-	}}
-	cmd.Flags().StringVar(&label, "label", "", "set the run label (empty clears it)")
-	cmd.Flags().StringVar(&note, "note", "", "set the run note (empty clears it)")
-	cmd.Flags().BoolVar(&pin, "pin", false, "pin the run")
-	cmd.Flags().BoolVar(&unpin, "unpin", false, "unpin the run")
-	return cmd
-}
-
-func resolveRunPair(ctx context.Context, s *assessment.Store, args []string) (int64, int64, error) {
-	runs, err := s.Runs(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(runs) < 2 {
-		return 0, 0, fmt.Errorf("need at least two assessments to compare")
-	}
-	if len(args) == 0 {
-		return runs[1].ID, runs[0].ID, nil
-	}
-	if len(args) == 1 {
-		target, err := runSelector(args[0], runs)
-		if err != nil {
-			return 0, 0, err
-		}
-		for _, r := range runs {
-			if r.ID != target && r.StartedAt.Before(targetTime(runs, target)) {
-				return r.ID, target, nil
-			}
-		}
-		return 0, 0, fmt.Errorf("no baseline assessment before %s", args[0])
-	}
-	base, err := runSelector(args[0], runs)
-	if err != nil {
-		return 0, 0, err
-	}
-	target, err := runSelector(args[1], runs)
-	if err != nil {
-		return 0, 0, err
-	}
-	return base, target, nil
-}
-func runSelector(v string, runs []assessment.Run) (int64, error) {
-	if v == "latest" {
-		return runs[0].ID, nil
-	}
-	if v == "previous" {
-		if len(runs) < 2 {
-			return 0, fmt.Errorf("no previous assessment")
-		}
-		return runs[1].ID, nil
-	}
-	id, err := strconv.ParseInt(v, 10, 64)
-	if err != nil {
-		for _, r := range runs {
-			if r.Label != "" && strings.EqualFold(r.Label, v) {
-				return r.ID, nil
-			}
-		}
-		return 0, fmt.Errorf("assessment selector %q is not a number, label, latest, or previous", v)
-	}
-	for _, r := range runs {
-		if r.ID == id {
-			return id, nil
-		}
-	}
-	return 0, fmt.Errorf("assessment %d not found", id)
-}
-
 var durationToken = regexp.MustCompile(`(?i)(\d+(?:\.\d+)?)([smhdw])`)
 
 var byteToken = regexp.MustCompile(`(?i)^([0-9]+(?:\.[0-9]+)?)\s*(b|k|kb|ki|kib|m|mb|mi|mib|g|gb|gi|gib|t|tb|ti|tib|p|pb|pi|pib)?$`)
@@ -1159,64 +632,6 @@ func parseHumanBytes(value string) (float64, error) {
 		n *= 1024
 	}
 	return n, nil
-}
-
-func validPolicyRule(rule string) bool {
-	switch rule {
-	case "appeared", "vanished", "moved", "modified", "snapshot-created", "snapshot-removed", "snapshot-changed":
-		return true
-	}
-	if strings.HasPrefix(rule, "host-") || strings.HasPrefix(rule, "cluster-") || strings.HasPrefix(rule, "datastore-") {
-		kind, change := strings.SplitN(rule, "-", 2)[0], strings.SplitN(rule, "-", 2)[1]
-		return (kind == "host" || kind == "cluster" || kind == "datastore") && (change == "appeared" || change == "vanished" || change == "modified")
-	}
-	return false
-}
-
-func targetTime(runs []assessment.Run, id int64) time.Time {
-	for _, r := range runs {
-		if r.ID == id {
-			return r.StartedAt
-		}
-	}
-	return time.Time{}
-}
-func printRun(out interface{ Write([]byte) (int, error) }, r assessment.Run, notes ...string) {
-	label := ""
-	if r.Label != "" {
-		label = " label=" + r.Label
-	}
-	if r.Pinned {
-		label += " pinned"
-	}
-	detail := fmt.Sprintf("%d/%d contexts successful", r.SuccessfulContexts, r.RequestedContexts)
-	for _, note := range notes {
-		if note != "" {
-			detail += ", " + note
-		}
-	}
-	fmt.Fprintf(out, "assessment %d: %s%s (%s)\n", r.ID, r.Status, label, detail)
-}
-func changeDetail(v assessment.VMChange) string {
-	if len(v.Fields) == 0 {
-		return ""
-	}
-	parts := make([]string, len(v.Fields))
-	for i, f := range v.Fields {
-		parts[i] = f.Field + ":" + f.Before + "→" + f.After
-	}
-	return strings.Join(parts, " ")
-}
-
-func resourceChangeDetail(v assessment.ResourceChange) string {
-	if len(v.Fields) == 0 {
-		return ""
-	}
-	parts := make([]string, len(v.Fields))
-	for i, f := range v.Fields {
-		parts[i] = f.Field + ":" + f.Before + "→" + f.After
-	}
-	return strings.Join(parts, " ")
 }
 
 // fileInventoryOptions turns the opt-in flag and its limits into capture

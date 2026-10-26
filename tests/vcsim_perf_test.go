@@ -42,13 +42,13 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	addFixtureContexts(t, r, fixture)
 	historyDB := filepath.Join(t.TempDir(), "history.db")
 	perfArgs := func(args ...string) []string {
-		return append([]string{"--history-db", historyDB, "--all-contexts", "-o", "json", "assessment", "perf"}, args...)
+		return append([]string{"--history-db", historyDB, "--all-contexts", "-o", "json"}, args...)
 	}
 
 	// Requested VMs follow the inventory shape asserted in
 	// TestVCSIMMultiContextInventoryAndProvenance: 12 in vc-prod, 2 in vc-edge.
 	wantVMs := map[string]int{"vc-prod": 12, "vc-edge": 2}
-	collected := decodePerfWindows(t, vcsimJSON(t, r, perfArgs("collect", "--window", "1h")...))
+	collected := decodePerfWindows(t, vcsimJSON(t, r, perfArgs("capture", "perf", "--window", "1h")...))
 	if len(collected) != 2 {
 		t.Fatalf("collected windows for %d contexts, want vc-prod and vc-edge: %+v", len(collected), collected)
 	}
@@ -77,7 +77,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 		t.Fatalf("contexts share identity: %+v", collected)
 	}
 
-	listed := decodePerfWindows(t, vcsimJSON(t, r, perfArgs("list")...))
+	listed := decodePerfWindows(t, vcsimJSON(t, r, perfArgs("get", "perfcollections")...))
 	for name, w := range collected {
 		got, ok := listed[name]
 		if !ok || got.ID != w.ID || got.Status != perf.WindowSuccess || got.Endpoint != w.Endpoint || got.VCenterID != w.VCenterID || got.Source != w.Source || got.VMsSampled != w.VMsSampled {
@@ -110,7 +110,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	// Take vc-edge down. The other context still collects, so the command
 	// succeeds overall, and the loss must be visible in JSON and text output.
 	fixture.Endpoints["vc-edge"].Kill()
-	after := decodePerfWindows(t, vcsimJSON(t, r, perfArgs("collect", "--window", "1h")...))
+	after := decodePerfWindows(t, vcsimJSON(t, r, perfArgs("capture", "perf", "--window", "1h")...))
 	prod, edge := after["vc-prod"], after["vc-edge"]
 	if prod.Status != perf.WindowSuccess || prod.VMsSampled != wantVMs["vc-prod"] {
 		t.Fatalf("healthy vc-prod window after the loss=%+v, want an unaffected success", prod)
@@ -121,7 +121,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	if edge.ID == collected["vc-edge"].ID {
 		t.Fatalf("failed attempt overwrote the earlier successful vc-edge window %d", edge.ID)
 	}
-	listedRaw := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "assessment", "perf", "list")
+	listedRaw := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "get", "perfcollections")
 	var history []perf.Window
 	if err := json.Unmarshal([]byte(listedRaw), &history); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 		t.Fatalf("perf list statuses=%v, want vc-prod 2 success and vc-edge 1 success plus 1 failed: %s", statuses, listedRaw)
 	}
 
-	stdout, stderr, err := r.run("", "--history-db", historyDB, "--all-contexts", "assessment", "perf", "collect", "--window", "1h")
+	stdout, stderr, err := r.run("", "--history-db", historyDB, "--all-contexts", "capture", "perf", "--window", "1h")
 	if err != nil {
 		t.Fatalf("text collect with one healthy context: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
 	}
@@ -157,7 +157,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	// With every endpoint down the command must fail in both output modes, and
 	// JSON callers still receive the failed windows on stdout.
 	fixture.Endpoints["vc-prod"].Kill()
-	stdout, stderr, err = r.run("", perfArgs("collect", "--window", "1h")...)
+	stdout, stderr, err = r.run("", perfArgs("capture", "perf", "--window", "1h")...)
 	if err == nil || !strings.Contains(err.Error()+stderr, "failed for every context") {
 		t.Fatalf("JSON collect with no healthy context err=%v, want a failure\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
 	}
@@ -166,7 +166,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 			t.Fatalf("%s window with no healthy context=%+v, want failed with an error", name, w)
 		}
 	}
-	if _, stderr, err = r.run("", "--history-db", historyDB, "--all-contexts", "assessment", "perf", "collect", "--window", "1h"); err == nil {
+	if _, stderr, err = r.run("", "--history-db", historyDB, "--all-contexts", "capture", "perf", "--window", "1h"); err == nil {
 		t.Fatalf("text collect with no healthy context succeeded\nstderr:\n%s", stderr)
 	}
 }

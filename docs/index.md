@@ -39,7 +39,7 @@ and writes no state. Screens are marked `DEMO · SAMPLE DATA`.
 ## Work with assessments
 
 ```sh
-vsfleet assessment run --all-contexts --label q3-audit
+vsfleet capture run --all-contexts --label q3-audit
 vsfleet assessment export --format rvtools --file estate.xlsx
 ```
 

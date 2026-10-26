@@ -19,7 +19,7 @@ import (
 // actually win rather than merely avoid an error.
 func TestAllContextsOverridesContextForAssessmentReport(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
-	stdout, _, err := runCLI(t, dbPath, "assessment", "report", "--context", "missing", "--all-contexts", "-o", "json")
+	stdout, _, err := runCLI(t, dbPath, "describe", "capture", "latest", "--context", "missing", "--all-contexts", "-o", "json")
 	if err != nil {
 		t.Fatalf("--all-contexts should override unknown --context: %v", err)
 	}

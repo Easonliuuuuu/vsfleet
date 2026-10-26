@@ -46,7 +46,7 @@ on `vsfleetCoverage`.
 estates costs time, storage, and an additional privilege, and exposes names.
 
 ```sh
-vsfleet assessment run --all-contexts --datastore-file-inventory
+vsfleet capture run --all-contexts --datastore-file-inventory
 vsfleet assessment export latest --format rvtools --file ./estate.xlsx
 ```
 
@@ -154,7 +154,7 @@ Schedule file inventory only with appropriate database/export protection.
 
 ## Importing an RVTools export
 
-`vsfleet import rvtools` loads compatible workbooks into assessment history
+`vsfleet capture import rvtools` loads compatible workbooks into assessment history
 for `diff`, `describe vm --history`, `get --run`, `trends`, and `topology`. Missing worksheets and
 columns become explicit coverage gaps, never confirmed zeroes. See [Importing RVTools
 exports](commands.md#importing-rvtools-exports).

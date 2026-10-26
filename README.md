@@ -134,8 +134,8 @@ vsfleet get all '*ubuntu*' -A
 ### 4. Capture and export
 
 ```sh
-vsfleet assessment run --all-contexts --label first-capture
-vsfleet assessment report latest
+vsfleet capture run --all-contexts --label first-capture
+vsfleet describe capture latest
 vsfleet assessment export --format rvtools --file estate.xlsx
 ```
 

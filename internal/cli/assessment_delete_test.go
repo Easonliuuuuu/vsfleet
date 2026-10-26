@@ -15,12 +15,12 @@ func TestAssessmentDeleteOutput(t *testing.T) {
 		args     []string
 		wantText string
 	}{
-		{name: "text", args: []string{"assessment", "delete", "nightly", "--force"}, wantText: "deleted assessment nightly\n"},
-		{name: "json", args: []string{"-o", "json", "assessment", "delete", "nightly", "--force"}},
+		{name: "text", args: []string{"capture", "delete", "nightly", "--force"}, wantText: "deleted capture nightly\n"},
+		{name: "json", args: []string{"-o", "json", "capture", "delete", "nightly", "--force"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dbPath := seedHistory(t, time.Now().UTC().Truncate(time.Second), "", assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success"})
-			if _, _, err := runCLI(t, dbPath, "assessment", "update", "latest", "--label", "nightly"); err != nil {
+			if _, _, err := runCLI(t, dbPath, "capture", "update", "latest", "--label", "nightly"); err != nil {
 				t.Fatalf("label run: %v", err)
 			}
 			stdout, _, err := runCLI(t, dbPath, tc.args...)

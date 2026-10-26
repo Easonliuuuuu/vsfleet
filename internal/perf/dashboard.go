@@ -1,7 +1,7 @@
 package perf
 
 // Metrics read only for the VM and vApp dashboards. They are kept out of
-// Counters on purpose: Counters drives estate-wide `assessment perf`
+// Counters on purpose: Counters drives estate-wide `capture perf`
 // collection, whose batches are sized against vCenter's default limit of 64
 // metrics per query and whose stored summaries feed the sizing signal.
 // DashboardCounters is read for one VM, or a vApp's members in batches small

@@ -26,7 +26,7 @@ const (
 	FileInventoryNotRecorded = "not recorded"
 
 	// FileInventoryNotRequestedMessage explains a context with no inventory.
-	FileInventoryNotRequestedMessage = "datastore file inventory was not requested for this capture (assessment run --datastore-file-inventory); vFileInfo says nothing about the files on this context's datastores"
+	FileInventoryNotRequestedMessage = "datastore file inventory was not requested for this capture (capture run --datastore-file-inventory); vFileInfo says nothing about the files on this context's datastores"
 )
 
 // FileInventoryDatastore is one datastore's inventory coverage in a stored run.

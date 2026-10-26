@@ -142,7 +142,7 @@ func TestDefaultAssessmentDoesNotCollectLicenses(t *testing.T) {
 	historyDir := t.TempDir()
 	historyDB := filepath.Join(historyDir, "history.db")
 
-	stdout, stderr, err := r.run("", "--history-db", historyDB, "assessment", "run", "--all-contexts")
+	stdout, stderr, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts")
 	if err != nil {
 		t.Fatalf("assessment run: %v\n%s", err, stderr)
 	}
@@ -155,7 +155,7 @@ func TestDefaultAssessmentDoesNotCollectLicenses(t *testing.T) {
 	if _, _, found := coverageStatus(t, dir, "vLicense"); found {
 		t.Fatal("a default assessment has vLicense coverage; it must not claim to have looked")
 	}
-	report := r.mustRun("", "--history-db", historyDB, "assessment", "report", "latest", "-o", "json")
+	report := r.mustRun("", "--history-db", historyDB, "describe", "capture", "latest", "-o", "json")
 	if strings.Contains(report, `"license"`) {
 		t.Fatalf("default report mentions a license collection:\n%s", report)
 	}
@@ -183,11 +183,11 @@ func TestLicenseAssessmentReportsMetadataAndNeverAKey(t *testing.T) {
 		transcript.WriteString(stdout + stderr)
 		return stdout
 	}
-	runJSON := run("assessment", "run", "--all-contexts", "--include-licenses", "-o", "json")
+	runJSON := run("capture", "run", "--all-contexts", "--include-licenses", "-o", "json")
 	if !strings.Contains(runJSON, `"status": "complete"`) && !strings.Contains(runJSON, `"status":"complete"`) {
 		t.Fatalf("a fully answered licensed run should be complete:\n%s", runJSON)
 	}
-	reportJSON := run("assessment", "report", "latest", "-o", "json")
+	reportJSON := run("describe", "capture", "latest", "-o", "json")
 	if !strings.Contains(reportJSON, `"license"`) {
 		t.Fatalf("report does not show the license collection:\n%s", reportJSON)
 	}
@@ -271,7 +271,7 @@ func TestLicenseAssessmentWithDeniedAssignmentsIsExplicit(t *testing.T) {
 	historyDir := t.TempDir()
 	historyDB := filepath.Join(historyDir, "history.db")
 
-	stdout, stderr, err := r.run("", "--history-db", historyDB, "assessment", "run", "--all-contexts", "--include-licenses")
+	stdout, stderr, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts", "--include-licenses")
 	if err != nil {
 		t.Fatalf("assessment run: %v\n%s", err, stderr)
 	}
@@ -279,7 +279,7 @@ func TestLicenseAssessmentWithDeniedAssignmentsIsExplicit(t *testing.T) {
 		t.Fatalf("denied license assignments must surface as a partial run.\nstdout=%s\nstderr=%s", stdout, stderr)
 	}
 	// --fail-on-partial gates automation on it.
-	if _, _, err := r.run("", "--history-db", historyDB, "assessment", "run", "--all-contexts", "--include-licenses", "--fail-on-partial"); err == nil {
+	if _, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts", "--include-licenses", "--fail-on-partial"); err == nil {
 		t.Fatal("--fail-on-partial did not fail for a denied license collection")
 	}
 	dir := filepath.Join(t.TempDir(), "csv")
@@ -310,7 +310,7 @@ func TestLicenseAssessmentWithEmptyListIsUnavailable(t *testing.T) {
 	r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
 	historyDB := filepath.Join(t.TempDir(), "history.db")
 
-	stdout, stderr, err := r.run("", "--history-db", historyDB, "assessment", "run", "--all-contexts", "--include-licenses")
+	stdout, stderr, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts", "--include-licenses")
 	if err != nil {
 		t.Fatalf("assessment run: %v\n%s", err, stderr)
 	}

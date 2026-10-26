@@ -29,6 +29,9 @@ type Kind struct {
 	Live bool `json:"live"`
 	// Stored is true when an assessment capture records the kind.
 	Stored bool `json:"stored"`
+	// History is true for a kind the local history database keeps as an
+	// object of its own, such as a capture, rather than inside a capture.
+	History bool `json:"history,omitempty"`
 	// Description is a one-line summary for api-resources.
 	Description string `json:"description"`
 }
@@ -60,6 +63,8 @@ var registry = []Kind{
 	{Name: "vmkernel", Plural: "vmkernels", ShortNames: []string{"vmk"}, Aliases: []string{"vmks"}, Live: true, Stored: true, Description: "Host VMkernel adapters"},
 	{Name: "multipath", Plural: "multipaths", ShortNames: []string{"mp"}, Live: true, Stored: true, Description: "Host/LUN multipath aggregates"},
 	{Name: "event", Plural: "events", ShortNames: []string{"ev"}, Live: true, Description: "vCenter events"},
+	{Name: "capture", Plural: "captures", Aliases: []string{"assessment", "assessments"}, History: true, Description: "Stored captures, the snapshots --run reads"},
+	{Name: "perfcollection", Plural: "perfcollections", History: true, Description: "Stored VM performance collections, the windows top reads"},
 }
 
 // All returns every kind in display order.

@@ -12,28 +12,6 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/rvimport"
 )
 
-// newImportCommand groups every offline import path into assessment history.
-// Import is deliberately its own top-level verb rather than an "assessment"
-// subcommand: it never contacts a vCenter, and grouping it with capture would
-// suggest it does.
-func newImportCommand(a *App) *cobra.Command {
-	cmd := requireSubcommand(&cobra.Command{
-		Use:   "import",
-		Short: "Import estate snapshots from other tools into assessment history",
-		Long: strings.TrimSpace(`
-Bring evidence vsfleet did not collect itself into the same local history used
-by "vsfleet assessment", so stored-evidence commands — history, diff, trends —
-work on it exactly as they would on a live capture.
-
-Every import runs entirely offline: no configuration, credentials, or vCenter
-connection is used or required.`),
-		Example: `  # Import an RVTools export
-  vsfleet import rvtools estate_2026-01-01.xlsx`,
-	})
-	cmd.AddCommand(newImportRVToolsCommand(a))
-	return cmd
-}
-
 func newImportRVToolsCommand(a *App) *cobra.Command {
 	var (
 		label, note, capturedAt, timezoneName string
@@ -42,9 +20,9 @@ func newImportRVToolsCommand(a *App) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "rvtools FILE",
-		Short: "Import an RVTools-compatible XLSX export as a new assessment run",
+		Short: "Import an RVTools-compatible XLSX export as a new capture",
 		Long: strings.TrimSpace(`
-Adapt an RVTools-compatible XLSX export into a new stored assessment run.
+Adapt an RVTools-compatible XLSX export into a new stored capture.
 
 The workbook's own layout never reaches vsfleet's domain model directly: this
 reads supported VM, host, and switch worksheets by column name, accepts known
@@ -78,14 +56,14 @@ Importing the same file again creates another run, and warns that it did;
 The import is all-or-nothing: nothing is written until the whole workbook has
 been read, and a failure partway through deletes the run rather than leaving
 it half-written.`),
-		Example: `  # Import a workbook as a new run
-  vsfleet import rvtools estate.xlsx
+		Example: `  # Import a workbook as a new capture
+  vsfleet capture import rvtools estate.xlsx
 
   # Preview what would be imported without writing anything
-  vsfleet import rvtools estate.xlsx --dry-run
+  vsfleet capture import rvtools estate.xlsx --dry-run
 
   # Label it, pin the capture time, and rename a reconstructed context
-  vsfleet import rvtools estate.xlsx --label pre-migration --captured-at 2026-01-01T00:00:00Z --timezone America/Los_Angeles --context-map vc01.example.com=prod`,
+  vsfleet capture import rvtools estate.xlsx --label pre-migration --captured-at 2026-01-01T00:00:00Z --timezone America/Los_Angeles --context-map vc01.example.com=prod`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sha, err := rvimport.FileSHA256(args[0])
@@ -142,7 +120,7 @@ it half-written.`),
 					return err
 				}
 				if found {
-					fmt.Fprintf(a.errOut(), "%s this workbook was already imported as assessment %d; importing it again creates another run (--allow-duplicate silences this)\n", glyphFail, prior.ID)
+					fmt.Fprintf(a.errOut(), "%s this workbook was already imported as capture %d; importing it again creates another capture (--allow-duplicate silences this)\n", glyphFail, prior.ID)
 				}
 			}
 			run, err := result.Write(cmd.Context(), store, time.Now())
@@ -152,8 +130,8 @@ it half-written.`),
 			return printImportReport(a, result.Report, &run)
 		},
 	}
-	cmd.Flags().StringVar(&label, "label", "", "label for the stored run")
-	cmd.Flags().StringVar(&note, "note", "", "free-text note stored with the run, alongside this import's own provenance")
+	cmd.Flags().StringVar(&label, "label", "", "label for the stored capture")
+	cmd.Flags().StringVar(&note, "note", "", "free-text note stored with the capture, alongside this import's own provenance")
 	cmd.Flags().StringVar(&capturedAt, "captured-at", "", "RFC3339 capture time override (default: vMetaData, workbook properties, then import time)")
 	cmd.Flags().StringVar(&timezoneName, "timezone", "", "IANA time zone for timezone-free RVTools timestamps (e.g. America/Los_Angeles)")
 	cmd.Flags().StringSliceVar(&contextMap, "context-map", nil, "rename a reconstructed context, KEY=NAME (repeatable); KEY is the vsfleet Context or VI SDK Server value the report names")
@@ -172,7 +150,7 @@ func printImportReport(a *App, report rvimport.Report, run *assessment.Run) erro
 	}
 	out := a.out()
 	if run != nil {
-		fmt.Fprintf(out, "Imported assessment %d (%s) from %s\n", run.ID, strings.ToUpper(string(run.Status)), report.SourceLabel)
+		fmt.Fprintf(out, "Imported capture %d (%s) from %s\n", run.ID, strings.ToUpper(string(run.Status)), report.SourceLabel)
 	} else {
 		fmt.Fprintln(out, "Dry run — nothing was written")
 	}
@@ -199,7 +177,7 @@ func printImportReport(a *App, report rvimport.Report, run *assessment.Run) erro
 	}
 	t.flush()
 	if run != nil && run.Status == assessment.RunPartial {
-		fmt.Fprintln(out, "\nThis run is partial by design (see the gaps below); trend commands need --include-partial to plot it.")
+		fmt.Fprintln(out, "\nThis capture is partial by design (see the gaps below); trend analyses need --include-partial to plot it.")
 	}
 	if len(report.Gaps) > 0 {
 		fmt.Fprintln(out, "\nCoverage gaps (recorded as unavailable, never as empty):")

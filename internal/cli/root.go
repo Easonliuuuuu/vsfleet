@@ -222,15 +222,6 @@ func (a *App) errOut() io.Writer {
 
 func (a *App) json() bool { return a.Format == FormatJSON }
 
-func (a *App) checkFormat() error {
-	switch a.Format {
-	case FormatTable, FormatJSON, "":
-		return nil
-	default:
-		return fmt.Errorf("unknown output format %q (supported: table, json)", a.Format)
-	}
-}
-
 func rejectStoredContextSelection(cmd *cobra.Command, operation string) error {
 	if cmd.Flags().Changed("context") {
 		return fmt.Errorf("--context is not supported for assessment %s", operation)
@@ -283,7 +274,7 @@ at production.`,
 		// rejectUnknownArgs, unlike cobra.NoArgs, offers the near miss.
 		Args: rejectUnknownArgs,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			if err := a.checkFormat(); err != nil {
+			if err := a.checkOutput(cmd); err != nil {
 				return err
 			}
 			a.startUpdateCheck(cmd)
@@ -312,7 +303,7 @@ at production.`,
 	// A context is vsfleet's namespace, so kubectl's -n and -A pick them.
 	f.StringSliceVarP(&a.ContextNames, "context", "n", nil, "context to act on, repeatable (default: the current context)")
 	f.BoolVarP(&a.AllContexts, "all-contexts", "A", false, "act on every configured context")
-	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json")
+	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json; get also takes wide, yaml, name, csv, jsonpath=TEMPLATE and custom-columns=SPEC")
 	f.DurationVar(&a.Timeout, "timeout", 30*time.Second, "per-vCenter timeout")
 	f.StringVar(&a.HistoryPath, "history-db", "", "path to the local assessment database")
 	// A bare "vsfleet" opens the interface, so the interface's own flag

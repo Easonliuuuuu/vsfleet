@@ -17,8 +17,9 @@ List every object kind vsfleet accepts, the way "kubectl api-resources" does.
 
 NAME is the plural a listing asks for; SHORTNAMES are abbreviations accepted
 anywhere a kind is, including --kind flags and topology arguments. SOURCE says
-whether the kind is read from a live vCenter, recorded in assessment captures,
-or both. Never contacts a vCenter.`),
+whether the kind is read from a live vCenter, recorded in stored captures, or
+both; "history" marks a kind the history database keeps as an object of its
+own, such as a capture. Never contacts a vCenter.`),
 		Example: `  # Every kind and its short names
   vsfleet api-resources
 
@@ -47,6 +48,9 @@ func kindSource(k apiresource.Kind) string {
 	}
 	if k.Stored {
 		sources = append(sources, "stored")
+	}
+	if k.History {
+		sources = append(sources, "history")
 	}
 	return strings.Join(sources, ",")
 }

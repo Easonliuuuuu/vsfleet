@@ -22,7 +22,7 @@ spec:
             - name: vsfleet
               image: ghcr.io/easonliuuuuu/vsfleet:v0.6.3 # x-release-please-version
               imagePullPolicy: IfNotPresent
-              args: ["--all-contexts", "-o", "json", "assessment", "run", "--label", "nightly"]
+              args: ["--all-contexts", "-o", "json", "capture", "run", "--label", "nightly"]
               env:
                 - name: VSFLEET_CONFIG
                   value: /etc/vsfleet/config.toml

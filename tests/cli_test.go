@@ -143,7 +143,7 @@ func TestRunnerClosesHistoryDatabase(t *testing.T) {
 	r := newRunner(t)
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 
-	if _, _, err := r.run("", "--history-db", dbPath, "assessment", "list"); err != nil {
+	if _, _, err := r.run("", "--history-db", dbPath, "capture", "list"); err != nil {
 		t.Fatalf("assessment list: %v", err)
 	}
 	if err := os.Remove(dbPath); err != nil {

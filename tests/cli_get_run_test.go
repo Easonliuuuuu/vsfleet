@@ -20,7 +20,7 @@ func TestGetAndDescribeReadACapture(t *testing.T) {
 	if strings.Count(liveVMs, "\n") < 2 || liveHBAs == "" {
 		t.Fatalf("the simulator should hold several VMs and some HBAs; got\n%s\n%s", liveVMs, liveHBAs)
 	}
-	r.mustRun(pw, "assessment", "run", "--label", "nightly")
+	r.mustRun(pw, "capture", "run", "--label", "nightly")
 
 	r.mustRun(pw, "config", "set-context", "lab",
 		"--endpoint", "https://127.0.0.1:1",

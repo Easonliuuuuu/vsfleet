@@ -5,11 +5,11 @@ stored separately from inventory captures, which hold configured sizes.
 Performance collection never rewrites or references a capture.
 
 ```sh
-vsfleet assessment perf collect --window 7d            # contacts vCenter, read-only
-vsfleet assessment perf list
-vsfleet top vm                                         # offline
-vsfleet assessment report                              # lists collected/not collected per context
-vsfleet assessment export --format rvtools --file e.xlsx   # adds the vsfleetPerformance sheet
+vsfleet capture perf --window 7d                          # contacts vCenter, read-only
+vsfleet get perfcollections
+vsfleet top vm                                            # offline
+vsfleet describe capture latest                           # lists collected/not collected per context
+vsfleet assessment export --format rvtools --file e.xlsx  # adds the vsfleetPerformance sheet
 ```
 
 `perf collect` uses vCenter's `PerformanceManager.QueryPerf`, with counters
@@ -95,7 +95,7 @@ Missing, denied, or sparse inputs produce `cpu-only`, `unavailable`, or
 
 ## In reports
 
-`assessment report` shows each context's newest usable collection and window
+`describe capture` shows each context's newest usable collection and window
 dates, or `not collected`. The RVTools workbook's `vsfleetPerformance` sheet
 has one row per VM per counter: window, interval, sample counts, average, peak,
 P95, status, reason, sizing signal, and source. Missing statistics are blank;
@@ -103,7 +103,7 @@ a context without a collection gets one `not collected` row.
 
 Matching uses vCenter identity. A collection may precede or follow the capture;
 `Inventory match` indicates whether the VM exists in that run. `vCPU`,
-`vMemory`, and `vInfo` remain RVTools-compatible. `assessment prune` removes
+`vMemory`, and `vInfo` remain RVTools-compatible. `capture prune` removes
 performance windows older than its cutoff, preserving each context's newest
 usable window.
 

@@ -26,7 +26,7 @@ func registerCommandGroups(root *cobra.Command) {
 	root.AddGroup(
 		&cobra.Group{ID: groupStart, Title: "Getting started:"},
 		&cobra.Group{ID: groupInventory, Title: "Inventory and search:"},
-		&cobra.Group{ID: groupHistory, Title: "Assessment and history:"},
+		&cobra.Group{ID: groupHistory, Title: "Captures and history:"},
 		&cobra.Group{ID: groupAnalysis, Title: "Analysis:"},
 		&cobra.Group{ID: groupDiagnose, Title: "Diagnostics:"},
 	)

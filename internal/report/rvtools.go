@@ -1014,7 +1014,7 @@ func fileInfoRows(data assessment.ExportData) [][]any {
 }
 
 const (
-	fileInfoNotCapturedNote = "This tab page is empty because the datastore file inventory was not captured (assessment run --datastore-file-inventory was not used for this run). It does not mean the datastores hold no files. See vsfleetCoverage."
+	fileInfoNotCapturedNote = "This tab page is empty because the datastore file inventory was not captured (capture run --datastore-file-inventory was not used for this capture). It does not mean the datastores hold no files. See vsfleetCoverage."
 	fileInfoNoRowsNote      = "This tab page has no file rows: every datastore in this run was denied, failed, skipped, unavailable or listed empty. It does not mean the datastores hold no files unless vsfleetCoverage reports them complete."
 )
 

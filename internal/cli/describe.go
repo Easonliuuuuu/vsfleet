@@ -38,8 +38,12 @@ Host storage and network subresources are listed with "vsfleet get", e.g.
 "vsfleet get hbas --host NAME", so describing a host never costs more than
 listing hosts already does.
 
-The object is read live from vCenter. --run reads it from a stored capture
-instead, the way "vsfleet get --run" does. --history shows how a VM changed
+A capture is named the way --run names one: an ID, a label, latest, previous
+or a date. Describing it shows what it recorded, per context and kind, read
+from the history database; -n narrows that to some contexts.
+
+Any other object is read live from vCenter. --run reads it from a stored
+capture instead, the way "vsfleet get --run" does. --history shows how a VM changed
 across every stored capture rather than how it is now; it reads stored
 evidence only and never contacts vCenter.`),
 		Example: `  # Describe a VM on the current context
@@ -59,6 +63,9 @@ evidence only and never contacts vCenter.`),
 
   # The VM as the capture labelled pre-migration recorded it
   vsfleet describe vm web-01 --run pre-migration
+
+  # What the most recent capture recorded, and where it has gaps
+  vsfleet describe capture latest
 
   # Every recorded change to a VM, including unchanged captures
   vsfleet describe vm web-01 --history --all-observations`,
@@ -209,6 +216,7 @@ var describers = map[string]describer{
 			func(n vsphere.Network) string { return n.Context }, func(n vsphere.Network) string { return n.Path }),
 		show: printNetworkDetail,
 	},
+	"capture": captureDescriber{},
 }
 
 // describableKinds are the kinds "describe" accepts, in registry order.

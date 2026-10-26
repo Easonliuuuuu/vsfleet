@@ -267,8 +267,8 @@ at production.`,
   vsfleet get all 'ubuntu-golden*' -A
 
   # Capture history, then compare the two most recent captures
-  vsfleet assessment run -A --label nightly
-  vsfleet assessment diff`,
+  vsfleet capture run -A --label nightly
+  vsfleet capture diff`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Version:       version.String(),
@@ -329,7 +329,7 @@ at production.`,
 		inGroup(groupInventory, refuseRun(newTopCommand(a), "perf collections are stored apart from captures; pick one with --window")),
 		inGroup(groupInventory, newExplainCommand(a)),
 		inGroup(groupInventory, newAPIResourcesCommand(a)),
-		inGroup(groupHistory, newImportCommand(a)),
+		inGroup(groupHistory, newCaptureCommand(a)),
 		inGroup(groupHistory, newAssessmentCommand(a)),
 		inGroup(groupAnalysis, newAnalyzeCommand(a)),
 		inGroup(groupDiagnose, newDoctorCommand(a)),
@@ -358,6 +358,9 @@ at production.`,
 	root.AddCommand(renamedCommand("portgroup", []string{"portgroups"},
 		`use "vsfleet get networks" for networks, or "vsfleet get portgroups" for standard-switch port groups`))
 	root.AddCommand(renamedCommand("status", nil, `use "vsfleet cluster-info"`))
+	root.AddCommand(renamedGroupCommand("import", `use "vsfleet capture import rvtools FILE"`, map[string]string{
+		"rvtools": `use "vsfleet capture import rvtools FILE"`,
+	}))
 	root.AddCommand(renamedCommand("compatibility", []string{"compat"},
 		`use "vsfleet explain rvtools", or "vsfleet explain rvtools.SHEET" for one worksheet`))
 	return root

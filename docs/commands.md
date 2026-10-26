@@ -42,17 +42,23 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet api-resources` | List every object kind with its short names and whether it is live, stored, or both |
 | `vsfleet get <kind>[,<kind>...] [name...]` | List objects of any kind, or `all` inventory kinds, live or from a capture with `--run`; names may be globs, and `<kind>/<name>` also works |
 | `vsfleet describe <kind> <name>` | Show one VM, template, host, cluster, vApp, datastore, or network in full detail, live or with `--run` |
+| `vsfleet describe capture <run>` | Show what a stored capture recorded, per context and kind, and where it has gaps |
 | `vsfleet describe vm <name-or-uuid> --history` | Show how a VM changed across every stored capture |
 | `vsfleet events --for vm/<name> [--all]` | Show a VM's live vCenter event log: migrations, reconfigurations, snapshots and failures, with who and when; task results come from the VM's task history, and a deleted VM is found through stored history |
 | `vsfleet top vm [name...]` | Show VM CPU and memory use from stored performance collections; see [performance history](performance.md) |
 | `vsfleet explain <kind>[.<field>]` | Document a kind's columns and the RVTools worksheets it feeds |
 | `vsfleet datastore files list <datastore> [path]` | List one datastore directory |
 | `vsfleet datastore files find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
-| `vsfleet assessment ...` | Capture and compare historical observations |
+| `vsfleet capture run [-A] [--label <name>]` | Take a capture of the estate into the local history database; see [captures](#captures) |
+| `vsfleet capture import rvtools <file.xlsx>` | Import an RVTools-compatible export as a new capture, offline |
+| `vsfleet capture list` | List stored captures; the same as `vsfleet get captures` |
+| `vsfleet capture diff [base] [target]` | Compare two captures, optionally failing on policy with `--fail-on` or `--require-complete` |
+| `vsfleet capture update <run> \| delete <run> \| prune` | Label, note or pin a capture, or remove captures |
+| `vsfleet capture perf --window 7d` | Collect a bounded window of VM performance history; `vsfleet get perfcollections` lists them |
+| `vsfleet assessment ...` | Export, back up, restore and check stored captures |
 | `vsfleet assessment export --profile <name> [--pseudonymize --pseudonymize-key-file <file>] [--preview]` | Export a scoped `sizing-summary` or `full-inventory` workbook, optionally pseudonymized; see [scoped sharing profiles](sharing.md) |
 | `vsfleet assessment metadata [run] [--kind ...] [--source tag\|custom] [--where ...] [--format csv]` | Export stored tags and custom attributes in a fixed long-format schema; see [metadata exports](metadata.md#export-metadata) |
 | `vsfleet assessment metadata-report <definition> [run] [--base <run>]` | Run a saved tag/custom-attribute report against an assessment, optionally listing membership changes since `--base` |
-| `vsfleet import rvtools <file.xlsx>` | Import an RVTools-compatible export as a new offline assessment run |
 | `vsfleet explain rvtools[.<sheet>]` | Describe every worksheet and column the export writes, or one worksheet |
 
 ## Inventory and search
@@ -285,26 +291,26 @@ and coverage limits.
 
 ## Importing RVTools exports
 
-Import an RVTools-compatible XLSX file as a new assessment without
+Import an RVTools-compatible XLSX file as a new capture without
 configuration, credentials, or a vCenter connection:
 
 ```sh
 # Preview what would be imported without writing anything
-vsfleet import rvtools estate.xlsx --dry-run
+vsfleet capture import rvtools estate.xlsx --dry-run
 
 # Import it, labelled, with an explicit capture time
-vsfleet import rvtools estate.xlsx --label pre-migration --captured-at 2026-01-01T00:00:00Z
+vsfleet capture import rvtools estate.xlsx --label pre-migration --captured-at 2026-01-01T00:00:00Z
 
 # Interpret timezone-free capture and snapshot timestamps from a Pacific collector
-vsfleet import rvtools estate.xlsx --timezone America/Los_Angeles
+vsfleet capture import rvtools estate.xlsx --timezone America/Los_Angeles
 
 # Once imported, every stored-evidence command works on it like a live capture
-vsfleet assessment list
+vsfleet capture list
 vsfleet describe vm web-01 --history
-vsfleet assessment diff pre-migration wave-1
+vsfleet capture diff pre-migration wave-1
 ```
 
-Imported runs show source `rvtools-import`. Their notes record filename,
+Imported captures show source `rvtools-import`. Their notes record filename,
 SHA-256 fingerprint, capture time/source, parser profile `rvtools-v4`, and
 recognized/ignored worksheets.
 
@@ -497,13 +503,43 @@ configuration, keyrings, or vCenter. It describes vsfleet output and observed
 differences from RVTools, not the complete RVTools schema. See
 [interoperability limits](exports.md#rvtools-file-interoperability).
 
-## Assessments
+## Captures
 
-Capture read-only evidence locally, then query it offline. Browsing needs
-`Datastore.Browse`, adds collection time, and is disabled by default:
+A capture is a read-only snapshot of the estate, stored in the local history
+database and read back offline. `vsfleet capture` takes, imports, lists,
+labels, compares and removes them. Inside the group the capture is the object
+acted on, so it is an argument (`capture delete 42`); every other command
+picks one with `--run`.
+
+| Command | Does |
+| --- | --- |
+| `capture run` | Read the selected contexts (`-n`, `-A`) and store one capture |
+| `capture import rvtools FILE` | Store an RVTools export as a capture, offline |
+| `capture list`, `get captures` | List captures, newest first |
+| `describe capture RUN` | Show what one capture recorded and where it has gaps |
+| `capture update RUN --label/--note/--pin/--unpin` | Change a capture's label, note or pin |
+| `capture delete RUN --force` | Delete one capture |
+| `capture prune --older-than 90d [--execute]` | Delete old captures and old performance collections; a dry run without `--execute` |
+| `capture diff [BASE] [TARGET]` | Compare two captures; `--fail-on` and `--require-complete` gate a pipeline |
+| `capture perf --window 7d` | Collect VM performance history from vCenter |
+| `get perfcollections` | List stored performance collections |
+
+`RUN` is an ID or label from `capture list`, `latest`, `previous`, or a date
+(`2026-03-31`, or `2026-03-31T18:00`) for the newest capture started by then.
+Performance collections are stored apart from captures: `capture list`,
+`capture delete` and `--run` do not see them, `top vm` reads them, and
+`capture prune` removes old ones. Only `capture run` and `capture perf`
+contact a vCenter.
+
+The commands these replaced (`assessment run`, `list`, `diff`, `update`,
+`delete`, `prune`, `report` and `perf`, and `import rvtools`) print where they
+went and exit non-zero.
+
+Browsing datastores needs `Datastore.Browse`, adds collection time, and is
+disabled by default:
 
 ```sh
-vsfleet assessment run --all-contexts --browse-datastores
+vsfleet capture run --all-contexts --browse-datastores
 vsfleet analyze health
 vsfleet analyze orphans
 vsfleet analyze capacity
@@ -540,8 +576,8 @@ Use exit codes to gate scheduled jobs:
 |---|---|
 | `0` | The command did what was asked |
 | `1` | vsfleet could not do its job: bad configuration, an unreachable estate, an unreadable database |
-| `2` | The tool worked and the estate did not pass: `assessment diff` policy violations, or an `analyze` gate such as `--fail-on-findings`, `--fail-on-blockers` or `--fail-on-projection` |
-| `3` | A capture stored evidence from some contexts but not all; only with `assessment run --fail-on-partial` |
+| `2` | The tool worked and the estate did not pass: `capture diff` policy violations, or an `analyze` gate such as `--fail-on-findings`, `--fail-on-blockers` or `--fail-on-projection` |
+| `3` | A capture stored evidence from some contexts but not all; only with `capture run --fail-on-partial` |
 
 Partial captures exit `0` unless `--fail-on-partial` is set.
 
@@ -573,25 +609,25 @@ reference and examples:
 
 ```sh
 vsfleet --help                          # grouped by the job being done
-vsfleet assessment --help               # what is under a command group
-vsfleet assessment diff --help          # flags, arguments, and examples
+vsfleet capture --help                  # what is under a command group
+vsfleet capture diff --help             # flags, arguments, and examples
 vsfleet analyze readiness network -h    # four levels deep, same thing
 ```
 
 `vsfleet --help` groups the tree rather than listing it alphabetically:
-getting started, inventory and search, assessment and history, analysis, and
+getting started, inventory and search, captures and history, analysis, and
 diagnostics.
 
 Unknown commands exit non-zero and suggest close matches:
 
 ```console
-$ vsfleet assessment lst
-vsfleet: unknown command "lst" for "vsfleet assessment"
+$ vsfleet capture lst
+vsfleet: unknown command "lst" for "vsfleet capture"
 
 Did you mean this?
 	list
 
-Run 'vsfleet assessment --help' for the available commands.
+Run 'vsfleet capture --help' for the available commands.
 ```
 
 Shell completion covers commands, flags, and the closed argument vocabularies

@@ -81,6 +81,10 @@ type lister[T any] struct {
 	// json shapes the rows for -o json; nil writes them as they are.
 	json      func([]T) any
 	scopeFlag string
+	// history marks a kind the history database keeps as an object of its
+	// own. It is read from there whatever -n and --run say, and carries its
+	// own context column, if any.
+	history bool
 }
 
 func (l lister[T]) scope() string { return l.scopeFlag }
@@ -99,6 +103,9 @@ func (l lister[T]) list(ctx context.Context, a *App, names []string, opt getOpti
 		if fields, err = query.ParseFieldSelector(opt.fields, []vsphere.Kind{l.inventory}); err != nil {
 			return nil, nil, fmt.Errorf("--field-selector: %w", err)
 		}
+	}
+	if l.history && a.capture != nil {
+		return nil, nil, errors.New("captures and performance collections are listed from the history database; --run does not apply to them")
 	}
 	patterns, err := newNamePatterns(names)
 	if err != nil {
@@ -127,7 +134,7 @@ func (l lister[T]) list(ctx context.Context, a *App, names []string, opt getOpti
 		return nil, failures, err
 	}
 	wide := opt.wide && l.metadata != nil
-	multi := a.multiContext()
+	multi := !l.history && a.multiContext()
 	out.headers = l.headers
 	if wide {
 		out.headers = append(slices.Clone(out.headers), "TAGS", "CUSTOM ATTRIBUTES")
@@ -293,8 +300,10 @@ var listers = map[string]kindLister{
 			return []string{p.Name, dash(p.Parent), yesNo(p.Root), itoa(len(p.VMRefs)), i32toa(p.CPUShares), dash(p.CPULevel), humanMB(p.MemConfiguredMB), i32toa(p.MemShares), dash(p.MemLevel)}
 		},
 	},
-	"dvportgroup": dvPortGroupLister(),
-	"snapshot":    snapshotLister(),
+	"dvportgroup":    dvPortGroupLister(),
+	"capture":        captureLister(),
+	"perfcollection": perfCollectionLister(),
+	"snapshot":       snapshotLister(),
 	"hba": hostItemLister([]string{"DEVICE", "TYPE", "STATUS", "MODEL", "DRIVER", "PROTOCOL"},
 		func(h vsphere.Host) []vsphere.HostHBA { return h.HBAs },
 		func(hba vsphere.HostHBA) string { return hba.Device },

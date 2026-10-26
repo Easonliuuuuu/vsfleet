@@ -53,7 +53,7 @@ permissions and may contain VM names, UUIDs, inventory paths, annotations,
 host/datastore placement, and snapshot metadata. It never contains passwords,
 keyring material, session cookies, or private keys. Treat the history file as
 sensitive operational inventory: protect it with the host's normal disk and
-backup controls, and remove runs explicitly with `vsfleet assessment delete
+backup controls, and remove runs explicitly with `vsfleet capture delete
 <id> --force` when retention policy requires it.
 
 ### 4. Network Isolation & Transport Security

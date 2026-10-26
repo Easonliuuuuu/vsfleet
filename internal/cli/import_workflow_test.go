@@ -53,7 +53,7 @@ func writeImportWorkbook(t *testing.T, mutate func(*assessment.ExportData)) stri
 
 func TestImportDryRunWritesNothingAndReportsColumnsAndGaps(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "history.db")
-	out, _, err := runCLI(t, dbPath, "import", "rvtools", writeImportWorkbook(t, nil), "--dry-run", "--captured-at", "2026-01-01T00:00:00Z")
+	out, _, err := runCLI(t, dbPath, "capture", "import", "rvtools", writeImportWorkbook(t, nil), "--dry-run", "--captured-at", "2026-01-01T00:00:00Z")
 	if err != nil {
 		t.Fatalf("dry run: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestImportTimezoneFlagInterpretsMetadataCaptureTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantCapture := time.Date(2026, 9, 28, 11, 12, 23, 0, zone).Local().Format("2006-01-02 15:04:05")
-	out, _, err := runCLI(t, filepath.Join(t.TempDir(), "history.db"), "import", "rvtools", path, "--dry-run", "--timezone", "America/Los_Angeles")
+	out, _, err := runCLI(t, filepath.Join(t.TempDir(), "history.db"), "capture", "import", "rvtools", path, "--dry-run", "--timezone", "America/Los_Angeles")
 	if err != nil {
 		t.Fatalf("dry-run with --timezone: %v", err)
 	}
@@ -110,25 +110,25 @@ func TestImportedRunIsMarkedAndWorksWithStoredEvidenceCommands(t *testing.T) {
 	first := writeImportWorkbook(t, nil)
 	second := writeImportWorkbook(t, func(d *assessment.ExportData) { d.VMs[0].Observation.VM.Name = "web-01-renamed" })
 	for i, path := range []string{first, second} {
-		if _, _, err := runCLI(t, dbPath, "import", "rvtools", path, "--label", []string{"pre-migration", "wave-1"}[i], "--captured-at", []string{"2026-01-01T12:00:00Z", "2026-06-01T12:00:00Z"}[i]); err != nil {
+		if _, _, err := runCLI(t, dbPath, "capture", "import", "rvtools", path, "--label", []string{"pre-migration", "wave-1"}[i], "--captured-at", []string{"2026-01-01T12:00:00Z", "2026-06-01T12:00:00Z"}[i]); err != nil {
 			t.Fatalf("import %d: %v", i+1, err)
 		}
 	}
-	list, _, err := runCLI(t, dbPath, "assessment", "list")
+	list, _, err := runCLI(t, dbPath, "capture", "list")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Count(list, "rvtools-import") != 2 || !strings.Contains(list, "pre-migration") || !strings.Contains(list, "wave-1") {
-		t.Errorf("assessment list does not identify both imports by source and label:\n%s", list)
+		t.Errorf("capture list does not identify both imports by source and label:\n%s", list)
 	}
 	// Runs are ordered by capture time, so the list must show when the data
 	// was captured, not the day the workbook was imported.
 	if !strings.Contains(list, "2026-01-01") || !strings.Contains(list, "2026-06-01") {
-		t.Errorf("assessment list does not show the imports' capture dates:\n%s", list)
+		t.Errorf("capture list does not show the imports' capture dates:\n%s", list)
 	}
 	for _, args := range [][]string{
-		{"assessment", "diff", "pre-migration", "wave-1"},
-		{"assessment", "report", "wave-1"},
+		{"capture", "diff", "pre-migration", "wave-1"},
+		{"describe", "capture", "wave-1"},
 		{"analyze", "health", "--run", "wave-1"},
 		{"analyze", "snapshots", "--trend"},
 		{"analyze", "capacity", "--trend"},
@@ -142,20 +142,20 @@ func TestImportedRunIsMarkedAndWorksWithStoredEvidenceCommands(t *testing.T) {
 func TestRepeatImportWarnsButStillImportsAndCanBeSilenced(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 	path := writeImportWorkbook(t, nil)
-	if _, errOut, err := runCLI(t, dbPath, "import", "rvtools", path); err != nil || strings.Contains(errOut, "already imported") {
+	if _, errOut, err := runCLI(t, dbPath, "capture", "import", "rvtools", path); err != nil || strings.Contains(errOut, "already imported") {
 		t.Fatalf("first import: err=%v stderr=%q, want a clean first import", err, errOut)
 	}
-	_, errOut, err := runCLI(t, dbPath, "import", "rvtools", path)
+	_, errOut, err := runCLI(t, dbPath, "capture", "import", "rvtools", path)
 	if err != nil {
 		t.Fatalf("second import must not be blocked: %v", err)
 	}
-	if !strings.Contains(errOut, "already imported as assessment 1") {
+	if !strings.Contains(errOut, "already imported as capture 1") {
 		t.Errorf("stderr = %q, want a warning naming the earlier run", errOut)
 	}
-	if _, errOut, err := runCLI(t, dbPath, "import", "rvtools", path, "--allow-duplicate"); err != nil || strings.Contains(errOut, "already imported") {
+	if _, errOut, err := runCLI(t, dbPath, "capture", "import", "rvtools", path, "--allow-duplicate"); err != nil || strings.Contains(errOut, "already imported") {
 		t.Errorf("--allow-duplicate: err=%v stderr=%q, want it silenced", err, errOut)
 	}
-	list, _, _ := runCLI(t, dbPath, "assessment", "list")
+	list, _, _ := runCLI(t, dbPath, "capture", "list")
 	if strings.Count(list, "rvtools-import") != 3 {
 		t.Errorf("want three runs after three imports:\n%s", list)
 	}
@@ -167,7 +167,7 @@ func TestMalformedWorkbookImportFailsWithoutCreatingARun(t *testing.T) {
 	if err := os.WriteFile(bad, []byte("this is not a zip archive"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := runCLI(t, dbPath, "import", "rvtools", bad); err == nil {
+	if _, _, err := runCLI(t, dbPath, "capture", "import", "rvtools", bad); err == nil {
 		t.Fatal("importing garbage succeeded")
 	}
 	s, err := assessment.Open(dbPath)
@@ -188,12 +188,12 @@ func TestImportRequiresNoConfigurationOrNetwork(t *testing.T) {
 	var out, errOut bytes.Buffer
 	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
-	root.SetArgs([]string{"--history-db", dbPath, "import", "rvtools", writeImportWorkbook(t, nil)})
+	root.SetArgs([]string{"--history-db", dbPath, "capture", "import", "rvtools", writeImportWorkbook(t, nil)})
 	defer func() { _ = a.Close(context.Background()) }()
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("import: %v (stderr=%s)", err, errOut.String())
 	}
-	if !strings.Contains(out.String(), "Imported assessment") {
+	if !strings.Contains(out.String(), "Imported capture") {
 		t.Errorf("output = %q", out.String())
 	}
 	if a.cfg != nil || a.resolver != nil || a.mgr != nil {
@@ -206,7 +206,7 @@ func TestImportJSONReportCarriesGapsAndProvenance(t *testing.T) {
 	var out, errOut bytes.Buffer
 	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
-	root.SetArgs([]string{"--history-db", dbPath, "-o", "json", "import", "rvtools", writeImportWorkbook(t, nil), "--dry-run"})
+	root.SetArgs([]string{"--history-db", dbPath, "-o", "json", "capture", "import", "rvtools", writeImportWorkbook(t, nil), "--dry-run"})
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}

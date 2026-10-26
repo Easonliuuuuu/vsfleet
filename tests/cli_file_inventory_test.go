@@ -59,7 +59,7 @@ func TestDefaultAssessmentNeverBrowsesDatastoresAndSaysVFileInfoIsNotCaptured(t 
 	r, vc, db, _ := fileInventoryEstate(t)
 	// A default capture must not issue a recursive datastore search at all.
 	vc.Service.FaultInjector().AddRule(&simulator.FaultInjectionRule{MethodName: "SearchDatastoreSubFolders_Task", ObjectType: "*", ObjectName: "*", Probability: 1, FaultType: simulator.FaultTypeNoPermission, Message: "browsing must be opt-in", Enabled: true})
-	stdout, stderr, err := r.run("", "--history-db", db, "assessment", "run", "--all-contexts")
+	stdout, stderr, err := r.run("", "--history-db", db, "capture", "run", "--all-contexts")
 	if err != nil {
 		t.Fatalf("assessment run: %v\n%s\n%s", err, stdout, stderr)
 	}
@@ -80,16 +80,16 @@ func TestDefaultAssessmentNeverBrowsesDatastoresAndSaysVFileInfoIsNotCaptured(t 
 
 func TestFileInventoryLimitFlagsDoNotSilentlyEnableBrowsing(t *testing.T) {
 	r, _, db, _ := fileInventoryEstate(t)
-	_, _, err := r.run("", "--history-db", db, "assessment", "run", "--all-contexts", "--file-inventory-max-files", "5")
+	_, _, err := r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--file-inventory-max-files", "5")
 	if err == nil || !strings.Contains(err.Error(), "--datastore-file-inventory") {
 		t.Fatalf("limit flag without opt-in: err = %v, want a refusal naming --datastore-file-inventory", err)
 	}
-	_, _, err = r.run("", "--history-db", db, "assessment", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "0")
+	_, _, err = r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "0")
 	if err == nil || !strings.Contains(err.Error(), "--file-inventory-max-files") {
 		t.Fatalf("zero limit: err = %v", err)
 	}
 	// Browsing VMDK evidence must not switch the file inventory on either.
-	r.mustRun("", "--history-db", db, "assessment", "run", "--all-contexts", "--browse-datastores")
+	r.mustRun("", "--history-db", db, "capture", "run", "--all-contexts", "--browse-datastores")
 	dir := filepath.Join(t.TempDir(), "csv")
 	r.mustRun("", "--history-db", db, "assessment", "export", "latest", "--format", "csv", "--file", dir)
 	if cov := coverageRow(t, dir, "vFileInfo"); cov[10] != "not recorded" {
@@ -99,7 +99,7 @@ func TestFileInventoryLimitFlagsDoNotSilentlyEnableBrowsing(t *testing.T) {
 
 func TestFileInventoryCaptureExportsFilesAndIsOfflineAndByteIdentical(t *testing.T) {
 	r, _, db, _ := fileInventoryEstate(t)
-	stdout := r.mustRun("", "--history-db", db, "assessment", "run", "--all-contexts", "--datastore-file-inventory", "-o", "json")
+	stdout := r.mustRun("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "-o", "json")
 	var run struct {
 		ID            int64 `json:"id"`
 		FileInventory []struct {
@@ -174,7 +174,7 @@ func TestFileInventoryCaptureExportsFilesAndIsOfflineAndByteIdentical(t *testing
 
 func TestFileInventoryTruncationAndDenialAreVisibleInHumanAndMachineOutput(t *testing.T) {
 	r, vc, db, _ := fileInventoryEstate(t)
-	stdout, stderr, err := r.run("", "--history-db", db, "assessment", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "2")
+	stdout, stderr, err := r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "2")
 	if err != nil {
 		t.Fatalf("run: %v\n%s\n%s", err, stdout, stderr)
 	}
@@ -205,7 +205,7 @@ func TestFileInventoryTruncationAndDenialAreVisibleInHumanAndMachineOutput(t *te
 	// A denied browse: nothing listed, and the tab says why instead of
 	// looking like an empty datastore.
 	vc.Service.FaultInjector().AddRule(&simulator.FaultInjectionRule{MethodName: "SearchDatastoreSubFolders_Task", ObjectType: "*", ObjectName: "*", Probability: 1, FaultType: simulator.FaultTypeNoPermission, Message: "Permission to perform this operation was denied.", Enabled: true})
-	stdout, stderr, err = r.run("", "--history-db", db, "assessment", "run", "--all-contexts", "--datastore-file-inventory")
+	stdout, stderr, err = r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory")
 	if err != nil {
 		t.Fatalf("run: %v\n%s\n%s", err, stdout, stderr)
 	}

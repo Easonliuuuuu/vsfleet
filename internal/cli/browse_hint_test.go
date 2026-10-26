@@ -40,12 +40,12 @@ func TestPrintRunAppendsNotes(t *testing.T) {
 	run := assessment.Run{ID: 2, Status: assessment.RunComplete, RequestedContexts: 1, SuccessfulContexts: 1}
 	var out strings.Builder
 	printRun(&out, run, "datastore browse denied on 3/3 datastores")
-	if got, want := out.String(), "assessment 2: complete (1/1 contexts successful, datastore browse denied on 3/3 datastores)\n"; got != want {
+	if got, want := out.String(), "capture 2: complete (1/1 contexts successful, datastore browse denied on 3/3 datastores)\n"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 	out.Reset()
 	printRun(&out, run, "")
-	if got, want := out.String(), "assessment 2: complete (1/1 contexts successful)\n"; got != want {
+	if got, want := out.String(), "capture 2: complete (1/1 contexts successful)\n"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }

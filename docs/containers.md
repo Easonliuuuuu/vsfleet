@@ -50,7 +50,7 @@ docker run --rm \
   --env VSFLEET_CONFIG=/config/config.toml \
   --env VSFLEET_HISTORY_DB=/data/history.db \
   ghcr.io/easonliuuuuu/vsfleet:v0.6.3 \
-  assessment run --all-contexts --label nightly
+  capture run --all-contexts --label nightly
 ```
 
 Use `env:` credentials when the runtime injects secrets. Prefer `file:` on

@@ -93,7 +93,7 @@ Tagged `integration`. Each loopback endpoint runs in its own
 | `TestVCSIMHistoryDiffVMHistoryAndCapacity` | `history` | three captures with power and name changes between them | diff, `describe vm --history`, and capacity follow the changes |
 | `TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved` | `history` | a context missing from the second capture | its VMs are *not covered*, not *removed* |
 | `TestVCSIMPartialCoverageSurvivesProcessLoss` | `partial-failure` | an endpoint process killed during an assessment | the run is partial and the healthy context's data is kept |
-| `TestVCSIMPerfCollectRecordsProvenanceAndFailures` | `basic-multivcenter` | `assessment perf collect` with one endpoint taken down | per-context status and provenance; values are not asserted because vcsim samples are random |
+| `TestVCSIMPerfCollectRecordsProvenanceAndFailures` | `basic-multivcenter` | `capture perf` with one endpoint taken down | per-context status and provenance; values are not asserted because vcsim samples are random |
 | `TestVCSIMSizingCompleteAndPartialRuns` | `basic-multivcenter` | destination sizing over complete and partial runs | partial input is never reported as *fit* |
 | `TestVCSIMSharedExportPseudonymizesDuplicateNames` | `duplicate-names` | a scoped, pseudonymized export | colliding names stay distinguishable and originals never leak |
 
@@ -181,7 +181,7 @@ vcsim Deployments, `prod` and `edge`.
 | --- | --- | --- |
 | security contract | the CronJob as shipped | non-root, read-only root filesystem, no privilege escalation, all capabilities dropped, `fsGroup` 65532 |
 | `vsfleet-complete` | both vCenters up | assessment status `complete`, 2 of 2 contexts |
-| `vsfleet-history` | `assessment list` on the persistent volume | the earlier run was persisted |
+| `vsfleet-history` | `capture list` on the persistent volume | the earlier run was persisted |
 | `vsfleet-partial` | `edge` scaled to zero, `--fail-on-partial` | the job fails with exit code 3 and the result is `partial`, 1 of 2 contexts |
 | `vsfleet-readiness` | `analyze readiness` | the verdict is not `ready` and unresolved items are listed |
 

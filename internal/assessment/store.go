@@ -1231,7 +1231,7 @@ func (s *Store) UpdateRunFields(ctx context.Context, selector string, label, not
 func (s *Store) ResolveRun(ctx context.Context, selector string) (int64, error) {
 	selector = strings.TrimSpace(selector)
 	if selector == "" {
-		return 0, fmt.Errorf("assessment selector is empty")
+		return 0, fmt.Errorf("capture selector is empty")
 	}
 	if selector == "latest" || selector == "previous" {
 		runs, err := s.Runs(ctx)
@@ -1240,12 +1240,12 @@ func (s *Store) ResolveRun(ctx context.Context, selector string) (int64, error) 
 		}
 		if selector == "latest" {
 			if len(runs) < 1 {
-				return 0, fmt.Errorf("no assessments stored")
+				return 0, fmt.Errorf(`no captures stored; take one with "vsfleet capture run"`)
 			}
 			return runs[0].ID, nil
 		}
 		if len(runs) < 2 {
-			return 0, fmt.Errorf("no previous assessment")
+			return 0, fmt.Errorf("no previous capture")
 		}
 		return runs[1].ID, nil
 	}
@@ -1261,7 +1261,7 @@ func (s *Store) ResolveRun(ctx context.Context, selector string) (int64, error) 
 		if end, ok := parseRunDate(selector); ok {
 			return s.runBefore(ctx, selector, end)
 		}
-		return 0, fmt.Errorf("assessment selector %q not found; give an ID, label, date, latest or previous", selector)
+		return 0, fmt.Errorf("capture %q not found; give an ID, label, date, latest or previous", selector)
 	}
 	return id, err
 }

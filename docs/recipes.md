@@ -29,7 +29,7 @@ VCENTER_PASSWORD="$CI_VCENTER_SECRET" \
   --tls system
 
 VCENTER_PASSWORD="$CI_VCENTER_SECRET" \
-  vsfleet assessment run --all-contexts --fail-on-partial
+  vsfleet capture run --all-contexts --fail-on-partial
 ```
 
 ### systemd, with the secret in a file
@@ -41,7 +41,7 @@ VCENTER_PASSWORD="$CI_VCENTER_SECRET" \
 [Service]
 Type=oneshot
 LoadCredential=vcenter:/etc/vsfleet/vcenter.password
-ExecStart=/usr/local/bin/vsfleet assessment run --all-contexts --fail-on-partial
+ExecStart=/usr/local/bin/vsfleet capture run --all-contexts --fail-on-partial
 ```
 
 ```sh
@@ -92,7 +92,7 @@ no shell expansion. See [Unattended sources](configuration.md#unattended-sources
 Use `--fail-on-partial` to distinguish a complete capture from a partial one:
 
 ```sh
-vsfleet assessment run --all-contexts --fail-on-partial
+vsfleet capture run --all-contexts --fail-on-partial
 case $? in
   0) ;;                                  # complete
   3) echo "some vCenters did not answer" ;;

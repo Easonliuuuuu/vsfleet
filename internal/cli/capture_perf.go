@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -13,42 +14,18 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-func newAssessmentPerfCommand(a *App) *cobra.Command {
-	cmd := requireSubcommand(&cobra.Command{
-		Use:   "perf",
-		Short: "Collect and read bounded VM performance history",
-		Long: strings.TrimSpace(`
-Read a bounded window of CPU and memory statistics for every VM from vCenter's
-historical performance data, and keep summaries of it in the local history
-database, apart from inventory captures.
-
-"perf collect" is the only subcommand here that contacts a vCenter. It is
-opt-in and read-only, and bounded by a time window, a sample count, a VM
-count, a request count and a runtime. "perf list" lists what was stored, and
-"vsfleet top vm" reads it back.
-
-Values are averages over the vCenter's roll-up interval (typically 5 minutes
-to 2 hours), so a reported peak is the highest interval average and can
-understate an instantaneous spike. Anything that could not be read, or has
-too few samples to support a statistic, is reported as unavailable or
-insufficient data, never as zero.`),
-		Example: `  # Collect the last week, then read it back
-  vsfleet assessment perf collect --window 7d
-  vsfleet assessment perf list
-  vsfleet top vm`,
-	})
-	cmd.AddCommand(newAssessmentPerfCollectCommand(a), newAssessmentPerfListCommand(a),
-		renamedCommand("show", nil, `use "vsfleet top vm", or "vsfleet top vm --window ID" for an older collection`))
-	return cmd
-}
-
-func newAssessmentPerfCollectCommand(a *App) *cobra.Command {
+func newCapturePerfCommand(a *App) *cobra.Command {
 	var window, maxRuntime string
 	var interval, maxSamples, maxVMs, maxRequests int
-	cmd := &cobra.Command{Use: "collect", Short: "Collect a bounded window of VM performance history", Long: strings.TrimSpace(`
+	cmd := &cobra.Command{Use: "perf", Short: "Collect a bounded window of VM performance history", Long: strings.TrimSpace(`
 Query vCenter's historical statistics for CPU usage, CPU ready, active and
 consumed memory, ballooning, swapping and swap-in rate over --window, and
-store per-VM summaries and provenance. Nothing on the vCenter is changed.
+store per-VM summaries and provenance as a performance collection. Nothing on
+the vCenter is changed. "vsfleet top vm" reads the newest collection back,
+and "vsfleet get perfcollections" lists them.
+
+A performance collection is stored apart from captures: "capture list",
+"capture delete" and --run do not see it. "capture prune" removes old ones.
 
 The finest historical interval that still retains the whole window is used,
 unless --interval names one. vCenter only keeps counters that its statistics
@@ -58,13 +35,19 @@ recorded as unavailable. Where mem.active is not kept, active memory is read
 from mem.usage (level 1), which for a VM is active memory as a share of
 configured memory; VMs get a "cpu-only" reading only when neither is kept.
 
+Values are averages over the vCenter's roll-up interval (typically 5 minutes
+to 2 hours), so a reported peak is the highest interval average and can
+understate an instantaneous spike. Anything that could not be read, or has
+too few samples to support a statistic, is reported as unavailable or
+insufficient data, never as zero.
+
 Collection stops, and the window is recorded as partial, when any bound is
 reached: --max-vms, --max-requests or --max-runtime. VMs that were not
 sampled are listed as such rather than dropped.`), Example: `  # The last week for the current context
-  vsfleet assessment perf collect --window 7d
+  vsfleet capture perf --window 7d
 
   # A month for every context, capped at 300 VMs
-  vsfleet assessment perf collect --all-contexts --window 30d --max-vms 300
+  vsfleet capture perf -A --window 30d --max-vms 300
 
   # Read the result
   vsfleet top vm`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
@@ -221,36 +204,6 @@ func signalCounts(counts map[perf.Signal]int) string {
 	return dash(strings.Join(parts, ", "))
 }
 
-func newAssessmentPerfListCommand(a *App) *cobra.Command {
-	return &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List stored performance collections", Long: strings.TrimSpace(`
-List stored performance collections, newest first. The ID is what
-"vsfleet top vm --window" accepts.`), Example: `  vsfleet assessment perf list
-  vsfleet assessment perf list -o json`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := rejectStoredContextSelection(cmd, "perf list"); err != nil {
-			return err
-		}
-		s, err := a.History()
-		if err != nil {
-			return err
-		}
-		windows, err := s.PerfWindows(cmd.Context(), "", 100)
-		if err != nil {
-			return err
-		}
-		if a.json() {
-			return writeJSON(a.out(), windows)
-		}
-		t := newTable(a.out(), "ID", "CONTEXT", "STATUS", "WINDOW END", "SPAN", "INTERVAL", "VMS", "REQUESTS")
-		for _, w := range windows {
-			t.row(strconv.FormatInt(w.ID, 10), w.Context, w.Status, w.WindowEnd.Local().Format("2006-01-02 15:04"),
-				w.WindowEnd.Sub(w.WindowStart).Round(time.Hour).String(), fmt.Sprintf("%ds", w.IntervalSeconds),
-				fmt.Sprintf("%d/%d", w.VMsSampled, w.VMsRequested), itoa(w.RequestsUsed))
-		}
-		t.flush()
-		return nil
-	}}
-}
-
 func perfSummary(vm perf.VMResult, m perf.Metric) perf.Summary {
 	for _, s := range vm.Summaries {
 		if s.Metric == m {
@@ -295,21 +248,21 @@ func perfSamples(s perf.Summary) string {
 // printPerformanceSummary adds the per-context performance lines to an
 // assessment report. Each line carries the collection's own window, because
 // performance history is collected separately from the capture it sits beside.
-func printPerformanceSummary(a *App, rows []assessment.PerfSummary) {
+func printPerformanceSummary(out io.Writer, rows []assessment.PerfSummary) {
 	if len(rows) == 0 {
 		return
 	}
-	fmt.Fprintln(a.out(), "\nPerformance history (collected separately from the capture):")
+	fmt.Fprintln(out, "\nPerformance history (collected separately from the capture):")
 	for _, r := range rows {
 		if r.WindowID == 0 {
-			fmt.Fprintf(a.out(), "  %s: not collected; run \"vsfleet assessment perf collect\"\n", r.Context)
+			fmt.Fprintf(out, "  %s: not collected; run \"vsfleet capture perf\"\n", r.Context)
 			continue
 		}
 		counts := make(map[perf.Signal]int, len(r.Signals))
 		for k, v := range r.Signals {
 			counts[perf.Signal(k)] = v
 		}
-		fmt.Fprintf(a.out(), "  %s: window #%d %s, %s to %s, %d of %d VMs sampled; %s\n", r.Context, r.WindowID, r.Status,
+		fmt.Fprintf(out, "  %s: window #%d %s, %s to %s, %d of %d VMs sampled; %s\n", r.Context, r.WindowID, r.Status,
 			r.WindowStart.Local().Format("2006-01-02"), r.WindowEnd.Local().Format("2006-01-02"), r.VMsSampled, r.VMsRequested, signalCounts(counts))
 	}
 }

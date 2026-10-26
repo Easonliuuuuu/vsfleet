@@ -89,7 +89,7 @@ func performanceRows(data assessment.ExportData) [][]any {
 			continue
 		}
 		rows = append(rows, []any{c.Name, c.VCenterID, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, "not collected", "no performance collection is recorded for this vCenter; run `vsfleet assessment perf collect`", nil, nil, nil, nil})
+			nil, nil, nil, "not collected", "no performance collection is recorded for this vCenter; run `vsfleet capture perf`", nil, nil, nil, nil})
 	}
 	return rows
 }

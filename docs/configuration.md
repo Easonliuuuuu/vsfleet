@@ -241,8 +241,8 @@ privileges:
 
 | Feature | Additional privilege |
 | --- | --- |
-| `assessment run --browse-datastores`, `--datastore-file-inventory`, interactive datastore browser | `Datastore.Browse` on the inspected datastores |
-| `assessment run --include-licenses` | `Global.Licenses`, absent from the built-in ReadOnly role |
+| `capture run --browse-datastores`, `--datastore-file-inventory`, interactive datastore browser | `Datastore.Browse` on the inspected datastores |
+| `capture run --include-licenses` | `Global.Licenses`, absent from the built-in ReadOnly role |
 
 These paths remain read-only. Without browsing or its privilege, zombie-VMDK
 health is not evaluated. Denied license collection reports `unavailable`,

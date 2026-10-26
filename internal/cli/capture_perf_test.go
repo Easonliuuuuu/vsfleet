@@ -81,11 +81,11 @@ func mustTopVM(t *testing.T, dbPath string, args ...string) string {
 	return out
 }
 
-func mustAssessment(t *testing.T, dbPath string, args ...string) string {
+func mustRunCLI(t *testing.T, dbPath string, args ...string) string {
 	t.Helper()
-	out, errOut, err := runCLI(t, dbPath, append([]string{"assessment"}, args...)...)
+	out, errOut, err := runCLI(t, dbPath, args...)
 	if err != nil {
-		t.Fatalf("assessment %v: %v\nstderr: %s", args, err, errOut)
+		t.Fatalf("%v: %v\nstderr: %s", args, err, errOut)
 	}
 	return out
 }
@@ -116,17 +116,17 @@ func TestTopDoesNotInferSizingFromOneSampleOrMissingData(t *testing.T) {
 	}
 }
 
-func TestAssessmentReportStatesWhichContextsHavePerformanceHistory(t *testing.T) {
+func TestDescribeCaptureStatesWhichContextsHavePerformanceHistory(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	seedPerformance(t, dbPath)
-	out := mustAssessment(t, dbPath, "report")
+	out := mustRunCLI(t, dbPath, "describe", "capture", "latest")
 	if !strings.Contains(out, "prod: window #1 success") || !strings.Contains(out, "edge: not collected") {
 		t.Fatalf("report:\n%s", out)
 	}
 	var report struct {
 		Performance []assessment.PerfSummary `json:"performance"`
 	}
-	if err := json.Unmarshal([]byte(mustAssessment(t, dbPath, "report", "-o", "json")), &report); err != nil {
+	if err := json.Unmarshal([]byte(mustRunCLI(t, dbPath, "describe", "capture", "latest", "-o", "json")), &report); err != nil {
 		t.Fatal(err)
 	}
 	status := map[string]string{}

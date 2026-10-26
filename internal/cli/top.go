@@ -19,7 +19,7 @@ func newTopCommand(a *App) *cobra.Command {
 		Short: "Show VM CPU and memory use from stored performance collections",
 		Long: strings.TrimSpace(`
 Show per-VM CPU and memory use, the way "kubectl top" does, read from the
-bounded performance collections "vsfleet assessment perf collect" stores.
+bounded performance collections "vsfleet capture perf" stores.
 It never contacts a vCenter.
 
 Each VM shows the average, peak and 95th percentile of interval averages, the
@@ -30,7 +30,7 @@ themselves below the table.
 
 By default the newest collection is read: the newest of each context named
 with -n, the newest of every context with -A, else the newest overall.
---window reads one collection by the ID "vsfleet assessment perf list" shows.
+--window reads one collection by the ID "vsfleet get perfcollections" shows.
 NAME narrows the VMs, as an exact name or a glob such as 'web*'.
 
 Only VMs are collected, so "top host" is not available yet.`),
@@ -130,7 +130,7 @@ func topWindows(ctx context.Context, a *App, s *assessment.Store, id int64) ([]p
 				return nil, err
 			}
 			if len(ws) == 0 {
-				return nil, fmt.Errorf("no performance collections are stored for context %q; run \"vsfleet assessment perf collect -n %s\"", name, name)
+				return nil, fmt.Errorf("no performance collections are stored for context %q; run \"vsfleet capture perf -n %s\"", name, name)
 			}
 			newest = append(newest, ws[0])
 		}
@@ -142,7 +142,7 @@ func topWindows(ctx context.Context, a *App, s *assessment.Store, id int64) ([]p
 		newest = ws
 	}
 	if len(newest) == 0 {
-		return nil, errors.New("no performance collections are stored; run \"vsfleet assessment perf collect\"")
+		return nil, errors.New("no performance collections are stored; run \"vsfleet capture perf\"")
 	}
 	out := make([]perf.Window, 0, len(newest))
 	for _, w := range newest {

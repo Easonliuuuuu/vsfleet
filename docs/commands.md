@@ -77,25 +77,81 @@ vsfleet never changes a vCenter, so kubectl's mutating verbs (`apply`,
 as a shell glob such as `'web*'`; quote a glob so the shell leaves it alone. A
 VM or template may also be named by instance or BIOS UUID. An exact name that
 matches nothing fails; a glob that matches nothing prints
-`No resources found.` on stderr. Repeatable `--where` adds predicates, and
-`--wide` adds metadata columns:
+`No resources found.` on stderr.
 
 ```sh
 vsfleet api-resources
 vsfleet get hosts -n prod
 vsfleet get ds 'nvme*' -A
 vsfleet get vm/web-01 host/esxi-07
-vsfleet get vms,hosts -o json
-vsfleet get vms --where 'tag=Production' --where 'cpu>=8' --wide
-vsfleet get datastores --where 'free_percent<15'
+vsfleet get vms -l Environment=Production --field-selector 'cpu>=8' -o wide
+vsfleet get datastores --field-selector 'free_percent<15' --sort-by .free_percent
 
 vsfleet search ubuntu --all-contexts
 vsfleet search --tag migration-wave-2 --wide
 vsfleet search nvme --kind datastore --limit 20
 ```
 
-With one kind, `-o json` writes an array. With several, it writes one object
-holding an array per kind, keyed by the kind's plural.
+<span id="get-selectors"></span>
+
+### Selecting objects
+
+`-l` selects by vSphere tag, the way kubectl selects by label: the tag
+category is the key and the tag's name is the value. Requirements are
+comma-separated and all must hold.
+
+| Selector | Matches |
+|---|---|
+| `env=prod`, `env==prod` | a tag named `prod` in category `env` |
+| `env!=prod` | no tag named `prod` in category `env` |
+| `'env in (prod,dev)'` | a tag in `env` named `prod` or `dev` |
+| `'env notin (prod,dev)'` | no tag in `env` named `prod` or `dev` |
+| `env` | any tag in category `env` |
+| `'!env'` | no tag in category `env` |
+
+`--field-selector` selects by field: comma-separated predicates in the
+`--where` language below, with `==` accepted for `=`. Tag predicates belong
+to `-l`; `custom.NAME=VALUE` selects by custom attribute.
+`vsfleet explain <kind>` lists a kind's fields. Both selectors apply to
+inventory kinds; host subresources, distributed port groups and snapshots
+narrow with `--host`, `--switch` and `--vm` instead. An object whose tags or
+custom attributes could not be read matches no selector that reads them,
+negative or not.
+
+<span id="get-output"></span>
+
+### Output formats
+
+| `-o` | Writes |
+|---|---|
+| `table` (default) | One table per kind, a blank line apart |
+| `wide` | The table plus `TAGS` and `CUSTOM ATTRIBUTES` for kinds that carry them |
+| `json`, `yaml` | An array for one kind; with several, an object holding an array per kind, keyed by plural |
+| `name` | `KIND/NAME` per object, ready for `vsfleet describe` |
+| `csv` | The table's rows and columns, for one kind |
+| `jsonpath=TEMPLATE` | A kubectl JSONPath template over `{"kind": "List", "items": [...]}`, or the object itself when one was named |
+| `custom-columns=NAME:EXPR,...` | One column per JSONPath expression; `<none>` where it selects nothing |
+
+`--sort-by` takes a JSONPath expression such as `.name` or `.cpu`: numbers
+sort numerically, and objects without the field sort last. `--no-headers`
+drops the header row of table, wide, csv and custom-columns output.
+
+```sh
+vsfleet get vms -l env=prod -o name | xargs -n1 vsfleet describe
+vsfleet get vms -o custom-columns=NAME:.name,HOST:.host,TAGS:.metadata.tags[*].name
+vsfleet get vms -o jsonpath='{range .items[*]}{.name}{"\t"}{.ip_address}{"\n"}{end}'
+vsfleet get datastores -o csv > datastores.csv
+```
+
+The JSONPath subset takes `.field`, `['field']`, `[n]`, `[a:b]`, `[*]`,
+`{range}...{end}`, quoted literals such as `{"\n"}`, and filters such as
+`[?(@.cpu>=8)]`. Recursive descent (`..`) and unions are not supported.
+
+`-w` re-reads and re-renders on the terminal UI's refresh interval,
+`--refresh` (default 20s), until interrupted: in place on a terminal, appended
+when piped.
+
+<span id="where-language"></span>
 
 `--where` uses `field operator value`, with `=`, `!=`, `<`, `<=`, `>` and
 `>=`. Repeat the flag to AND predicates. Values may be quoted when they contain
@@ -151,7 +207,7 @@ and `--vm`:
 ```sh
 vsfleet get dvswitches
 vsfleet get dvportgroups --switch dvs-prod
-vsfleet get resourcepools --wide
+vsfleet get resourcepools -o wide
 vsfleet get snapshots --vm web-01
 ```
 

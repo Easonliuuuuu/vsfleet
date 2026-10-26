@@ -190,7 +190,7 @@ func printKindExplanation(a *App, e kindExplanation) {
 	if len(e.GetColumns) > 0 {
 		fmt.Fprintf(w, "\nGET COLUMNS (vsfleet get %s):\n  %s\n", e.Kind.Plural, strings.Join(e.GetColumns, ", "))
 		if len(e.WideColumns) > 0 {
-			fmt.Fprintf(w, "  --wide adds %s\n", strings.Join(e.WideColumns, ", "))
+			fmt.Fprintf(w, "  -o wide adds %s\n", strings.Join(e.WideColumns, ", "))
 		}
 		if e.NarrowBy != "" {
 			fmt.Fprintf(w, "  --%[1]s %[2]s narrows to one %[1]s\n", e.NarrowBy, strings.ToUpper(e.NarrowBy))

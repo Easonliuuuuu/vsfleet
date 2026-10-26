@@ -38,6 +38,18 @@ type vcenter struct {
 
 func startVCenter(t *testing.T, tune func(*simulator.Model)) *vcenter {
 	t.Helper()
+	return startVCenterWith(t, tune, false)
+}
+
+// startVCenterWithTagging also serves the vAPI endpoints, which tags and
+// tag categories are read through.
+func startVCenterWithTagging(t *testing.T, tune func(*simulator.Model)) *vcenter {
+	t.Helper()
+	return startVCenterWith(t, tune, true)
+}
+
+func startVCenterWith(t *testing.T, tune func(*simulator.Model), endpoints bool) *vcenter {
+	t.Helper()
 	model := simulator.VPX()
 	if tune != nil {
 		tune(model)
@@ -46,6 +58,7 @@ func startVCenter(t *testing.T, tune func(*simulator.Model)) *vcenter {
 		t.Fatalf("create simulator model: %v", err)
 	}
 	t.Cleanup(model.Remove)
+	model.Service.RegisterEndpoints = endpoints
 	// vcsim serves plain HTTP unless a TLS configuration is set. A real
 	// vCenter is always TLS, and the certificate policy is what these tests
 	// need to exercise.
@@ -106,6 +119,13 @@ func newRunner(t *testing.T) *runner {
 // tests supply passwords without touching the operating system keyring.
 func (r *runner) run(stdin string, args ...string) (stdout, stderr string, err error) {
 	r.t.Helper()
+	return r.runContext(context.Background(), stdin, args...)
+}
+
+// runContext is run with a context the test can cancel, for a command that
+// runs until interrupted.
+func (r *runner) runContext(ctx context.Context, stdin string, args ...string) (stdout, stderr string, err error) {
+	r.t.Helper()
 	var out, errOut lockedBuffer
 	app := &cli.App{
 		In:  strings.NewReader(stdin),
@@ -115,7 +135,7 @@ func (r *runner) run(stdin string, args ...string) (stdout, stderr string, err e
 	root := cli.NewRootCommand(app)
 	root.SetArgs(append([]string{"--config", r.configPath}, args...))
 	defer func() { _ = app.Close(context.Background()) }()
-	err = root.ExecuteContext(context.Background())
+	err = root.ExecuteContext(ctx)
 	return out.String(), errOut.String(), err
 }
 

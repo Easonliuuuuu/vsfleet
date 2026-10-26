@@ -145,7 +145,7 @@ the dump. Reads only, like every vsfleet command.`),
 					dump.Errors[k.Plural] = err.Error()
 					continue
 				}
-				dump.Kinds[k.Plural] = listing.items
+				dump.Kinds[k.Plural] = listing.raw
 			}
 			return writeJSON(a.out(), dump)
 		},

@@ -231,7 +231,7 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 			resolve := rule.Resolve
 			if rule.MissingEvidence != nil {
 				resolve = func(in Input) (string, string, []string) {
-					result, reason, blind, partial := resolveVMEvidence(in, rule.MissingEvidence)
+					result, reason, blind, partial := resolveVMEvidence(in, rule.Needs, rule.MissingEvidence)
 					status.Partial = partial
 					return result, reason, blind
 				}

@@ -286,6 +286,7 @@ var rules = []Rule{
 		Eval: func(in Input, emit func(Finding)) {
 			evaluateRule("tools-not-installed", in, Options{Thresholds: in.Thresholds}, emit)
 		},
+		MissingEvidence: noToolsInstallation,
 	},
 	{
 		ID: "tools-not-running", Category: CategoryHygiene, Severity: SeverityWarning,
@@ -305,6 +306,7 @@ var rules = []Rule{
 					Message: toolsNotRunningMessage(vm.ToolsState), Evidence: []Evidence{{Field: "tools_state", Observed: nonempty(vm.ToolsState, "unknown"), Expected: "guestToolsRunning"}}})
 			}
 		},
+		MissingEvidence: noToolsRunningStatus,
 	},
 	{
 		ID: "tools-outdated", Category: CategoryHygiene, Severity: SeverityWarning, MinSchema: 3,

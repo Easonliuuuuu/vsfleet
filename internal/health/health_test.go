@@ -492,6 +492,7 @@ func TestEvaluateHostDevicePassthroughUsesBindingEvidence(t *testing.T) {
 func TestMigrationReadinessKeepsAdvisoriesReady(t *testing.T) {
 	unlimited := int64(-1)
 	advisoryVM := vsphere.VM{Location: vsphere.Location{Context: "prod"}, ID: "vm-1", Name: "legacy", ConfigurationAvailable: true, Firmware: "bios", CPU: 1, CoresPerSocket: 1,
+		ToolsState: "guestToolsRunning", ToolsVersionStatus: "guestToolsCurrent",
 		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}}
 	base := assessment.ExportData{Run: assessment.Run{ID: 61, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}, {Kind: "snapshot", Status: "empty"}}}}, VMs: []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: advisoryVM}}}}
 	if got := Readiness(Evaluate(base, Options{})); got.Verdict != "ready" || len(got.Advisories) != 1 {

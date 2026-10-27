@@ -16,6 +16,7 @@ func TestMissingVMConfigurationIsScopedToTheVM(t *testing.T) {
 	configured := func(id string, floppy bool) vsphere.VM {
 		secureBoot, unlimited := false, int64(-1)
 		vm := vsphere.VM{Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"}, ID: id, Name: id, ConfigurationAvailable: true,
+			ToolsState: "guestToolsRunning", ToolsVersionStatus: "guestToolsCurrent",
 			Firmware: "efi", SecureBootEnabled: &secureBoot, CPU: 2, CoresPerSocket: 1,
 			CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}}
 		if floppy {
@@ -75,8 +76,8 @@ func TestMissingVMConfigurationIsScopedToTheVM(t *testing.T) {
 					t.Errorf("floppy-present result = %q, want %q", status.Result, tc.wantResult)
 				}
 			}
-			if checked != 11 {
-				t.Fatalf("checked %d VM configuration rules, want the 11 from issue #404", checked)
+			if checked != 13 {
+				t.Fatalf("checked %d VM evidence rules, want the 11 from issue #404 and the 2 Tools rules from #490", checked)
 			}
 			// A VM left out is still missing evidence: readiness must not
 			// call the estate ready.

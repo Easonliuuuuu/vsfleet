@@ -1456,7 +1456,7 @@ func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthR
 		return "partial", healthFindingsForContext(healthReport, c.Name), message
 	}
 	if len(partial) > 0 {
-		message := fmt.Sprintf("%d of %d rules evaluated; %s left out VMs without migration configuration evidence (up to %d of %d)", evaluated+len(disabled), len(allRules), strings.Join(partial, ", "), widest.Unevaluated, widest.Total)
+		message := fmt.Sprintf("%d of %d rules evaluated; %s left out VMs without the evidence they need (up to %d of %d)", evaluated+len(disabled), len(allRules), strings.Join(partial, ", "), widest.Unevaluated, widest.Total)
 		if len(disabled) > 0 {
 			message += "; disabled rules: " + strings.Join(disabled, ", ")
 		}

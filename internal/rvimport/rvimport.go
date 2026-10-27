@@ -1611,6 +1611,7 @@ func applyToolsRow(t sheetTable, row []string, vm *vsphere.VM) {
 	applyToolsStatus(t.cell(row, "Tools"), t.cell(row, "Tools Running Status"), vm)
 	vm.ToolsVersion = t.cell(row, "Tools Version")
 	vm.ToolsVersionStatus = t.cell(row, "Tools Version Status")
+	deriveToolsDetail(vm)
 }
 
 func applyPartitionRow(t sheetTable, row []string, vm *vsphere.VM) {

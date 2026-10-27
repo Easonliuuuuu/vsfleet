@@ -355,8 +355,12 @@ slots and states. Locality and working-path count remain unknown. vsfleet's
 own aggregate counts, locality, and working-path columns are preserved.
 
 `vTools` installation status (`Tools`) and running status (`Tools Running Status`,
-a vsfleet extension) are stored separately. Real RVTools workbooks do not supply
-the running-status extension, so running status remains unknown. Older vsfleet
+a vsfleet extension) are stored separately. Real RVTools workbooks supply neither
+`Tools Running Status` nor `Tools Version Status`, so those values come from
+`Tools` only where it implies them: `toolsNotInstalled` means not installed and
+not running, and `toolsNotRunning` means not running. `toolsOk` and `toolsOld`
+leave running status unknown, so `tools-not-running` reports unknown for those
+VMs instead of passing. Older vsfleet
 workbooks that put `guestToolsRunning` or `guestToolsNotRunning` in `Tools`
 retain those values as running status.
 

@@ -886,7 +886,8 @@ func TestToolsStatusKeepsInstallationAndRunningEvidenceSeparate(t *testing.T) {
 	for _, tc := range []struct {
 		name, status, running, wantStatus, wantRunning string
 	}{
-		{"RVTools not installed", "toolsNotInstalled", "", "toolsNotInstalled", ""},
+		{"RVTools not installed", "toolsNotInstalled", "", "toolsNotInstalled", "guestToolsNotRunning"},
+		{"RVTools not running", "toolsNotRunning", "", "toolsNotRunning", "guestToolsNotRunning"},
 		{"RVTools installed", "toolsOk", "", "toolsOk", ""},
 		{"legacy vsfleet", "guestToolsRunning", "", "", "guestToolsRunning"},
 		{"explicit running status", "toolsOld", "guestToolsNotRunning", "toolsOld", "guestToolsNotRunning"},
@@ -926,6 +927,41 @@ func TestToolsStatusKeepsInstallationAndRunningEvidenceSeparate(t *testing.T) {
 			vm := findVM(result, "alpha", "web-01")
 			if vm.ToolsStatus != tc.wantStatus || vm.ToolsState != tc.wantRunning {
 				t.Fatalf("installation/running = %q/%q, want %q/%q", vm.ToolsStatus, vm.ToolsState, tc.wantStatus, tc.wantRunning)
+			}
+		})
+	}
+}
+
+// TestRVToolsToolsStatusDrivesToolsVerdicts covers issue #490: RVTools 4.8
+// writes Tools but neither Tools Running Status nor Tools Version Status, and
+// a VM with toolsNotInstalled passed both Tools rules that fail live.
+func TestRVToolsToolsStatusDrivesToolsVerdicts(t *testing.T) {
+	for _, tc := range []struct {
+		name, tools, wantInstalled, wantRunning string
+	}{
+		{"not installed", "toolsNotInstalled", "fail", "fail"},
+		{"not running", "toolsNotRunning", "pass", "fail"},
+		{"installed says nothing about running", "toolsOk", "pass", "unknown"},
+		{"no Tools value", "", "unknown", "unknown"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := openFixture(t, writeFixtureWorkbook(t, nil))
+			for row := 2; row <= 3; row++ {
+				setColumnValue(t, f, sheetVTools, "Tools", row, tc.tools)
+			}
+			blankHeader(t, f, sheetVTools, "Tools Running Status")
+			blankHeader(t, f, sheetVTools, "Tools Version Status")
+			_, run, store := importFixture(t, f, Options{})
+			data, err := store.LoadExportData(context.Background(), run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := map[string]string{}
+			for _, status := range health.Evaluate(data, health.Options{}).Rules {
+				got[status.Rule] = status.Result
+			}
+			if got["tools-not-installed"] != tc.wantInstalled || got["tools-not-running"] != tc.wantRunning {
+				t.Errorf("tools-not-installed/tools-not-running = %s/%s, want %s/%s", got["tools-not-installed"], got["tools-not-running"], tc.wantInstalled, tc.wantRunning)
 			}
 		})
 	}

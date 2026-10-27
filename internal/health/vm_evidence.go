@@ -22,7 +22,7 @@ type PartialCoverage struct {
 // judges every VM that has it, and the rest are counted as partial coverage:
 // one inaccessible VM, which vCenter returns no configuration for, must not
 // blind the whole context.
-func resolveVMEvidence(in Input, missing func(vsphere.VM) bool) (result, reason string, blind []string, partial []PartialCoverage) {
+func resolveVMEvidence(in Input, needs string, missing func(vsphere.VM) bool) (result, reason string, blind []string, partial []PartialCoverage) {
 	type tally struct{ total, missing int }
 	contexts := make(map[string]*tally)
 	for _, item := range in.Data.VMs {
@@ -55,14 +55,14 @@ func resolveVMEvidence(in Input, missing func(vsphere.VM) bool) (result, reason 
 	sort.Slice(partial, func(i, j int) bool { return partial[i].Context < partial[j].Context })
 	if len(blind) > 0 {
 		result = "unknown"
-		reasons = append(reasons, "VM migration configuration evidence is incomplete")
+		reasons = append(reasons, needs+" evidence is incomplete")
 	}
 	if len(partial) > 0 {
 		counts := make([]string, 0, len(partial))
 		for _, p := range partial {
 			counts = append(counts, fmt.Sprintf("%d of %d in %s", p.Unevaluated, p.Total, p.Context))
 		}
-		reasons = append(reasons, "VMs without migration configuration evidence were not evaluated: "+strings.Join(counts, ", "))
+		reasons = append(reasons, "VMs without "+needs+" evidence were not evaluated: "+strings.Join(counts, ", "))
 	}
 	return result, strings.Join(reasons, "; "), blind, partial
 }
@@ -92,4 +92,18 @@ func noSecureBoot(vm vsphere.VM) bool {
 
 func validFirmware(value string) bool {
 	return strings.EqualFold(strings.TrimSpace(value), "bios") || strings.EqualFold(strings.TrimSpace(value), "efi")
+}
+
+// noToolsInstallation reports a VM with neither Tools version status nor the
+// legacy installation status RVTools writes. Either says whether Tools are
+// installed.
+func noToolsInstallation(vm vsphere.VM) bool {
+	return vm.ToolsVersionStatus == "" && vm.ToolsStatus == ""
+}
+
+// noToolsRunningStatus reports a VM with no Tools running status, such as one
+// imported from a workbook that carries neither Tools Running Status nor a
+// Tools value that implies it.
+func noToolsRunningStatus(vm vsphere.VM) bool {
+	return vm.ToolsState == ""
 }

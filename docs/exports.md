@@ -146,7 +146,7 @@ Verified conventions:
 
 Paths can reveal VM, application, project, backup, snapshot, personal, and
 customer names and storage layout. Export warns on stderr when files are
-present. Treat the workbook and history database as sensitive.
+present. Treat the workbook and capture database as sensitive.
 
 Stored rows use roughly 100 to 200 bytes per file. Defaults permit 500,000 files
 per context per capture (tens of megabytes). XLSX permits 1,048,575 data rows

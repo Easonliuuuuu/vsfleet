@@ -40,7 +40,7 @@ listing hosts already does.
 
 A capture is named the way --run names one: an ID, a label, latest, previous
 or a date. Describing it shows what it recorded, per context and kind, read
-from the history database; -n narrows that to some contexts.
+from the capture database; -n narrows that to some contexts.
 
 Any other object is read live from vCenter. --run reads it from a stored
 capture instead, the way "vsfleet get --run" does. --history shows how a VM changed

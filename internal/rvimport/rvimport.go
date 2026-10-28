@@ -106,6 +106,7 @@ var headerAliases = map[string]map[string]string{
 	sheetDVSwitch: {
 		"switch":    "DVS",
 		"max ports": "# Max ports",
+		"max mtu":   "MTU",
 	},
 	sheetDVPort: {
 		"port":                "Port group",
@@ -1646,6 +1647,14 @@ func hostFromRow(t sheetTable, row []string, contextName string, timezone *time.
 	}
 	applyHostUsage(t, row, &h)
 	applyHostDetails(t, row, &h, timezone)
+	// vHost has no thread count. ESXi hyperthreading runs two threads per
+	// core, so HT Active gives it; without that column it stays unknown.
+	if ht := parseOptBool(t.cell(row, "HT Active")); ht != nil {
+		h.CPUThreads = h.CPUCores
+		if *ht {
+			h.CPUThreads *= 2
+		}
+	}
 	return h
 }
 
@@ -1877,7 +1886,7 @@ func dvPortFromRow(t sheetTable, row []string, switchName string) vsphere.DVPort
 		BackingType:       t.cell(row, "Backing type"),
 		NumPorts:          int32(parseInt(t.cell(row, "# Ports"))),
 		VLAN:              t.cell(row, "VLAN"),
-		Uplink:            parseBool(t.cell(row, "Uplink")),
+		Uplink:            dvPortIsUplink(t, row, switchName),
 		Promiscuous:       parseOptBool(t.cell(row, "Promiscuous mode")),
 		MACChanges:        parseOptBool(t.cell(row, "MAC changes")),
 		ForgedTransmits:   parseOptBool(t.cell(row, "Forged transmits")),
@@ -1893,6 +1902,26 @@ func dvPortFromRow(t sheetTable, row []string, switchName string) vsphere.DVPort
 		LogicalSwitchUUID: t.cell(row, "Logical switch UUID"),
 		SegmentID:         t.cell(row, "Segment ID"),
 	}
+}
+
+// dvPortIsUplink reads vsfleet's Uplink column. RVTools has none, so for
+// its workbooks the uplink port group is recognized by the name vCenter gives
+// it, "<switch>-DVUplinks-<n>"; a renamed one reads as a VM port group.
+func dvPortIsUplink(t sheetTable, row []string, switchName string) bool {
+	value := t.cell(row, "Uplink")
+	if t.has("Uplink") {
+		return parseBool(value)
+	}
+	suffix, ok := strings.CutPrefix(t.cell(row, "Port group"), switchName+"-DVUplinks-")
+	if !ok || suffix == "" {
+		return false
+	}
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseBool(s string) bool {

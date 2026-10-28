@@ -2,12 +2,12 @@
 
 ## Export metadata
 
-`assessment metadata` writes stored tags and custom attributes as one row per
+`export metadata` writes stored tags and custom attributes as one row per
 value. Columns are fixed across estates and vCenters:
 
 ```sh
-vsfleet assessment metadata --format csv --file metadata.csv
-vsfleet assessment metadata nightly --kind vm --source tag -o json
+vsfleet export metadata --format csv --file metadata.csv
+vsfleet export metadata --run nightly --kind vm --source tag -o json
 ```
 
 | Column | Meaning |
@@ -54,9 +54,9 @@ columns = ["context", "vcenter_id", "name", "id", "tag.Compliance", "custom.owne
 ```
 
 ```sh
-vsfleet assessment metadata-report pci-production
-vsfleet assessment metadata-report ./pci.toml nightly --format csv --file pci.csv
-vsfleet assessment metadata-report pci-production --base baseline
+vsfleet export metadata --definition pci-production
+vsfleet export metadata --definition ./pci.toml --run nightly --format csv --file pci.csv
+vsfleet export metadata --definition pci-production --base baseline
 ```
 
 - `where` uses the [`--where` language](commands.md#inventory-and-search);
@@ -95,7 +95,7 @@ changes by object identity:
 
 ### Workbook sheet and sharing profiles
 
-`assessment export --include-metadata` appends a `vsfleetMetadata` sheet
+`export rvtools --include-metadata` appends a `vsfleetMetadata` sheet
 with the same rows. Default exports and RVTools-compatible sheets retain their
 fixed columns. Metadata can contain owner, customer, or project names; treat
 CSV, JSON, and workbook output as sensitive.
@@ -107,5 +107,5 @@ CSV, JSON, and workbook output as sensitive.
   and path; it scrubs `Source error` like other system text. Equal values keep
   equal tokens for grouping, and object IDs join to other sheets' `VM ID` and
   `Object ID` tokens.
-- `assessment metadata` and `metadata-report` write unprofiled values. Use a
+- `export metadata`, with or without `--definition`, writes unprofiled values. Use a
   [sharing profile](sharing.md) when the output leaves your control.

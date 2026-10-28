@@ -102,17 +102,17 @@ func TestVCSIMHistoryDiffVMHistoryAndCapacity(t *testing.T) {
 		t.Fatalf("captures did not create distinct runs: %d, %d, %d", first.ID, second.ID, third.ID)
 	}
 
-	diffJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
+	diffJSON := vcsimJSON(t, r, "--db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
 	if !strings.Contains(diffJSON, "power_state") && !strings.Contains(diffJSON, "modified") {
 		t.Fatalf("diff omitted power mutation: %s", diffJSON)
 	}
-	historyJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "describe", "vm", "DC0_C0_RP0_VM0", "--history", "--all-observations", "--include-runtime")
+	historyJSON := vcsimJSON(t, r, "--db", historyDB, "-o", "json", "describe", "vm", "DC0_C0_RP0_VM0", "--history", "--all-observations", "--include-runtime")
 	if !strings.Contains(historyJSON, strconv.FormatInt(first.ID, 10)) || !strings.Contains(historyJSON, strconv.FormatInt(second.ID, 10)) {
 		t.Fatalf("VM history omitted captures: %s", historyJSON)
 	}
-	trendJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "analyze", "capacity", "--trend", "--kind", "all", "--limit", "0")
+	trendJSON := vcsimJSON(t, r, "--db", historyDB, "-o", "json", "analyze", "capacity", "--trend", "--kind", "all", "--limit", "0")
 	assertCapacityRunIDs(t, trendJSON, 3)
-	contextTrendJSON := vcsimJSON(t, r, "--history-db", historyDB, "--context", "history", "-o", "json", "analyze", "capacity", "--trend", "--kind", "host", "--limit", "0")
+	contextTrendJSON := vcsimJSON(t, r, "--db", historyDB, "--context", "history", "-o", "json", "analyze", "capacity", "--trend", "--kind", "host", "--limit", "0")
 	assertCapacityRunIDs(t, contextTrendJSON, 3)
 	if !strings.Contains(contextTrendJSON, `"scope": "context"`) || !strings.Contains(contextTrendJSON, `"name": "history"`) {
 		t.Fatalf("context-scoped capacity trend omitted context series: %s", contextTrendJSON)
@@ -140,7 +140,7 @@ func TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved(t *testing.T) {
 		t.Fatalf("target run=%+v, want partial with one successful context", second)
 	}
 
-	diffJSON := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
+	diffJSON := vcsimJSON(t, r, "--db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--include-runtime")
 	var diff assessment.Diff
 	if err := json.Unmarshal([]byte(diffJSON), &diff); err != nil {
 		t.Fatalf("decode diff: %v\n%s", err, diffJSON)
@@ -174,7 +174,7 @@ func TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved(t *testing.T) {
 		t.Fatalf("diff warnings do not say the killable context was not collected in the target: %s", diffJSON)
 	}
 
-	_, _, policyErr := r.run("", "--history-db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--require-complete")
+	_, _, policyErr := r.run("", "--db", historyDB, "-o", "json", "capture", "diff", strconv.FormatInt(first.ID, 10), strconv.FormatInt(second.ID, 10), "--require-complete")
 	if exitCode(policyErr) != 2 {
 		t.Fatalf("--require-complete exit=%d err=%v, want 2 for an incomplete target", exitCode(policyErr), policyErr)
 	}
@@ -182,7 +182,7 @@ func TestVCSIMDiffTreatsLostContextAsUnknownNotRemoved(t *testing.T) {
 	// Both contexts hold the same generated VM name, so every history query is
 	// scoped to one context.
 	historyEvents := func(contextName string) []assessment.VMHistoryEvent {
-		raw := vcsimJSON(t, r, "--history-db", historyDB, "--context", contextName, "-o", "json", "describe", "vm", "DC0_C0_RP0_VM0", "--history", "--all-observations", "--include-runtime")
+		raw := vcsimJSON(t, r, "--db", historyDB, "--context", contextName, "-o", "json", "describe", "vm", "DC0_C0_RP0_VM0", "--history", "--all-observations", "--include-runtime")
 		var events []assessment.VMHistoryEvent
 		if err := json.Unmarshal([]byte(raw), &events); err != nil {
 			t.Fatalf("decode %s VM history: %v\n%s", contextName, err, raw)

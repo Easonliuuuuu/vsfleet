@@ -30,7 +30,7 @@ type App struct {
 	AllContexts  bool
 	Format       string
 	Timeout      time.Duration
-	HistoryPath  string
+	DBPath       string
 	// RefreshInterval is how often the terminal interface re-reads inventory
 	// in the background. Zero takes the built-in default; negative turns it
 	// off. It only reaches the interface, so it is registered on the two
@@ -124,7 +124,7 @@ func (a *App) History() (*assessment.Store, error) {
 	if a.history != nil {
 		return a.history, nil
 	}
-	s, err := assessment.Open(a.HistoryPath)
+	s, err := assessment.Open(a.DBPath)
 	if err != nil {
 		return nil, err
 	}
@@ -227,9 +227,11 @@ func (a *App) json() bool { return a.Format == FormatJSON }
 
 func (a *App) wide() bool { return a.Format == FormatWide }
 
-func rejectStoredContextSelection(cmd *cobra.Command, operation string) error {
+// rejectStoredContextSelection refuses -n on a command that acts on the
+// whole capture database rather than on contexts.
+func rejectStoredContextSelection(cmd *cobra.Command) error {
 	if cmd.Flags().Changed("context") {
-		return fmt.Errorf("--context is not supported for assessment %s", operation)
+		return fmt.Errorf("--context is not supported by %q", cmd.CommandPath())
 	}
 	return nil
 }
@@ -279,6 +281,12 @@ at production.`,
 		// rejectUnknownArgs, unlike cobra.NoArgs, offers the near miss.
 		Args: rejectUnknownArgs,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			if cmd.Flags().Changed("history-db") {
+				return fmt.Errorf(`--history-db was renamed: use --db`)
+			}
+			if warning := assessment.LegacyEnvWarning(); warning != "" {
+				fmt.Fprintf(a.errOut(), "warning: %s\n", warning)
+			}
 			if err := a.checkOutput(cmd); err != nil {
 				return err
 			}
@@ -310,7 +318,9 @@ at production.`,
 	f.BoolVarP(&a.AllContexts, "all-contexts", "A", false, "act on every configured context")
 	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json; get also takes wide, yaml, name, csv, jsonpath=TEMPLATE and custom-columns=SPEC, and analyze health and readiness network take wide")
 	f.DurationVar(&a.Timeout, "timeout", 30*time.Second, "per-vCenter timeout")
-	f.StringVar(&a.HistoryPath, "history-db", "", "path to the local assessment database")
+	f.StringVar(&a.DBPath, "db", "", "path to the local capture database (default: $VSFLEET_DB, then the platform user config directory)")
+	f.String("history-db", "", `renamed to --db`)
+	_ = f.MarkHidden("history-db")
 	// A bare "vsfleet" opens the interface, so the interface's own flag
 	// belongs here too — on root's own flags, not the persistent set, so
 	// "vsfleet get vms --refresh" is still the error it should be.
@@ -330,7 +340,8 @@ at production.`,
 		inGroup(groupInventory, newExplainCommand(a)),
 		inGroup(groupInventory, newAPIResourcesCommand(a)),
 		inGroup(groupHistory, newCaptureCommand(a)),
-		inGroup(groupHistory, newAssessmentCommand(a)),
+		inGroup(groupHistory, newExportCommand(a)),
+		inGroup(groupHistory, newDBCommand(a)),
 		inGroup(groupAnalysis, newAnalyzeCommand(a)),
 		inGroup(groupDiagnose, newDoctorCommand(a)),
 	)
@@ -358,6 +369,7 @@ at production.`,
 	root.AddCommand(renamedCommand("portgroup", []string{"portgroups"},
 		`use "vsfleet get networks" for networks, or "vsfleet get portgroups" for standard-switch port groups`))
 	root.AddCommand(renamedCommand("status", nil, `use "vsfleet cluster-info"`))
+	root.AddCommand(newAssessmentRenamedCommand())
 	root.AddCommand(renamedGroupCommand("import", `use "vsfleet capture import rvtools FILE"`, map[string]string{
 		"rvtools": `use "vsfleet capture import rvtools FILE"`,
 	}))

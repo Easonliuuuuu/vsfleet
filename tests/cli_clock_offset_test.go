@@ -25,7 +25,7 @@ func TestAssessmentRunStoresEachContextsClockOffset(t *testing.T) {
 	addUnreachableContext(r, "down")
 	historyDB := filepath.Join(t.TempDir(), "history.db")
 	// The run is partial because of the unreachable context.
-	_, _, _ = r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts")
+	_, _, _ = r.run("", "--db", historyDB, "capture", "run", "--all-contexts")
 
 	store, err := assessment.Open(historyDB)
 	if err != nil {

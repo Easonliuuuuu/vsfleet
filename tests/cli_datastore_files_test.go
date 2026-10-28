@@ -106,7 +106,7 @@ func TestDatastoreFilesListRootAndSubdirectory(t *testing.T) {
 	r := newRunner(t)
 	r.addContext("lab", vc)
 
-	root := r.mustRun(testPassword+"\n", "datastore", "files", "list", ds.Name)
+	root := r.mustRun(testPassword+"\n", "datastore", "ls", ds.Name)
 	if !strings.Contains(root, "notes") {
 		t.Fatalf("root listing did not show the seeded directory:\n%s", root)
 	}
@@ -114,12 +114,12 @@ func TestDatastoreFilesListRootAndSubdirectory(t *testing.T) {
 		t.Fatalf("root listing recursed into a subdirectory:\n%s", root)
 	}
 
-	sub := r.mustRun(testPassword+"\n", "datastore", "files", "list", ds.Name, "notes")
+	sub := r.mustRun(testPassword+"\n", "datastore", "ls", ds.Name, "notes")
 	if !strings.Contains(sub, "readme.txt") {
 		t.Fatalf("subdirectory listing did not show the seeded file:\n%s", sub)
 	}
 
-	rootJSON := r.mustRun(testPassword+"\n", "datastore", "files", "list", ds.Name, "-o", "json")
+	rootJSON := r.mustRun(testPassword+"\n", "datastore", "ls", ds.Name, "-o", "json")
 	for _, want := range []string{`"context": "lab"`, `"datastore": "` + ds.Name + `"`, `"path": ""`, `"truncated": false`} {
 		if !strings.Contains(rootJSON, want) {
 			t.Errorf("JSON listing is missing %q:\n%s", want, rootJSON)
@@ -153,12 +153,12 @@ func TestDatastoreFilesFindIsRecursiveAndReportsLiveReferences(t *testing.T) {
 	r := newRunner(t)
 	r.addContext("lab", vc)
 
-	found := r.mustRun(testPassword+"\n", "datastore", "files", "find", ds.Name, "*.vmdk")
+	found := r.mustRun(testPassword+"\n", "datastore", "find", ds.Name, "*.vmdk")
 	if !strings.Contains(found, "referenced by "+ref.VMName) {
 		t.Fatalf("find did not report the live VM reference for %q:\n%s", ref.VMName, found)
 	}
 
-	foundJSON := r.mustRun(testPassword+"\n", "datastore", "files", "find", ds.Name, "*.vmdk", "-o", "json")
+	foundJSON := r.mustRun(testPassword+"\n", "datastore", "find", ds.Name, "*.vmdk", "-o", "json")
 	for _, want := range []string{`"vm": "` + ref.VMName + `"`, `"backing_path": "` + ref.BackingPath + `"`} {
 		if !strings.Contains(foundJSON, want) {
 			t.Errorf("JSON find output is missing %q:\n%s", want, foundJSON)
@@ -193,17 +193,17 @@ func TestDatastoreFilesFindLimitAndTypeFilter(t *testing.T) {
 	r := newRunner(t)
 	r.addContext("lab", vc)
 
-	limited := r.mustRun(testPassword+"\n", "datastore", "files", "find", ds.Name, "*.log*", "--limit", "1")
+	limited := r.mustRun(testPassword+"\n", "datastore", "find", ds.Name, "*.log*", "--limit", "1")
 	if !strings.Contains(limited, "showing the first 1 match") {
 		t.Errorf("limited find did not report the limit:\n%s", limited)
 	}
 
-	filesOnly := r.mustRun(testPassword+"\n", "datastore", "files", "find", ds.Name, "*.log*", "--type", "file")
+	filesOnly := r.mustRun(testPassword+"\n", "datastore", "find", ds.Name, "*.log*", "--type", "file")
 	if strings.Contains(filesOnly, "some.log-dir") {
 		t.Errorf("--type file returned a directory:\n%s", filesOnly)
 	}
 
-	dirsOnly := r.mustRun(testPassword+"\n", "datastore", "files", "find", ds.Name, "*.log*", "--type", "directory")
+	dirsOnly := r.mustRun(testPassword+"\n", "datastore", "find", ds.Name, "*.log*", "--type", "directory")
 	if strings.Contains(dirsOnly, "one.log") {
 		t.Errorf("--type directory returned a file:\n%s", dirsOnly)
 	}
@@ -211,7 +211,7 @@ func TestDatastoreFilesFindLimitAndTypeFilter(t *testing.T) {
 		t.Errorf("--type directory did not return the seeded directory:\n%s", dirsOnly)
 	}
 
-	_, _, err = r.run(testPassword+"\n", "datastore", "files", "find", ds.Name, "*", "--type", "bogus")
+	_, _, err = r.run(testPassword+"\n", "datastore", "find", ds.Name, "*", "--type", "bogus")
 	if err == nil {
 		t.Fatal("an unknown --type value should be rejected")
 	}
@@ -222,7 +222,7 @@ func TestDatastoreFilesListMissingDatastoreFails(t *testing.T) {
 	r := newRunner(t)
 	r.addContext("lab", vc)
 
-	_, _, err := r.run(testPassword+"\n", "datastore", "files", "list", "does-not-exist")
+	_, _, err := r.run(testPassword+"\n", "datastore", "ls", "does-not-exist")
 	if err == nil {
 		t.Fatal("listing a nonexistent datastore should fail")
 	}
@@ -250,7 +250,7 @@ func TestDatastoreFilesListPermissionDenied(t *testing.T) {
 
 	r := newRunner(t)
 	r.addContext("lab", vc)
-	_, stderr, err := r.run(testPassword+"\n", "datastore", "files", "list", stores[0].Name)
+	_, stderr, err := r.run(testPassword+"\n", "datastore", "ls", stores[0].Name)
 	if err == nil {
 		t.Fatal("a denied browse should fail the command")
 	}
@@ -276,7 +276,7 @@ func TestDatastoreFilesAmbiguousNameAcrossContextsIsRefused(t *testing.T) {
 	}
 
 	stdin := strings.Repeat(testPassword+"\n", 4)
-	stdout, stderr, err := r.run(stdin, "datastore", "files", "list", stores[0].Name, "--all-contexts")
+	stdout, stderr, err := r.run(stdin, "datastore", "ls", stores[0].Name, "--all-contexts")
 	if err == nil {
 		t.Fatalf("an ambiguous datastore name should be refused, got:\n%s", stdout)
 	}

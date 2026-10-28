@@ -78,13 +78,13 @@ func unknownSubcommandError(cmd *cobra.Command, arg string) error {
 // than printing its own help and reporting success.
 //
 // Cobra's default for a command that has children but no RunE is to accept any
-// argument, fall back to Help() and exit 0, so "vsfleet assessment lst" looks
+// argument, fall back to Help() and exit 0, so "vsfleet capture lst" looks
 // to a script exactly like a capture that worked. The check has to live in
 // RunE rather than Args because execute() returns flag.ErrHelp for an
 // unrunnable command before it ever validates arguments.
 //
 // A bare parent still prints its help and succeeds: asking what is under
-// "vsfleet assessment" is a reasonable thing to do, and answering it is not a
+// "vsfleet capture" is a reasonable thing to do, and answering it is not a
 // failure.
 func requireSubcommand(cmd *cobra.Command) *cobra.Command {
 	cmd.RunE = func(c *cobra.Command, args []string) error {
@@ -101,7 +101,7 @@ func requireSubcommand(cmd *cobra.Command) *cobra.Command {
 // line is shown only for a command that has no subcommands.
 //
 // Giving a parent a RunE makes cobra consider it runnable, which would
-// otherwise advertise "vsfleet assessment [flags]" — an invocation that does
+// otherwise advertise "vsfleet capture [flags]" — an invocation that does
 // nothing but print this same help. Cobra resolves a template through the
 // parent chain, so the descendants of a parent inherit this one; the extra
 // condition is what keeps it correct for them, since a leaf has no subcommands

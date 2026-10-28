@@ -110,7 +110,7 @@ func newRunner(t *testing.T) *runner {
 	// their per-user defaults, so a command that opens history would migrate
 	// and write the developer's own database. Keep both inside the test.
 	dir := t.TempDir()
-	t.Setenv("VSFLEET_HISTORY_DB", filepath.Join(dir, "history.db"))
+	t.Setenv("VSFLEET_DB", filepath.Join(dir, "history.db"))
 	t.Setenv("VSFLEET_STATE", filepath.Join(dir, "state.json"))
 	return &runner{t: t, configPath: filepath.Join(dir, "config.toml")}
 }
@@ -143,7 +143,7 @@ func TestRunnerClosesHistoryDatabase(t *testing.T) {
 	r := newRunner(t)
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 
-	if _, _, err := r.run("", "--history-db", dbPath, "capture", "list"); err != nil {
+	if _, _, err := r.run("", "--db", dbPath, "capture", "list"); err != nil {
 		t.Fatalf("assessment list: %v", err)
 	}
 	if err := os.Remove(dbPath); err != nil {

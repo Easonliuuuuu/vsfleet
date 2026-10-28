@@ -532,7 +532,7 @@ func printDatastoreDetail(out io.Writer, d vsphere.Datastore) {
 		f.add("Custom attributes", dash(metadataAttributes(d.Metadata)))
 	}
 	f.flush()
-	fmt.Fprintf(out, "\nRun \"vsfleet datastore files list %s\" to browse its contents.\n", d.Name)
+	fmt.Fprintf(out, "\nRun \"vsfleet datastore ls %s\" to browse its contents.\n", d.Name)
 }
 
 func printNetworkDetail(out io.Writer, n vsphere.Network) {

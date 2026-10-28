@@ -40,7 +40,7 @@ and writes no state. Screens are marked `DEMO · SAMPLE DATA`.
 
 ```sh
 vsfleet capture run --all-contexts --label q3-audit
-vsfleet assessment export --format rvtools --file estate.xlsx
+vsfleet export rvtools --file estate.xlsx
 ```
 
 Captures are stored locally in SQLite. Queries and exports read captured

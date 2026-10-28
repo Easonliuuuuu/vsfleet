@@ -15,7 +15,7 @@ import (
 
 func sizingJSON(t *testing.T, r *runner, historyDB string, args ...string) sizing.Result {
 	t.Helper()
-	full := append([]string{"--history-db", historyDB}, args...)
+	full := append([]string{"--db", historyDB}, args...)
 	stdout := vcsimJSON(t, r, full...)
 	var result sizing.Result
 	if err := json.Unmarshal([]byte(stdout), &result); err != nil {
@@ -137,11 +137,11 @@ func TestVCSIMSizingCompleteAndPartialRuns(t *testing.T) {
 		t.Fatalf("partial run on the tight target verdict=%s cpu=%s: the 12 visible vCPU fit 13 cores, but a blind context must never make the result look fit: %+v", blindTight.Verdict, cpu.Verdict, blindTight)
 	}
 
-	_, _, gateErr := r.run("", "--history-db", historyDB, "-o", "json", "analyze", "sizing", "--run", partialID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit")
+	_, _, gateErr := r.run("", "--db", historyDB, "-o", "json", "analyze", "sizing", "--run", partialID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit")
 	if exitCode(gateErr) != 2 {
 		t.Fatalf("--fail-unless-fit on a partial run exit=%d err=%v, want 2", exitCode(gateErr), gateErr)
 	}
-	if _, _, err := r.run("", "--history-db", historyDB, "-o", "json", "analyze", "sizing", "--run", completeID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit"); err != nil {
+	if _, _, err := r.run("", "--db", historyDB, "-o", "json", "analyze", "sizing", "--run", completeID, "--hosts", "4", "--host-cores", "32", "--host-ram-gib", "512", "--datastore-capacity", "40TiB", "--fail-unless-fit"); err != nil {
 		t.Fatalf("--fail-unless-fit on the complete run: %v", err)
 	}
 }

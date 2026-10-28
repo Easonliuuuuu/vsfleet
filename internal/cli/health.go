@@ -94,7 +94,7 @@ language "vsfleet get" uses. --fail-on-findings exits 2 when a finding at
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if flags.listRules {
-				if err := rejectStoredContextSelection(cmd, "rule listing"); err != nil {
+				if err := rejectStoredContextSelection(cmd); err != nil {
 					return err
 				}
 				return printHealthRules(a)

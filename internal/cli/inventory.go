@@ -189,7 +189,7 @@ func objectMetadata(value any) (vsphere.Metadata, bool) {
 // went; every other type-first group is replaced outright by
 // renamedKindCommand.
 func newKindCommands(a *App) []*cobra.Command {
-	return []*cobra.Command{kindGroup("datastore", "Datastores: file browsing", newDatastoreFilesCommand(a))}
+	return []*cobra.Command{kindGroup("datastore", "Datastores: browse and search files (read-only)", newDatastoreFileCommands(a)...)}
 }
 
 // kindGroup is a type-first parent that keeps hidden "list" and "show"
@@ -198,14 +198,22 @@ func kindGroup(name, short string, subs ...*cobra.Command) *cobra.Command {
 	cmd := requireSubcommand(&cobra.Command{Use: name, Aliases: kindAliases(name), Short: short})
 	cmd.AddCommand(subs...)
 	k := apiresource.Get(name)
-	cmd.AddCommand(
-		renamedCommand("list", []string{"ls"}, fmt.Sprintf(`use "vsfleet get %s"`, k.Plural)),
-		renamedCommand("show", nil, fmt.Sprintf(`use "vsfleet describe %s NAME"`, k.Name)),
-	)
+	// "datastore ls" is a real command, so the "list" stub keeps "ls" only
+	// where no subcommand has taken it.
+	listAliases := []string{"ls"}
 	var examples []string
 	for _, sub := range subs {
-		examples = append(examples, sub.Example)
+		if sub.Name() == "ls" {
+			listAliases = nil
+		}
+		if !sub.Hidden {
+			examples = append(examples, sub.Example)
+		}
 	}
+	cmd.AddCommand(
+		renamedCommand("list", listAliases, fmt.Sprintf(`use "vsfleet get %s"`, k.Plural)),
+		renamedCommand("show", nil, fmt.Sprintf(`use "vsfleet describe %s NAME"`, k.Name)),
+	)
 	cmd.Example = strings.Join(examples, "\n\n")
 	return cmd
 }
@@ -220,7 +228,7 @@ func renamedKindCommand(name string, subs map[string]string) *cobra.Command {
 	generic := cmd.RunE
 	cmd.RunE = func(c *cobra.Command, args []string) error {
 		// Flag parsing is off, so args can hold flags given before the
-		// command too ("--history-db x host list"): look for the first word
+		// command too ("--db x host list"): look for the first word
 		// that names what was meant rather than trusting args[0].
 		for _, arg := range args {
 			if hint, ok := subs[arg]; ok {

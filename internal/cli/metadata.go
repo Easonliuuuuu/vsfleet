@@ -28,7 +28,7 @@ func (e *incompleteExitError) Error() string {
 }
 func (e *incompleteExitError) ExitCode() int { return 3 }
 
-// metadataExport is the JSON shape of "assessment metadata".
+// metadataExport is the JSON shape of "export metadata".
 type metadataExport struct {
 	RunID      int64                 `json:"run_id"`
 	RunLabel   string                `json:"run_label,omitempty"`
@@ -40,12 +40,12 @@ type metadataExport struct {
 	Complete   bool                  `json:"complete"`
 }
 
-func newAssessmentMetadataCommand(a *App) *cobra.Command {
+func newExportMetadataCommand(a *App) *cobra.Command {
 	var kinds, where, sources []string
-	var format, file string
+	var run, definition, base, format, file string
 	var force, failIncomplete bool
-	cmd := &cobra.Command{Use: "metadata [RUN]", Short: "Export stored tags and custom attributes in a fixed schema", Long: strings.TrimSpace(`
-Export every tag and custom attribute stored in an assessment, one row per
+	cmd := &cobra.Command{Use: "metadata", Short: "Export stored tags and custom attributes, or run a saved report over them", Long: strings.TrimSpace(`
+Export every tag and custom attribute stored in a capture, one row per
 value, with the object's context, vCenter identity and provenance.
 
 The columns never change with an estate's tag categories or attributes, so
@@ -53,16 +53,41 @@ the output can be loaded into a database or compared between vCenters. An
 object whose source was read but holds no values gets one row with an empty
 field and status "available"; an object whose source could not be read gets
 one row naming the status (unavailable, denied, unsupported or not_recorded).
-Coverage gaps are also reported as warnings. Reads stored evidence only.`),
+Coverage gaps are also reported as warnings.
+
+--definition runs a saved report instead: a TOML file, or the name of one
+saved as <config dir>/reports/<name>.toml. It selects contexts, kinds and
+--where style predicates, and names the output columns; the same definition
+run against the same capture always produces the same output. An object
+whose membership depends on a tag or custom attribute source that could not
+be read is listed as undetermined, never silently excluded, and the report is
+marked incomplete. With --base the report also runs against an earlier
+capture and lists membership changes; an object whose membership is unknown
+on either side is an unknown change, not added or removed.`),
 		Example: `  # Every tag and custom attribute in the latest capture, as CSV
-  vsfleet assessment metadata --format csv --file metadata.csv
+  vsfleet export metadata --format csv --file metadata.csv
 
   # Only VM tags, as JSON
-  vsfleet assessment metadata --kind vm --source tag -o json
+  vsfleet export metadata --kind vm --source tag -o json
 
   # Metadata of production VMs in a labelled capture
-  vsfleet assessment metadata nightly --where 'tag.Environment=Production'`,
-		Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+  vsfleet export metadata --run nightly --where 'tag.Environment=Production'
+
+  # Run a saved report, then see what joined or left it since a baseline
+  vsfleet export metadata --definition pci-production
+  vsfleet export metadata --definition pci-production --base baseline`,
+		Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+			if definition != "" {
+				for _, name := range []string{"kind", "where", "source"} {
+					if cmd.Flags().Changed(name) {
+						return fmt.Errorf("--%s does not apply with --definition, which selects its own objects", name)
+					}
+				}
+				return runMetadataReport(a, cmd, definition, run, base, format, file, force, failIncomplete)
+			}
+			if base != "" {
+				return fmt.Errorf("--base compares two runs of a saved report, so it needs --definition")
+			}
 			parsedKinds, err := parseMetadataKinds(kinds)
 			if err != nil {
 				return err
@@ -84,7 +109,7 @@ Coverage gaps are also reported as warnings. Reads stored evidence only.`),
 			if err := checkMetadataFormat(a, format, file); err != nil {
 				return err
 			}
-			data, err := loadStoredRun(a, cmd, args)
+			data, err := loadStoredRun(a, cmd, run)
 			if err != nil {
 				return err
 			}
@@ -132,14 +157,14 @@ Coverage gaps are also reported as warnings. Reads stored evidence only.`),
 					return err
 				}
 				if file != "" {
-					fmt.Fprintf(a.errOut(), "assessment %d metadata written to %s (%d rows)\n", out.RunID, file, len(out.Rows))
+					fmt.Fprintf(a.errOut(), "capture %d metadata written to %s (%d rows)\n", out.RunID, file, len(out.Rows))
 				}
 			case a.json():
 				if err := writeJSON(a.out(), out); err != nil {
 					return err
 				}
 			default:
-				fmt.Fprintf(a.out(), "assessment %d%s captured %s\n", out.RunID, labelSuffix(out.RunLabel), out.CapturedAt.Format(time.RFC3339))
+				fmt.Fprintf(a.out(), "capture %d%s captured %s\n", out.RunID, labelSuffix(out.RunLabel), out.CapturedAt.Format(time.RFC3339))
 				t := newTable(a.out(), "CONTEXT", "KIND", "NAME", "ID", "SOURCE", "FIELD", "VALUE", "STATUS")
 				for _, r := range out.Rows {
 					t.row(r.Context, r.Kind, r.ObjectName, r.ObjectID, r.Source, dash(r.Field), dash(r.Value), r.Status)
@@ -147,10 +172,13 @@ Coverage gaps are also reported as warnings. Reads stored evidence only.`),
 				t.flush()
 			}
 			if failIncomplete && !out.Complete {
-				return &incompleteExitError{what: fmt.Sprintf("assessment %d metadata", out.RunID)}
+				return &incompleteExitError{what: fmt.Sprintf("capture %d metadata", out.RunID)}
 			}
 			return nil
 		}}
+	addExportRunFlag(cmd, &run)
+	cmd.Flags().StringVar(&definition, "definition", "", "run this saved report definition: a TOML file, or a report name in <config dir>/reports")
+	cmd.Flags().StringVar(&base, "base", "", "with --definition, also run the report against this earlier capture and list membership changes")
 	cmd.Flags().StringSliceVar(&kinds, "kind", nil, "restrict to kinds (repeatable or comma-separated)")
 	cmd.Flags().StringArrayVar(&where, "where", nil, "structured predicate (repeatable; predicates are ANDed)")
 	cmd.Flags().StringSliceVar(&sources, "source", nil, "restrict to metadata sources: tag, custom")
@@ -158,98 +186,71 @@ Coverage gaps are also reported as warnings. Reads stored evidence only.`),
 	return cmd
 }
 
-func newAssessmentMetadataReportCommand(a *App) *cobra.Command {
-	var format, file, base string
-	var force, failIncomplete bool
-	cmd := &cobra.Command{Use: "metadata-report DEFINITION [RUN]", Short: "Run a saved tag and custom attribute report", Long: strings.TrimSpace(`
-Resolve a saved report definition against a stored assessment.
-
-DEFINITION is a TOML file, or the name of one saved as
-<config dir>/reports/<name>.toml. It selects contexts, kinds and --where
-style predicates, and names the output columns. The same definition run
-against the same assessment always produces the same output.
-
-An object whose membership depends on a tag or custom attribute source that
-could not be read is listed as undetermined, never silently excluded, and
-the report is marked incomplete. With --base, the report is also run against
-an earlier assessment and membership changes are listed; an object whose
-membership is unknown on either side is reported as an unknown change, not
-as added or removed. Reads stored evidence only.`),
-		Example: `  # Run a saved report against the latest capture
-  vsfleet assessment metadata-report pci-production
-
-  # Same report, as CSV, against a labelled capture
-  vsfleet assessment metadata-report ./pci.toml nightly --format csv --file pci.csv
-
-  # What joined or left the report since last week's baseline
-  vsfleet assessment metadata-report pci-production --base baseline`,
-		Args: cobra.RangeArgs(1, 2), RunE: func(cmd *cobra.Command, args []string) error {
-			if err := checkMetadataFormat(a, format, file); err != nil {
-				return err
-			}
-			configPath := a.ConfigPath
-			if configPath == "" {
-				p, err := config.DefaultPath()
-				if err != nil {
-					return err
-				}
-				configPath = p
-			}
-			path, err := metareport.Resolve(args[0], metareport.ReportsDir(configPath))
-			if err != nil {
-				return err
-			}
-			def, err := metareport.Load(path)
-			if err != nil {
-				return err
-			}
-			compiled, err := def.Compile()
-			if err != nil {
-				return err
-			}
-			data, err := loadStoredRun(a, cmd, args[1:])
-			if err != nil {
-				return err
-			}
-			result := compiled.Evaluate(data)
-			if base != "" {
-				baseData, err := loadStoredRun(a, cmd, []string{base})
-				if err != nil {
-					return err
-				}
-				comparison := metareport.Compare(compiled.Evaluate(baseData), result)
-				return printComparison(a, comparison, format, file, force, failIncomplete)
-			}
-			for _, w := range result.Warnings {
-				fmt.Fprintf(a.errOut(), "warning: %s\n", w)
-			}
-			switch {
-			case format == "csv":
-				b, err := result.CSV()
-				if err != nil {
-					return err
-				}
-				if err := writeOutput(a.out(), file, b, force); err != nil {
-					return err
-				}
-				if file != "" {
-					fmt.Fprintf(a.errOut(), "report %s on assessment %d written to %s (%d members, %d undetermined)\n", def.Name, result.RunID, file, len(result.Members), len(result.Undetermined))
-				}
-			case a.json():
-				if err := writeJSON(a.out(), result); err != nil {
-					return err
-				}
-			default:
-				printReportResult(a.out(), result)
-			}
-			if failIncomplete && !result.Complete {
-				return &incompleteExitError{what: fmt.Sprintf("report %s on assessment %d", def.Name, result.RunID)}
-			}
-			return nil
-		}}
-	cmd.Flags().StringVar(&base, "base", "", "also run the report against this earlier assessment and list membership changes")
-	addMetadataOutputFlags(cmd, &format, &file, &force, &failIncomplete)
-	return cmd
+// runMetadataReport resolves a saved report definition against the capture
+// run names, and with base, compares it against an earlier one.
+func runMetadataReport(a *App, cmd *cobra.Command, definition, run, base, format, file string, force, failIncomplete bool) error {
+	if err := checkMetadataFormat(a, format, file); err != nil {
+		return err
+	}
+	configPath := a.ConfigPath
+	if configPath == "" {
+		p, err := config.DefaultPath()
+		if err != nil {
+			return err
+		}
+		configPath = p
+	}
+	path, err := metareport.Resolve(definition, metareport.ReportsDir(configPath))
+	if err != nil {
+		return err
+	}
+	def, err := metareport.Load(path)
+	if err != nil {
+		return err
+	}
+	compiled, err := def.Compile()
+	if err != nil {
+		return err
+	}
+	data, err := loadStoredRun(a, cmd, run)
+	if err != nil {
+		return err
+	}
+	result := compiled.Evaluate(data)
+	if base != "" {
+		baseData, err := loadStoredRun(a, cmd, base)
+		if err != nil {
+			return err
+		}
+		comparison := metareport.Compare(compiled.Evaluate(baseData), result)
+		return printComparison(a, comparison, format, file, force, failIncomplete)
+	}
+	for _, w := range result.Warnings {
+		fmt.Fprintf(a.errOut(), "warning: %s\n", w)
+	}
+	switch {
+	case format == "csv":
+		b, err := result.CSV()
+		if err != nil {
+			return err
+		}
+		if err := writeOutput(a.out(), file, b, force); err != nil {
+			return err
+		}
+		if file != "" {
+			fmt.Fprintf(a.errOut(), "report %s on capture %d written to %s (%d members, %d undetermined)\n", def.Name, result.RunID, file, len(result.Members), len(result.Undetermined))
+		}
+	case a.json():
+		if err := writeJSON(a.out(), result); err != nil {
+			return err
+		}
+	default:
+		printReportResult(a.out(), result)
+	}
+	if failIncomplete && !result.Complete {
+		return &incompleteExitError{what: fmt.Sprintf("report %s on capture %d", def.Name, result.RunID)}
+	}
+	return nil
 }
 
 func addMetadataOutputFlags(cmd *cobra.Command, format, file *string, force, failIncomplete *bool) {
@@ -300,11 +301,8 @@ func kindIn(kinds []vsphere.Kind, kind vsphere.Kind) bool {
 	return false
 }
 
-func loadStoredRun(a *App, cmd *cobra.Command, args []string) (assessment.ExportData, error) {
-	selector := "latest"
-	if len(args) == 1 {
-		selector = args[0]
-	}
+// loadStoredRun loads the capture selector names, narrowed by -n.
+func loadStoredRun(a *App, cmd *cobra.Command, selector string) (assessment.ExportData, error) {
 	s, err := a.History()
 	if err != nil {
 		return assessment.ExportData{}, err
@@ -348,7 +346,7 @@ func labelSuffix(label string) string {
 }
 
 func printReportResult(out io.Writer, r metareport.Result) {
-	fmt.Fprintf(out, "report %s on assessment %d%s captured %s\n", r.Report.Name, r.RunID, labelSuffix(r.RunLabel), r.CapturedAt.Format(time.RFC3339))
+	fmt.Fprintf(out, "report %s on capture %d%s captured %s\n", r.Report.Name, r.RunID, labelSuffix(r.RunLabel), r.CapturedAt.Format(time.RFC3339))
 	headers := make([]string, 0, len(r.Columns)+1)
 	for _, c := range r.Columns {
 		headers = append(headers, strings.ToUpper(c))
@@ -401,7 +399,7 @@ func printComparison(a *App, c metareport.Comparison, format, file string, force
 		}
 	default:
 		out := a.out()
-		fmt.Fprintf(out, "report %s: assessment %d (%s) -> %d (%s)\n", c.Report, c.BaseRunID, c.BaseCapturedAt.Format(time.RFC3339), c.TargetRunID, c.TargetCapturedAt.Format(time.RFC3339))
+		fmt.Fprintf(out, "report %s: capture %d (%s) -> %d (%s)\n", c.Report, c.BaseRunID, c.BaseCapturedAt.Format(time.RFC3339), c.TargetRunID, c.TargetCapturedAt.Format(time.RFC3339))
 		t := newTable(out, "CHANGE", "CONTEXT", "KIND", "NAME", "ID", "BEFORE", "AFTER", "REASON")
 		for _, ch := range c.Changes {
 			t.row(ch.Change, ch.Context, ch.Kind, ch.Name, ch.ID, ch.Before, ch.After, dash(ch.Reason))

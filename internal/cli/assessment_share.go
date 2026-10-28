@@ -15,7 +15,7 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/report"
 )
 
-// shareFlags are the opt-in flags of `assessment export` that select a named
+// shareFlags are the opt-in flags of `export rvtools` that select a named
 // scoped sharing profile. Without --profile the ordinary export is unchanged.
 type shareFlags struct {
 	profile      string

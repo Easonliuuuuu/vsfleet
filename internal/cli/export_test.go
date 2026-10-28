@@ -14,7 +14,7 @@ import (
 )
 
 // newExportTestHistoryDB persists one finished run with a single VM and
-// returns the path to the history database, ready for `assessment export`.
+// returns the path to the capture database, ready for `export rvtools`.
 func newExportTestHistoryDB(t *testing.T) string {
 	t.Helper()
 	return seedHistory(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), "", assessment.ContextResult{Name: "prod", VCenterID: "vc-uuid", Status: "success", VMs: []assessment.Observation{{Context: "prod", VCenterID: "vc-uuid", VM: vsphere.VM{ID: "vm-1", Name: "app"}}}})
@@ -22,7 +22,7 @@ func newExportTestHistoryDB(t *testing.T) string {
 
 func runExport(t *testing.T, dbPath string, args ...string) (stdout, stderr string) {
 	t.Helper()
-	stdout, stderr, err := runCLI(t, dbPath, append([]string{"assessment", "export"}, args...)...)
+	stdout, stderr, err := runCLI(t, dbPath, append([]string{"export", "rvtools"}, args...)...)
 	if err != nil {
 		t.Fatalf("export failed: %v (stderr=%s)", err, stderr)
 	}
@@ -35,7 +35,7 @@ func TestAssessmentExportIsOfflineAndNoClobbering(t *testing.T) {
 
 	firstPath := filepath.Join(dir, "first.xlsx")
 	secondPath := filepath.Join(dir, "second.xlsx")
-	_, stderr := runExport(t, dbPath, "latest", "--format", "rvtools", "--file", firstPath)
+	_, stderr := runExport(t, dbPath, "--run", "latest", "--format", "rvtools", "--file", firstPath)
 	if strings.Contains(stderr, "vCenter") {
 		t.Fatalf("unexpected live connection warning: %s", stderr)
 	}
@@ -44,7 +44,7 @@ func TestAssessmentExportIsOfflineAndNoClobbering(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	runExport(t, dbPath, "latest", "--file", secondPath)
+	runExport(t, dbPath, "--run", "latest", "--file", secondPath)
 	second, err := os.ReadFile(secondPath)
 	if err != nil {
 		t.Fatal(err)
@@ -53,7 +53,7 @@ func TestAssessmentExportIsOfflineAndNoClobbering(t *testing.T) {
 		t.Fatal("exports of one run differ")
 	}
 
-	if _, _, err := runCLI(t, dbPath, "assessment", "export", "latest", "--file", firstPath); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, _, err := runCLI(t, dbPath, "export", "rvtools", "--run", "latest", "--file", firstPath); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("no-clobber error=%v", err)
 	}
 }
@@ -64,7 +64,7 @@ func TestAssessmentExportCSVIsOfflineDeterministicAndNoClobbering(t *testing.T) 
 
 	firstDir := filepath.Join(dir, "first-csv")
 	secondDir := filepath.Join(dir, "second-csv")
-	stdout, stderr := runExport(t, dbPath, "latest", "--format", "csv", "--file", firstDir)
+	stdout, stderr := runExport(t, dbPath, "--run", "latest", "--format", "csv", "--file", firstDir)
 	if strings.Contains(stderr, "vCenter") {
 		t.Fatalf("unexpected live connection warning: %s", stderr)
 	}
@@ -72,7 +72,7 @@ func TestAssessmentExportCSVIsOfflineDeterministicAndNoClobbering(t *testing.T) 
 		t.Fatalf("stdout missing per-file summary: %s", stdout)
 	}
 
-	runExport(t, dbPath, "latest", "--format", "csv", "--file", secondDir)
+	runExport(t, dbPath, "--run", "latest", "--format", "csv", "--file", secondDir)
 
 	firstFiles := readDirSorted(t, firstDir)
 	secondFiles := readDirSorted(t, secondDir)
@@ -96,25 +96,25 @@ func TestAssessmentExportCSVIsOfflineDeterministicAndNoClobbering(t *testing.T) 
 		}
 	}
 
-	if _, _, err := runCLI(t, dbPath, "assessment", "export", "latest", "--format", "csv", "--file", firstDir); err == nil || !strings.Contains(err.Error(), "already exists") {
+	if _, _, err := runCLI(t, dbPath, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", firstDir); err == nil || !strings.Contains(err.Error(), "already exists") {
 		t.Fatalf("no-clobber error=%v", err)
 	}
 
 	// --force replaces the existing directory's files without error.
-	runExport(t, dbPath, "latest", "--format", "csv", "--file", firstDir, "--force")
+	runExport(t, dbPath, "--run", "latest", "--format", "csv", "--file", firstDir, "--force")
 }
 
 func TestAssessmentExportRejectsMismatchedExtensions(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := newExportTestHistoryDB(t)
 
-	if _, _, err := runCLI(t, dbPath, "assessment", "export", "latest", "--format", "csv", "--file", filepath.Join(dir, "out.xlsx")); err == nil || !strings.Contains(err.Error(), "directory") {
+	if _, _, err := runCLI(t, dbPath, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", filepath.Join(dir, "out.xlsx")); err == nil || !strings.Contains(err.Error(), "directory") {
 		t.Fatalf("csv with .xlsx path error=%v", err)
 	}
-	if _, _, err := runCLI(t, dbPath, "assessment", "export", "latest", "--format", "rvtools", "--file", filepath.Join(dir, "out.csv")); err == nil || !strings.Contains(err.Error(), ".xlsx extension") {
+	if _, _, err := runCLI(t, dbPath, "export", "rvtools", "--run", "latest", "--format", "rvtools", "--file", filepath.Join(dir, "out.csv")); err == nil || !strings.Contains(err.Error(), ".xlsx extension") {
 		t.Fatalf("rvtools without .xlsx error=%v", err)
 	}
-	if _, _, err := runCLI(t, dbPath, "assessment", "export", "latest", "--format", "yaml", "--file", filepath.Join(dir, "out.yaml")); err == nil || !strings.Contains(err.Error(), "unsupported export format") {
+	if _, _, err := runCLI(t, dbPath, "export", "rvtools", "--run", "latest", "--format", "yaml", "--file", filepath.Join(dir, "out.yaml")); err == nil || !strings.Contains(err.Error(), "unsupported export format") {
 		t.Fatalf("unknown format error=%v", err)
 	}
 }
@@ -145,4 +145,74 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// Every export writes to stdout without --file. The RVTools workbook on
+// stdout is the same bytes --file writes, and its receipt goes to stderr so
+// it never corrupts the workbook.
+func TestExportRVToolsWritesStdoutWithoutFile(t *testing.T) {
+	dbPath := newExportTestHistoryDB(t)
+	file := filepath.Join(t.TempDir(), "estate.xlsx")
+	runExport(t, dbPath, "--file", file)
+	want, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr := runExport(t, dbPath)
+	if stdout != string(want) {
+		t.Fatalf("stdout workbook is %d bytes, want the %d bytes --file wrote", len(stdout), len(want))
+	}
+	if !strings.Contains(stderr, "exported to stdout") {
+		t.Fatalf("stderr %q has no receipt", stderr)
+	}
+}
+
+func TestExportRVToolsRejectsOutputsStdoutCannotCarry(t *testing.T) {
+	dbPath := newExportTestHistoryDB(t)
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"csv needs a directory", []string{"--format", "csv"}, "needs --file naming a directory"},
+		{"json receipt needs a file", []string{"-o", "json"}, "-o json prints the export receipt, so it needs --file"},
+		{"run is a flag", []string{"latest"}, "unknown command"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, _, err := runCLI(t, dbPath, append([]string{"export", "rvtools"}, tc.args...)...)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+			if stdout != "" {
+				t.Fatalf("wrote %d bytes to stdout before failing", len(stdout))
+			}
+		})
+	}
+}
+
+// "export report" writes what "describe capture" shows, as text or JSON.
+func TestExportReportMatchesDescribeCapture(t *testing.T) {
+	dbPath := newExportTestHistoryDB(t)
+	for _, format := range []string{"table", "json"} {
+		t.Run(format, func(t *testing.T) {
+			want, _, err := runCLI(t, dbPath, "-o", format, "describe", "capture", "latest")
+			if err != nil {
+				t.Fatal(err)
+			}
+			stdout, _, err := runCLI(t, dbPath, "-o", format, "export", "report")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stdout != want {
+				t.Fatalf("export report =\n%s\nwant describe capture's\n%s", stdout, want)
+			}
+			file := filepath.Join(t.TempDir(), "report")
+			if _, _, err := runCLI(t, dbPath, "-o", format, "export", "report", "--run", "1", "--file", file); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := os.ReadFile(file); err != nil || string(got) != want {
+				t.Fatalf("--file holds %q (%v), want describe capture's report", got, err)
+			}
+		})
+	}
 }

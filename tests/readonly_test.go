@@ -223,7 +223,7 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 	// The assessment commands below write a history ledger. Keep it in a
 	// throwaway location so this test never reads or writes an operator's real
 	// history database.
-	t.Setenv("VSFLEET_HISTORY_DB", filepath.Join(t.TempDir(), "history.db"))
+	t.Setenv("VSFLEET_DB", filepath.Join(t.TempDir(), "history.db"))
 	endpoint, rec := startRecordingVCenter(t)
 
 	r := newRunner(t)
@@ -249,8 +249,8 @@ func TestEveryCommandIsReadOnly(t *testing.T) {
 		{"get", "clusters"},
 		{"get", "vapps"},
 		{"get", "datastores"},
-		{"datastore", "files", "list", "LocalDS_0"},
-		{"datastore", "files", "find", "LocalDS_0", "*.vmdk"},
+		{"datastore", "ls", "LocalDS_0"},
+		{"datastore", "find", "LocalDS_0", "*.vmdk"},
 		{"get", "networks"},
 		{"get", "vms", "--all-contexts"},
 		{"describe", "vm", "DC0_C0_APP0_VM0"},

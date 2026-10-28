@@ -225,11 +225,14 @@ no passwords, private-key contents, proxy credentials, or shell fragments.
 When `--tls thumbprint` has no explicit thumbprint, the setup wizard fetches the
 remote certificate, displays its fingerprints, and pins the selected value.
 
-## Assessment history path
+## Capture database path
 
-Assessment history is separate from `config.toml` and defaults to
-`<user-config-dir>/vsfleet/history.db`. Set `VSFLEET_HISTORY_DB` or pass
-`--history-db` to override it. The private database contains inventory,
+<span id="assessment-history-path"></span>
+
+The capture database is separate from `config.toml` and defaults to
+`<user-config-dir>/vsfleet/history.db`. Set `VSFLEET_DB` or pass `--db` to
+override it; `VSFLEET_HISTORY_DB` is still read for one release, with a
+warning. The private database contains inventory,
 identifiers, paths, annotations, snapshot metadata, and coverage, but never
 credentials or session cookies.
 

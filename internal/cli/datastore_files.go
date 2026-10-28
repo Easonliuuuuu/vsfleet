@@ -27,40 +27,25 @@ type datastoreBrowseResult struct {
 	datastore      vsphere.Datastore
 }
 
-// newDatastoreFilesCommand exposes the read-only datastore browser and
+// newDatastoreFileCommands expose the read-only datastore browser and
 // recursive search the terminal interface already offers, so datastore
-// investigation is scriptable outside the TUI. It calls the same
+// investigation is scriptable outside the TUI. They call the same
 // vsphere.Client methods the TUI does rather than a parallel traversal, so a
-// permission change or a new search flag only has to be taught once.
-func newDatastoreFilesCommand(a *App) *cobra.Command {
-	cmd := requireSubcommand(&cobra.Command{
-		Use:   "files",
-		Short: "Browse and search datastore files (read-only)",
-		Long: strings.TrimSpace(`
-Browse one datastore directory at a time, or search a whole datastore
-recursively for a name or pattern.
-
-Both operations are strictly read-only and never mutate datastore contents.
-Listing is lazy and non-recursive; the recursive search is bounded and reports
-when it stops short of a complete answer.`),
-		Example: `  # List the root of a datastore
-  vsfleet datastore files list nvme-01
-
-  # List one directory
-  vsfleet datastore files list nvme-01 vm/web-01/
-
-  # Search a datastore recursively for a pattern
-  vsfleet datastore files find nvme-01 '*.vmdk'`,
+// permission change or a new search flag only has to be taught once. A file
+// path does not work as an object name, so files are not a kind for "get".
+func newDatastoreFileCommands(a *App) []*cobra.Command {
+	files := renamedGroupCommand("files", `use "vsfleet datastore ls" or "vsfleet datastore find"`, map[string]string{
+		"list": `use "vsfleet datastore ls"`,
+		"ls":   `use "vsfleet datastore ls"`,
+		"find": `use "vsfleet datastore find"`,
 	})
-	cmd.AddCommand(newDatastoreFilesListCommand(a), newDatastoreFilesFindCommand(a))
-	return cmd
+	return []*cobra.Command{newDatastoreFilesListCommand(a), newDatastoreFilesFindCommand(a), files}
 }
 
 func newDatastoreFilesListCommand(a *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list DATASTORE [PATH]",
-		Aliases: []string{"ls"},
-		Short:   "List one datastore directory",
+		Use:   "ls DATASTORE [PATH]",
+		Short: "List one datastore directory (read-only)",
 		Long: strings.TrimSpace(`
 List exactly one directory of a datastore: files and folders, size, and
 modified time where available. PATH is relative to the datastore root, empty
@@ -68,15 +53,15 @@ for the root itself.
 
 This never descends into subdirectories on its own — each call costs one
 query. For a recursive search across the whole datastore, use
-"vsfleet datastore files find".`),
+"vsfleet datastore find".`),
 		Example: `  # List a datastore's root
-  vsfleet datastore files list nvme-01
+  vsfleet datastore ls nvme-01
 
   # List one directory
-  vsfleet datastore files list nvme-01 vm/web-01/
+  vsfleet datastore ls nvme-01 vm/web-01/
 
   # As JSON, for a script
-  vsfleet datastore files list nvme-01 -o json`,
+  vsfleet datastore ls nvme-01 -o json`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := ""
@@ -108,7 +93,7 @@ func newDatastoreFilesFindCommand(a *App) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "find DATASTORE PATTERN",
-		Short: "Recursively search a datastore for a name or pattern",
+		Short: "Recursively search a datastore for a name or pattern (read-only)",
 		Long: strings.TrimSpace(`
 Search a whole datastore for files and folders matching PATTERN. PATTERN is a
 match pattern sent to the datastore browser, not a substring: "*.vmdk" finds
@@ -118,13 +103,13 @@ The search is bounded. A result that hit the bound comes back marked
 truncated rather than presented as a complete answer — "not found" and "not
 found in the first N matches" are different answers.`),
 		Example: `  # Every VMDK on a datastore
-  vsfleet datastore files find nvme-01 '*.vmdk'
+  vsfleet datastore find nvme-01 '*.vmdk'
 
   # Only folders matching a name
-  vsfleet datastore files find nvme-01 'web-*' --type directory
+  vsfleet datastore find nvme-01 'web-*' --type directory
 
   # Cap the client-side result count, as JSON
-  vsfleet datastore files find nvme-01 orphan.vmdk --limit 20 -o json`,
+  vsfleet datastore find nvme-01 orphan.vmdk --limit 20 -o json`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if limit < 0 {

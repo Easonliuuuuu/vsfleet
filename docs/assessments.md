@@ -111,9 +111,9 @@ stay context-scoped. JSON and stderr report missing coverage.
 ```sh
 vsfleet capture prune --older-than 90d          # dry-run
 vsfleet capture prune --older-than 90d --execute
-vsfleet assessment backup ./history-backup.db
-vsfleet assessment restore ./history-backup.db --force
-vsfleet assessment doctor
+vsfleet db backup ./history-backup.db
+vsfleet db restore ./history-backup.db --force
+vsfleet db doctor
 vsfleet capture delete <run> --force
 ```
 
@@ -124,7 +124,7 @@ Restoring into a history database that holds no data yet needs no `--force`;
 replacing existing history does.
 
 The database defaults to `<user-config-dir>/vsfleet/history.db`. Override it
-with `--history-db <path>` or `VSFLEET_HISTORY_DB`. It may contain operational
+with `--db <path>` or `VSFLEET_DB`. It may contain operational
 inventory, so protect it using normal host disk and backup controls.
 
 <span id="bounds-and-impact"></span>

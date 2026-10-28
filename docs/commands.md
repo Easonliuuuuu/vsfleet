@@ -47,18 +47,20 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet events --for vm/<name> [--all]` | Show a VM's live vCenter event log: migrations, reconfigurations, snapshots and failures, with who and when; task results come from the VM's task history, and a deleted VM is found through stored history |
 | `vsfleet top vm [name...]` | Show VM CPU and memory use from stored performance collections; see [performance history](performance.md) |
 | `vsfleet explain <kind>[.<field>]` | Document a kind's columns and the RVTools worksheets it feeds |
-| `vsfleet datastore files list <datastore> [path]` | List one datastore directory |
-| `vsfleet datastore files find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
+| `vsfleet datastore ls <datastore> [path]` | List one datastore directory |
+| `vsfleet datastore find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
 | `vsfleet capture run [-A] [--label <name>]` | Take a capture of the estate into the local history database; see [captures](#captures) |
 | `vsfleet capture import rvtools <file.xlsx>` | Import an RVTools-compatible export as a new capture, offline |
 | `vsfleet capture list` | List stored captures; the same as `vsfleet get captures` |
 | `vsfleet capture diff [base] [target]` | Compare two captures, optionally failing on policy with `--fail-on` or `--require-complete` |
 | `vsfleet capture update <run> \| delete <run> \| prune` | Label, note or pin a capture, or remove captures |
 | `vsfleet capture perf --window 7d` | Collect a bounded window of VM performance history; `vsfleet get perfcollections` lists them |
-| `vsfleet assessment ...` | Export, back up, restore and check stored captures |
-| `vsfleet assessment export --profile <name> [--pseudonymize --pseudonymize-key-file <file>] [--preview]` | Export a scoped `sizing-summary` or `full-inventory` workbook, optionally pseudonymized; see [scoped sharing profiles](sharing.md) |
-| `vsfleet assessment metadata [run] [--kind ...] [--source tag\|custom] [--where ...] [--format csv]` | Export stored tags and custom attributes in a fixed long-format schema; see [metadata exports](metadata.md#export-metadata) |
-| `vsfleet assessment metadata-report <definition> [run] [--base <run>]` | Run a saved tag/custom-attribute report against an assessment, optionally listing membership changes since `--base` |
+| `vsfleet export rvtools [--run <run>] [--file <file.xlsx>]` | Export a capture as an RVTools-compatible workbook, or CSV with `--format csv`; see [exports](#exports-and-the-database) |
+| `vsfleet export rvtools --profile <name> [--pseudonymize --pseudonymize-key-file <file>] [--preview]` | Export a scoped `sizing-summary` or `full-inventory` workbook, optionally pseudonymized; see [scoped sharing profiles](sharing.md) |
+| `vsfleet export report [--run <run>]` | Write the `describe capture` report of a capture |
+| `vsfleet export metadata [--kind ...] [--source tag\|custom] [--where ...] [--format csv]` | Export stored tags and custom attributes in a fixed long-format schema; see [metadata exports](metadata.md#export-metadata) |
+| `vsfleet export metadata --definition <definition> [--base <run>]` | Run a saved tag/custom-attribute report against a capture, optionally listing membership changes since `--base` |
+| `vsfleet db backup <file> \| restore <file> \| doctor` | Back up, restore or check the local capture database |
 | `vsfleet explain rvtools[.<sheet>]` | Describe every worksheet and column the export writes, or one worksheet |
 
 ## Inventory and search
@@ -274,15 +276,19 @@ vsfleet events --for vm/web-01 --all -o json
 
 ## Datastore file browsing
 
-`datastore files list` reads one directory lazily; `find` performs a bounded
+`datastore ls` reads one directory lazily; `datastore find` performs a bounded
 recursive search and reports incomplete results. Both are read-only:
 
 ```sh
-vsfleet datastore files list nvme-01
-vsfleet datastore files list nvme-01 vm/web-01/
-vsfleet datastore files find nvme-01 '*.vmdk'
-vsfleet datastore files find nvme-01 orphan.vmdk --limit 20 -o json
+vsfleet datastore ls nvme-01
+vsfleet datastore ls nvme-01 vm/web-01/
+vsfleet datastore find nvme-01 '*.vmdk'
+vsfleet datastore find nvme-01 orphan.vmdk --limit 20 -o json
 ```
+
+Files are not a kind for `get`: a file path does not work as an object name.
+`datastore files list` and `datastore files find` print where they went and
+exit non-zero.
 
 VMDK results include known VM/template references and confidence from the
 latest assessment. Ambiguous datastore names are refused; narrow the context.
@@ -484,8 +490,9 @@ VM action; `no-blockers` is not permission to delete. Ownership, backup
 policy, and application dependencies are `not_assessed`. See
 [decommission review](planning.md#vm-decommission-review) for the gates.
 
-For diagnostics, `doctor` checks a live connection, `assessment doctor`
-checks history storage, and `analyze health` checks stored estate evidence.
+For diagnostics, `doctor` walks the connection to a vCenter stage by stage,
+`cluster-info` summarizes every context's connection, `db doctor` checks the
+capture database, and `analyze health` checks stored estate evidence.
 
 ## Export compatibility
 
@@ -572,6 +579,36 @@ Capacity reports accept `--since 30d`, `--datastore`, `--top`, and
 binds. See [capacity attribution](assessments.md#capacity-attribution-and-projection)
 for exact/inferred/split contributions and unknown projections.
 
+## Exports and the database
+
+`vsfleet export` writes a stored capture out; `vsfleet db` maintains the
+database that holds the captures. Neither contacts a vCenter.
+
+| Command | Does |
+| --- | --- |
+| `export rvtools` | Write an RVTools-compatible workbook, or one CSV per tab with `--format csv --file DIR`; see [exports](exports.md) |
+| `export report` | Write the report `describe capture` shows; `-o json` writes it as JSON |
+| `export metadata` | Write stored tags and custom attributes; see [metadata exports](metadata.md) |
+| `export metadata --definition FILE` | Run a saved metadata report; `--base RUN` lists membership changes |
+| `db backup FILE` | Write a consistent copy of the database |
+| `db restore FILE --force` | Replace the database from a backup, keeping a safety copy |
+| `db doctor` | Check schema, integrity and foreign keys; exits 1 on a warning |
+
+Every export reads the capture `--run` names (`latest` by default), narrows
+to contexts with `-n`, and writes to stdout unless `--file` is given. An
+RVTools workbook is never written to a terminal, and its receipt goes to
+stderr so a pipe carries only the workbook. `--format csv` writes several
+files, so it needs `--file` naming a directory.
+
+The database is `--db`, else `VSFLEET_DB`, else
+`<user-config-dir>/vsfleet/history.db`. For one release vsfleet still reads
+`VSFLEET_HISTORY_DB` when `VSFLEET_DB` is unset, with a warning on stderr;
+rename it. `--history-db` is refused with a pointer to `--db`.
+
+The commands these replaced (`assessment export`, `metadata`,
+`metadata-report`, `backup`, `restore` and `doctor`) print where they went
+and exit non-zero. The `assessment` group is gone.
+
 ## Exit codes
 
 Use exit codes to gate scheduled jobs:
@@ -601,7 +638,7 @@ vsfleet get datastores 'nvme*' -A -o json | jq
 | `-n, --context <name>` | Scope a command to one or more named contexts; repeatable |
 | `-A, --all-contexts` | Target every configured context |
 | `--config <path>` | Override the TOML configuration path |
-| `--history-db <path>` | Override the SQLite assessment database |
+| `--db <path>` | Override the SQLite capture database (default `VSFLEET_DB`, then the user config directory) |
 | `--timeout <duration>` | Per-vCenter request timeout (default `30s`) |
 | `-o, --output table\|json` | Select human or machine-readable output |
 | `--refresh <duration>` | Set or disable background TUI polling |

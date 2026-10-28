@@ -42,12 +42,14 @@ func walk(cmd *cobra.Command, fn func(*cobra.Command)) {
 }
 
 // A parent command used to accept any argument, print its own help and report
-// success, so "vsfleet assessment lst --all-contexts" looked to a scheduled job
+// success, so "vsfleet capture lst --all-contexts" looked to a scheduled job
 // exactly like a capture that worked. Every parent must now fail instead.
 func TestUnknownSubcommandFails(t *testing.T) {
 	for _, parent := range [][]string{
-		{"assessment"},
+		{"capture"},
 		{"analyze"},
+		{"export"},
+		{"db"},
 		{"datastore"},
 		{"config"},
 	} {
@@ -64,10 +66,10 @@ func TestUnknownSubcommandFails(t *testing.T) {
 	}
 }
 
-// A bare parent is a reasonable question — "what is under assessment?" — so it
+// A bare parent is a reasonable question — "what is under export?" — so it
 // still answers with help and still succeeds.
 func TestBareParentPrintsHelp(t *testing.T) {
-	out, _, err := runArgs(t, "assessment")
+	out, _, err := runArgs(t, "export")
 	if err != nil {
 		t.Fatalf("bare parent command failed: %v", err)
 	}

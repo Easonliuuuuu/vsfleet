@@ -136,7 +136,7 @@ vsfleet get all '*ubuntu*' -A
 ```sh
 vsfleet capture run --all-contexts --label first-capture
 vsfleet describe capture latest
-vsfleet assessment export --format rvtools --file estate.xlsx
+vsfleet export rvtools --file estate.xlsx
 ```
 
 The report and workbook read the saved capture. After taking another capture, [compare runs and inspect trends](https://easonliuuuuu.github.io/vsfleet/assessments/#compare-runs).

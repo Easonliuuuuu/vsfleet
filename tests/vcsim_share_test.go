@@ -46,7 +46,7 @@ func TestVCSIMSharedExportPseudonymizesDuplicateNames(t *testing.T) {
 	export := func(profile, name string) []byte {
 		t.Helper()
 		file := filepath.Join(dir, name)
-		stdout, stderr, err := r.run("", "--history-db", historyDB, "assessment", "export", "--profile", profile,
+		stdout, stderr, err := r.run("", "--db", historyDB, "export", "rvtools", "--profile", profile,
 			"--pseudonymize", "--pseudonymize-key-file", keyFile, "--file", file)
 		if err != nil {
 			t.Fatalf("export %s: %v\nstdout:\n%s\nstderr:\n%s", profile, err, stdout, stderr)

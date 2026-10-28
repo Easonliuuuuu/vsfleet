@@ -23,7 +23,7 @@ func TestVCSIMCLIJSONAndExitContract(t *testing.T) {
 		t.Fatalf("contract setup run=%+v", partial)
 	}
 
-	stdout, stderr, err := r.run("", "--history-db", historyDB, "-o", "json", "analyze", "topology", "vm", "not-present", "--run", "latest")
+	stdout, stderr, err := r.run("", "--db", historyDB, "-o", "json", "analyze", "topology", "vm", "not-present", "--run", "latest")
 	if err != nil {
 		t.Fatalf("unknown topology returned error: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
 	}
@@ -40,11 +40,11 @@ func TestVCSIMCLIJSONAndExitContract(t *testing.T) {
 		t.Fatalf("JSON contract fields missing: %+v\n%s", envelope, stdout)
 	}
 
-	_, _, partialErr := r.run("", "--history-db", historyDB, "--all-contexts", "-o", "json", "capture", "run", "--fail-on-partial")
+	_, _, partialErr := r.run("", "--db", historyDB, "--all-contexts", "-o", "json", "capture", "run", "--fail-on-partial")
 	if exitCode(partialErr) != 3 {
 		t.Fatalf("partial command exit=%d err=%v", exitCode(partialErr), partialErr)
 	}
-	_, _, policyErr := r.run("", "--history-db", historyDB, "-o", "json", "capture", "diff", "latest", "latest", "--require-complete")
+	_, _, policyErr := r.run("", "--db", historyDB, "-o", "json", "capture", "diff", "latest", "latest", "--require-complete")
 	if exitCode(policyErr) != 2 {
 		t.Fatalf("policy command exit=%d err=%v", exitCode(policyErr), policyErr)
 	}

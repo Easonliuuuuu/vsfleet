@@ -26,7 +26,7 @@ spec:
               env:
                 - name: VSFLEET_CONFIG
                   value: /etc/vsfleet/config.toml
-                - name: VSFLEET_HISTORY_DB
+                - name: VSFLEET_DB
                   value: /var/lib/vsfleet/history.db
               securityContext:
                 allowPrivilegeEscalation: false

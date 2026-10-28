@@ -35,9 +35,9 @@ func newMetadataTestHistory(t *testing.T) (dir, dbPath string) {
 func runMetadataCLI(t *testing.T, dir, dbPath string, args ...string) (string, string, error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
+	a := &App{DBPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
-	root.SetArgs(append([]string{"--history-db", dbPath, "--config", filepath.Join(dir, "config.toml")}, args...))
+	root.SetArgs(append([]string{"--db", dbPath, "--config", filepath.Join(dir, "config.toml")}, args...))
 	defer func() { _ = a.Close(context.Background()) }()
 	err := root.ExecuteContext(context.Background())
 	return out.String(), errOut.String(), err
@@ -45,7 +45,7 @@ func runMetadataCLI(t *testing.T, dir, dbPath string, args ...string) (string, s
 
 func TestAssessmentMetadataCSVHasFixedHeaderAndWarnsAboutGaps(t *testing.T) {
 	dir, db := newMetadataTestHistory(t)
-	out, stderr, err := runMetadataCLI(t, dir, db, "assessment", "metadata", metareporttest.BaseLabel, "--format", "csv")
+	out, stderr, err := runMetadataCLI(t, dir, db, "export", "metadata", "--run", metareporttest.BaseLabel, "--format", "csv")
 	if err != nil {
 		t.Fatalf("%v (stderr=%s)", err, stderr)
 	}
@@ -58,7 +58,7 @@ func TestAssessmentMetadataCSVHasFixedHeaderAndWarnsAboutGaps(t *testing.T) {
 	if !strings.Contains(stderr, "warning: synthetic-west vm: tags partial") || !strings.Contains(stderr, "1 denied") {
 		t.Fatalf("stderr=%s", stderr)
 	}
-	_, _, err = runMetadataCLI(t, dir, db, "assessment", "metadata", metareporttest.BaseLabel, "--format", "csv", "--fail-on-incomplete")
+	_, _, err = runMetadataCLI(t, dir, db, "export", "metadata", "--run", metareporttest.BaseLabel, "--format", "csv", "--fail-on-incomplete")
 	var coded interface{ ExitCode() int }
 	if !errors.As(err, &coded) || coded.ExitCode() != 3 {
 		t.Fatalf("--fail-on-incomplete err=%v", err)
@@ -73,11 +73,11 @@ func TestAssessmentMetadataReportRunsSavedDefinitionByName(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "reports", "pci.toml"), []byte(metareporttest.PCIReport), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	first, _, err := runMetadataCLI(t, dir, db, "-o", "json", "assessment", "metadata-report", "pci", metareporttest.BaseLabel)
+	first, _, err := runMetadataCLI(t, dir, db, "-o", "json", "export", "metadata", "--definition", "pci", "--run", metareporttest.BaseLabel)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, _, _ := runMetadataCLI(t, dir, db, "-o", "json", "assessment", "metadata-report", "pci", metareporttest.BaseLabel)
+	second, _, _ := runMetadataCLI(t, dir, db, "-o", "json", "export", "metadata", "--definition", "pci", "--run", metareporttest.BaseLabel)
 	if first != second {
 		t.Fatal("repeated report output differs")
 	}
@@ -89,7 +89,7 @@ func TestAssessmentMetadataReportRunsSavedDefinitionByName(t *testing.T) {
 		t.Fatalf("result=%+v", result)
 	}
 
-	table, _, err := runMetadataCLI(t, dir, db, "assessment", "metadata-report", "pci", "--base", metareporttest.BaseLabel)
+	table, _, err := runMetadataCLI(t, dir, db, "export", "metadata", "--definition", "pci", "--base", metareporttest.BaseLabel)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,21 +111,21 @@ func TestAssessmentExportMetadataSheetIsOptInAndShareAware(t *testing.T) {
 		return f.GetSheetList()
 	}
 	plain := filepath.Join(dir, "plain.xlsx")
-	if _, stderr, err := runMetadataCLI(t, dir, db, "assessment", "export", "--file", plain); err != nil {
+	if _, stderr, err := runMetadataCLI(t, dir, db, "export", "rvtools", "--file", plain); err != nil {
 		t.Fatalf("%v %s", err, stderr)
 	}
 	if strings.Contains(strings.Join(sheets(plain), ","), "vsfleetMetadata") {
 		t.Fatal("default export gained the metadata sheet")
 	}
 	with := filepath.Join(dir, "with.xlsx")
-	if _, stderr, err := runMetadataCLI(t, dir, db, "assessment", "export", "--include-metadata", "--file", with); err != nil {
+	if _, stderr, err := runMetadataCLI(t, dir, db, "export", "rvtools", "--include-metadata", "--file", with); err != nil {
 		t.Fatalf("%v %s", err, stderr)
 	}
 	if got := sheets(with); got[len(got)-1] != "vsfleetMetadata" {
 		t.Fatalf("sheets=%v", got)
 	}
 
-	out, stderr, err := runMetadataCLI(t, dir, db, "-o", "json", "assessment", "export", "--include-metadata", "--profile", "sizing-summary", "--preview")
+	out, stderr, err := runMetadataCLI(t, dir, db, "-o", "json", "export", "rvtools", "--include-metadata", "--profile", "sizing-summary", "--preview")
 	if err != nil {
 		t.Fatalf("%v %s", err, stderr)
 	}
@@ -137,7 +137,7 @@ func TestAssessmentExportMetadataSheetIsOptInAndShareAware(t *testing.T) {
 		t.Fatal(err)
 	}
 	shared := filepath.Join(dir, "shared.xlsx")
-	if _, stderr, err := runMetadataCLI(t, dir, db, "assessment", "export", "--include-metadata", "--profile", "full-inventory", "--pseudonymize", "--pseudonymize-key-file", keyFile, "--file", shared); err != nil {
+	if _, stderr, err := runMetadataCLI(t, dir, db, "export", "rvtools", "--include-metadata", "--profile", "full-inventory", "--pseudonymize", "--pseudonymize-key-file", keyFile, "--file", shared); err != nil {
 		t.Fatalf("%v %s", err, stderr)
 	}
 	f, err := excelize.OpenFile(shared)
@@ -155,5 +155,26 @@ func TestAssessmentExportMetadataSheetIsOptInAndShareAware(t *testing.T) {
 				t.Fatalf("pseudonymized metadata sheet leaked %q in %v", cell, row)
 			}
 		}
+	}
+}
+
+// --definition selects its own objects and --base compares two runs of a
+// saved report, so each refuses the other mode's flags.
+func TestExportMetadataDefinitionFlagsAreExclusive(t *testing.T) {
+	dir, db := newMetadataTestHistory(t)
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--definition", "pci", "--kind", "vm"}, "--kind does not apply with --definition"},
+		{[]string{"--definition", "pci", "--where", "tag.Environment=Production"}, "--where does not apply with --definition"},
+		{[]string{"--base", metareporttest.BaseLabel}, "--base compares two runs of a saved report, so it needs --definition"},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			_, _, err := runMetadataCLI(t, dir, db, append([]string{"export", "metadata"}, tc.args...)...)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }

@@ -2,17 +2,19 @@
 
 ## Export a stored run
 
-Exports read stored evidence offline. The `rvtools` format writes XLSX;
-`csv` writes one `<tab>.csv` per worksheet for tools such as `jq`, `awk`,
-and `pandas`.
+Exports read stored evidence offline, from the capture `--run` names
+(`latest` by default). The `rvtools` format writes XLSX; `csv` writes one
+`<tab>.csv` per worksheet for tools such as `jq`, `awk`, and `pandas`.
 
 ```sh
-vsfleet assessment export latest --format rvtools --file ./estate.xlsx
-vsfleet assessment export latest --format csv --file ./estate-csv/
+vsfleet export rvtools --file ./estate.xlsx
+vsfleet export rvtools --format csv --file ./estate-csv/
 ```
 
 Supply a `.xlsx` destination for `rvtools` or a directory for `csv`.
-Existing destinations require `--force`. Unchanged evidence produces
+Without `--file`, the workbook goes to stdout (never to a terminal) and the
+receipt to stderr; `csv` always needs a directory. Existing destinations
+require `--force`. Unchanged evidence produces
 byte-identical output. `vsfleetCoverage` records every sheet/context's
 collection status, item count, and error.
 
@@ -47,7 +49,7 @@ estates costs time, storage, and an additional privilege, and exposes names.
 
 ```sh
 vsfleet capture run --all-contexts --datastore-file-inventory
-vsfleet assessment export latest --format rvtools --file ./estate.xlsx
+vsfleet export rvtools --file ./estate.xlsx
 ```
 
 ### Capture and limits

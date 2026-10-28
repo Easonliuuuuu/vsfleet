@@ -59,7 +59,7 @@ func TestDefaultAssessmentNeverBrowsesDatastoresAndSaysVFileInfoIsNotCaptured(t 
 	r, vc, db, _ := fileInventoryEstate(t)
 	// A default capture must not issue a recursive datastore search at all.
 	vc.Service.FaultInjector().AddRule(&simulator.FaultInjectionRule{MethodName: "SearchDatastoreSubFolders_Task", ObjectType: "*", ObjectName: "*", Probability: 1, FaultType: simulator.FaultTypeNoPermission, Message: "browsing must be opt-in", Enabled: true})
-	stdout, stderr, err := r.run("", "--history-db", db, "capture", "run", "--all-contexts")
+	stdout, stderr, err := r.run("", "--db", db, "capture", "run", "--all-contexts")
 	if err != nil {
 		t.Fatalf("assessment run: %v\n%s\n%s", err, stdout, stderr)
 	}
@@ -67,7 +67,7 @@ func TestDefaultAssessmentNeverBrowsesDatastoresAndSaysVFileInfoIsNotCaptured(t 
 		t.Fatalf("a default capture touched the datastore browser:\n%s\n%s", stdout, stderr)
 	}
 	dir := filepath.Join(t.TempDir(), "csv")
-	r.mustRun("", "--history-db", db, "assessment", "export", "latest", "--format", "csv", "--file", dir)
+	r.mustRun("", "--db", db, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", dir)
 	rows := readCSVFile(t, filepath.Join(dir, "vFileInfo.csv"))
 	if len(rows) != 2 || !strings.Contains(rows[1][0], "does not mean the datastores hold no files") {
 		t.Fatalf("vFileInfo of a default run = %v, want one explanatory row", rows)
@@ -80,18 +80,18 @@ func TestDefaultAssessmentNeverBrowsesDatastoresAndSaysVFileInfoIsNotCaptured(t 
 
 func TestFileInventoryLimitFlagsDoNotSilentlyEnableBrowsing(t *testing.T) {
 	r, _, db, _ := fileInventoryEstate(t)
-	_, _, err := r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--file-inventory-max-files", "5")
+	_, _, err := r.run("", "--db", db, "capture", "run", "--all-contexts", "--file-inventory-max-files", "5")
 	if err == nil || !strings.Contains(err.Error(), "--datastore-file-inventory") {
 		t.Fatalf("limit flag without opt-in: err = %v, want a refusal naming --datastore-file-inventory", err)
 	}
-	_, _, err = r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "0")
+	_, _, err = r.run("", "--db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "0")
 	if err == nil || !strings.Contains(err.Error(), "--file-inventory-max-files") {
 		t.Fatalf("zero limit: err = %v", err)
 	}
 	// Browsing VMDK evidence must not switch the file inventory on either.
-	r.mustRun("", "--history-db", db, "capture", "run", "--all-contexts", "--browse-datastores")
+	r.mustRun("", "--db", db, "capture", "run", "--all-contexts", "--browse-datastores")
 	dir := filepath.Join(t.TempDir(), "csv")
-	r.mustRun("", "--history-db", db, "assessment", "export", "latest", "--format", "csv", "--file", dir)
+	r.mustRun("", "--db", db, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", dir)
 	if cov := coverageRow(t, dir, "vFileInfo"); cov[10] != "not recorded" {
 		t.Fatalf("--browse-datastores enabled the file inventory: %v", cov)
 	}
@@ -99,7 +99,7 @@ func TestFileInventoryLimitFlagsDoNotSilentlyEnableBrowsing(t *testing.T) {
 
 func TestFileInventoryCaptureExportsFilesAndIsOfflineAndByteIdentical(t *testing.T) {
 	r, _, db, _ := fileInventoryEstate(t)
-	stdout := r.mustRun("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "-o", "json")
+	stdout := r.mustRun("", "--db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "-o", "json")
 	var run struct {
 		ID            int64 `json:"id"`
 		FileInventory []struct {
@@ -123,8 +123,8 @@ func TestFileInventoryCaptureExportsFilesAndIsOfflineAndByteIdentical(t *testing
 	offline := newRunner(t)
 	first := filepath.Join(t.TempDir(), "a")
 	second := filepath.Join(t.TempDir(), "b")
-	receiptJSON := offline.mustRun("", "--history-db", db, "assessment", "export", "latest", "--format", "csv", "--file", first, "-o", "json")
-	offline.mustRun("", "--history-db", db, "assessment", "export", "latest", "--format", "csv", "--file", second)
+	receiptJSON := offline.mustRun("", "--db", db, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", first, "-o", "json")
+	offline.mustRun("", "--db", db, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", second)
 	var receipt struct {
 		FileInventory []struct {
 			Datastores []struct{ Status string } `json:"datastores"`
@@ -174,7 +174,7 @@ func TestFileInventoryCaptureExportsFilesAndIsOfflineAndByteIdentical(t *testing
 
 func TestFileInventoryTruncationAndDenialAreVisibleInHumanAndMachineOutput(t *testing.T) {
 	r, vc, db, _ := fileInventoryEstate(t)
-	stdout, stderr, err := r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "2")
+	stdout, stderr, err := r.run("", "--db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory", "--file-inventory-max-files", "2")
 	if err != nil {
 		t.Fatalf("run: %v\n%s\n%s", err, stdout, stderr)
 	}
@@ -182,7 +182,7 @@ func TestFileInventoryTruncationAndDenialAreVisibleInHumanAndMachineOutput(t *te
 		t.Fatalf("human output hides the truncation:\nstdout: %s\nstderr: %s", stdout, stderr)
 	}
 	dir := filepath.Join(t.TempDir(), "csv")
-	_, expErr, err := r.run("", "--history-db", db, "assessment", "export", "latest", "--format", "csv", "--file", dir)
+	_, expErr, err := r.run("", "--db", db, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestFileInventoryTruncationAndDenialAreVisibleInHumanAndMachineOutput(t *te
 	// A denied browse: nothing listed, and the tab says why instead of
 	// looking like an empty datastore.
 	vc.Service.FaultInjector().AddRule(&simulator.FaultInjectionRule{MethodName: "SearchDatastoreSubFolders_Task", ObjectType: "*", ObjectName: "*", Probability: 1, FaultType: simulator.FaultTypeNoPermission, Message: "Permission to perform this operation was denied.", Enabled: true})
-	stdout, stderr, err = r.run("", "--history-db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory")
+	stdout, stderr, err = r.run("", "--db", db, "capture", "run", "--all-contexts", "--datastore-file-inventory")
 	if err != nil {
 		t.Fatalf("run: %v\n%s\n%s", err, stdout, stderr)
 	}
@@ -213,7 +213,7 @@ func TestFileInventoryTruncationAndDenialAreVisibleInHumanAndMachineOutput(t *te
 		t.Fatalf("human output hides the denial:\nstdout: %s\nstderr: %s", stdout, stderr)
 	}
 	denied := filepath.Join(t.TempDir(), "csv")
-	r.mustRun("", "--history-db", db, "assessment", "export", "latest", "--format", "csv", "--file", denied)
+	r.mustRun("", "--db", db, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", denied)
 	rows := readCSVFile(t, filepath.Join(denied, "vFileInfo.csv"))
 	if len(rows) != 2 || !strings.Contains(rows[1][0], "denied, failed, skipped, unavailable") {
 		t.Fatalf("vFileInfo of a denied run = %v", rows)

@@ -154,7 +154,7 @@ func vmEvents(ctx context.Context, a *App, contextName, vmID string, limit int) 
 func storedVMEvents(ctx context.Context, a *App, query string, limit int, notFound error) (vsphere.VMEventListing, error) {
 	// Looking must not create an empty history database just to find nothing.
 	if a.history == nil {
-		path := a.HistoryPath
+		path := a.DBPath
 		if path == "" {
 			path, _ = assessment.DefaultPath()
 		}

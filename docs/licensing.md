@@ -6,8 +6,8 @@ default, and never stores license keys.
 
 ```sh
 vsfleet capture run --all-contexts --include-licenses
-vsfleet assessment export latest --file estate.xlsx      # adds vLicense
-vsfleet assessment export latest --format csv --file ./estate-csv
+vsfleet export rvtools --file estate.xlsx               # adds vLicense
+vsfleet export rvtools --format csv --file ./estate-csv
 ```
 
 Without the flag, vsfleet makes no license API call and records no license

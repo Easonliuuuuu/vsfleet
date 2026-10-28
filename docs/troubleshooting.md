@@ -57,8 +57,8 @@ Background refresh never interrupts the terminal with a password prompt.
 If history operations fail, inspect the local ledger without contacting vCenter:
 
 ```sh
-vsfleet assessment doctor
-vsfleet assessment backup ./history-backup.db
+vsfleet db doctor
+vsfleet db backup ./history-backup.db
 ```
 
 Check database permissions and disk space. Back up before restoring or pruning;

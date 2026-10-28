@@ -97,7 +97,7 @@ them.`), Example: `  # Every stored capture, newest first
 		Annotations: map[string]string{annotationAllOutputs: "true"},
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := rejectStoredContextSelection(cmd, "list"); err != nil {
+			if err := rejectStoredContextSelection(cmd); err != nil {
 				return err
 			}
 			spec, err := parseOutput(a.Format)
@@ -130,7 +130,7 @@ preview of what would go. Pinned captures are never pruned.`), Example: `  # Pre
 
   # Actually remove them, keeping the 5 newest complete captures
   vsfleet capture prune --older-than 90d --keep-last 5 --execute`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if err := rejectStoredContextSelection(cmd, "prune"); err != nil {
+		if err := rejectStoredContextSelection(cmd); err != nil {
 			return err
 		}
 		d, err := parseHumanDuration(older)
@@ -402,7 +402,7 @@ func newCaptureDeleteCommand(a *App) *cobra.Command {
 
   # Delete a labelled capture
   vsfleet capture delete nightly --force`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if err := rejectStoredContextSelection(cmd, "delete"); err != nil {
+		if err := rejectStoredContextSelection(cmd); err != nil {
 			return err
 		}
 		if !force {
@@ -444,7 +444,7 @@ func newCaptureUpdateCommand(a *App) *cobra.Command {
 
   # Clear the note and unpin
   vsfleet capture update 42 --note "" --unpin`, Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		if err := rejectStoredContextSelection(cmd, "update"); err != nil {
+		if err := rejectStoredContextSelection(cmd); err != nil {
 			return err
 		}
 		if pin && unpin {

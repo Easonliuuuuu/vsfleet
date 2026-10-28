@@ -186,9 +186,9 @@ func TestImportRequiresNoConfigurationOrNetwork(t *testing.T) {
 	// keyring or session.
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 	var out, errOut bytes.Buffer
-	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
+	a := &App{DBPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
-	root.SetArgs([]string{"--history-db", dbPath, "capture", "import", "rvtools", writeImportWorkbook(t, nil)})
+	root.SetArgs([]string{"--db", dbPath, "capture", "import", "rvtools", writeImportWorkbook(t, nil)})
 	defer func() { _ = a.Close(context.Background()) }()
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		t.Fatalf("import: %v (stderr=%s)", err, errOut.String())
@@ -204,9 +204,9 @@ func TestImportRequiresNoConfigurationOrNetwork(t *testing.T) {
 func TestImportJSONReportCarriesGapsAndProvenance(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "history.db")
 	var out, errOut bytes.Buffer
-	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
+	a := &App{DBPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
-	root.SetArgs([]string{"--history-db", dbPath, "-o", "json", "capture", "import", "rvtools", writeImportWorkbook(t, nil), "--dry-run"})
+	root.SetArgs([]string{"--db", dbPath, "-o", "json", "capture", "import", "rvtools", writeImportWorkbook(t, nil), "--dry-run"})
 	if err := root.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}

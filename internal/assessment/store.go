@@ -23,8 +23,12 @@ import (
 )
 
 const (
-	EnvDBPath = "VSFLEET_HISTORY_DB"
-	Driver    = "sqlite"
+	EnvDBPath = "VSFLEET_DB"
+	// LegacyEnvDBPath is EnvDBPath's former name. DefaultPath still reads it
+	// for one release when EnvDBPath is unset: ignoring it outright would
+	// leave a container silently opening a new, empty database.
+	LegacyEnvDBPath = "VSFLEET_HISTORY_DB"
+	Driver          = "sqlite"
 )
 
 type Store struct {
@@ -45,11 +49,26 @@ func DefaultPath() (string, error) {
 	if p := strings.TrimSpace(os.Getenv(EnvDBPath)); p != "" {
 		return p, nil
 	}
+	if p := strings.TrimSpace(os.Getenv(LegacyEnvDBPath)); p != "" {
+		return p, nil
+	}
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", fmt.Errorf("locate user config directory: %w", err)
 	}
 	return filepath.Join(dir, "vsfleet", "history.db"), nil
+}
+
+// LegacyEnvWarning describes how LegacyEnvDBPath is being treated, or
+// returns "" when it is unset.
+func LegacyEnvWarning() string {
+	if strings.TrimSpace(os.Getenv(LegacyEnvDBPath)) == "" {
+		return ""
+	}
+	if strings.TrimSpace(os.Getenv(EnvDBPath)) != "" {
+		return LegacyEnvDBPath + " is ignored because " + EnvDBPath + " is set; remove it"
+	}
+	return LegacyEnvDBPath + " is deprecated and will stop being read in the next release; rename it to " + EnvDBPath
 }
 
 func Open(path string) (*Store, error) {

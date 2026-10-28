@@ -9,7 +9,7 @@ vsfleet capture perf --window 7d                          # contacts vCenter, re
 vsfleet get perfcollections
 vsfleet top vm                                            # offline
 vsfleet describe capture latest                           # lists collected/not collected per context
-vsfleet assessment export --format rvtools --file e.xlsx  # adds the vsfleetPerformance sheet
+vsfleet export rvtools --file e.xlsx                      # adds the vsfleetPerformance sheet
 ```
 
 `perf collect` uses vCenter's `PerformanceManager.QueryPerf`, with counters

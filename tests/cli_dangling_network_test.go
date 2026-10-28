@@ -36,11 +36,11 @@ func TestAssessmentReportsDeletedPortGroupAsDanglingReference(t *testing.T) {
 	r := newRunner(t)
 	r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
 	historyDB := filepath.Join(t.TempDir(), "history.db")
-	if _, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--context", "lab", "--fail-on-partial"); err != nil {
+	if _, _, err := r.run("", "--db", historyDB, "capture", "run", "--context", "lab", "--fail-on-partial"); err != nil {
 		t.Fatalf("assessment run with a dangling NIC backing: %v", err)
 	}
 
-	reportJSON := r.mustRun("", "--history-db", historyDB, "-o", "json", "describe", "capture", "latest")
+	reportJSON := r.mustRun("", "--db", historyDB, "-o", "json", "describe", "capture", "latest")
 	var report struct {
 		Coverage []struct {
 			Kind   string `json:"kind"`
@@ -57,7 +57,7 @@ func TestAssessmentReportsDeletedPortGroupAsDanglingReference(t *testing.T) {
 		}
 	}
 
-	findingsJSON := r.mustRun("", "--history-db", historyDB, "-o", "json", "analyze", "health", "--run", "latest")
+	findingsJSON := r.mustRun("", "--db", historyDB, "-o", "json", "analyze", "health", "--run", "latest")
 	var findings health.Report
 	if err := json.Unmarshal([]byte(findingsJSON), &findings); err != nil {
 		t.Fatal(err)

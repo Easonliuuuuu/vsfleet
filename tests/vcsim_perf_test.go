@@ -42,7 +42,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	addFixtureContexts(t, r, fixture)
 	historyDB := filepath.Join(t.TempDir(), "history.db")
 	perfArgs := func(args ...string) []string {
-		return append([]string{"--history-db", historyDB, "--all-contexts", "-o", "json"}, args...)
+		return append([]string{"--db", historyDB, "--all-contexts", "-o", "json"}, args...)
 	}
 
 	// Requested VMs follow the inventory shape asserted in
@@ -86,7 +86,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	}
 	for name, w := range collected {
 		var shown perf.Window
-		raw := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "top", "vm", "--window", strconv.FormatInt(w.ID, 10))
+		raw := vcsimJSON(t, r, "--db", historyDB, "-o", "json", "top", "vm", "--window", strconv.FormatInt(w.ID, 10))
 		if err := json.Unmarshal([]byte(raw), &shown); err != nil {
 			t.Fatalf("decode perf show %d: %v\n%s", w.ID, err, raw)
 		}
@@ -100,7 +100,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 		}
 	}
 	var latest perf.Window
-	if err := json.Unmarshal([]byte(vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "top", "vm")), &latest); err != nil {
+	if err := json.Unmarshal([]byte(vcsimJSON(t, r, "--db", historyDB, "-o", "json", "top", "vm")), &latest); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := byID[latest.ID]; !ok || latest.Status != perf.WindowSuccess {
@@ -121,7 +121,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 	if edge.ID == collected["vc-edge"].ID {
 		t.Fatalf("failed attempt overwrote the earlier successful vc-edge window %d", edge.ID)
 	}
-	listedRaw := vcsimJSON(t, r, "--history-db", historyDB, "-o", "json", "get", "perfcollections")
+	listedRaw := vcsimJSON(t, r, "--db", historyDB, "-o", "json", "get", "perfcollections")
 	var history []perf.Window
 	if err := json.Unmarshal([]byte(listedRaw), &history); err != nil {
 		t.Fatal(err)
@@ -134,7 +134,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 		t.Fatalf("perf list statuses=%v, want vc-prod 2 success and vc-edge 1 success plus 1 failed: %s", statuses, listedRaw)
 	}
 
-	stdout, stderr, err := r.run("", "--history-db", historyDB, "--all-contexts", "capture", "perf", "--window", "1h")
+	stdout, stderr, err := r.run("", "--db", historyDB, "--all-contexts", "capture", "perf", "--window", "1h")
 	if err != nil {
 		t.Fatalf("text collect with one healthy context: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
 	}
@@ -166,7 +166,7 @@ func TestVCSIMPerfCollectRecordsProvenanceAndFailures(t *testing.T) {
 			t.Fatalf("%s window with no healthy context=%+v, want failed with an error", name, w)
 		}
 	}
-	if _, stderr, err = r.run("", "--history-db", historyDB, "--all-contexts", "capture", "perf", "--window", "1h"); err == nil {
+	if _, stderr, err = r.run("", "--db", historyDB, "--all-contexts", "capture", "perf", "--window", "1h"); err == nil {
 		t.Fatalf("text collect with no healthy context succeeded\nstderr:\n%s", stderr)
 	}
 }

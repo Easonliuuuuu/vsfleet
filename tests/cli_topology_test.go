@@ -18,11 +18,11 @@ func TestAssessmentTopologyQueriesUseCrossVCenterEvidence(t *testing.T) {
 	r.addNonInteractiveContext("right", right, "env:VSFLEET_E2E_PASSWORD")
 	addUnreachableContext(r, "offline")
 	historyDB := filepath.Join(t.TempDir(), "history.db")
-	if _, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts"); err != nil {
+	if _, _, err := r.run("", "--db", historyDB, "capture", "run", "--all-contexts"); err != nil {
 		t.Fatalf("assessment run: %v", err)
 	}
 
-	stdout := r.mustRun("", "--history-db", historyDB, "--context", "left", "analyze", "blast-radius", "datastore/LocalDS_0", "-o", "json")
+	stdout := r.mustRun("", "--db", historyDB, "--context", "left", "analyze", "blast-radius", "datastore/LocalDS_0", "-o", "json")
 	var result struct {
 		Subjects []struct {
 			Edges []struct {

@@ -96,6 +96,18 @@ func TestRemovedCommandsPointAtReplacements(t *testing.T) {
 		{[]string{"deps", "vm", "web-01"}, []string{"vsfleet analyze deps KIND/NAME"}},
 		{[]string{"blast", "host", "esxi-07"}, []string{"vsfleet analyze blast-radius KIND/NAME"}},
 		{[]string{"vm", "decommission-check", "web-01"}, []string{`"vm decommission-check" was renamed`, "vsfleet analyze decommission vm/NAME"}},
+		{[]string{"assessment"}, []string{`"assessment" was renamed`, "vsfleet export", "vsfleet db"}},
+		{[]string{"history", "export", "--file", "x.xlsx"}, []string{`"assessment export" was renamed`, "vsfleet export rvtools --run RUN"}},
+		{[]string{"assessment", "export", "nightly", "--file", "x.xlsx"}, []string{"vsfleet export rvtools --run RUN"}},
+		{[]string{"assessment", "metadata", "--format", "csv"}, []string{"vsfleet export metadata --run RUN"}},
+		{[]string{"assessment", "metadata-report", "pci"}, []string{"vsfleet export metadata --definition DEFINITION --run RUN"}},
+		{[]string{"assessment", "backup", "x.db"}, []string{`"assessment backup" was renamed`, "vsfleet db backup FILE"}},
+		{[]string{"assessment", "restore", "x.db", "--force"}, []string{"vsfleet db restore FILE"}},
+		{[]string{"assessment", "doctor"}, []string{`"assessment doctor" was renamed`, "vsfleet db doctor"}},
+		{[]string{"datastore", "files", "list", "ds1"}, []string{`"datastore files list" was renamed`, "vsfleet datastore ls"}},
+		{[]string{"datastore", "files", "find", "ds1", "*.vmdk"}, []string{"vsfleet datastore find"}},
+		{[]string{"datastore", "list"}, []string{"vsfleet get datastores"}},
+		{[]string{"--history-db", "x.db", "capture", "list"}, []string{"--history-db was renamed: use --db"}},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			out, _, err := runCLI(t, db, tc.args...)

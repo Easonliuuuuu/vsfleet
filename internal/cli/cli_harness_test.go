@@ -17,9 +17,9 @@ import (
 func runCLI(t *testing.T, dbPath string, args ...string) (stdout, stderr string, err error) {
 	t.Helper()
 	var out, errOut bytes.Buffer
-	a := &App{HistoryPath: dbPath, Out: &out, Err: &errOut}
+	a := &App{DBPath: dbPath, Out: &out, Err: &errOut}
 	root := NewRootCommand(a)
-	root.SetArgs(append([]string{"--history-db", dbPath}, args...))
+	root.SetArgs(append([]string{"--db", dbPath}, args...))
 	defer func() { _ = a.Close(context.Background()) }()
 	err = root.ExecuteContext(context.Background())
 	return out.String(), errOut.String(), err

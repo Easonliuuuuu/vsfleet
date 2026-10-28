@@ -58,15 +58,15 @@ func TestAssessmentCaptureExportsAttributedVSource(t *testing.T) {
 	r.addNonInteractiveContext("beta", beta, "env:VSFLEET_E2E_PASSWORD")
 	addUnreachableContext(r, "down")
 	historyDB := filepath.Join(t.TempDir(), "history.db")
-	if _, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts"); err != nil {
+	if _, _, err := r.run("", "--db", historyDB, "capture", "run", "--all-contexts"); err != nil {
 		t.Fatalf("assessment run: %v", err)
 	}
 
 	offline := newRunner(t)
 	firstDir := filepath.Join(t.TempDir(), "csv-1")
 	secondDir := filepath.Join(t.TempDir(), "csv-2")
-	offline.mustRun("", "--history-db", historyDB, "assessment", "export", "latest", "--format", "csv", "--file", firstDir)
-	offline.mustRun("", "--history-db", historyDB, "assessment", "export", "latest", "--format", "csv", "--file", secondDir)
+	offline.mustRun("", "--db", historyDB, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", firstDir)
+	offline.mustRun("", "--db", historyDB, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", secondDir)
 	first, _ := os.ReadFile(filepath.Join(firstDir, "vSource.csv"))
 	second, _ := os.ReadFile(filepath.Join(secondDir, "vSource.csv"))
 	if len(first) == 0 || !bytes.Equal(first, second) {

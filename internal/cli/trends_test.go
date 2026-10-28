@@ -39,9 +39,9 @@ func TestAssessmentMetadataCommandsRejectContext(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	for _, args := range [][]string{
 		{"capture", "list", "--context", "prod"},
-		{"assessment", "doctor", "--context", "prod"},
+		{"db", "doctor", "--context", "prod"},
 		{"capture", "prune", "--context", "prod"},
-		{"assessment", "backup", "/tmp/vsfleet-context-test.db", "--context", "prod"},
+		{"db", "backup", "/tmp/vsfleet-context-test.db", "--context", "prod"},
 	} {
 		_, _, err := runCLI(t, dbPath, args...)
 		if err == nil || !strings.Contains(err.Error(), "--context is not supported") {

@@ -32,7 +32,7 @@ Preview shows contexts, worksheets, row counts, columns, and sensitivity
 classes without writing a file. Export uses the same plan:
 
 ```sh
-vsfleet assessment export --profile sizing-summary --pseudonymize --preview
+vsfleet export rvtools --profile sizing-summary --pseudonymize --preview
 ```
 
 ## Pseudonymize values
@@ -41,7 +41,7 @@ Profiles preserve values unless `--pseudonymize` is given:
 
 ```sh
 openssl rand -base64 32 > ~/.config/vsfleet/share.key && chmod 600 ~/.config/vsfleet/share.key
-vsfleet assessment export --profile sizing-summary --pseudonymize \
+vsfleet export rvtools --profile sizing-summary --pseudonymize \
   --pseudonymize-key-file ~/.config/vsfleet/share.key --file sizing.xlsx
 ```
 

@@ -350,7 +350,7 @@ func startSessionWithSSH(t *testing.T, name string, rows, cols uint16, sshMode s
 
 func isolatedEnvironment(base []string, state, name string) []string {
 	drop := map[string]bool{
-		"VSFLEET_CONFIG": true, "VSFLEET_HISTORY_DB": true,
+		"VSFLEET_CONFIG": true, "VSFLEET_DB": true, "VSFLEET_HISTORY_DB": true,
 		"VSFLEET_TESTBED_ROOT": true, "VSFLEET_TESTBED_SCENARIO": true,
 		"XDG_CONFIG_HOME": true, "XDG_DATA_HOME": true, "XDG_CACHE_HOME": true,
 		"HOME": true, "SSH_AUTH_SOCK": true,

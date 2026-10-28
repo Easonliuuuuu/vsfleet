@@ -52,7 +52,7 @@ func TestPartialCaptureExitsZeroByDefault(t *testing.T) {
 	// evidence from "up" and records "down" as failed.
 	addUnreachableContext(r, "down")
 
-	stdout, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts")
+	stdout, _, err := r.run("", "--db", historyDB, "capture", "run", "--all-contexts")
 	if code := exitCode(err); code != 0 {
 		t.Fatalf("a partial capture exited %d without --fail-on-partial (err %v)\n%s", code, err, stdout)
 	}
@@ -72,7 +72,7 @@ func TestPartialCaptureExitsThreeWhenAsked(t *testing.T) {
 	r.addNonInteractiveContext("up", vc, "env:VSFLEET_E2E_PASSWORD")
 	addUnreachableContext(r, "down")
 
-	stdout, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts", "--fail-on-partial")
+	stdout, _, err := r.run("", "--db", historyDB, "capture", "run", "--all-contexts", "--fail-on-partial")
 	if code := exitCode(err); code != 3 {
 		t.Fatalf("a partial capture exited %d with --fail-on-partial (err %v)\n%s", code, err, stdout)
 	}
@@ -83,7 +83,7 @@ func TestPartialCaptureExitsThreeWhenAsked(t *testing.T) {
 	}
 	// The evidence that was collected is still stored: a partial run is a
 	// valid run, and the exit code reports it rather than discarding it.
-	if list := r.mustRun("", "--history-db", historyDB, "capture", "list"); !strings.Contains(list, "partial") {
+	if list := r.mustRun("", "--db", historyDB, "capture", "list"); !strings.Contains(list, "partial") {
 		t.Errorf("the partial run was not stored:\n%s", list)
 	}
 }
@@ -97,7 +97,7 @@ func TestCompleteCaptureExitsZeroUnderFailOnPartial(t *testing.T) {
 
 	r.addNonInteractiveContext("up", vc, "env:VSFLEET_E2E_PASSWORD")
 
-	stdout, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts", "--fail-on-partial")
+	stdout, _, err := r.run("", "--db", historyDB, "capture", "run", "--all-contexts", "--fail-on-partial")
 	if code := exitCode(err); code != 0 {
 		t.Fatalf("a complete capture exited %d under --fail-on-partial (err %v)\n%s", code, err, stdout)
 	}

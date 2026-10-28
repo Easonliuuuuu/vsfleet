@@ -22,8 +22,9 @@ system CA certificates and timezone data, but no shell or package manager.
 
 ## Configuration, secrets, and history
 
-Mount a read-only configuration file and set `VSFLEET_CONFIG`. Put the history
-database on a writable volume with `VSFLEET_HISTORY_DB`. Use a `file:`
+Mount a read-only configuration file and set `VSFLEET_CONFIG`. Put the capture
+database on a writable volume with `VSFLEET_DB`. The image still reads
+`VSFLEET_HISTORY_DB` for one release, with a warning; rename it. Use a `file:`
 credential so the password stays out of the process environment:
 
 ```toml
@@ -48,7 +49,7 @@ docker run --rm \
   --mount type=bind,src="$PWD/secrets/vsfleet-prod",dst=/run/secrets/vsfleet-prod,readonly \
   --mount type=bind,src="$PWD/vsfleet-data",dst=/data \
   --env VSFLEET_CONFIG=/config/config.toml \
-  --env VSFLEET_HISTORY_DB=/data/history.db \
+  --env VSFLEET_DB=/data/history.db \
   ghcr.io/easonliuuuuu/vsfleet:v0.6.3 \
   capture run --all-contexts --label nightly
 ```
@@ -67,9 +68,9 @@ directory. Export reads stored evidence without configuration or credentials:
 docker run --rm \
   --mount type=bind,src="$PWD/vsfleet-data",dst=/data \
   --mount type=bind,src="$PWD/exports",dst=/exports \
-  --env VSFLEET_HISTORY_DB=/data/history.db \
+  --env VSFLEET_DB=/data/history.db \
   ghcr.io/easonliuuuuu/vsfleet:v0.6.3 \
-  assessment export --format csv --file /exports
+  export rvtools --format csv --file /exports
 ```
 
 ## Private certificate authorities

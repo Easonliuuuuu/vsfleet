@@ -22,14 +22,14 @@ func TestAssessmentCaptureExportsHostStorageAndNetworkSheets(t *testing.T) {
 	r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
 	historyDB := filepath.Join(t.TempDir(), "history.db")
 
-	if _, _, err := r.run("", "--history-db", historyDB, "capture", "run", "--all-contexts"); err != nil {
+	if _, _, err := r.run("", "--db", historyDB, "capture", "run", "--all-contexts"); err != nil {
 		t.Fatalf("assessment run: %v", err)
 	}
 
 	firstDir := filepath.Join(t.TempDir(), "csv-1")
-	r.mustRun("", "--history-db", historyDB, "assessment", "export", "latest", "--format", "csv", "--file", firstDir)
+	r.mustRun("", "--db", historyDB, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", firstDir)
 	secondDir := filepath.Join(t.TempDir(), "csv-2")
-	r.mustRun("", "--history-db", historyDB, "assessment", "export", "latest", "--format", "csv", "--file", secondDir)
+	r.mustRun("", "--db", historyDB, "export", "rvtools", "--run", "latest", "--format", "csv", "--file", secondDir)
 
 	for _, name := range []string{"vHBA.csv", "vSwitch.csv", "dvSwitch.csv", "dvPort.csv"} {
 		first, err := os.ReadFile(filepath.Join(firstDir, name))

@@ -23,7 +23,7 @@ func newCaptureCommand(a *App) *cobra.Command {
 		Short: "Take, import, label, compare and remove stored captures",
 		Long: strings.TrimSpace(`
 A capture is a point-in-time snapshot of the estate, stored in the local
-history database. "capture run" takes one from vCenter and "capture import"
+capture database. "capture run" takes one from vCenter and "capture import"
 adds one from an RVTools export; the other subcommands list, label, compare
 and remove them.
 
@@ -67,7 +67,7 @@ func newCaptureImportCommand(a *App) *cobra.Command {
 		Use:   "import",
 		Short: "Add a capture from another tool's export",
 		Long: strings.TrimSpace(`
-Bring evidence vsfleet did not collect itself into the history database as a
+Bring evidence vsfleet did not collect itself into the capture database as a
 capture, so --run, "capture diff" and the analyses work on it exactly as they
 would on a live one.
 
@@ -84,7 +84,7 @@ connection is used or required.`),
 func newCaptureListCommand(a *App) *cobra.Command {
 	var noHeaders bool
 	cmd := &cobra.Command{Use: "list", Aliases: []string{"ls"}, Short: "List stored captures", Long: strings.TrimSpace(`
-List the captures in the local history database, newest first, the same as
+List the captures in the local capture database, newest first, the same as
 "vsfleet get captures".
 
 The ID and label are what --run and the other capture subcommands accept.
@@ -120,7 +120,7 @@ func newCapturePruneCommand(a *App) *cobra.Command {
 	var keepLast int
 	var execute bool
 	cmd := &cobra.Command{Use: "prune", Short: "Remove old captures and performance collections", Long: strings.TrimSpace(`
-Delete captures older than --older-than from the local history database,
+Delete captures older than --older-than from the local capture database,
 and the performance collections older than it too, keeping the newest
 collection per context.
 
@@ -186,7 +186,7 @@ func newCaptureRunCommand(a *App) *cobra.Command {
 	var failOnPartial bool
 	cmd := &cobra.Command{Use: "run", Short: "Take a capture of the estate from vCenter", Long: strings.TrimSpace(`
 Read inventory from the selected contexts and store it as one immutable
-capture in the local history database.
+capture in the local capture database.
 
 -n picks the contexts and -A captures every one. Apart from "capture perf",
 this is the only command that writes vCenter evidence to the history

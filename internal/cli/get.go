@@ -105,7 +105,7 @@ func (l lister[T]) list(ctx context.Context, a *App, names []string, opt getOpti
 		}
 	}
 	if l.history && a.capture != nil {
-		return nil, nil, errors.New("captures and performance collections are listed from the history database; --run does not apply to them")
+		return nil, nil, errors.New("captures and performance collections are listed from the capture database; --run does not apply to them")
 	}
 	patterns, err := newNamePatterns(names)
 	if err != nil {

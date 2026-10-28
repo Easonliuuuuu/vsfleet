@@ -120,7 +120,7 @@ vsfleet capture delete <run> --force
 Capture, prune, backup, and restore use a fenced lease that permits one writer
 at a time. Listing, diffing, and the TUI do not take it. Backups are consistent
 SQLite snapshots; restore makes a safety copy before replacing the database.
-Restoring into a history database that holds no data yet needs no `--force`;
+Restoring into a capture database that holds no data yet needs no `--force`;
 replacing existing history does.
 
 The database defaults to `<user-config-dir>/vsfleet/history.db`. Override it

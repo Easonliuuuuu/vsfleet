@@ -23,7 +23,7 @@ Each context makes two read-only API reads:
 | `LicenseManager.licenses` | Name, edition, cost unit, total, used, expiration, features |
 | `LicenseAssignmentManager.QueryAssignedLicenses` | Assigned entity ID, name, type (`host`, `cluster`, `vcenter`, `other`), and scope |
 
-The history database stores those fields with the run ID, context, endpoint,
+The capture database stores those fields with the run ID, context, endpoint,
 vCenter instance UUID, collection times, and API version. Features are sorted.
 Free-text license labels are not collected.
 

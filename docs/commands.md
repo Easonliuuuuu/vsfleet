@@ -49,7 +49,7 @@ every context. The `config` verbs match kubectl's: `get-contexts`,
 | `vsfleet explain <kind>[.<field>]` | Document a kind's columns and the RVTools worksheets it feeds |
 | `vsfleet datastore ls <datastore> [path]` | List one datastore directory |
 | `vsfleet datastore find <datastore> <pattern>` | Recursively search a datastore for a name or pattern |
-| `vsfleet capture run [-A] [--label <name>]` | Take a capture of the estate into the local history database; see [captures](#captures) |
+| `vsfleet capture run [-A] [--label <name>]` | Take a capture of the estate into the local capture database; see [captures](#captures) |
 | `vsfleet capture import rvtools <file.xlsx>` | Import an RVTools-compatible export as a new capture, offline |
 | `vsfleet capture list` | List stored captures; the same as `vsfleet get captures` |
 | `vsfleet capture diff [base] [target]` | Compare two captures, optionally failing on policy with `--fail-on` or `--require-complete` |
@@ -341,8 +341,14 @@ Dry runs list ignored worksheets and recognized, ignored, and missing
 columns. Mapped headers accept vsfleet and RVTools spellings, including
 `Shared Bus`/`SharedBus`, `Label`/`SCSI label`, `Unit #`/`Unit number`,
 `Raw Comp. Mode`/`Raw Compatibility Mode`, `Switch`/`DVS`, `Max Ports`/`# Max ports`,
-`Port`/`Port group`, `Allow Promiscuous`/`Promiscuous mode`, and
-`Policy`/`Teaming policy`. `Rolling Order` maps to `Failback`.
+`Port`/`Port group`, `Allow Promiscuous`/`Promiscuous mode`,
+`Policy`/`Teaming policy`, and `Max MTU`/`MTU`. `Rolling Order` maps to `Failback`.
+
+RVTools has no host thread count or port-group uplink flag, so both are
+derived. A host's threads are `# Cores`, doubled when `HT Active` is true, and
+unknown without that column. A port group without vsfleet's `Uplink` column is
+an uplink when it keeps the name vCenter gives one, `<switch>-DVUplinks-<n>`;
+a renamed uplink port group imports as a VM port group.
 
 Number cells are read with RVTools' thousands separators, so `9,984` is
 9984. Host CPU and memory usage come from `vHost`'s `CPU usage %` and

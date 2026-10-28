@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -641,4 +642,83 @@ func containsSubstring(values []string, substring string) bool {
 		}
 	}
 	return false
+}
+
+// RVTools 4.8 names the dvSwitch MTU "Max MTU" and has no host thread count
+// or port-group Uplink column, so those are read from what it does carry
+// (#491). The headers follow a 4.8.2.1 export; all inventory is synthetic.
+func TestSyntheticRVTools48HostThreadsMTUAndUplink(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		htActive    string
+		wantThreads int32
+	}{
+		{name: "hyperthreading active", htActive: "True", wantThreads: 8},
+		{name: "hyperthreading inactive", htActive: "False", wantThreads: 4},
+		{name: "hyperthreading not reported", htActive: "", wantThreads: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			const endpoint = "vc-synthetic.example"
+			f := excelize.NewFile()
+			t.Cleanup(func() { _ = f.Close() })
+			for _, sheet := range []struct {
+				name string
+				rows [][]any
+			}{
+				{sheetVInfo, [][]any{
+					{"VM", "VM ID", "CPUs", "Memory", "VI SDK Server", "VI SDK UUID"},
+					{"Synthetic VM", "vm-1001", 2, 4096, endpoint, "synthetic-vc-uuid"},
+				}},
+				{sheetVHost, [][]any{
+					{"Host", "Datacenter", "Speed", "HT Available", "HT Active", "# CPU", "Cores per CPU", "# Cores", "# Memory", "Object ID", "VI SDK Server", "VI SDK UUID"},
+					{"esx-synthetic", "DC-Synthetic", "2,400", "True", tc.htActive, 2, 2, 4, "65,536", "host-1001", endpoint, "synthetic-vc-uuid"},
+				}},
+				{sheetDVSwitch, [][]any{
+					{"Switch", "Datacenter", "Max Ports", "# Ports", "Max MTU", "Object ID", "VI SDK Server", "VI SDK UUID"},
+					{"DVS-Synthetic", "DC-Synthetic", 2147483647, 136, "9,000", "dvs-1001", endpoint, "synthetic-vc-uuid"},
+				}},
+				{sheetDVPort, [][]any{
+					{"Port", "Switch", "Type", "# Ports", "VLAN", "Active Uplink", "Object ID", "VI SDK Server", "VI SDK UUID"},
+					{"frontend", "DVS-Synthetic", "earlyBinding", 128, "100", "Uplink 1, Uplink 2", "dvportgroup-1005", endpoint, "synthetic-vc-uuid"},
+					{"DVS-Synthetic-DVUplinks-1002", "DVS-Synthetic", "earlyBinding", 4, "", "", "dvportgroup-1003", endpoint, "synthetic-vc-uuid"},
+					{"DVS-Synthetic-DVUplinks-spare", "DVS-Synthetic", "earlyBinding", 4, "", "", "dvportgroup-1004", endpoint, "synthetic-vc-uuid"},
+				}},
+			} {
+				if _, err := f.NewSheet(sheet.name); err != nil {
+					t.Fatal(err)
+				}
+				for i, row := range sheet.rows {
+					if err := f.SetSheetRow(sheet.name, fmt.Sprintf("A%d", i+1), &row); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+			result, err := Parse(f, Options{CapturedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			host := findHost(result, endpoint, "esx-synthetic")
+			if host == nil {
+				t.Fatal("synthetic host was not imported")
+			}
+			if host.CPUCores != 4 || host.CPUThreads != tc.wantThreads {
+				t.Errorf("host CPU = %d cores / %d threads, want 4 / %d", host.CPUCores, host.CPUThreads, tc.wantThreads)
+			}
+			if len(result.contexts) != 1 || len(result.contexts[0].dvswitches) != 1 {
+				t.Fatalf("want one imported distributed switch, got %+v", result.contexts)
+			}
+			sw := result.contexts[0].dvswitches[0]
+			if sw.MaxMTU != 9000 {
+				t.Errorf("dvSwitch max MTU = %d, want 9000 from Max MTU", sw.MaxMTU)
+			}
+			uplink := map[string]bool{}
+			for _, pg := range sw.PortGroups {
+				uplink[pg.Name] = pg.Uplink
+			}
+			want := map[string]bool{"frontend": false, "DVS-Synthetic-DVUplinks-1002": true, "DVS-Synthetic-DVUplinks-spare": false}
+			if !reflect.DeepEqual(uplink, want) {
+				t.Errorf("port group uplink flags = %v, want %v", uplink, want)
+			}
+		})
+	}
 }

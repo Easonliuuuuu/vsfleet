@@ -81,4 +81,8 @@ func TestGetPerfCollections(t *testing.T) {
 	if out := mustRunCLI(t, dbPath, "-o", "json", "-n", "edge", "get", "perfcollections"); strings.TrimSpace(out) != "[]" {
 		t.Fatalf("get perfcollections -n edge = %s, want none", out)
 	}
+	// The seeded window spans a day, which the table reads as 1d, not 24h0m0s.
+	if out := mustRunCLI(t, dbPath, "get", "perfcollections"); !strings.Contains(out, " 1d ") {
+		t.Fatalf("get perfcollections table = %q, want a 1d span", out)
+	}
 }

@@ -80,11 +80,16 @@ That is how to see who deleted a VM, and when.`), Example: `  # What vCenter log
 		if a.json() {
 			return writeJSON(a.out(), listing)
 		}
-		t := newTable(a.out(), "TIME", "EVENT", "BY", "RESULT", "DETAIL")
-		for _, e := range listing.Events {
-			t.row(e.Time.Local().Format("2006-01-02 15:04"), e.Label, dash(e.User), eventResult(e.Result), dash(e.DisplayDetail()))
+		if len(listing.Events) == 0 {
+			// On stderr, like "get", so a script reading stdout sees an empty answer.
+			fmt.Fprintln(a.errOut(), "No events found.")
+		} else {
+			t := newTable(a.out(), "TIME", "EVENT", "BY", "RESULT", "DETAIL")
+			for _, e := range listing.Events {
+				t.row(e.Time.Local().Format("2006-01-02 15:04"), e.Label, dash(e.User), eventResult(e.Result), dash(e.DisplayDetail()))
+			}
+			t.flush()
 		}
-		t.flush()
 		// --limit bounds what vCenter returns, before routine events are
 		// hidden, so the notes count what was read, not what is shown.
 		if hidden > 0 {

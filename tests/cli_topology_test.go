@@ -58,4 +58,23 @@ func TestAssessmentTopologyQueriesUseCrossVCenterEvidence(t *testing.T) {
 	if !foundOffline {
 		t.Fatalf("failed context was absent from topology blind coverage:\n%s", stdout)
 	}
+
+	// The table's header row lines up with its rows: RELATION starts each
+	// row's relation, and no raw tab reaches the terminal.
+	table := r.mustRun("", "--db", historyDB, "--context", "left", "analyze", "blast-radius", "datastore/LocalDS_0")
+	if strings.Contains(table, "\t") {
+		t.Fatalf("blast-radius table contains a tab:\n%q", table)
+	}
+	lines := strings.Split(table, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "DEPENDENT ") {
+			continue
+		}
+		col := strings.Index(line, "RELATION")
+		if i+1 >= len(lines) || len(lines[i+1]) <= col || lines[i+1][col-1] != ' ' || lines[i+1][col] == ' ' {
+			t.Fatalf("RELATION header at column %d does not line up with the first row:\n%s", col, table)
+		}
+		return
+	}
+	t.Fatalf("blast-radius table has no DEPENDENT header row:\n%s", table)
 }

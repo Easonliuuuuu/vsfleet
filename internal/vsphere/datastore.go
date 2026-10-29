@@ -68,7 +68,7 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 	if inventory != nil {
 		c.inventoryDatastores(ctx, out, datastoreBrowsers(raw), *inventory)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool { return nameLess(out[i].Name, out[j].Name) })
 	return out, nil
 }
 

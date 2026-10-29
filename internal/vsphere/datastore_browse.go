@@ -287,7 +287,7 @@ func (c *Client) ListDatastoreDirectory(parent context.Context, datastoreID, dat
 	}
 	result, err := c.searchDatastore(ctx, browser, datastoreDirPath(datastore, relative), browseSearchSpec("*"))
 	if err != nil {
-		return DatastoreListing{}, err
+		return DatastoreListing{}, browseError(datastore, err)
 	}
 	return datastoreListing(datastore, result, datastoreListEntryCap), nil
 }
@@ -372,9 +372,18 @@ func (c *Client) FindInDatastore(parent context.Context, datastoreID, datastore,
 	}
 	result, err := c.searchDatastoreSubFolders(ctx, browser, datastoreDirPath(datastore, ""), browseSearchSpec(pattern))
 	if err != nil {
-		return DatastoreListing{}, err
+		return DatastoreListing{}, browseError(datastore, err)
 	}
 	return datastoreListing(datastore, result, datastoreFindResultCap), nil
+}
+
+// browseError names the missing privilege when vCenter refuses a browse, since
+// its own fault only says the operation was denied.
+func browseError(datastore string, err error) error {
+	if classifyInventoryError(err) == FileInventoryDenied {
+		return fmt.Errorf("browse %s (the account needs Datastore.Browse on it): %w", datastore, err)
+	}
+	return err
 }
 
 // browseSearchSpec is the spec both interactive operations use. Unlike the

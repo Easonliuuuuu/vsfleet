@@ -159,7 +159,7 @@ func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine)
 }
 
 func sortVMs(vms []VM) {
-	sort.Slice(vms, func(i, j int) bool { return vms[i].Name < vms[j].Name })
+	sort.Slice(vms, func(i, j int) bool { return nameLess(vms[i].Name, vms[j].Name) })
 }
 
 // guestHostName accepts a Tools-reported host name only when it is a plain

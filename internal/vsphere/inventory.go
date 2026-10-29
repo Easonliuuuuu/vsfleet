@@ -476,3 +476,13 @@ func (c *Client) ListInventory(ctx context.Context) (*Inventory, error) {
 	}
 	return inv, nil
 }
+
+// nameLess orders inventory names the way the capture database returns them:
+// ignoring case, so "VM Network" sorts among the lower-case names instead of
+// before all of them, with exact order breaking ties.
+func nameLess(a, b string) bool {
+	if !strings.EqualFold(a, b) {
+		return strings.ToLower(a) < strings.ToLower(b)
+	}
+	return a < b
+}

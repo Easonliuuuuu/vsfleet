@@ -64,10 +64,20 @@ func perfCollectionLister() kindLister {
 		headers: []string{"ID", "CONTEXT", "STATUS", "WINDOW END", "SPAN", "INTERVAL", "VMS", "REQUESTS"},
 		row: func(w perf.Window) []string {
 			return []string{strconv.FormatInt(w.ID, 10), w.Context, w.Status, w.WindowEnd.Local().Format("2006-01-02 15:04"),
-				w.WindowEnd.Sub(w.WindowStart).Round(time.Hour).String(), fmt.Sprintf("%ds", w.IntervalSeconds),
+				windowSpan(w.WindowEnd.Sub(w.WindowStart)), fmt.Sprintf("%ds", w.IntervalSeconds),
 				fmt.Sprintf("%d/%d", w.VMsSampled, w.VMsRequested), itoa(w.RequestsUsed)}
 		},
 	}
+}
+
+// windowSpan reads a collection window as whole days, or hours when it is
+// not a whole number of days: "1d", "7d", "30d", "6h".
+func windowSpan(d time.Duration) string {
+	hours := int64(d.Round(time.Hour) / time.Hour)
+	if hours > 0 && hours%24 == 0 {
+		return strconv.FormatInt(hours/24, 10) + "d"
+	}
+	return strconv.FormatInt(hours, 10) + "h"
 }
 
 // captureReport is what "describe capture" shows: the capture's counts and

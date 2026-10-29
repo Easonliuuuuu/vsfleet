@@ -150,6 +150,50 @@ func TestListVMsCapturesConnectionState(t *testing.T) {
 	}
 }
 
+// Live listings order names the way stored captures do, ignoring case, so a
+// lower-case name sorts among the upper-case ones rather than after all of
+// them (and "VM Network" among lower-case port groups).
+func TestListVMsOrdersNamesIgnoringCase(t *testing.T) {
+	model := simulator.VPX()
+	model.Datacenter, model.Machine = 1, 2
+	if err := model.Create(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(model.Remove)
+	gc, endpoint := dialSimulator(t, model)
+	ctx := context.Background()
+	finder := find.NewFinder(gc.Client, true)
+	dc, err := finder.DefaultDatacenter(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finder.SetDatacenter(dc)
+	vm, err := finder.VirtualMachine(ctx, "DC0_H0_VM1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := vm.Rename(ctx, "app-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := task.Wait(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	vms, err := clientFor(gc, endpoint, "").ListVMs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, v := range vms {
+		names = append(names, v.Name)
+	}
+	// Byte order would put every upper-case DC0_… name first.
+	if len(names) < 2 || names[0] != "app-01" {
+		t.Fatalf("VM order = %q; want app-01 first", names)
+	}
+}
+
 func TestListVApps(t *testing.T) {
 	c, _ := newSimulator(t, func(m *simulator.Model) {
 		m.Datacenter = 1

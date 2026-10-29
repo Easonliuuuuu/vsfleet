@@ -2,8 +2,10 @@ package assessment
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -76,7 +78,7 @@ func TestResolveRunByDate(t *testing.T) {
 		{selector: time.Date(2026, 4, 2, 9, 30, 0, 0, time.Local).Format(time.RFC3339), want: april},
 		// A label that reads as a date is the label, not the date.
 		{selector: "2026-04-05", want: april},
-		{selector: "2026-03-30", wantErr: "no assessment was started by 2026-03-30"},
+		{selector: "2026-03-30", wantErr: "no capture was started by 2026-03-30"},
 		{selector: "nightly", wantErr: `"nightly" not found; give an ID, label, date, latest or previous`},
 	} {
 		t.Run(tc.selector, func(t *testing.T) {
@@ -91,6 +93,76 @@ func TestResolveRunByDate(t *testing.T) {
 				t.Fatalf("ResolveRun(%q) = %d, %v; want %d", tc.selector, id, err, tc.want)
 			}
 		})
+	}
+}
+
+// TestResolveRunForContextsSkipsOtherContexts checks that latest, previous
+// and a date pick among the captures of the selected contexts, while an ID
+// still names its capture (issue #525).
+func TestResolveRunForContextsSkipsOtherContexts(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	start := func(at time.Time, names ...string) int64 {
+		t.Helper()
+		var contexts []*config.Context
+		for _, name := range names {
+			contexts = append(contexts, testContext(name))
+		}
+		r, err := s.StartRun(ctx, "test", contexts, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.FinishRun(ctx, r.ID, at.Add(time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		return r.ID
+	}
+	day := func(d int) time.Time { return time.Date(2026, 4, d, 9, 0, 0, 0, time.Local) }
+	prodOld := start(day(1), "prod")
+	prodNew := start(day(2), "prod")
+	dr := start(day(3), "dr")
+	both := start(day(4), "prod", "dr")
+	lab := start(day(5), "lab")
+
+	for _, tc := range []struct {
+		selector string
+		contexts []string
+		want     int64
+		wantErr  string
+	}{
+		{selector: "latest", want: lab},
+		{selector: "latest", contexts: []string{"Prod"}, want: both},
+		{selector: "previous", contexts: []string{"prod"}, want: prodNew},
+		{selector: "previous", contexts: []string{"dr"}, want: dr},
+		{selector: "latest", contexts: []string{"prod", "dr"}, want: both},
+		{selector: "previous", contexts: []string{"prod", "dr"}, wantErr: "no previous capture of prod, dr"},
+		{selector: "2026-04-03", contexts: []string{"prod"}, want: prodNew},
+		{selector: "2026-04-01", contexts: []string{"dr"}, wantErr: "no capture of dr was started by 2026-04-01"},
+		// An ID names its capture whatever the contexts; reading it checks them.
+		{selector: strconv.FormatInt(prodOld, 10), contexts: []string{"dr"}, want: prodOld},
+	} {
+		t.Run(tc.selector+" "+strings.Join(tc.contexts, ","), func(t *testing.T) {
+			id, err := s.ResolveRunForContexts(ctx, tc.selector, tc.contexts)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("ResolveRunForContexts(%q, %v) = %d, %v; want error %q", tc.selector, tc.contexts, id, err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil || id != tc.want {
+				t.Fatalf("ResolveRunForContexts(%q, %v) = %d, %v; want %d", tc.selector, tc.contexts, id, err, tc.want)
+			}
+		})
+	}
+
+	// A context no capture recorded stays the distinct unknown-context error
+	// the TUI explains as "not captured yet".
+	if _, err := s.ResolveRunForContexts(ctx, "latest", []string{"ghost"}); !errors.Is(err, ErrUnknownStoredContext) {
+		t.Fatalf("latest of ghost: err = %v, want ErrUnknownStoredContext", err)
 	}
 }
 

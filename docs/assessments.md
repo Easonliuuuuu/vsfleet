@@ -72,6 +72,12 @@ and match case-insensitively after trimming whitespace.
 - Blank names or names absent from every selected run return exit code `1`.
 - A context on only one side of a diff produces a coverage warning, without
   inferred appeared/vanished changes.
+- `latest`, `previous` and a date pick among the captures that recorded every
+  scoped context, so a newer capture of another vCenter does not hide them.
+  An ID or label names its capture regardless.
+- VM history judges a gap only by the captures of the scoped contexts. A
+  capture through another context, even of the same vCenter, is not reported
+  as `vanished`.
 - Trends skip runs that did not record the context. `--limit` counts contributing
   runs only.
 - A successful empty collection counts as zero; a failed collection produces

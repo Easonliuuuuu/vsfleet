@@ -104,7 +104,14 @@ func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors
 	if len(entries) == 0 {
 		return nil, nil
 	}
-	runs, err := s.Runs(ctx)
+	// A scoped history judges gaps only by the runs of the selected
+	// contexts: a capture made through another context, even of the same
+	// vCenter, had its observations filtered out above.
+	selected, err := NormalizeContextSelectors(selectors)
+	if err != nil {
+		return nil, err
+	}
+	runs, err := s.runsRecording(ctx, selected, false)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +172,7 @@ func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors
 		if !hadPrev || hadNext {
 			continue
 		}
-		saw, err := s.collectedVCenter(ctx, nextRun, prev.Observation)
+		saw, err := s.collectedVCenter(ctx, nextRun, prev.Observation, selected)
 		if err != nil {
 			return nil, err
 		}
@@ -178,16 +185,22 @@ func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors
 }
 
 // collectedVCenter reports whether run read the VMs of the vCenter obs was
-// observed in. A context stored before vCenter IDs were recorded is matched
-// by its name instead.
-func (s *Store) collectedVCenter(ctx context.Context, run Run, obs Observation) (bool, error) {
+// observed in, through one of the selected contexts when any are given. A
+// context stored before vCenter IDs were recorded is matched by its name
+// instead.
+func (s *Store) collectedVCenter(ctx context.Context, run Run, obs Observation, selected []string) (bool, error) {
 	if run.Status != RunComplete && run.Status != RunPartial {
 		return false, nil
 	}
+	scope, scopeArgs := historyContextFilter(selected)
+	query := `SELECT count(*) FROM context_runs cr WHERE cr.run_id=? AND cr.vm_status IN ('success','empty')
+		AND (COALESCE(cr.vcenter_id,'')=? AND ?<>'' OR (COALESCE(cr.vcenter_id,'')='' OR ?='') AND cr.name=?)`
+	for _, clause := range scope {
+		query += " AND " + clause
+	}
+	args := append([]any{run.ID, obs.VCenterID, obs.VCenterID, obs.VCenterID, obs.Context}, scopeArgs...)
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM context_runs WHERE run_id=? AND vm_status IN ('success','empty')
-		AND (COALESCE(vcenter_id,'')=? AND ?<>'' OR (COALESCE(vcenter_id,'')='' OR ?='') AND name=?)`,
-		run.ID, obs.VCenterID, obs.VCenterID, obs.VCenterID, obs.Context).Scan(&n)
+	err := s.db.QueryRowContext(ctx, query, args...).Scan(&n)
 	if err != nil {
 		return false, fmt.Errorf("read vCenter coverage of run %d: %w", run.ID, err)
 	}

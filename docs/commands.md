@@ -112,7 +112,8 @@ It takes a capture ID, a label, `latest`, `previous`, or a date:
 date that reads the same.
 
 `--run` changes where objects come from, never which contexts are read: the
-current context, `-n` or `-A` as for a live read. Every selector, sort and
+current context, `-n` or `-A` as for a live read, and `latest`, `previous`
+and a date pick among the captures of those contexts. Every selector, sort and
 output format works the same. A context whose capture did not record a kind,
 or failed to, is reported after the rows the way an unreachable vCenter is.
 

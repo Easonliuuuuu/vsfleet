@@ -227,7 +227,7 @@ func loadRunExportData(cmd *cobra.Command, a *App, selector string) (assessment.
 	if err != nil {
 		return assessment.ExportData{}, err
 	}
-	runID, err := s.ResolveRun(cmd.Context(), selector)
+	runID, err := s.ResolveRunForContexts(cmd.Context(), selector, a.StoredContextNames())
 	if err != nil {
 		return assessment.ExportData{}, fmt.Errorf("--run: %w", err)
 	}

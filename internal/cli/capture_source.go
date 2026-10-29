@@ -33,7 +33,7 @@ func (a *App) loadCapture(ctx context.Context, selector string) error {
 	if err != nil {
 		return err
 	}
-	id, err := s.ResolveRun(ctx, selector)
+	id, err := s.ResolveRunForContexts(ctx, selector, a.captureContexts())
 	if err != nil {
 		return fmt.Errorf("--run: %w", err)
 	}

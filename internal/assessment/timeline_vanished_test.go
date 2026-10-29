@@ -3,6 +3,7 @@ package assessment
 import (
 	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -62,6 +63,93 @@ func TestTimelineVanishedFollowsTheVMsOwnVCenter(t *testing.T) {
 			}
 			if vanished != tc.wantVanished {
 				t.Fatalf("vanished=%v, want %v; events=%+v", vanished, tc.wantVanished, events)
+			}
+		})
+	}
+}
+
+// TestTimelineScopedToOneContextIgnoresCapturesThroughOthers checks that a
+// history scoped to some contexts judges a VM's absence only by the captures
+// those contexts made. Two contexts can read the same vCenter; a capture
+// through the other one is not a gap in this one's view (issue #522).
+func TestTimelineScopedToOneContextIgnoresCapturesThroughOthers(t *testing.T) {
+	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	vm := testVM("billing", "vm-1", "instance-1", "bios-1", "esx-1")
+	type capture struct {
+		context, status string
+	}
+	for _, tc := range []struct {
+		name     string
+		runs     [][]capture // each run's contexts, oldest first; all read vc-1
+		scope    string
+		wantKind []string
+	}{
+		{
+			name:     "a capture through another context sits between two of this one",
+			runs:     [][]capture{{{"prod", "success"}}, {{"admin", "success"}}, {{"prod", "success"}}},
+			scope:    "prod",
+			wantKind: []string{"first_seen"},
+		},
+		{
+			name:     "the mirrored scope",
+			runs:     [][]capture{{{"admin", "success"}}, {{"prod", "success"}}, {{"admin", "success"}}},
+			scope:    "admin",
+			wantKind: []string{"first_seen"},
+		},
+		{
+			name:     "this context failed while another read the same vCenter",
+			runs:     [][]capture{{{"prod", "success"}}, {{"prod", "failed"}, {"admin", "success"}}},
+			scope:    "prod",
+			wantKind: []string{"first_seen"},
+		},
+		{
+			name:     "this context read the vCenter and the VM was gone",
+			runs:     [][]capture{{{"prod", "success"}}, {{"admin", "success"}}, {{"prod", "empty"}}},
+			scope:    "prod",
+			wantKind: []string{"first_seen", "vanished"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			ctx := context.Background()
+			for i, run := range tc.runs {
+				at := when.Add(time.Duration(i) * time.Hour)
+				var contexts []*config.Context
+				for _, c := range run {
+					contexts = append(contexts, testContext(c.context))
+				}
+				r, err := s.StartRun(ctx, "test", contexts, at)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, c := range run {
+					var vms []Observation
+					if c.status == "success" {
+						vms = []Observation{{VCenterID: "vc-1", Context: c.context, VM: vm}}
+					}
+					if err := s.SaveContext(ctx, r.ID, ContextResult{Name: c.context, VCenterID: "vc-1", Status: c.status, VMs: vms}, at.Add(time.Second)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if _, err := s.FinishRun(ctx, r.ID, at.Add(time.Second)); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			events, err := s.Timeline(ctx, "instance-1", tc.scope, false, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var kinds []string
+			for _, e := range events {
+				kinds = append(kinds, e.Kind)
+			}
+			if !slices.Equal(kinds, tc.wantKind) {
+				t.Fatalf("events = %v, want %v", kinds, tc.wantKind)
 			}
 		})
 	}

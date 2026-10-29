@@ -92,3 +92,23 @@ func TestGetDVSwitchesReadsNoPortLimitAsUnlimited(t *testing.T) {
 		t.Fatalf("get dvswitches = %q; want MAX PORTS unlimited", out)
 	}
 }
+
+// --run latest and previous pick among the captures of the contexts -n
+// names, so a newer capture of another vCenter does not hide them.
+func TestGetRunLatestFollowsTheSelectedContext(t *testing.T) {
+	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	observe := func(contextName, vcenter, name string) assessment.ContextResult {
+		vm := vsphere.VM{Location: vsphere.Location{Context: contextName}, ID: "vm-1", Name: name, InstanceUUID: name}
+		return assessment.ContextResult{Name: contextName, VCenterID: vcenter, Status: "success", VMs: []assessment.Observation{{VCenterID: vcenter, Context: contextName, VM: vm}}}
+	}
+	dbPath := seedHistory(t, when, "", observe("prod", "vc-1", "web-01"))
+	seedRun(t, dbPath, when.Add(time.Hour), "", observe("dr", "vc-2", "db-01"))
+
+	out := mustRunCLI(t, dbPath, "get", "vms", "-n", "prod", "--run", "latest")
+	if !strings.Contains(out, "web-01") || strings.Contains(out, "db-01") {
+		t.Fatalf("get vms -n prod --run latest:\n%s\nwant prod's capture", out)
+	}
+	if _, _, err := runCLI(t, dbPath, "get", "vms", "-n", "prod", "--run", "previous"); err == nil || !strings.Contains(err.Error(), "no previous capture of prod") {
+		t.Fatalf("get vms -n prod --run previous: err = %v; want no previous capture of prod", err)
+	}
+}

@@ -88,7 +88,7 @@ window, per host, cluster or datastore.`),
 			if selector == "" {
 				selector = "latest"
 			}
-			id, err := s.ResolveRun(cmd.Context(), selector)
+			id, err := s.ResolveRunForContexts(cmd.Context(), selector, a.StoredContextNames())
 			if err != nil {
 				return fmt.Errorf("--run: %w", err)
 			}

@@ -303,7 +303,7 @@ func loadLatestDatastoreAssessment(ctx context.Context, a *App, cc *config.Conte
 	if err != nil {
 		return assessment.ExportData{}, false
 	}
-	runID, err := store.ResolveRun(ctx, "latest")
+	runID, err := store.ResolveRunForContexts(ctx, "latest", []string{cc.Name})
 	if err != nil {
 		return assessment.ExportData{}, false
 	}

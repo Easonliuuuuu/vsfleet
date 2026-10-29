@@ -37,13 +37,13 @@ func (f trendFlags) options(ctx context.Context, s *assessment.Store, a *App) (a
 	opts := assessment.TrendOptions{Limit: f.limit, IncludePartial: f.includePartial, Contexts: a.StoredContextNames()}
 	var err error
 	if f.from != "" {
-		opts.FromID, err = s.ResolveRun(ctx, f.from)
+		opts.FromID, err = s.ResolveRunForContexts(ctx, f.from, opts.Contexts)
 		if err != nil {
 			return opts, fmt.Errorf("--from: %w", err)
 		}
 	}
 	if f.run != "" {
-		opts.ToID, err = s.ResolveRun(ctx, f.run)
+		opts.ToID, err = s.ResolveRunForContexts(ctx, f.run, opts.Contexts)
 		if err != nil {
 			return opts, fmt.Errorf("--run: %w", err)
 		}
@@ -149,7 +149,7 @@ older than --older-than (30 days by default), in every capture of a window.
 			if selector == "" {
 				selector = "latest"
 			}
-			at, err := s.ResolveRun(cmd.Context(), selector)
+			at, err := s.ResolveRunForContexts(cmd.Context(), selector, a.StoredContextNames())
 			if err != nil {
 				return fmt.Errorf("--run: %w", err)
 			}

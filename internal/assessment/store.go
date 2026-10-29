@@ -1248,23 +1248,42 @@ func (s *Store) UpdateRunFields(ctx context.Context, selector string, label, not
 }
 
 func (s *Store) ResolveRun(ctx context.Context, selector string) (int64, error) {
+	return s.ResolveRunForContexts(ctx, selector, nil)
+}
+
+// ResolveRunForContexts resolves selector like ResolveRun, except that
+// latest, previous and a date choose among the captures that recorded every
+// one of contexts, so a capture of another vCenter is not picked for them.
+// An ID or label names one capture and is returned as named.
+func (s *Store) ResolveRunForContexts(ctx context.Context, selector string, contexts []string) (int64, error) {
 	selector = strings.TrimSpace(selector)
 	if selector == "" {
 		return 0, fmt.Errorf("capture selector is empty")
 	}
 	if selector == "latest" || selector == "previous" {
-		runs, err := s.Runs(ctx)
+		contexts, err := s.validateHistoryContexts(ctx, contexts)
+		if err != nil {
+			return 0, err
+		}
+		of := ""
+		if len(contexts) > 0 {
+			of = " of " + strings.Join(contexts, ", ")
+		}
+		runs, err := s.runsRecording(ctx, contexts, true)
 		if err != nil {
 			return 0, err
 		}
 		if selector == "latest" {
+			if len(runs) < 1 && of != "" {
+				return 0, fmt.Errorf("no capture%s stored", of)
+			}
 			if len(runs) < 1 {
 				return 0, fmt.Errorf(`no captures stored; take one with "vsfleet capture run"`)
 			}
 			return runs[0].ID, nil
 		}
 		if len(runs) < 2 {
-			return 0, fmt.Errorf("no previous capture")
+			return 0, fmt.Errorf("no previous capture%s", of)
 		}
 		return runs[1].ID, nil
 	}
@@ -1278,7 +1297,7 @@ func (s *Store) ResolveRun(ctx context.Context, selector string) (int64, error) 
 	err := s.db.QueryRowContext(ctx, `SELECT id FROM runs WHERE label=? COLLATE NOCASE`, selector).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		if end, ok := parseRunDate(selector); ok {
-			return s.runBefore(ctx, selector, end)
+			return s.runBefore(ctx, selector, end, contexts)
 		}
 		return 0, fmt.Errorf("capture %q not found; give an ID, label, date, latest or previous", selector)
 	}
@@ -1302,10 +1321,14 @@ func parseRunDate(selector string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// runBefore picks the newest assessment started before end: the estate as
-// the history last saw it by that date.
-func (s *Store) runBefore(ctx context.Context, selector string, end time.Time) (int64, error) {
-	runs, err := s.Runs(ctx)
+// runBefore picks the newest capture of contexts started before end: the
+// estate as the history last saw it by that date.
+func (s *Store) runBefore(ctx context.Context, selector string, end time.Time, contexts []string) (int64, error) {
+	contexts, err := s.validateHistoryContexts(ctx, contexts)
+	if err != nil {
+		return 0, err
+	}
+	runs, err := s.runsRecording(ctx, contexts, true)
 	if err != nil {
 		return 0, err
 	}
@@ -1314,7 +1337,53 @@ func (s *Store) runBefore(ctx context.Context, selector string, end time.Time) (
 			return r.ID, nil
 		}
 	}
-	return 0, fmt.Errorf("no assessment was started by %s", selector)
+	if len(contexts) > 0 {
+		return 0, fmt.Errorf("no capture of %s was started by %s", strings.Join(contexts, ", "), selector)
+	}
+	return 0, fmt.Errorf("no capture was started by %s", selector)
+}
+
+// runsRecording returns the runs, newest first, that recorded the normalized
+// contexts: every one of them when all is set, else any. No contexts means
+// every run.
+func (s *Store) runsRecording(ctx context.Context, contexts []string, all bool) ([]Run, error) {
+	runs, err := s.Runs(ctx)
+	if err != nil || len(contexts) == 0 {
+		return runs, err
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT run_id,lower(trim(name)) FROM context_runs`)
+	if err != nil {
+		return nil, fmt.Errorf("read captured contexts: %w", err)
+	}
+	defer rows.Close()
+	recorded := make(map[int64]map[string]bool)
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, fmt.Errorf("read captured contexts: %w", err)
+		}
+		if recorded[id] == nil {
+			recorded[id] = make(map[string]bool)
+		}
+		recorded[id][name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read captured contexts: %w", err)
+	}
+	out := runs[:0]
+	for _, r := range runs {
+		n := 0
+		for _, c := range contexts {
+			if recorded[r.ID][c] {
+				n++
+			}
+		}
+		if n == len(contexts) || !all && n > 0 {
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }
 
 func (s *Store) DeleteRun(ctx context.Context, id int64) error {

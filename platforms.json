@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "label": "Linux · macOS · Windows",
-  "message": "passing",
-  "color": "brightgreen",
+  "message": "unknown",
+  "color": "lightgrey",
   "cacheSeconds": 300
 }

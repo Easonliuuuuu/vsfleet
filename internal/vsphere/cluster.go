@@ -74,7 +74,7 @@ func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error
 		cl.Metadata = metadata[m.Self]
 		out = append(out, cl)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool { return nameLess(out[i].Name, out[j].Name) })
 	return out, nil
 }
 

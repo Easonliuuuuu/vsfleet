@@ -175,8 +175,9 @@ negative or not.
 | `jsonpath=TEMPLATE` | A kubectl JSONPath template over `{"kind": "List", "items": [...]}`, or the object itself when one was named |
 | `custom-columns=NAME:EXPR,...` | One column per JSONPath expression; `<none>` where it selects nothing |
 
-`--sort-by` takes a JSONPath expression such as `.name` or `.cpu`: numbers
-sort numerically, and objects without the field sort last. `--no-headers`
+Without `--sort-by`, objects are listed by name ignoring case, live and from
+a capture alike. `--sort-by` takes a JSONPath expression such as `.name` or
+`.cpu`: numbers sort numerically, and objects without the field sort last. `--no-headers`
 drops the header row of table, wide, csv and custom-columns output.
 
 ```sh

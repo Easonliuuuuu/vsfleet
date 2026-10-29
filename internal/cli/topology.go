@@ -292,8 +292,7 @@ func printTopologySubject(out io.Writer, result topology.SubjectResult, directio
 	fields.flush()
 	if len(result.Ancestors) > 0 {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "  ANCESTOR\tRELATION\tCONFIDENCE\tBASIS")
-		t := newTable(out)
+		t := newTable(out, "ANCESTOR", "RELATION", "CONFIDENCE", "BASIS")
 		for _, edge := range result.Ancestors {
 			t.row(objectLabel(edge.From), string(edge.Relation), string(edge.Confidence), string(edge.Basis))
 		}
@@ -308,8 +307,7 @@ func printTopologySubject(out io.Writer, result topology.SubjectResult, directio
 		if direction == directionBlastRadius {
 			header = "DEPENDENT"
 		}
-		fmt.Fprintf(out, "  %s\tRELATION\tCONFIDENCE\tBASIS\n", header)
-		t := newTable(out)
+		t := newTable(out, header, "RELATION", "CONFIDENCE", "BASIS")
 		for _, edge := range result.Edges {
 			other := edge.To
 			if direction == directionBlastRadius || (direction == directionTopology && edge.To.Kind == result.Subject.Kind && edge.To.Name == result.Subject.Name) {
@@ -320,7 +318,7 @@ func printTopologySubject(out io.Writer, result topology.SubjectResult, directio
 		t.flush()
 	}
 	if len(result.Unresolved) > 0 {
-		fmt.Fprintf(out, "\n  unresolved\t%s\n", strings.Join(result.Unresolved, ", "))
+		fmt.Fprintf(out, "\nunresolved: %s\n", strings.Join(result.Unresolved, ", "))
 	}
 }
 

@@ -90,6 +90,6 @@ func (c *Client) listHostNetworks(ctx context.Context, idx *index) ([]Host, erro
 	for i := range raw {
 		out = append(out, newHostWithConfig(c, idx, &raw[i], true))
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool { return nameLess(out[i].Name, out[j].Name) })
 	return out, nil
 }

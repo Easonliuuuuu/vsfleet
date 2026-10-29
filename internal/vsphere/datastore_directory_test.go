@@ -144,26 +144,44 @@ func TestFindInDatastoreRejectsAnEmptyPattern(t *testing.T) {
 // A denied browse must reach the caller as an error carrying the server's own
 // words. The interactive path deliberately differs from the assessment sweep
 // here: an operator is waiting, so silence rendered as an empty directory is
-// the wrong answer.
-func TestListDatastoreDirectorySurfacesPermissionFailures(t *testing.T) {
-	c, model := browseSimulator(t)
-	id, name := seedSimulatorTree(t, c)
-	model.Service.FaultInjector().AddRule(&simulator.FaultInjectionRule{
-		MethodName:  "SearchDatastore_Task",
-		ObjectType:  "*",
-		ObjectName:  "*",
-		Probability: 1,
-		FaultType:   simulator.FaultTypeNoPermission,
-		Message:     "Datastore.Browse denied",
-		Enabled:     true,
-	})
+// the wrong answer. Real vCenter's fault only says the operation was denied,
+// so the error also names the privilege to grant.
+func TestDatastoreBrowseSurfacesPermissionFailures(t *testing.T) {
+	for _, tc := range []struct {
+		method string
+		browse func(c *Client, id, name string) (DatastoreListing, error)
+	}{
+		{"SearchDatastore_Task", func(c *Client, id, name string) (DatastoreListing, error) {
+			return c.ListDatastoreDirectory(context.Background(), id, name, "")
+		}},
+		{"SearchDatastoreSubFolders_Task", func(c *Client, id, name string) (DatastoreListing, error) {
+			return c.FindInDatastore(context.Background(), id, name, "*.vmdk")
+		}},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			c, model := browseSimulator(t)
+			id, name := seedSimulatorTree(t, c)
+			model.Service.FaultInjector().AddRule(&simulator.FaultInjectionRule{
+				MethodName:  tc.method,
+				ObjectType:  "*",
+				ObjectName:  "*",
+				Probability: 1,
+				FaultType:   simulator.FaultTypeNoPermission,
+				Message:     "Permission to perform this operation was denied.",
+				Enabled:     true,
+			})
 
-	listing, err := c.ListDatastoreDirectory(context.Background(), id, name, "")
-	if err == nil {
-		t.Fatal("a denied listing returned no error; it would render as an empty directory")
-	}
-	if len(listing.Entries) != 0 {
-		t.Fatalf("a failed listing returned entries: %+v", listing.Entries)
+			listing, err := tc.browse(c, id, name)
+			if err == nil {
+				t.Fatal("a denied browse returned no error; it would render as an empty directory")
+			}
+			if !strings.Contains(err.Error(), "Permission to perform this operation was denied.") || !strings.Contains(err.Error(), "needs Datastore.Browse") {
+				t.Fatalf("error = %v; want vCenter's words and the privilege to grant", err)
+			}
+			if len(listing.Entries) != 0 {
+				t.Fatalf("a failed browse returned entries: %+v", listing.Entries)
+			}
+		})
 	}
 }
 

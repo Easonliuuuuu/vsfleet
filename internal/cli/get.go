@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/signal"
 	"slices"
@@ -284,7 +285,7 @@ var listers = map[string]kindLister{
 		metadata:  func(d vsphere.DVSwitch) vsphere.Metadata { return d.Metadata },
 		headers:   []string{"NAME", "VENDOR", "VERSION", "PORTS", "MAX PORTS", "HOSTS", "PORT GROUPS"},
 		row: func(d vsphere.DVSwitch) []string {
-			return []string{d.Name, dash(d.Vendor), dash(d.Version), i32toa(d.NumPorts), i32toa(d.MaxPorts), itoa(len(d.Hosts)), itoa(len(d.PortGroups))}
+			return []string{d.Name, dash(d.Vendor), dash(d.Version), i32toa(d.NumPorts), maxPorts(d.MaxPorts), itoa(len(d.Hosts)), itoa(len(d.PortGroups))}
 		},
 	},
 	"resourcepool": lister[vsphere.ResourcePool]{
@@ -762,13 +763,14 @@ func (g getRun) once(ctx context.Context) error {
 	if err := render(g.a.out(), g.spec, listings, g.noHeaders, g.single()); err != nil {
 		return err
 	}
-	if g.spec.format == FormatTable || g.spec.format == FormatWide {
+	missing := missingError(listings)
+	if missing == nil && (g.spec.format == FormatTable || g.spec.format == FormatWide) {
 		if !slices.ContainsFunc(listings, func(l *kindListing) bool { return len(l.rows) > 0 }) {
 			// On stderr, so a script reading stdout sees an empty answer.
 			fmt.Fprintln(g.a.errOut(), "No resources found.")
 		}
 	}
-	return missingError(listings)
+	return missing
 }
 
 // reportWarnings prints each listing's metadata warnings, once across all of
@@ -945,4 +947,13 @@ func duplexLabel(full *bool) string {
 		return "full"
 	}
 	return "half"
+}
+
+// maxPorts reads a distributed switch's port limit. vSphere reports a switch
+// without one as the largest int32.
+func maxPorts(n int32) string {
+	if n == math.MaxInt32 {
+		return "unlimited"
+	}
+	return i32toa(n)
 }

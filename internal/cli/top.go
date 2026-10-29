@@ -45,7 +45,12 @@ Only VMs are collected, so "top host" is not available yet.`),
 
   # As JSON, for a script
   vsfleet top vm -o json`,
-		Args:      cobra.MinimumNArgs(1),
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return errors.New(`top needs a kind: "vsfleet top vm [NAME...]"`)
+			}
+			return nil
+		},
 		ValidArgs: []string{"vm", "vms"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kind, err := lookupKind(args[0])

@@ -1,8 +1,13 @@
 package cli
 
 import (
+	"math"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
 // Every one of these is a mistake in the command line itself, so it fails
@@ -30,6 +35,7 @@ func TestGetFlagMistakesFailFast(t *testing.T) {
 		{[]string{"describe", "all", "web-01"}, `"all" lists with get`},
 		{[]string{"events", "--for", "vm/web-01", "--run", "latest"}, "events are read live"},
 		{[]string{"top", "vm", "--run", "latest"}, "pick one with --window"},
+		{[]string{"top"}, `top needs a kind: "vsfleet top vm [NAME...]"`},
 		{[]string{"analyze", "health", "--wide"}, "--wide was renamed: use -o wide"},
 		{[]string{"analyze", "health", "--where", "cpu>=8"}, "--where was renamed"},
 		{[]string{"analyze", "readiness", "-o", "wide"}, "which takes table or json"},
@@ -47,5 +53,42 @@ func TestGetFlagMistakesFailFast(t *testing.T) {
 				t.Fatalf("error = %v; want %q", err, tc.want)
 			}
 		})
+	}
+}
+
+// An empty answer says "No resources found."; a name that matched nothing is
+// an error, and says only that.
+func TestGetEmptyAndMissingAreReportedOnce(t *testing.T) {
+	dbPath := newExportTestHistoryDB(t)
+	for _, tc := range []struct {
+		args      []string
+		wantErr   string
+		wantEmpty bool
+	}{
+		{args: []string{"get", "vm", "nope", "--run", "latest"}, wantErr: `no vm matched "nope"`},
+		{args: []string{"get", "vms", "--field-selector", "name=nope", "--run", "latest"}, wantEmpty: true},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			stdout, stderr, err := runCLI(t, dbPath, tc.args...)
+			if tc.wantErr == "" && err != nil || tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)) {
+				t.Fatalf("error = %v; want %q", err, tc.wantErr)
+			}
+			if got := strings.Contains(stderr, "No resources found."); got != tc.wantEmpty || stdout != "" {
+				t.Fatalf("stdout = %q, stderr = %q; want \"No resources found.\" only for an empty answer", stdout, stderr)
+			}
+		})
+	}
+}
+
+// vSphere reports a distributed switch without a port limit as the largest
+// int32; the table says so in words.
+func TestGetDVSwitchesReadsNoPortLimitAsUnlimited(t *testing.T) {
+	dvs := vsphere.DVSwitch{Location: vsphere.Location{Context: "prod"}, ID: "dvs-1", Name: "dvs-a", NumPorts: 388, MaxPorts: math.MaxInt32}
+	dbPath := seedHistory(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), "", assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", Collections: collections(
+		assessment.CollectionResult{Kind: "dvswitch", Status: "success", ItemCount: 1, Resources: []assessment.ResourceObservation{resourcePayload(t, "prod", "vc-1", "dvswitch", dvs.ID, dvs.Name, dvs)}},
+	)})
+	out := mustRunCLI(t, dbPath, "get", "dvswitches", "--run", "latest")
+	if !strings.Contains(out, "unlimited") || strings.Contains(out, "2147483647") {
+		t.Fatalf("get dvswitches = %q; want MAX PORTS unlimited", out)
 	}
 }

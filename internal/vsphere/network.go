@@ -79,7 +79,7 @@ func (c *Client) listNetworks(ctx context.Context, idx *index) ([]Network, error
 		n.Metadata = metadata[m.Self]
 		out = append(out, n)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool { return nameLess(out[i].Name, out[j].Name) })
 	return out, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -63,6 +64,21 @@ func init() {
 	for _, fields := range schemas {
 		fields["kind"], fields["context"] = stringValue, stringValue
 	}
+}
+
+// fieldNames lists the fields a selector over kinds may name, sorted, with the
+// tag and custom attribute selectors every kind takes.
+func fieldNames(kinds []vsphere.Kind) []string {
+	names := []string{"custom", "tag"}
+	for _, kind := range kinds {
+		for name := range schemas[kind] {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 func vsphereType[T any]() reflect.Type { return reflect.TypeOf((*T)(nil)).Elem() }
@@ -141,7 +157,7 @@ func Parse(expressions []string, kinds []vsphere.Kind) (Filter, error) {
 				}
 			}
 			if !found {
-				return Filter{}, fmt.Errorf("unknown query field %q", p.Field)
+				return Filter{}, fmt.Errorf("unknown query field %q; fields: %s", p.Field, strings.Join(fieldNames(allowed), ", "))
 			}
 			p.kind = expected
 		} else {

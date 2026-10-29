@@ -72,6 +72,8 @@ func TestFieldSelector(t *testing.T) {
 		{"tag.env=prod", "-l env=prod"},
 		{"tag=prod", "-l CATEGORY=prod"},
 		{"nope=1", `unknown query field "nope"`},
+		// The column reads STATE but the field is power_state: the error names it.
+		{"state=poweredOn", "power_state"},
 		{"cpu>=8,", "empty predicate"},
 	} {
 		if _, err := ParseFieldSelector(tc.selector, kinds); err == nil || !strings.Contains(err.Error(), tc.want) {

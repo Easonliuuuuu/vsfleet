@@ -72,7 +72,7 @@ func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool)
 		host.Metadata = metadata[raw[i].Self]
 		out = append(out, host)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	sort.Slice(out, func(i, j int) bool { return nameLess(out[i].Name, out[j].Name) })
 	return out, nil
 }
 

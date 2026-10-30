@@ -47,6 +47,16 @@ vsfleet capture diff nightly latest \
 Use `--include-runtime` when volatile power, guest, IP, VMware Tools, or storage
 fields should participate in a diff.
 
+### Imports and live captures
+
+An RVTools import records fewer fields than a live capture, and records some
+differently, so comparing the two reports differences between the sources
+rather than changes to the estate. VM history follows a VM a live capture has
+seen through live captures only; a VM known only from imports is followed
+through those. `capture diff` with no capture, or one, picks a capture of the
+same kind. Naming an import and a live capture still compares them, with a
+warning.
+
 ## Snapshots, trends, and reports
 
 ```sh

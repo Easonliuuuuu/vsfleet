@@ -141,7 +141,9 @@ vsfleet describe vm 5029c07a-1b3e-4d2f-9c11-8a7e6f0d4b52 --history --all-observa
 `--history` shows a VM's change log across every capture: when it appeared,
 what changed and when it went. Give it by instance UUID to follow it through
 a rename. `--all-observations` includes captures in which nothing changed and
-`--include-runtime` includes volatile fields such as power state.
+`--include-runtime` includes volatile fields such as power state. Once a live
+capture has seen a VM, its history leaves out
+[RVTools imports](assessments.md#imports-and-live-captures).
 
 <span id="get-selectors"></span>
 

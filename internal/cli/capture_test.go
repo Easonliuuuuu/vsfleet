@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
+	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/perf"
 )
 
@@ -84,5 +88,60 @@ func TestGetPerfCollections(t *testing.T) {
 	// The seeded window spans a day, which the table reads as 1d, not 24h0m0s.
 	if out := mustRunCLI(t, dbPath, "get", "perfcollections"); !strings.Contains(out, " 1d ") {
 		t.Fatalf("get perfcollections table = %q, want a 1d span", out)
+	}
+}
+
+// Issue #523: "capture diff" pairs an import with a live capture only when
+// told to, or when nothing else can be compared, and warns when it does.
+func TestCaptureDiffKeepsImportsApartFromLiveCaptures(t *testing.T) {
+	const live, imported = "cli", assessment.SourceRVToolsImport
+	for _, tc := range []struct {
+		name        string
+		sources     []string
+		args        []string
+		base, tgt   int64
+		wantWarning bool
+	}{
+		{name: "latest is live, an import before it", sources: []string{live, imported, live}, base: 1, tgt: 3},
+		{name: "latest is an import", sources: []string{imported, live, imported}, base: 1, tgt: 3},
+		{name: "one live capture named", sources: []string{live, imported, live}, args: []string{"3"}, base: 1, tgt: 3},
+		{name: "no capture of the same kind", sources: []string{live, imported}, base: 1, tgt: 2, wantWarning: true},
+		{name: "both named", sources: []string{live, imported, live}, args: []string{"2", "3"}, base: 2, tgt: 3, wantWarning: true},
+		{name: "live captures only", sources: []string{live, live, live}, base: 2, tgt: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dbPath := filepath.Join(t.TempDir(), "history.db")
+			s, err := assessment.Open(dbPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			for i, source := range tc.sources {
+				at := when.Add(time.Duration(i) * time.Hour)
+				r, err := s.StartRun(ctx, source, []*config.Context{{Name: "prod", Endpoint: "https://prod.example"}}, at)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := s.FinishRun(ctx, r.ID, at.Add(time.Minute)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := s.Close(); err != nil {
+				t.Fatal(err)
+			}
+			out := mustRunCLI(t, dbPath, append([]string{"-o", "json", "capture", "diff"}, tc.args...)...)
+			var d assessment.Diff
+			if err := json.Unmarshal([]byte(out), &d); err != nil {
+				t.Fatalf("%v\n%s", err, out)
+			}
+			if d.Base.ID != tc.base || d.Target.ID != tc.tgt {
+				t.Errorf("compared %d and %d, want %d and %d", d.Base.ID, d.Target.ID, tc.base, tc.tgt)
+			}
+			warned := slices.ContainsFunc(d.Warnings, func(w string) bool { return strings.Contains(w, "RVTools import") })
+			if warned != tc.wantWarning {
+				t.Errorf("warnings = %q, want import warning %v", d.Warnings, tc.wantWarning)
+			}
+		})
 	}
 }

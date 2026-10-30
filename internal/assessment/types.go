@@ -236,6 +236,25 @@ type SnapshotAge struct {
 	LastSeen   time.Time     `json:"last_seen"`
 }
 
+// SourceRVToolsImport is the source of a run imported from an RVTools
+// workbook rather than captured from vCenter.
+const SourceRVToolsImport = "rvtools-import"
+
+// Imported reports whether the run came from a workbook.
+func (r Run) Imported() bool { return r.Source == SourceRVToolsImport }
+
+// ComparableBefore picks what to compare target with from earlier, a
+// non-empty list of older runs, newest first: the newest of the same kind,
+// import or live, or the newest overall when none is.
+func ComparableBefore(earlier []Run, target Run) Run {
+	for _, r := range earlier {
+		if r.Imported() == target.Imported() {
+			return r
+		}
+	}
+	return earlier[0]
+}
+
 type Diff struct {
 	SchemaVersion int              `json:"schema_version"`
 	Base          Run              `json:"base"`

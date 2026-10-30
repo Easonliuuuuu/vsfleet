@@ -36,6 +36,40 @@ func TestMapHostProxySwitchesPairsUplinksWithNICs(t *testing.T) {
 	}
 }
 
+// A physical NIC can be the uplink of a standard switch or of a distributed
+// switch; each names its switch, and a distributed one also its uplink.
+func TestMapHostConfigNamesTheSwitchOfEveryPhysicalNIC(t *testing.T) {
+	var host Host
+	mapHostConfig(&host, &types.HostConfigInfo{Network: &types.HostNetworkInfo{
+		Pnic: []types.PhysicalNic{
+			{Key: "key-vmnic0", Device: "vmnic0"},
+			{Key: "key-vmnic1", Device: "vmnic1"},
+			{Key: "key-vmnic2", Device: "vmnic2"},
+		},
+		Vswitch: []types.HostVirtualSwitch{{Key: "vss-0", Name: "vSwitch0", Pnic: []string{"key-vmnic0"}}},
+		ProxySwitch: []types.HostProxySwitch{{
+			DvsUuid: "uuid-lab", DvsName: "dvSwitch-Lab", Key: "proxy-1", Pnic: []string{"key-vmnic1"},
+			UplinkPort: []types.KeyValue{{Key: "10", Value: "Uplink 1"}, {Key: "11", Value: "Uplink 2"}},
+			Spec: types.HostProxySwitchSpec{Backing: &types.DistributedVirtualSwitchHostMemberPnicBacking{
+				PnicSpec: []types.DistributedVirtualSwitchHostMemberPnicSpec{{PnicDevice: "vmnic1", UplinkPortKey: "10"}},
+			}},
+		}},
+	}})
+	want := map[string][2]string{
+		"vmnic0": {"vSwitch0", ""},
+		"vmnic1": {"dvSwitch-Lab", "Uplink 1"},
+		"vmnic2": {"", ""},
+	}
+	if len(host.NICs) != len(want) {
+		t.Fatalf("NICs = %+v, want %d", host.NICs, len(want))
+	}
+	for _, nic := range host.NICs {
+		if got := [2]string{nic.Switch, nic.Uplink}; got != want[nic.Device] {
+			t.Errorf("%s switch, uplink = %q, want %q", nic.Device, got, want[nic.Device])
+		}
+	}
+}
+
 func TestMapHostVMKernelRecordsDistributedPortGroup(t *testing.T) {
 	vmk := mapHostVMKernel(types.HostVirtualNic{Device: "vmk1", Spec: types.HostVirtualNicSpec{
 		Mtu:                    9000,

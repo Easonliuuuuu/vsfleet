@@ -24,6 +24,26 @@ func mapHostConfig(host *Host, config *types.HostConfigInfo) {
 	if network := config.Network; network != nil {
 		host.NICs, host.VSwitches, host.PortGroups, host.VMKs = mapHostNetwork(network)
 		host.ProxySwitches = mapHostProxySwitches(network)
+		attachDistributedUplinks(host.NICs, host.ProxySwitches)
+	}
+}
+
+// attachDistributedUplinks names the distributed switch, and its uplink, for
+// each physical NIC that no standard switch claims.
+func attachDistributedUplinks(nics []HostNIC, switches []HostProxySwitch) {
+	type uplinkOf struct{ switchName, uplink string }
+	byNIC := make(map[string]uplinkOf)
+	for _, ps := range switches {
+		for _, uplink := range ps.Uplinks {
+			if _, seen := byNIC[uplink.NIC]; uplink.NIC != "" && !seen {
+				byNIC[uplink.NIC] = uplinkOf{ps.Switch, uplink.Name}
+			}
+		}
+	}
+	for i := range nics {
+		if found, ok := byNIC[nics[i].Device]; ok && nics[i].Switch == "" {
+			nics[i].Switch, nics[i].Uplink = found.switchName, found.uplink
+		}
 	}
 }
 

@@ -499,7 +499,10 @@ type HostNIC struct {
 	LinkSpeedMB *int32 `json:"link_speed_mb,omitempty"`
 	Duplex      *bool  `json:"duplex,omitempty"`
 	WakeOnLAN   bool   `json:"wake_on_lan"`
-	Switch      string `json:"switch,omitempty"`
+	// Switch is the standard or distributed switch the NIC is an uplink of;
+	// Uplink names the distributed switch's uplink it fills.
+	Switch string `json:"switch,omitempty"`
+	Uplink string `json:"uplink,omitempty"`
 }
 
 // HostVSwitch is one standard virtual switch and its effective security

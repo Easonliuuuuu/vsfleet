@@ -168,6 +168,36 @@ func markHiddenInventory(r *ContextResult, deleted map[string]bool) {
 	demote("dvswitch", hiddenSwitch)
 }
 
+// HiddenInventory runs the capture's contradiction check on one live listing
+// of kind, "network" or "dvswitch". It returns why the listing looks
+// incomplete given the VMs' network backings, or "" when nothing contradicts
+// it.
+func HiddenInventory[T any](ctx context.Context, client *vsphere.Client, kind string, listed []T, vms []vsphere.VM) string {
+	return hiddenInListing(kind, listed, vms, func(ids []string) map[string]bool {
+		return confirmDeletedNetworks(ctx, client, ids)
+	})
+}
+
+func hiddenInListing[T any](kind string, listed []T, vms []vsphere.VM, confirmDeleted func([]string) map[string]bool) string {
+	collection := CollectionResult{Kind: kind, Status: "success"}
+	for _, v := range listed {
+		payload, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		collection.Resources = append(collection.Resources, ResourceObservation{Kind: kind, Payload: payload})
+	}
+	r := ContextResult{Collections: []CollectionResult{collection}}
+	for _, vm := range vms {
+		r.VMs = append(r.VMs, Observation{VM: vm})
+	}
+	markHiddenInventory(&r, confirmDeleted(unresolvedNetworks(&r)))
+	if r.Collections[0].Status == CollectionPartial {
+		return r.Collections[0].Error
+	}
+	return ""
+}
+
 func decodeResources[T any](r *ContextResult, kind string) []T {
 	var out []T
 	for _, c := range r.Collections {

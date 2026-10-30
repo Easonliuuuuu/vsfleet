@@ -20,6 +20,9 @@ import (
 type contextFailure struct {
 	Context string
 	Err     error
+	// Gap marks a context that answered, with an answer known to be
+	// incomplete for one kind.
+	Gap bool
 }
 
 // gather queries every selected context concurrently and merges the results.

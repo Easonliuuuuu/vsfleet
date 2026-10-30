@@ -85,3 +85,60 @@ func TestMarkHiddenInventoryLeavesConsistentInventoryAlone(t *testing.T) {
 		}
 	}
 }
+
+// A live listing gets the capture's verdict: a VM using what was not returned
+// contradicts it, unless vCenter confirmed the network was deleted.
+func TestHiddenInListingChecksOneKind(t *testing.T) {
+	vms := []vsphere.VM{{Name: "app", NICs: []vsphere.VMNIC{{NetworkID: "dvportgroup-1005", SwitchID: "50 aa"}}}}
+	nothingDeleted := func([]string) map[string]bool { return nil }
+	for _, tc := range []struct {
+		name    string
+		reason  string
+		deleted func([]string) map[string]bool
+		got     func(confirm func([]string) map[string]bool) string
+	}{
+		{
+			name: "no networks returned", reason: `permission-hidden inventory: VM "app" uses network "" (dvportgroup-1005)`, deleted: nothingDeleted,
+			got: func(c func([]string) map[string]bool) string {
+				return hiddenInListing("network", []vsphere.Network{}, vms, c)
+			},
+		},
+		{
+			name: "the network was deleted", deleted: func(ids []string) map[string]bool {
+				out := map[string]bool{}
+				for _, id := range ids {
+					out[id] = true
+				}
+				return out
+			},
+			got: func(c func([]string) map[string]bool) string {
+				return hiddenInListing("network", []vsphere.Network{}, vms, c)
+			},
+		},
+		{
+			name: "the network was returned", deleted: nothingDeleted,
+			got: func(c func([]string) map[string]bool) string {
+				return hiddenInListing("network", []vsphere.Network{{ID: "dvportgroup-1005"}}, vms, c)
+			},
+		},
+		{
+			name: "no switches returned", reason: `permission-hidden inventory: VM "app" uses distributed switch 50 aa`, deleted: nothingDeleted,
+			got: func(c func([]string) map[string]bool) string {
+				return hiddenInListing("dvswitch", []vsphere.DVSwitch{}, vms, c)
+			},
+		},
+		{
+			name: "the switch was returned", deleted: nothingDeleted,
+			got: func(c func([]string) map[string]bool) string {
+				return hiddenInListing("dvswitch", []vsphere.DVSwitch{{UUID: "50 AA"}}, vms, c)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.got(tc.deleted)
+			if tc.reason == "" && got != "" || tc.reason != "" && !strings.Contains(got, tc.reason) {
+				t.Fatalf("reason = %q, want %q", got, tc.reason)
+			}
+		})
+	}
+}

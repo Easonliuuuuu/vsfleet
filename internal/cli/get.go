@@ -268,22 +268,26 @@ var listers = map[string]kindLister{
 	},
 	"network": lister[vsphere.Network]{
 		inventory: vsphere.KindNetwork,
-		fetch:     readAll("network", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) }, storedObjects[vsphere.Network](vsphere.KindNetwork)),
-		names:     func(n vsphere.Network) []string { return []string{n.Name} },
-		context:   func(n vsphere.Network) string { return n.Context },
-		metadata:  func(n vsphere.Network) vsphere.Metadata { return n.Metadata },
-		headers:   []string{"NAME", "TYPE", "SWITCH", "VLAN", "DATACENTER", "ACCESSIBLE"},
+		fetch: func(ctx context.Context, a *App, _ string) ([]vsphere.Network, []contextFailure, error) {
+			return readChecked(ctx, a, "network", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) }, storedObjects[vsphere.Network](vsphere.KindNetwork))
+		},
+		names:    func(n vsphere.Network) []string { return []string{n.Name} },
+		context:  func(n vsphere.Network) string { return n.Context },
+		metadata: func(n vsphere.Network) vsphere.Metadata { return n.Metadata },
+		headers:  []string{"NAME", "TYPE", "SWITCH", "VLAN", "DATACENTER", "ACCESSIBLE"},
 		row: func(n vsphere.Network) []string {
 			return []string{n.Name, n.Type, dash(n.Switch), dash(n.VLAN), dash(n.Datacenter), yesNo(n.Accessible)}
 		},
 	},
 	"dvswitch": lister[vsphere.DVSwitch]{
 		inventory: vsphere.KindDVSwitch,
-		fetch:     readAll("dvswitch", func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) { return c.ListDVSwitches(ctx) }, storedObjects[vsphere.DVSwitch](vsphere.KindDVSwitch)),
-		names:     func(d vsphere.DVSwitch) []string { return []string{d.Name} },
-		context:   func(d vsphere.DVSwitch) string { return d.Context },
-		metadata:  func(d vsphere.DVSwitch) vsphere.Metadata { return d.Metadata },
-		headers:   []string{"NAME", "VENDOR", "VERSION", "PORTS", "MAX PORTS", "HOSTS", "PORT GROUPS"},
+		fetch: func(ctx context.Context, a *App, _ string) ([]vsphere.DVSwitch, []contextFailure, error) {
+			return readDVSwitches(ctx, a)
+		},
+		names:    func(d vsphere.DVSwitch) []string { return []string{d.Name} },
+		context:  func(d vsphere.DVSwitch) string { return d.Context },
+		metadata: func(d vsphere.DVSwitch) vsphere.Metadata { return d.Metadata },
+		headers:  []string{"NAME", "VENDOR", "VERSION", "PORTS", "MAX PORTS", "HOSTS", "PORT GROUPS"},
 		row: func(d vsphere.DVSwitch) []string {
 			return []string{d.Name, dash(d.Vendor), dash(d.Version), i32toa(d.NumPorts), maxPorts(d.MaxPorts), itoa(len(d.Hosts)), itoa(len(d.PortGroups))}
 		},
@@ -467,13 +471,17 @@ type switchPortGroup struct {
 	pg vsphere.DVPortGroup
 }
 
+func readDVSwitches(ctx context.Context, a *App) ([]vsphere.DVSwitch, []contextFailure, error) {
+	return readChecked(ctx, a, "dvswitch", func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) {
+		return c.ListDVSwitches(ctx)
+	}, storedObjects[vsphere.DVSwitch](vsphere.KindDVSwitch))
+}
+
 func dvPortGroupLister() kindLister {
 	return lister[switchPortGroup]{
 		scopeFlag: "switch",
 		fetch: func(ctx context.Context, a *App, switchName string) ([]switchPortGroup, []contextFailure, error) {
-			switches, failures, err := read(ctx, a, "dvswitch", func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) {
-				return c.ListDVSwitches(ctx)
-			}, storedObjects[vsphere.DVSwitch](vsphere.KindDVSwitch))
+			switches, failures, err := readDVSwitches(ctx, a)
 			if err != nil {
 				return nil, failures, err
 			}
@@ -764,7 +772,9 @@ func (g getRun) once(ctx context.Context) error {
 		return err
 	}
 	missing := missingError(listings)
-	if missing == nil && (g.spec.format == FormatTable || g.spec.format == FormatWide) {
+	// A gap makes "nothing" an unproven answer; its reason is reported instead.
+	hasGap := slices.ContainsFunc(failures, func(f contextFailure) bool { return f.Gap })
+	if missing == nil && !hasGap && (g.spec.format == FormatTable || g.spec.format == FormatWide) {
 		if !slices.ContainsFunc(listings, func(l *kindListing) bool { return len(l.rows) > 0 }) {
 			// On stderr, so a script reading stdout sees an empty answer.
 			fmt.Fprintln(g.a.errOut(), "No resources found.")
@@ -926,7 +936,11 @@ type contextFailures struct {
 
 func (c *contextFailures) add(failed []contextFailure) {
 	for _, f := range failed {
-		if !slices.ContainsFunc(c.list, func(g contextFailure) bool { return g.Context == f.Context }) {
+		// An unreachable context fails the same way for every kind; a gap is
+		// particular to one.
+		if !slices.ContainsFunc(c.list, func(g contextFailure) bool {
+			return g.Context == f.Context && (!g.Gap && !f.Gap || g.Err.Error() == f.Err.Error())
+		}) {
 			c.list = append(c.list, f)
 		}
 	}

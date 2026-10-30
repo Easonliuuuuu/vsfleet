@@ -112,3 +112,25 @@ func TestGetRunLatestFollowsTheSelectedContext(t *testing.T) {
 		t.Fatalf("get vms -n prod --run previous: err = %v; want no previous capture of prod", err)
 	}
 }
+
+// A capture that recorded a kind as partial says so when read, rather than
+// presenting what it did return as the whole answer. Each gap is reported,
+// however many kinds a context has one for.
+func TestGetRunReportsAPartialCollection(t *testing.T) {
+	const reason = `possible permission-hidden inventory: VM "app" uses network`
+	dbPath := seedHistory(t, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), "", assessment.ContextResult{Name: "prod", VCenterID: "vc-1", Status: "success", Collections: collections(
+		assessment.CollectionResult{Kind: "network", Status: assessment.CollectionPartial, Error: reason},
+		assessment.CollectionResult{Kind: "dvswitch", Status: assessment.CollectionPartial, Error: "possible permission-hidden inventory: VM \"app\" uses distributed switch 50 aa"},
+	)})
+	stdout, stderr, err := runCLI(t, dbPath, "get", "networks", "--run", "latest")
+	if err != nil || stdout != "" {
+		t.Fatalf("get networks: stdout = %q, err = %v; want a warning and exit 0", stdout, err)
+	}
+	if !strings.Contains(stderr, reason) || strings.Contains(stderr, "No resources found.") {
+		t.Fatalf("get networks: stderr = %q; want the gap instead of an empty answer", stderr)
+	}
+	_, stderr, err = runCLI(t, dbPath, "get", "networks,dvswitches", "--run", "latest")
+	if err != nil || !strings.Contains(stderr, "uses network") || !strings.Contains(stderr, "uses distributed switch") {
+		t.Fatalf("get networks,dvswitches: err = %v, stderr = %q; want both gaps", err, stderr)
+	}
+}

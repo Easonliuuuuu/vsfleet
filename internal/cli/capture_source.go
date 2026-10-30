@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
+	"sync"
 
 	"github.com/spf13/cobra"
 
@@ -80,6 +83,38 @@ func read[T any](ctx context.Context, a *App, kind string, live func(context.Con
 	return items, unrecorded(a.capture, kind), nil
 }
 
+// readChecked is read for a kind VMs can contradict. A live read has no
+// capture's coverage to consult, so each context's listing is checked against
+// its VMs' network backings. A read of those that fails leaves nothing to
+// contradict the listing, as it does in a capture.
+func readChecked[T any](ctx context.Context, a *App, kind string, live func(context.Context, *vsphere.Client) ([]T, error), stored func(*assessment.ExportData) ([]T, error)) ([]T, []contextFailure, error) {
+	if a.capture != nil {
+		return read(ctx, a, kind, live, stored)
+	}
+	var (
+		mu   sync.Mutex
+		gaps []contextFailure
+	)
+	items, failures, err := read(ctx, a, kind, func(ctx context.Context, c *vsphere.Client) ([]T, error) {
+		items, err := live(ctx, c)
+		if err != nil {
+			return nil, err
+		}
+		vms, err := c.VMNetworkBackings(ctx)
+		if err != nil {
+			return items, nil
+		}
+		if reason := assessment.HiddenInventory(ctx, c, kind, items, vms); reason != "" {
+			mu.Lock()
+			defer mu.Unlock()
+			gaps = append(gaps, contextFailure{Context: c.Context.Name, Err: errors.New(reason), Gap: true})
+		}
+		return items, nil
+	}, stored)
+	slices.SortFunc(gaps, func(x, y contextFailure) int { return strings.Compare(x.Context, y.Context) })
+	return items, append(failures, gaps...), err
+}
+
 // unrecorded lists the contexts whose capture holds no complete collection
 // of kind.
 func unrecorded(data *assessment.ExportData, kind string) []contextFailure {
@@ -97,6 +132,8 @@ func unrecorded(data *assessment.ExportData, kind string) []contextFailure {
 			out = append(out, contextFailure{Context: c.Name, Err: fmt.Errorf("capture %d did not collect %s", data.Run.ID, plural)})
 		case found.Status == "failed":
 			out = append(out, contextFailure{Context: c.Name, Err: fmt.Errorf("capture %d could not collect %s: %s", data.Run.ID, plural, found.Error)})
+		case found.Status == assessment.CollectionPartial && found.Error != "":
+			out = append(out, contextFailure{Context: c.Name, Err: fmt.Errorf("capture %d: %s", data.Run.ID, found.Error), Gap: true})
 		}
 	}
 	return out

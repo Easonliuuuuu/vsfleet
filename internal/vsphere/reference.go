@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/vmware/govmomi/property"
+	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/soap"
 	"github.com/vmware/govmomi/vim25/types"
 )
@@ -33,6 +34,29 @@ func (c *Client) NetworkDeleted(ctx context.Context, id string) (bool, error) {
 	default:
 		return false, fmt.Errorf("read %s: %w", id, err)
 	}
+}
+
+// VMNetworkBackings returns every VM and template with only its name and NICs
+// read: what a network listing is checked against, without the cost of a VM
+// listing.
+func (c *Client) VMNetworkBackings(ctx context.Context) ([]VM, error) {
+	root, _, err := resolveRoot(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	var raw []mo.VirtualMachine
+	if err := retrieve(ctx, c, root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, []string{"name", "config.hardware.device"}, &raw); err != nil {
+		return nil, err
+	}
+	out := make([]VM, 0, len(raw))
+	for i := range raw {
+		vm := VM{Name: raw[i].Name}
+		if raw[i].Config != nil {
+			_, vm.NICs, _, _ = walkDevices(raw[i].Config.Hardware.Device, nil, nil)
+		}
+		out = append(out, vm)
+	}
+	return out, nil
 }
 
 func isNotFound(err error) bool {

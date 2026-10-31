@@ -49,6 +49,9 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	filterContextVMs(bv, bc, selected)
 	filterContextVMs(tv, tc, selected)
 	d := Diff{SchemaVersion: 1, Base: base, Target: target}
+	if base.Imported() != target.Imported() {
+		d.Warnings = append(d.Warnings, fmt.Sprintf("comparing an RVTools import with a live capture (%d and %d): fields the workbook does not carry, or records differently, show as changes", baseID, targetID))
+	}
 	baseByVC := make(map[string][]storedVM)
 	targetByVC := make(map[string][]storedVM)
 	// vcNames resolves a VCenterID back to the context name an operator

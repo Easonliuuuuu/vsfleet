@@ -488,8 +488,9 @@ func newCaptureUpdateCommand(a *App) *cobra.Command {
 
 // resolveRunPair picks the captures "capture diff" compares: the two most
 // recent with no arguments, the one named and the capture before it with
-// one, and the two named with two. A capture is selected the way --run
-// selects one, so a date works here too.
+// one, and the two named with two. An import and a live capture are paired
+// only when named, or when no other pair exists. A capture is selected the
+// way --run selects one, so a date works here too.
 func resolveRunPair(ctx context.Context, s *assessment.Store, args []string) (int64, int64, error) {
 	runs, err := s.Runs(ctx)
 	if err != nil {
@@ -499,7 +500,7 @@ func resolveRunPair(ctx context.Context, s *assessment.Store, args []string) (in
 		return 0, 0, fmt.Errorf("need at least two captures to compare")
 	}
 	if len(args) == 0 {
-		return runs[1].ID, runs[0].ID, nil
+		return assessment.ComparableBefore(runs[1:], runs[0]).ID, runs[0].ID, nil
 	}
 	ids := make([]int64, len(args))
 	for i, arg := range args {
@@ -510,13 +511,20 @@ func resolveRunPair(ctx context.Context, s *assessment.Store, args []string) (in
 	if len(args) == 2 {
 		return ids[0], ids[1], nil
 	}
-	target := ids[0]
+	target, err := s.GetRun(ctx, ids[0])
+	if err != nil {
+		return 0, 0, err
+	}
+	var earlier []assessment.Run
 	for _, r := range runs {
-		if r.ID != target && r.StartedAt.Before(targetTime(runs, target)) {
-			return r.ID, target, nil
+		if r.ID != target.ID && r.StartedAt.Before(target.StartedAt) {
+			earlier = append(earlier, r)
 		}
 	}
-	return 0, 0, fmt.Errorf("no capture before %s to compare it with", args[0])
+	if len(earlier) == 0 {
+		return 0, 0, fmt.Errorf("no capture before %s to compare it with", args[0])
+	}
+	return assessment.ComparableBefore(earlier, target).ID, target.ID, nil
 }
 
 func validPolicyRule(rule string) bool {
@@ -529,15 +537,6 @@ func validPolicyRule(rule string) bool {
 		return (kind == "host" || kind == "cluster" || kind == "datastore") && (change == "appeared" || change == "vanished" || change == "modified")
 	}
 	return false
-}
-
-func targetTime(runs []assessment.Run, id int64) time.Time {
-	for _, r := range runs {
-		if r.ID == id {
-			return r.StartedAt
-		}
-	}
-	return time.Time{}
 }
 
 func printRun(out interface{ Write([]byte) (int, error) }, r assessment.Run, notes ...string) {

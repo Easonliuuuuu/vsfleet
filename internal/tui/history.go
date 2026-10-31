@@ -72,9 +72,9 @@ func (m *Model) loadDefaultHistoryDiff() {
 		}
 		return
 	}
-	// Runs are newest first. The newest pair is the useful default and is
-	// deterministic even when an intervening run failed.
-	m.baseRun, m.targetRun = m.runs[1].ID, m.runs[0].ID
+	// Runs are newest first. The newest comparable pair is the useful default
+	// and is deterministic even when an intervening run failed.
+	m.baseRun, m.targetRun = assessment.ComparableBefore(m.runs[1:], m.runs[0]).ID, m.runs[0].ID
 	m.historyErr = nil
 }
 
@@ -82,9 +82,9 @@ func (m *Model) loadDefaultHistoryDiff() {
 // scope, so a scoped Changes pane opens on a comparison that can exist rather
 // than on the newest runs overall. ok is false when fewer than two qualify;
 // covering is how many did.
-func (m *Model) scopedDefaultSpan() (base, target int64, covering int, ok bool) {
+func (m *Model) scopedDefaultSpan() (base, target int64, count int, ok bool) {
 	scope := m.historyScope()
-	var ids []int64
+	var covering []assessment.Run
 	for _, r := range m.runs {
 		reached := m.historyCoverage[r.ID]
 		all := len(reached) > 0
@@ -95,13 +95,13 @@ func (m *Model) scopedDefaultSpan() (base, target int64, covering int, ok bool) 
 			}
 		}
 		if all {
-			ids = append(ids, r.ID)
+			covering = append(covering, r)
 		}
 	}
-	if len(ids) < 2 {
-		return 0, 0, len(ids), false
+	if len(covering) < 2 {
+		return 0, 0, len(covering), false
 	}
-	return ids[1], ids[0], len(ids), true
+	return assessment.ComparableBefore(covering[1:], covering[0]).ID, covering[0].ID, len(covering), true
 }
 
 func (m *Model) historyDiffCommand() tea.Cmd {

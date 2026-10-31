@@ -49,7 +49,7 @@ const ProfileVersion = "rvtools-v4"
 // importSource marks an imported run's Run.Source, the one field every other
 // command already reads, so "vsfleet capture list" tells an imported run
 // apart from a live capture without inspecting its note text.
-const importSource = "rvtools-import"
+const importSource = assessment.SourceRVToolsImport
 
 // baseSchemaVersion is the inventory schema level every import can honestly
 // claim: "2", the version that added per-VM disks and network adapters, which

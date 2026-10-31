@@ -3,6 +3,7 @@ package assessment
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -114,6 +115,14 @@ func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors
 	runs, err := s.runsRecording(ctx, selected, false)
 	if err != nil {
 		return nil, err
+	}
+	// An import records fewer fields, and records some differently, so
+	// comparing it with a live capture reports differences in the sources
+	// rather than changes to the VM. A VM a live capture has seen is followed
+	// through live captures only.
+	if slices.ContainsFunc(entries, func(e VMHistoryEntry) bool { return !e.Run.Imported() }) {
+		entries = slices.DeleteFunc(entries, func(e VMHistoryEntry) bool { return e.Run.Imported() })
+		runs = slices.DeleteFunc(runs, Run.Imported)
 	}
 	runIndex := make(map[int64]int, len(runs))
 	for i, r := range runs {

@@ -12,7 +12,7 @@ vsfleet  DEMO · SAMPLE DATA  history  ·  Timeline  ·  web-05
       ← 08-18 10:22  migrate          ops@corp.example     ✓  esxi-a-13 → esxi-a-05
     modified          vCPU:2→4 memory:4G→8G CPU sockets:2→4
       ← 08-18 10:41  reconfigure      admin@vsphere.local  ✓  cpu 4 · memory 8192 MB
-    snapshot created  snapshot:—→2026-08-18 09:50
+    snapshot created  snapshot pre-resize:—→2026-08-18 09:50
       ← 08-18 09:50  snapshot create  backup@corp.example  ·  
       · 08-18 10:05  reconfigure fai… ops@corp.example     ✕  cpu 2 → 4 · not enough CPU on esxi-a-…
 

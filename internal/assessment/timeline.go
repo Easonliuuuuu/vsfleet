@@ -281,11 +281,8 @@ func sameLineage(a, b Observation) bool {
 // as one row twice. A changed event's values are already its names.
 func snapshotFieldChange(sc SnapshotChange) FieldChange {
 	change := FieldChange{Field: "snapshot", Before: sc.Before, After: sc.After}
-	switch sc.Kind {
-	case "created":
-		change.After = sc.Name + " (" + sc.After + ")"
-	case "removed":
-		change.Before = sc.Name + " (" + sc.Before + ")"
+	if sc.Kind == "created" || sc.Kind == "removed" {
+		change.Name = sc.Name
 	}
 	return change
 }

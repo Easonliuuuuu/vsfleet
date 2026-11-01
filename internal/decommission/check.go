@@ -120,7 +120,7 @@ func Evaluate(data assessment.ExportData, query string, contexts []string) Repor
 	for _, subject := range subjects {
 		dependencies := graph.Dependencies(subject, 1)
 		observations := observationsFor(data, subject)
-		report := evaluateSubject(data, subject, dependencies, observations)
+		report := evaluateSubject(data, subject, dependencies, graph.UnresolvedReferences(subject), observations)
 		out.Subjects = append(out.Subjects, report)
 		out.CheckedContexts = appendUnique(out.CheckedContexts, subjectContexts(subject)...)
 		out.Blind = appendUniqueBlind(out.Blind, report.Blind...)
@@ -147,13 +147,13 @@ func Evaluate(data assessment.ExportData, query string, contexts []string) Repor
 	return out
 }
 
-func evaluateSubject(data assessment.ExportData, subject topology.Subject, dependencies topology.SubjectResult, observations []assessment.ExportVM) SubjectReport {
+func evaluateSubject(data assessment.ExportData, subject topology.Subject, dependencies topology.SubjectResult, unresolved map[topology.Kind][]string, observations []assessment.ExportVM) SubjectReport {
 	out := SubjectReport{
 		Subject:      subject,
 		Verdict:      VerdictNoBlockers,
 		Checks:       make([]Check, 0, 10),
 		Dependencies: append([]topology.Edge(nil), dependencies.Edges...),
-		Unresolved:   append([]string(nil), dependencies.Unresolved...),
+		Unresolved:   allUnresolved(unresolved),
 		Blind:        append([]topology.Blindness(nil), dependencies.Blind...),
 	}
 
@@ -163,12 +163,15 @@ func evaluateSubject(data assessment.ExportData, subject topology.Subject, depen
 		snapshotCheck(observations),
 		mediaCheck(data, observations),
 		diskReferenceCheck(observations),
-		dependencyCheck("datastore-dependencies", "datastore", observations, dependencies),
-		dependencyCheck("network-relationships", "network", observations, dependencies),
+		dependencyCheck("datastore-dependencies", topology.KindDatastore, observations, dependencies, unresolved[topology.KindDatastore]),
+		dependencyCheck("network-relationships", topology.KindNetwork, observations, dependencies, unresolved[topology.KindNetwork]),
 		Check{ID: "ownership", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "ownership metadata is not collected by this assessment"},
 		Check{ID: "backup-policy", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "backup-policy metadata is not collected by this assessment"},
 		Check{ID: "application-dependencies", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "application and business dependencies are not observable from inventory and are not assessed"},
 	)
+	if placement := append(append([]string(nil), unresolved[topology.KindHost]...), unresolved[topology.KindCluster]...); len(placement) > 0 {
+		out.Checks = append(out.Checks, Check{ID: "placement", Status: StatusUnknown, Impact: ImpactUnknown, Message: "host or cluster placement is incomplete: could not resolve " + strings.Join(placement, ", ")})
+	}
 	if len(observations) == 0 {
 		out.Checks = append(out.Checks, Check{ID: "coverage", Status: StatusUnknown, Impact: ImpactUnknown, Message: "matched VM identity has no observation in the selected run"})
 	} else if len(dependencies.Blind) > 0 {
@@ -300,7 +303,11 @@ func diskReferenceCheck(observations []assessment.ExportVM) Check {
 	return Check{ID: check.ID, Status: StatusPass, Impact: ImpactUnknown, Message: "all recorded virtual disks have datastore backing paths"}
 }
 
-func dependencyCheck(id, kind string, observations []assessment.ExportVM, dependencies topology.SubjectResult) Check {
+// dependencyCheck judges the VM's own references of one kind. What the objects
+// it uses refer to is theirs: a host's unmapped LUN says nothing about a VM stored
+// elsewhere. When the check cannot pass, its message says which relationship is
+// incomplete and why.
+func dependencyCheck(id string, kind topology.Kind, observations []assessment.ExportVM, dependencies topology.SubjectResult, unresolved []string) Check {
 	check := Check{ID: id, Impact: ImpactUnknown}
 	if len(observations) == 0 {
 		return unknownCheck(check, "dependency evidence is unavailable")
@@ -308,7 +315,7 @@ func dependencyCheck(id, kind string, observations []assessment.ExportVM, depend
 	needed := false
 	for _, item := range observations {
 		vm := item.Observation.VM
-		if kind == "datastore" {
+		if kind == topology.KindDatastore {
 			needed = needed || len(vm.Datastores) > 0 || len(vm.Disks) > 0
 		} else {
 			needed = needed || len(vm.NICs) > 0
@@ -317,17 +324,54 @@ func dependencyCheck(id, kind string, observations []assessment.ExportVM, depend
 	if !needed {
 		return Check{ID: id, Status: StatusPass, Impact: ImpactUnknown, Message: fmt.Sprintf("no %s dependencies are recorded", kind)}
 	}
+	var why []string
+	for _, blind := range dependencies.Blind {
+		why = append(why, blind.Context+": "+blind.Reason)
+	}
+	if len(unresolved) > 0 {
+		why = append(why, "could not resolve "+strings.Join(unresolved, ", "))
+	}
+	if kind == topology.KindDatastore {
+		why = append(why, rawDiskGaps(observations)...)
+	}
 	matched := false
 	for _, edge := range dependencies.Edges {
-		if strings.EqualFold(edge.To.Kind, kind) && edge.Confidence != topology.EdgeUnresolved {
+		if strings.EqualFold(edge.To.Kind, string(kind)) && edge.Confidence != topology.EdgeUnresolved {
 			matched = true
 			break
 		}
 	}
-	if len(dependencies.Unresolved) > 0 || len(dependencies.Blind) > 0 || !matched {
-		return unknownCheck(check, fmt.Sprintf("%s dependency relationships are incomplete", kind))
+	if !matched && len(why) == 0 {
+		why = append(why, fmt.Sprintf("no %s relationship was recorded", kind))
+	}
+	if len(why) > 0 {
+		return unknownCheck(check, fmt.Sprintf("%s dependency relationships are incomplete: %s", kind, strings.Join(why, "; ")))
 	}
 	return Check{ID: id, Status: StatusPass, Impact: ImpactUnknown, Message: fmt.Sprintf("%s dependencies are resolved", kind)}
+}
+
+// rawDiskGaps names the disks that sit directly on a LUN. The topology tracks
+// datastores, not raw LUNs, so nothing can confirm what else uses one.
+func rawDiskGaps(observations []assessment.ExportVM) []string {
+	var out []string
+	for _, item := range observations {
+		for _, disk := range item.Observation.VM.Disks {
+			if disk.Raw {
+				out = append(out, fmt.Sprintf("disk %q is a raw device mapping, and its LUN is not tracked", nonempty(disk.Label, "unnamed disk")))
+			}
+		}
+	}
+	return out
+}
+
+// allUnresolved lists every unresolved reference, whatever its kind, sorted.
+func allUnresolved(unresolved map[topology.Kind][]string) []string {
+	var out []string
+	for _, labels := range unresolved {
+		out = append(out, labels...)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func coverageCheck(data assessment.ExportData, observations []assessment.ExportVM) Check {

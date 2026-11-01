@@ -29,6 +29,12 @@ type graphEdge struct {
 	detail     string
 }
 
+// unresolvedRef is one thing a node refers to that the graph could not place.
+type unresolvedRef struct {
+	kind  Kind
+	label string
+}
+
 type subjectRecord struct {
 	subject Subject
 	nodes   []int
@@ -40,7 +46,7 @@ type Graph struct {
 	data        assessment.ExportData
 	records     []nodeRecord
 	edges       []graphEdge
-	unresolved  map[int][]string
+	unresolved  map[int][]unresolvedRef
 	subjects    []subjectRecord
 	nodeSubject []int
 	incoming    map[int][]int
@@ -84,7 +90,7 @@ func (d *disjointSet) union(a, b int) {
 // Build constructs one estate-wide graph from a stored assessment.
 func Build(data assessment.ExportData) Graph {
 	g := Graph{
-		data: data, unresolved: make(map[int][]string), incoming: make(map[int][]int),
+		data: data, unresolved: make(map[int][]unresolvedRef), incoming: make(map[int][]int),
 		outgoing: make(map[int][]int), nodeSubject: nil, schema: inventorySchema(data.Run.InventorySchemaVersion),
 		legacy: make(map[string]bool),
 	}
@@ -701,7 +707,7 @@ func (g *Graph) addVMRelationships(index int) {
 			}
 			continue
 		}
-		g.addCandidates(index, candidates, RelationAttachedTo, basis, confidence, nic.NetworkID, "network")
+		g.addCandidates(index, candidates, RelationAttachedTo, basis, confidence, nic.NetworkID, strings.TrimSpace("network "+nic.Network))
 	}
 }
 
@@ -868,9 +874,6 @@ func uniqueNodeCandidates(values []int, g *Graph) []int {
 func (g *Graph) addCandidates(from int, candidates []int, relation Relation, basis Basis, confidence EdgeConfidence, detail, unresolved string) {
 	candidates = uniqueNodeCandidates(candidates, g)
 	if len(candidates) == 0 {
-		if unresolved != "" {
-			g.addUnresolved(from, unresolved)
-		}
 		return
 	}
 	// Multiple observations of one logical subject are one edge. Distinct
@@ -883,7 +886,7 @@ func (g *Graph) addCandidates(from int, candidates []int, relation Relation, bas
 	}
 	if len(subjects) > 1 {
 		if unresolved != "" {
-			g.addUnresolved(from, unresolved)
+			g.addUnresolved(from, g.records[candidates[0]].kind, unresolved)
 		}
 		return
 	}
@@ -908,17 +911,17 @@ func (g *Graph) addEdge(from, to int, relation Relation, basis Basis, confidence
 // a disk backing path is lower-cased for joining, the VM's own datastore list
 // is not — so a repeat is recognized without regard to case and the first
 // spelling seen is the one an operator reads.
-func (g *Graph) addUnresolved(index int, value string) {
+func (g *Graph) addUnresolved(index int, kind Kind, value string) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return
 	}
 	for _, existing := range g.unresolved[index] {
-		if strings.EqualFold(existing, value) {
+		if strings.EqualFold(existing.label, value) {
 			return
 		}
 	}
-	g.unresolved[index] = append(g.unresolved[index], value)
+	g.unresolved[index] = append(g.unresolved[index], unresolvedRef{kind: kind, label: value})
 }
 
 func (g *Graph) addUnresolvedEdge(from int, kind Kind, name string, relation Relation, basis Basis, confidence EdgeConfidence, detail string) {
@@ -929,7 +932,7 @@ func (g *Graph) addUnresolvedEdge(from int, kind Kind, name string, relation Rel
 	node := Node{Kind: string(kind), Name: name, Context: g.records[from].node.Context, VCenterID: g.records[from].node.VCenterID, Datacenter: g.records[from].node.Datacenter}
 	target := g.addSynthetic(node, "unresolved\x00"+nodeIdentity(node))
 	g.addEdge(from, target, relation, basis, confidence, detail)
-	g.addUnresolved(from, name)
+	g.addUnresolved(from, kind, name)
 }
 
 func (g *Graph) finalizeEdges() {
@@ -957,7 +960,8 @@ func (g *Graph) finalizeEdges() {
 		g.incoming[edge.to] = append(g.incoming[edge.to], i)
 	}
 	for index := range g.unresolved {
-		sort.Strings(g.unresolved[index])
+		refs := g.unresolved[index]
+		sort.Slice(refs, func(i, j int) bool { return refs[i].label < refs[j].label })
 	}
 }
 

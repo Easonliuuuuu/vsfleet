@@ -32,7 +32,10 @@ and stored topology. It reports only and performs no decommissioning action.
 
 - `blocked`: powered-on/suspended VM, snapshots, connected CD-ROM/USB, or
   inaccessible, orphaned, disconnected, or invalid connection state.
-- `unknown`: missing evidence or unresolved dependencies.
+- `unknown`: missing evidence, or an unresolved reference of the VM's own: a
+  datastore, network, host or cluster it uses, or the LUN behind a raw device
+  mapping. The message names the reference. A LUN on the VM's host that no
+  datastore maps to does not count.
 - `no-blockers`: collected technical gates passed. This schema-2 verdict
   (formerly `ready`) does not authorize deletion.
 

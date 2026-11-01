@@ -156,7 +156,7 @@ func (s *Store) TimelineForContexts(ctx context.Context, query string, selectors
 			events = append(events, VMHistoryEvent{Kind: "modified", Run: after.Run, Context: after.Observation.Context, Name: after.Observation.VM.Name, Changes: fields, Observation: &after.Observation})
 		}
 		for _, sc := range compareSnapshots(storedVM{observation: before.Observation, snapshots: before.Snapshots}, storedVM{observation: after.Observation, snapshots: after.Snapshots}) {
-			events = append(events, VMHistoryEvent{Kind: "snapshot-" + sc.Kind, Run: after.Run, Context: after.Observation.Context, Name: after.Observation.VM.Name, Changes: []FieldChange{{Field: "snapshot", Before: sc.Before, After: sc.After}}, Observation: &after.Observation})
+			events = append(events, VMHistoryEvent{Kind: "snapshot-" + sc.Kind, Run: after.Run, Context: after.Observation.Context, Name: after.Observation.VM.Name, Changes: []FieldChange{snapshotFieldChange(sc)}, Observation: &after.Observation})
 		}
 		if includeUnchanged && len(fields) == 0 && before.Observation.VM.Name == after.Observation.VM.Name {
 			events = append(events, VMHistoryEvent{Kind: "observed", Run: after.Run, Context: after.Observation.Context, Name: after.Observation.VM.Name, Observation: &after.Observation, Snapshots: after.Snapshots})
@@ -274,4 +274,18 @@ func sameLineage(a, b Observation) bool {
 		return true
 	}
 	return lineageKey(a) == lineageKey(b)
+}
+
+// snapshotFieldChange names the snapshot in a created or removed event, whose
+// values are otherwise only its time: two snapshots taken together would read
+// as one row twice. A changed event's values are already its names.
+func snapshotFieldChange(sc SnapshotChange) FieldChange {
+	change := FieldChange{Field: "snapshot", Before: sc.Before, After: sc.After}
+	switch sc.Kind {
+	case "created":
+		change.After = sc.Name + " (" + sc.After + ")"
+	case "removed":
+		change.Before = sc.Name + " (" + sc.Before + ")"
+	}
+	return change
 }

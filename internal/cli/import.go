@@ -123,6 +123,9 @@ it half-written.`),
 					fmt.Fprintf(a.errOut(), "%s this workbook was already imported as capture %d; importing it again creates another capture (--allow-duplicate silences this)\n", glyphFail, prior.ID)
 				}
 			}
+			if err := result.CheckSnapshotTimes(cmd.Context(), store); err != nil {
+				return err
+			}
 			run, err := result.Write(cmd.Context(), store, time.Now())
 			if err != nil {
 				return err

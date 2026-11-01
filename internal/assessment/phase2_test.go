@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -211,6 +212,38 @@ func TestTimelineReportsRenameAndSnapshotEvents(t *testing.T) {
 	}
 	if !renamed || !created {
 		t.Fatalf("events=%+v", events)
+	}
+}
+
+// Issue #523: two snapshots taken at one time read as a duplicated row unless
+// each event names its snapshot.
+func TestTimelineNamesEachSnapshot(t *testing.T) {
+	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	saveTestRun(t, s, base, testVM("billing", "vm-1", "instance-1", "bios-1", "esx-1"))
+	withSnapshots := testVM("billing", "vm-1", "instance-1", "bios-1", "esx-1")
+	withSnapshots.Snapshots = []vsphere.VMSnapshot{
+		{ID: "snap-1", Name: "before-patch", CreateTime: base},
+		{ID: "snap-2", Name: "after-patch", CreateTime: base},
+	}
+	saveTestRun(t, s, base.Add(time.Hour), withSnapshots)
+	events, err := s.Timeline(context.Background(), "instance-1", "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created []string
+	for _, e := range events {
+		if e.Kind == "snapshot-created" {
+			created = append(created, e.Changes[0].After)
+		}
+	}
+	slices.Sort(created)
+	if want := []string{"after-patch (2026-01-01T00:00:00Z)", "before-patch (2026-01-01T00:00:00Z)"}; !slices.Equal(created, want) {
+		t.Fatalf("created snapshots = %v, want %v", created, want)
 	}
 }
 

@@ -438,6 +438,8 @@ Capture time comes from `--captured-at`, then usable `vMetaData`, workbook
 properties, or import time. `--timezone` accepts an IANA zone for timezone-free
 `vMetaData` and `vSnapshot` values; timezone-free metadata is skipped without
 it. Stored cell values preserve seconds and honor the 1900/1904 date system.
+Without `--timezone`, an import warns when every snapshot it shares with the
+newest live capture is a time zone's distance from what vCenter reported.
 
 History, diff, and trends use capture time. The run notes its source and import
 time. Filenames are never parsed for dates.

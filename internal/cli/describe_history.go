@@ -66,7 +66,11 @@ func describeHistory(ctx context.Context, a *App, reqs []resourceRequest, h hist
 		if len(e.Changes) > 0 {
 			parts := make([]string, len(e.Changes))
 			for i, f := range e.Changes {
-				parts[i] = f.Field + ":" + f.Before + "→" + f.After
+				field := f.Field
+				if f.Name != "" {
+					field += " " + f.Name
+				}
+				parts[i] = field + ":" + f.Before + "→" + f.After
 			}
 			detail = strings.Join(parts, " ")
 		}

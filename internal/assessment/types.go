@@ -200,7 +200,10 @@ type Observation struct {
 }
 
 type FieldChange struct {
-	Field  string `json:"field"`
+	Field string `json:"field"`
+	// Name is the object the change is about when Field does not say, such as
+	// the snapshot a created or removed event's time belongs to.
+	Name   string `json:"name,omitempty"`
 	Before string `json:"before,omitempty"`
 	After  string `json:"after,omitempty"`
 }

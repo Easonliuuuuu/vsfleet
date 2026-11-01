@@ -190,7 +190,11 @@ func fieldChangeLines(fields []assessment.FieldChange, minLabel int) []string {
 func fieldChangeSummary(fields []assessment.FieldChange) string {
 	parts := make([]string, len(fields))
 	for i, f := range fields {
-		parts[i] = fieldLabel(f.Field) + ":" + historyFieldValue(f.Field, f.Before) + "→" + historyFieldValue(f.Field, f.After)
+		label := fieldLabel(f.Field)
+		if f.Name != "" {
+			label += " " + f.Name
+		}
+		parts[i] = label + ":" + historyFieldValue(f.Field, f.Before) + "→" + historyFieldValue(f.Field, f.After)
 	}
 	return strings.Join(parts, " ")
 }

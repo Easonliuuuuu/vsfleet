@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -158,6 +159,66 @@ func TestRepeatImportWarnsButStillImportsAndCanBeSilenced(t *testing.T) {
 	list, _, _ := runCLI(t, dbPath, "capture", "list")
 	if strings.Count(list, "rvtools-import") != 3 {
 		t.Errorf("want three runs after three imports:\n%s", list)
+	}
+}
+
+// Issue #523: a workbook read without its collector's zone shifts every snapshot
+// by that zone, and only a live capture of the same snapshots can show it.
+func TestImportWarnsWhenSnapshotTimesLookLocalToTheCollector(t *testing.T) {
+	created := time.Date(2026, 9, 27, 16, 29, 35, 0, time.UTC)
+	const warning = "look local to the collector"
+	for _, tc := range []struct {
+		name     string
+		live     bool
+		shifts   []time.Duration // of each workbook snapshot, from what vCenter reported
+		flags    []string
+		wantWarn string
+	}{
+		{name: "every shared snapshot is a zone away", live: true, shifts: []time.Duration{-7 * time.Hour, -7 * time.Hour}, wantWarn: "differ by 7h from capture 1 for every snapshot"},
+		{name: "a zone that is not a whole number of hours", live: true, shifts: []time.Duration{5*time.Hour + 45*time.Minute}, wantWarn: "differ by 5h45m from"},
+		{name: "a daylight-saving change between snapshots", live: true, shifts: []time.Duration{-7 * time.Hour, -8 * time.Hour}, wantWarn: "differ by 7h or 8h"},
+		{name: "the times agree", live: true, shifts: []time.Duration{0, 0}},
+		{name: "one snapshot agrees", live: true, shifts: []time.Duration{-7 * time.Hour, 0}},
+		{name: "a difference no zone explains", live: true, shifts: []time.Duration{-7*time.Hour - 3*time.Minute}},
+		{name: "the zone was given", live: true, shifts: []time.Duration{-7 * time.Hour}, flags: []string{"--timezone", "UTC"}},
+		{name: "no live capture to compare with", shifts: []time.Duration{-7 * time.Hour}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			liveVM := vsphere.VM{ID: "vm-1", Name: "app", InstanceUUID: "instance-1"}
+			workbookSnapshots := make([]vsphere.VMSnapshot, 0, len(tc.shifts))
+			for i, shift := range tc.shifts {
+				name := "snap-" + strconv.Itoa(i)
+				liveVM.Snapshots = append(liveVM.Snapshots, vsphere.VMSnapshot{ID: name, Name: name, CreateTime: created})
+				workbookSnapshots = append(workbookSnapshots, vsphere.VMSnapshot{ID: name, Name: name, CreateTime: created.Add(shift)})
+			}
+			dbPath := filepath.Join(t.TempDir(), "history.db")
+			if tc.live {
+				seedRun(t, dbPath, created.Add(time.Hour), "", assessment.ContextResult{
+					Name: "prod", VCenterID: "vc-1", Status: "success",
+					VMs: []assessment.Observation{{VCenterID: "vc-1", Context: "prod", VM: liveVM}},
+					Collections: collections(
+						assessment.CollectionResult{Kind: "vm", Status: "success", ItemCount: 1},
+						assessment.CollectionResult{Kind: "snapshot", Status: "success", ItemCount: len(tc.shifts)},
+					),
+				})
+			}
+			workbook := writeImportWorkbook(t, func(data *assessment.ExportData) {
+				data.VMs[0].Observation.VM.InstanceUUID = "instance-1"
+				data.VMs[0].Observation.VM.Snapshots = workbookSnapshots
+				data.VMs[0].Snapshots = workbookSnapshots
+			})
+			args := append([]string{"capture", "import", "rvtools", workbook}, tc.flags...)
+			_, stderr, err := runCLI(t, dbPath, args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.wantWarn == "" && strings.Contains(stderr, warning) {
+				t.Errorf("stderr = %q, want no warning", stderr)
+			}
+			if tc.wantWarn != "" && (!strings.Contains(stderr, warning) || !strings.Contains(stderr, tc.wantWarn)) {
+				t.Errorf("stderr = %q, want %q", stderr, tc.wantWarn)
+			}
+		})
 	}
 }
 

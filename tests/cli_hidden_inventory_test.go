@@ -10,6 +10,7 @@ import (
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/object"
 	"github.com/vmware/govmomi/simulator"
+	"github.com/vmware/govmomi/vim25/types"
 )
 
 // Issue #528: a live listing that VMs contradict reports the gap instead of
@@ -31,7 +32,7 @@ func TestGetReportsInventoryVMsUseThatWasNotReturned(t *testing.T) {
 		vc := startVCenter(t, model)
 		r := newRunner(t)
 		r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
-		for _, kind := range []string{"networks", "dvswitches", "dvportgroups"} {
+		for _, kind := range []string{"networks", "dvswitches", "dvportgroups", "hosts", "pnics"} {
 			_, stderr, err := r.run("", "get", kind)
 			if err != nil || strings.Contains(stderr, hidden) {
 				t.Errorf("get %s: err = %v, stderr = %q; want no warning", kind, err, stderr)
@@ -66,6 +67,60 @@ func TestGetReportsInventoryVMsUseThatWasNotReturned(t *testing.T) {
 			}
 		}
 	})
+}
+
+// Issue #533: a live host listing is checked as a capture's is. vcsim enforces
+// no permissions, so each case edits what the hidden host would leave behind.
+func TestGetReportsHostsTheInventoryCountsThatWereNotReturned(t *testing.T) {
+	const hidden = "possible permission-hidden inventory: "
+	for _, tc := range []struct {
+		name   string
+		hide   func(*simulator.Registry)
+		reason string
+	}{
+		{
+			name: "a cluster counts more hosts than were returned",
+			hide: func(m *simulator.Registry) {
+				cluster := m.Any("ClusterComputeResource").(*simulator.ClusterComputeResource)
+				cluster.Summary.GetComputeResourceSummary().NumHosts++
+			},
+			reason: `cluster "DC0_C0" has 2 host(s) but only 1 were returned`,
+		},
+		{
+			name: "a powered-on VM runs on a host that was not returned",
+			hide: func(m *simulator.Registry) {
+				vm := m.Any("VirtualMachine").(*simulator.VirtualMachine)
+				vm.Runtime.Host = &types.ManagedObjectReference{Type: "HostSystem", Value: "host-hidden"}
+			},
+			reason: "reports no host",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("VSFLEET_E2E_PASSWORD", testPassword)
+			vc := startVCenter(t, func(m *simulator.Model) {
+				m.Datacenter = 1
+				m.Host = 0
+				m.Cluster = 1
+				m.ClusterHost = 1
+				m.Machine = 1
+			})
+			tc.hide(vc.Service.Context.Map)
+			r := newRunner(t)
+			r.addNonInteractiveContext("lab", vc, "env:VSFLEET_E2E_PASSWORD")
+			for _, kind := range []string{"hosts", "pnics"} {
+				stdout, stderr, err := r.run("", "get", kind)
+				if err != nil {
+					t.Fatalf("get %s: %v; the gap is a warning, not a failure", kind, err)
+				}
+				if !strings.Contains(stderr, hidden) || !strings.Contains(stderr, tc.reason) {
+					t.Errorf("get %s: stderr = %q; want %q", kind, stderr, tc.reason)
+				}
+				if !strings.Contains(stdout, "DC0_C0_H0") {
+					t.Errorf("get %s: stdout = %q; want the host that was returned", kind, stdout)
+				}
+			}
+		})
+	}
 }
 
 func destroyNetwork(t *testing.T, vc *vcenter, name string) {

@@ -121,7 +121,7 @@ func (g Graph) Topology(subject Subject) SubjectResult {
 		}
 		result.Ancestors = appendUniqueEdges(result.Ancestors, chain...)
 		for _, unresolved := range g.unresolved[node] {
-			result.Unresolved = appendUniqueString(result.Unresolved, unresolved)
+			result.Unresolved = appendUniqueString(result.Unresolved, unresolved.label)
 		}
 	}
 	checked = sortedContexts(checked)
@@ -142,6 +142,27 @@ func (g Graph) Dependencies(subject Subject, depth int) SubjectResult {
 // the subject. depth is capped at five; non-positive values mean one.
 func (g Graph) BlastRadius(subject Subject, depth int) SubjectResult {
 	return g.traverse(subject, depth, true)
+}
+
+// UnresolvedReferences returns what the subject itself refers to that the graph
+// could not place, by the kind of object referred to. Unlike the Unresolved list
+// of a traversal, it leaves out what the objects the subject uses refer to: a
+// host's unmapped LUN is not a gap in a VM stored elsewhere.
+func (g Graph) UnresolvedReferences(subject Subject) map[Kind][]string {
+	index, ok := g.subjectIndex(subject)
+	if !ok {
+		return nil
+	}
+	out := make(map[Kind][]string)
+	for _, node := range g.subjects[index].nodes {
+		for _, ref := range g.unresolved[node] {
+			out[ref.kind] = appendUniqueString(out[ref.kind], ref.label)
+		}
+	}
+	for kind := range out {
+		sort.Strings(out[kind])
+	}
+	return out
 }
 
 func (g Graph) traverse(subject Subject, depth int, reverse bool) SubjectResult {
@@ -182,14 +203,14 @@ func (g Graph) traverse(subject Subject, depth int, reverse bool) SubjectResult 
 				}
 			}
 			for _, unresolved := range g.unresolved[node] {
-				result.Unresolved = appendUniqueString(result.Unresolved, unresolved)
+				result.Unresolved = appendUniqueString(result.Unresolved, unresolved.label)
 			}
 		}
 		frontier = next
 	}
 	for node := range visited {
 		for _, unresolved := range g.unresolved[node] {
-			result.Unresolved = appendUniqueString(result.Unresolved, unresolved)
+			result.Unresolved = appendUniqueString(result.Unresolved, unresolved.label)
 		}
 	}
 	sort.Strings(result.Unresolved)

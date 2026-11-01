@@ -18,7 +18,7 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-// Import workflow regressions: `vsfleet import rvtools` must work offline,
+// Import workflow regressions: `vsfleet capture import rvtools` must work offline,
 // write nothing on --dry-run, warn on a repeated import, and leave imported
 // runs usable by the stored-evidence commands.
 

@@ -25,7 +25,7 @@ func TestAssessmentDeleteOutput(t *testing.T) {
 			}
 			stdout, _, err := runCLI(t, dbPath, tc.args...)
 			if err != nil {
-				t.Fatalf("assessment delete: %v", err)
+				t.Fatalf("capture delete: %v", err)
 			}
 			if tc.wantText != "" {
 				if stdout != tc.wantText {

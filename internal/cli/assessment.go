@@ -18,7 +18,7 @@ import (
 type policyExitError struct{ violations []assessment.PolicyViolation }
 
 func (e *policyExitError) Error() string {
-	return fmt.Sprintf("assessment diff policy failed (%d violation(s))", len(e.violations))
+	return fmt.Sprintf("capture diff policy failed (%d violation(s))", len(e.violations))
 }
 func (e *policyExitError) ExitCode() int { return 2 }
 

@@ -38,7 +38,7 @@ func inGroup(id string, cmd *cobra.Command) *cobra.Command {
 	return cmd
 }
 
-// topologyKinds are the subjects the topology, dependencies and blast-radius
+// topologyKinds are the subjects the analyze topology, deps and blast-radius
 // queries accept. Listing them in help and in ValidArgs is the difference
 // between "KIND NAME" being a shape and being an instruction.
 var topologyInventoryKinds = []vsphere.Kind{

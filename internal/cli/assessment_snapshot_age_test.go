@@ -33,7 +33,7 @@ func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 	dbPath := newSnapshotAgeTestHistoryDB(t)
 	stdout, _, err := runCLI(t, dbPath, "analyze", "snapshots")
 	if err != nil {
-		t.Fatalf("assessment snapshots: %v", err)
+		t.Fatalf("analyze snapshots: %v", err)
 	}
 	if !strings.Contains(stdout, "12w") || strings.Contains(stdout, "7776000") {
 		t.Fatalf("snapshot age should be compactly rendered as 12w, got:\n%s", stdout)
@@ -41,7 +41,7 @@ func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 
 	stdout, _, err = runCLI(t, dbPath, "analyze", "snapshots", "-o", "json")
 	if err != nil {
-		t.Fatalf("assessment snapshots JSON: %v", err)
+		t.Fatalf("analyze snapshots JSON: %v", err)
 	}
 	var ages []struct {
 		Age int64 `json:"age"`
@@ -87,7 +87,7 @@ func TestAssessmentSnapshotTrendOldestUsesCompactAge(t *testing.T) {
 	dbPath := newSnapshotAgeTestHistoryDB(t)
 	stdout, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--trend")
 	if err != nil {
-		t.Fatalf("assessment snapshot trend: %v", err)
+		t.Fatalf("analyze snapshots --trend: %v", err)
 	}
 	if !strings.Contains(stdout, "12w") || strings.Contains(stdout, "7776000") {
 		t.Fatalf("snapshot trend oldest age should be compactly rendered as 12w, got:\n%s", stdout)

@@ -9,7 +9,7 @@ import (
 )
 
 // The license worksheets exist only in an export of a run that asked for
-// license collection (assessment run --include-licenses). A run that did not
+// license collection (capture run --include-licenses). A run that did not
 // has no vLicense sheet and no license coverage row: the absence is the "not
 // collected" statement, and an empty vLicense sheet is never written for a run
 // that did not look. When a run did look, vsfleetCoverage says whether each

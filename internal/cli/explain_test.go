@@ -160,6 +160,7 @@ func TestExplainKind(t *testing.T) {
 		want    []string
 		wantErr string
 	}{
+		{name: "license collection command", args: []string{"rvtools.vLicense", "-o", "json"}, want: []string{"vsfleet capture run --include-licenses"}},
 		{name: "kind by short name", args: []string{"ds"}, want: []string{"KIND:", "datastore", "vsfleet get datastores", "vDatastore", "Capacity MiB", "vsfleet describe datastore NAME"}},
 		{name: "subresource has no describe", args: []string{"hba"}, want: []string{"--host HOST", "vHBA"}},
 		{name: "field across worksheets", args: []string{"vm.annotation"}, want: []string{"FIELD:", "RVTools vInfo:", "RVTools vDisk:"}},

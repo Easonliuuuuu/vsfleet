@@ -90,10 +90,12 @@ nothing prints `No resources found.` on stderr.
 
 vCenter leaves out what an account may not read instead of failing. So listing
 networks, distributed switches or their port groups also checks them against
-the networks your VMs use, and a VM using one that was not returned prints
-`possible permission-hidden inventory` on stderr in place of
-`No resources found.`, for live reads and `--run` alike. Any rows still print,
-and the exit code stays `0`, as when one of several contexts cannot answer.
+the networks your VMs use. Listing hosts, or a kind read from them such as
+`pnics`, checks them against each cluster's host count and the hosts your VMs
+run on. A contradiction prints `possible permission-hidden inventory` on stderr
+in place of `No resources found.`, for live reads and `--run` alike. Any rows
+still print, and the exit code stays `0`, as when one of several contexts
+cannot answer.
 
 ```sh
 vsfleet api-resources

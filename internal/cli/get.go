@@ -209,11 +209,13 @@ var listers = map[string]kindLister{
 	},
 	"host": lister[vsphere.Host]{
 		inventory: vsphere.KindHost,
-		fetch:     readAll("host", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) { return c.ListHosts(ctx) }, storedObjects[vsphere.Host](vsphere.KindHost)),
-		names:     func(h vsphere.Host) []string { return []string{h.Name} },
-		context:   func(h vsphere.Host) string { return h.Context },
-		metadata:  func(h vsphere.Host) vsphere.Metadata { return h.Metadata },
-		headers:   []string{"NAME", "CLUSTER", "STATE", "CPU", "RAM", "VMS", "VERSION"},
+		fetch: func(ctx context.Context, a *App, _ string) ([]vsphere.Host, []contextFailure, error) {
+			return readHosts(ctx, a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) { return c.ListHosts(ctx) })
+		},
+		names:    func(h vsphere.Host) []string { return []string{h.Name} },
+		context:  func(h vsphere.Host) string { return h.Context },
+		metadata: func(h vsphere.Host) vsphere.Metadata { return h.Metadata },
+		headers:  []string{"NAME", "CLUSTER", "STATE", "CPU", "RAM", "VMS", "VERSION"},
 		row: func(h vsphere.Host) []string {
 			state := h.ConnectionState
 			if h.InMaintenance {
@@ -269,7 +271,7 @@ var listers = map[string]kindLister{
 	"network": lister[vsphere.Network]{
 		inventory: vsphere.KindNetwork,
 		fetch: func(ctx context.Context, a *App, _ string) ([]vsphere.Network, []contextFailure, error) {
-			return readChecked(ctx, a, "network", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) }, storedObjects[vsphere.Network](vsphere.KindNetwork))
+			return readChecked(ctx, a, "network", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Network, error) { return c.ListNetworks(ctx) }, storedObjects[vsphere.Network](vsphere.KindNetwork), networkGap[vsphere.Network]("network"))
 		},
 		names:    func(n vsphere.Network) []string { return []string{n.Name} },
 		context:  func(n vsphere.Network) string { return n.Context },
@@ -357,6 +359,11 @@ func readAll[T any](kind string, live func(context.Context, *vsphere.Client) ([]
 
 func vmNames(v vsphere.VM) []string { return []string{v.Name, v.InstanceUUID, v.BIOSUUID} }
 
+// readHosts reads hosts for "get", and for the kinds flattened out of them.
+func readHosts(ctx context.Context, a *App, live func(context.Context, *vsphere.Client) ([]vsphere.Host, error)) ([]vsphere.Host, []contextFailure, error) {
+	return readChecked(ctx, a, "host", live, storedObjects[vsphere.Host](vsphere.KindHost), hostGap)
+}
+
 // hostItem is one piece of per-host evidence with the host it lives on.
 type hostItem[T any] struct {
 	host vsphere.Host
@@ -371,9 +378,9 @@ func hostItemLister[T any](headers []string, extract func(vsphere.Host) []T, nam
 	return lister[hostItem[T]]{
 		scopeFlag: "host",
 		fetch: func(ctx context.Context, a *App, hostName string) ([]hostItem[T], []contextFailure, error) {
-			hosts, failures, err := read(ctx, a, "host", func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) {
+			hosts, failures, err := readHosts(ctx, a, func(ctx context.Context, c *vsphere.Client) ([]vsphere.Host, error) {
 				return c.ListHostsWithConfig(ctx)
-			}, storedObjects[vsphere.Host](vsphere.KindHost))
+			})
 			if err != nil {
 				return nil, failures, err
 			}
@@ -474,7 +481,7 @@ type switchPortGroup struct {
 func readDVSwitches(ctx context.Context, a *App) ([]vsphere.DVSwitch, []contextFailure, error) {
 	return readChecked(ctx, a, "dvswitch", func(ctx context.Context, c *vsphere.Client) ([]vsphere.DVSwitch, error) {
 		return c.ListDVSwitches(ctx)
-	}, storedObjects[vsphere.DVSwitch](vsphere.KindDVSwitch))
+	}, storedObjects[vsphere.DVSwitch](vsphere.KindDVSwitch), networkGap[vsphere.DVSwitch]("dvswitch"))
 }
 
 func dvPortGroupLister() kindLister {

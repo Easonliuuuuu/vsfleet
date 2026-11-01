@@ -178,16 +178,24 @@ func HiddenInventory[T any](ctx context.Context, client *vsphere.Client, kind st
 	})
 }
 
-func hiddenInListing[T any](kind string, listed []T, vms []vsphere.VM, confirmDeleted func([]string) map[string]bool) string {
-	collection := CollectionResult{Kind: kind, Status: "success"}
-	for _, v := range listed {
-		payload, err := json.Marshal(v)
-		if err != nil {
-			return ""
-		}
-		collection.Resources = append(collection.Resources, ResourceObservation{Kind: kind, Payload: payload})
+// HiddenHosts runs the capture's contradiction check on one live host listing.
+// It returns why the listing looks incomplete given the clusters' host counts
+// and the hosts VMs run on, or "" when nothing contradicts it.
+func HiddenHosts(hosts []vsphere.Host, clusters []vsphere.Cluster, vms []vsphere.VM) string {
+	noNetworks := func([]string) map[string]bool { return nil }
+	return hiddenInListing("host", hosts, vms, noNetworks, clusters...)
+}
+
+func hiddenInListing[T any](kind string, listed []T, vms []vsphere.VM, confirmDeleted func([]string) map[string]bool, clusters ...vsphere.Cluster) string {
+	collection, err := listedCollection(kind, listed)
+	if err != nil {
+		return ""
 	}
-	r := ContextResult{Collections: []CollectionResult{collection}}
+	clusterCollection, err := listedCollection("cluster", clusters)
+	if err != nil {
+		return ""
+	}
+	r := ContextResult{Collections: []CollectionResult{collection, clusterCollection}}
 	for _, vm := range vms {
 		r.VMs = append(r.VMs, Observation{VM: vm})
 	}
@@ -196,6 +204,18 @@ func hiddenInListing[T any](kind string, listed []T, vms []vsphere.VM, confirmDe
 		return r.Collections[0].Error
 	}
 	return ""
+}
+
+func listedCollection[T any](kind string, listed []T) (CollectionResult, error) {
+	collection := CollectionResult{Kind: kind, Status: "success"}
+	for _, v := range listed {
+		payload, err := json.Marshal(v)
+		if err != nil {
+			return CollectionResult{}, fmt.Errorf("encode %s: %w", kind, err)
+		}
+		collection.Resources = append(collection.Resources, ResourceObservation{Kind: kind, Payload: payload})
+	}
+	return collection, nil
 }
 
 func decodeResources[T any](r *ContextResult, kind string) []T {

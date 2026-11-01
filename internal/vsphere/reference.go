@@ -59,6 +59,49 @@ func (c *Client) VMNetworkBackings(ctx context.Context) ([]VM, error) {
 	return out, nil
 }
 
+// HostReferences returns what a host listing is checked against, reading only
+// the properties that check needs: each compute resource with its host count,
+// and every VM and template with its power state and the name of its host. A
+// VM on a host the account cannot read has no host name, as in a VM listing.
+func (c *Client) HostReferences(ctx context.Context) ([]Cluster, []VM, error) {
+	root, _, err := resolveRoot(ctx, c)
+	if err != nil {
+		return nil, nil, err
+	}
+	var computes []mo.ComputeResource
+	if err := retrieve(ctx, c, root, computeResourceKinds, []string{"ComputeResource"}, []string{"name", "summary", "host"}, &computes); err != nil {
+		return nil, nil, err
+	}
+	var hosts []mo.HostSystem
+	if err := retrieve(ctx, c, root, []string{"HostSystem"}, []string{"HostSystem"}, []string{"name"}, &hosts); err != nil {
+		return nil, nil, err
+	}
+	var raw []mo.VirtualMachine
+	if err := retrieve(ctx, c, root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, []string{"name", "runtime.powerState", "runtime.host"}, &raw); err != nil {
+		return nil, nil, err
+	}
+	clusters := make([]Cluster, 0, len(computes))
+	for i := range computes {
+		m := &computes[i]
+		cl := Cluster{Name: m.Name, Standalone: m.Self.Type != "ClusterComputeResource", Hosts: len(m.Host)}
+		applyComputeSummary(&cl, m.Summary)
+		clusters = append(clusters, cl)
+	}
+	hostNames := make(map[types.ManagedObjectReference]string, len(hosts))
+	for i := range hosts {
+		hostNames[hosts[i].Self] = hosts[i].Name
+	}
+	vms := make([]VM, 0, len(raw))
+	for i := range raw {
+		vm := VM{Name: raw[i].Name, PowerState: string(raw[i].Runtime.PowerState)}
+		if ref := raw[i].Runtime.Host; ref != nil {
+			vm.Host = hostNames[*ref]
+		}
+		vms = append(vms, vm)
+	}
+	return clusters, vms, nil
+}
+
 func isNotFound(err error) bool {
 	switch vimFault(err).(type) {
 	case types.ManagedObjectNotFound, *types.ManagedObjectNotFound:

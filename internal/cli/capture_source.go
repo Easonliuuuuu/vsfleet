@@ -83,11 +83,11 @@ func read[T any](ctx context.Context, a *App, kind string, live func(context.Con
 	return items, unrecorded(a.capture, kind), nil
 }
 
-// readChecked is read for a kind VMs can contradict. A live read has no
-// capture's coverage to consult, so each context's listing is checked against
-// its VMs' network backings. A read of those that fails leaves nothing to
-// contradict the listing, as it does in a capture.
-func readChecked[T any](ctx context.Context, a *App, kind string, live func(context.Context, *vsphere.Client) ([]T, error), stored func(*assessment.ExportData) ([]T, error)) ([]T, []contextFailure, error) {
+// readChecked is read for a kind the rest of the inventory can contradict. A
+// live read has no capture's coverage to consult, so check compares each
+// context's listing with what references it, and returns why the listing looks
+// incomplete, or "".
+func readChecked[T any](ctx context.Context, a *App, kind string, live func(context.Context, *vsphere.Client) ([]T, error), stored func(*assessment.ExportData) ([]T, error), check func(context.Context, *vsphere.Client, []T) string) ([]T, []contextFailure, error) {
 	if a.capture != nil {
 		return read(ctx, a, kind, live, stored)
 	}
@@ -100,11 +100,7 @@ func readChecked[T any](ctx context.Context, a *App, kind string, live func(cont
 		if err != nil {
 			return nil, err
 		}
-		vms, err := c.VMNetworkBackings(ctx)
-		if err != nil {
-			return items, nil
-		}
-		if reason := assessment.HiddenInventory(ctx, c, kind, items, vms); reason != "" {
+		if reason := check(ctx, c, items); reason != "" {
 			mu.Lock()
 			defer mu.Unlock()
 			gaps = append(gaps, contextFailure{Context: c.Context.Name, Err: errors.New(reason), Gap: true})
@@ -113,6 +109,30 @@ func readChecked[T any](ctx context.Context, a *App, kind string, live func(cont
 	}, stored)
 	slices.SortFunc(gaps, func(x, y contextFailure) int { return strings.Compare(x.Context, y.Context) })
 	return items, append(failures, gaps...), err
+}
+
+// networkGap checks a network or switch listing against the VMs' network
+// backings. A read of those that fails leaves nothing to contradict the
+// listing, as it does in a capture.
+func networkGap[T any](kind string) func(context.Context, *vsphere.Client, []T) string {
+	return func(ctx context.Context, c *vsphere.Client, items []T) string {
+		vms, err := c.VMNetworkBackings(ctx)
+		if err != nil {
+			return ""
+		}
+		return assessment.HiddenInventory(ctx, c, kind, items, vms)
+	}
+}
+
+// hostGap checks a host listing against the clusters' host counts and the
+// hosts VMs run on. A read of those that fails leaves nothing to contradict
+// the listing, as it does in a capture.
+func hostGap(ctx context.Context, c *vsphere.Client, hosts []vsphere.Host) string {
+	clusters, vms, err := c.HostReferences(ctx)
+	if err != nil {
+		return ""
+	}
+	return assessment.HiddenHosts(hosts, clusters, vms)
 }
 
 // unrecorded lists the contexts whose capture holds no complete collection

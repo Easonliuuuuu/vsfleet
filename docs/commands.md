@@ -71,8 +71,8 @@ kind. `vsfleet api-resources` lists every kind, the way
 `kubectl api-resources` does. Each kind accepts its singular, plural and short
 names (`node` for `host`, `cl` for `cluster`, `ds` for `datastore`, `net` for
 `network`) everywhere a kind is taken: in `get`, `describe` and `explain`, in
-`--kind`, and as the `KIND` argument of `topology`, `dependencies` and
-`blast-radius`. `portgroup` means standard-switch port groups only
+`--kind`, and as the `KIND` argument of `analyze topology`, `analyze deps` and
+`analyze blast-radius`. `portgroup` means standard-switch port groups only
 (`vsfleet get portgroups`); use `network` for the vCenter network inventory.
 
 vsfleet never changes a vCenter, so kubectl's mutating verbs (`apply`,
@@ -691,7 +691,8 @@ Run 'vsfleet capture --help' for the available commands.
 ```
 
 Shell completion covers commands, flags, and the closed argument vocabularies
-such as the `KIND` accepted by `topology`, `dependencies`, and `blast-radius`:
+such as the `KIND` accepted by `analyze topology`, `analyze deps`, and
+`analyze blast-radius`:
 
 ```sh
 vsfleet completion bash --help   # and zsh, fish, powershell

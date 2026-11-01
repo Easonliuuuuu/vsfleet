@@ -40,24 +40,24 @@ func TestAllContextsOverridesContextForAssessmentReport(t *testing.T) {
 	}
 }
 
-// --- 2. `assessment snapshots --at` must validate the assessment ID ---
+// --- 2. `analyze snapshots --run` must validate the capture ID ---
 
-func TestAssessmentSnapshotsValidatesAtID(t *testing.T) {
+func TestAnalyzeSnapshotsValidatesRunID(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 
 	if _, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--run", "1", "-o", "json"); err != nil {
-		t.Fatalf("existing --at: %v", err)
+		t.Fatalf("existing --run: %v", err)
 	}
 	if _, _, err := runCLI(t, dbPath, "analyze", "snapshots", "-o", "json"); err != nil {
-		t.Fatalf("default --at (latest): %v", err)
+		t.Fatalf("default --run (latest): %v", err)
 	}
 	for _, tc := range []struct {
 		name string
-		at   string
+		run  string
 	}{
 		{"unknown positive ID", "999999"},
 	} {
-		_, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--run", tc.at, "-o", "json")
+		_, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--run", tc.run, "-o", "json")
 		if err == nil {
 			t.Fatalf("%s: unexpectedly succeeded", tc.name)
 		}

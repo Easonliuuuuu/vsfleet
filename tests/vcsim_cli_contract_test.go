@@ -5,6 +5,7 @@ package tests
 import (
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
@@ -47,5 +48,8 @@ func TestVCSIMCLIJSONAndExitContract(t *testing.T) {
 	_, _, policyErr := r.run("", "--db", historyDB, "-o", "json", "capture", "diff", "latest", "latest", "--require-complete")
 	if exitCode(policyErr) != 2 {
 		t.Fatalf("policy command exit=%d err=%v", exitCode(policyErr), policyErr)
+	}
+	if policyErr == nil || !strings.HasPrefix(policyErr.Error(), "capture diff policy failed (") {
+		t.Fatalf("policy failure must name the current command: %v", policyErr)
 	}
 }

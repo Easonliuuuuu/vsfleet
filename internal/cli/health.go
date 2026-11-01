@@ -106,6 +106,9 @@ language "vsfleet get" uses. --fail-on-findings exits 2 when a finding at
 			for _, rule := range report.Rules {
 				if rule.Status == "not-evaluated" || rule.Result == "unknown" {
 					reason := rule.Reason
+					if rule.Status == "not-evaluated" {
+						reason = "not evaluated; " + reason
+					}
 					if len(rule.Blind) > 0 {
 						reason = strings.TrimSpace(strings.TrimSuffix(reason, ".") + "; blind contexts: " + strings.Join(rule.Blind, ", "))
 					}
@@ -341,7 +344,7 @@ func filterHealthReport(report health.Report, minimum health.Severity, category 
 }
 
 func printHealthTable(a *App, report health.Report, wide bool) {
-	fmt.Fprintf(a.out(), "Assessment %d: %d finding(s) (%d info, %d warning, %d critical)\n", report.RunID, report.Counts.Total, report.Counts.Info, report.Counts.Warning, report.Counts.Critical)
+	fmt.Fprintf(a.out(), "Capture %d: %d finding(s) (%d info, %d warning, %d critical)\n", report.RunID, report.Counts.Total, report.Counts.Info, report.Counts.Warning, report.Counts.Critical)
 	headers := []string{"SEVERITY", "CATEGORY", "RULE", "OBJECT", "CONTEXT", "MESSAGE"}
 	if wide {
 		headers = append(headers, "RECOMMENDATION", "EVIDENCE", "TAGS", "CUSTOM ATTRIBUTES")

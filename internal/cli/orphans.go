@@ -177,11 +177,7 @@ func orphanEmptyMessage(coverage health.OrphanCoverage) string {
 	case coverage.Datastores == 0:
 		return "No datastore inventory in this assessment; orphan scan NOT EVALUATED."
 	case coverage.Browsed == 0:
-		remediation := coverage.BrowseRemediation()
-		if remediation == "a capture run with --browse-datastores" {
-			remediation = "capture with --browse-datastores"
-		}
-		return fmt.Sprintf("No datastore browse evidence; orphan scan NOT EVALUATED (%s).", remediation)
+		return fmt.Sprintf("No datastore browse evidence; orphan scan NOT EVALUATED (%s).", coverage.BrowseRemediation())
 	case !coverage.Complete():
 		return fmt.Sprintf("No orphan candidates in %d of %d browsed datastore(s); %d NOT EVALUATED (see warnings above).", coverage.Browsed, coverage.Datastores, len(coverage.Gaps))
 	default:

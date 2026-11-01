@@ -164,6 +164,11 @@ older than --older-than (30 days by default), in every capture of a window.
 			if a.json() {
 				return writeJSON(a.out(), ages)
 			}
+			run, err := s.GetRun(cmd.Context(), at)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(a.out(), "Capture %d (%s): ages as of the capture\n", run.ID, run.StartedAt.Local().Format("2006-01-02"))
 			t := newTable(a.out(), "VM", "CONTEXT", "SNAPSHOT", "CREATED", "AGE", "FIRST SEEN", "LAST SEEN")
 			for _, v := range ages {
 				t.row(v.VMName, v.Context, v.Name, v.CreateTime.Local().Format("2006-01-02"), humanize.Age(v.Age), v.FirstSeen.Local().Format("2006-01-02"), v.LastSeen.Local().Format("2006-01-02"))

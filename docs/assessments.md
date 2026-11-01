@@ -67,6 +67,9 @@ vsfleet analyze capacity --trend --kind all
 vsfleet describe capture latest
 ```
 
+`analyze snapshots` measures each age at the capture it reads, not today, and
+its first line names that capture and its date.
+
 Trends show estate totals, then context and resource detail, for a window of
 captures: from `--from`, or the start of history, up to `--run`, or the most
 recent. They use complete assessments by default; `--include-partial`

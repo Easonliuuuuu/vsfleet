@@ -155,6 +155,31 @@ func TestHealthCommandExitCodes(t *testing.T) {
 	}
 }
 
+// Issue #524: a rule's reason reads as an instruction, wherever the rule was
+// skipped from, and the summary says capture.
+func TestHealthCommandSaysWhatASkippedRuleNeeds(t *testing.T) {
+	unbrowsed := vsphere.Datastore{Location: vsphere.Location{Context: "prod"}, ID: "ds-1", Name: "datastore1", Accessible: true, Backing: vsphere.DatastoreBacking{VMFSUUID: "uuid-1"}}
+	for _, tc := range []struct {
+		name, schema, reason string
+	}{
+		{"capture without a browse", assessment.CurrentInventorySchemaVersion, "datastore-zombie-vmdk: not evaluated; capture with --browse-datastores\n"},
+		{"capture older than the rule", "3", "guest-disk-space-low: not evaluated; capture again to collect guest partition inventory\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stdout, stderr, err := runCLI(t, newOrphanCoverageHistoryDB(t, tc.schema, unbrowsed), "analyze", "health")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := glyphFail + " " + tc.reason; !strings.Contains(stderr, want) {
+				t.Errorf("stderr = %q, want %q", stderr, want)
+			}
+			if !strings.HasPrefix(stdout, "Capture 1: ") {
+				t.Errorf("stdout = %q, want the summary to open with the capture", stdout)
+			}
+		})
+	}
+}
+
 func TestHealthCommandJSONAndRuleListing(t *testing.T) {
 	db := newHealthTestHistoryDB(t, false)
 	stdout, stderr, err := runCLI(t, db, "analyze", "health", "--run", "latest", "-o", "json")

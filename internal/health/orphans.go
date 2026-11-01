@@ -122,6 +122,10 @@ func (g OrphanScanGap) PermissionDenied() bool {
 	return g.Status == OrphanScanDenied && g.Reason != vsphere.DatastoreInaccessibleMessage
 }
 
+// browseInstruction tells the operator how to get browse evidence a capture
+// never asked for.
+const browseInstruction = "capture with --browse-datastores"
+
 // BrowseRemediation says what is needed to get browse evidence when none of the
 // datastores was browsed. It separates a capture that never asked for a browse
 // (run with --browse-datastores) from one that asked and was refused (grant
@@ -158,7 +162,7 @@ func (c OrphanCoverage) BrowseRemediation() string {
 		parts = append(parts, part)
 	}
 	if len(parts) == 0 {
-		return "a capture run with --browse-datastores"
+		return browseInstruction
 	}
 	if notBrowsed > 0 {
 		parts = append(parts, fmt.Sprintf("%d not browsed", notBrowsed))

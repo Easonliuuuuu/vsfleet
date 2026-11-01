@@ -55,6 +55,34 @@ func TestAssessmentSnapshotAgeUsesCompactAgeAndKeepsJSON(t *testing.T) {
 	}
 }
 
+// Issue #524: an age is measured at the capture, not today, so the table says
+// which capture and when.
+func TestAnalyzeSnapshotsNamesTheCaptureAgesAreMeasuredAt(t *testing.T) {
+	captured := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	vm := vsphere.VM{
+		Location:  vsphere.Location{Context: "prod", Datacenter: "dc1", Path: "/dc1/vm/vm-snapshot"},
+		ID:        "vm-1",
+		Name:      "vm-snapshot",
+		Snapshots: []vsphere.VMSnapshot{{ID: "snap-1", Name: "snap-1", CreateTime: time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)}},
+	}
+	dbPath := seedHistory(t, captured, "", assessment.ContextResult{
+		Name: "prod", VCenterID: "vc-1", Status: "success",
+		VMs: []assessment.Observation{{VCenterID: "vc-1", Context: "prod", VM: vm}},
+		Collections: collections(
+			assessment.CollectionResult{Kind: "vm", Status: "success", ItemCount: 1},
+			assessment.CollectionResult{Kind: "snapshot", Status: "success", ItemCount: 1},
+		),
+	})
+	stdout, _, err := runCLI(t, dbPath, "analyze", "snapshots")
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := "Capture 1 (" + captured.Local().Format("2006-01-02") + "): ages as of the capture\n"
+	if !strings.HasPrefix(stdout, header) || !strings.Contains(stdout, " 2w ") {
+		t.Fatalf("want a 2w age under %q, got:\n%s", header, stdout)
+	}
+}
+
 func TestAssessmentSnapshotTrendOldestUsesCompactAge(t *testing.T) {
 	dbPath := newSnapshotAgeTestHistoryDB(t)
 	stdout, _, err := runCLI(t, dbPath, "analyze", "snapshots", "--trend")

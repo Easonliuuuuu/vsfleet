@@ -187,7 +187,7 @@ func Evaluate(data assessment.ExportData, opts Options) Report {
 		case rule.MinSchema > 0 && schema < rule.MinSchema:
 			status.Status = "not-evaluated"
 			status.Result = "unknown"
-			status.Reason = rule.Needs
+			status.Reason = "capture again to collect " + rule.Needs
 		default:
 			if rule.Skip != nil {
 				skip, reason := rule.Skip(in)

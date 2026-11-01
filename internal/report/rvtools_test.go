@@ -863,8 +863,8 @@ func TestWriteRVToolsHealthCoverageStates(t *testing.T) {
 	for _, tc := range []struct {
 		name, schema, vmStatus, wantStatus, wantMessage string
 	}{
-		{name: "successful capture without browse", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "success", wantStatus: "partial", wantMessage: "datastore-zombie-vmdk"},
-		{name: "schema gated", schema: "3", vmStatus: "success", wantStatus: "partial", wantMessage: "guest-disk-space-low"},
+		{name: "successful capture without browse", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "success", wantStatus: "partial", wantMessage: "datastore-zombie-vmdk not evaluated: capture with --browse-datastores"},
+		{name: "schema gated", schema: "3", vmStatus: "success", wantStatus: "partial", wantMessage: "capture again to collect guest partition inventory"},
 		{name: "VM collection failure", schema: assessment.CurrentInventorySchemaVersion, vmStatus: "failed", wantStatus: "failed", wantMessage: "permission denied"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

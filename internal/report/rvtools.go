@@ -1429,7 +1429,7 @@ func healthCoverage(data assessment.ExportData, c assessment.ContextRun, healthR
 				seenNeeds[rule.Reason] = true
 			}
 		}
-		message := fmt.Sprintf("evaluated %d of %d rules; %s need a capture with %s", evaluated, len(allRules), strings.Join(ids, ", "), strings.Join(needs, " and "))
+		message := fmt.Sprintf("evaluated %d of %d rules; %s not evaluated: %s", evaluated, len(allRules), strings.Join(ids, ", "), strings.Join(needs, " and "))
 		if len(unknown) > 0 {
 			message += fmt.Sprintf("; %d rule(s) also have blind coverage", len(unknown))
 		}

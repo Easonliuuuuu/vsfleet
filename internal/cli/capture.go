@@ -306,14 +306,19 @@ func newCaptureDiffCommand(a *App) *cobra.Command {
 Compare two stored captures and report what changed between them.
 
 BASE and TARGET are IDs or labels from "vsfleet capture list", latest,
-previous, or a date, the way --run takes them. With no arguments the two most
-recent captures are compared; with one, that capture is compared against the
-one before it.
+previous, or a date, the way --run takes them, and -n limits latest, previous
+and a date to the captures of those contexts. With no arguments the newest two
+captures that share a context are compared; with one, that capture is compared
+against the newest one before it that shares a context. Naming two captures
+compares them whatever they hold.
 
 Volatile runtime fields — power state, guest, IP, tools, storage — are left
 out unless --include-runtime is passed, so ordinary churn does not drown the
-structural changes.`), Example: `  # The two most recent captures
+structural changes.`), Example: `  # The two most recent captures that share a context
   vsfleet capture diff
+
+  # The two most recent captures of one context
+  vsfleet capture diff -n prod
 
   # A labelled baseline against the most recent capture
   vsfleet capture diff pre-migration latest
@@ -330,7 +335,7 @@ structural changes.`), Example: `  # The two most recent captures
 		if err != nil {
 			return err
 		}
-		base, target, err := resolveRunPair(cmd.Context(), s, args)
+		base, target, err := resolveRunPair(cmd.Context(), s, args, a.StoredContextNames())
 		if err != nil {
 			return err
 		}
@@ -486,25 +491,27 @@ func newCaptureUpdateCommand(a *App) *cobra.Command {
 	return cmd
 }
 
-// resolveRunPair picks the captures "capture diff" compares: the two most
-// recent with no arguments, the one named and the capture before it with
-// one, and the two named with two. An import and a live capture are paired
-// only when named, or when no other pair exists. A capture is selected the
-// way --run selects one, so a date works here too.
-func resolveRunPair(ctx context.Context, s *assessment.Store, args []string) (int64, int64, error) {
-	runs, err := s.Runs(ctx)
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(runs) < 2 {
-		return 0, 0, fmt.Errorf("need at least two captures to compare")
-	}
+// resolveRunPair picks the captures "capture diff" compares: the newest pair
+// that shares a context with no arguments, the one named and the capture before
+// it that shares a context with one, and the two named with two. An import and
+// a live capture are paired only when named, or when no other pair exists. A
+// capture is selected the way --run selects one, within contexts, so a date
+// works here too.
+func resolveRunPair(ctx context.Context, s *assessment.Store, args, contexts []string) (int64, int64, error) {
 	if len(args) == 0 {
-		return assessment.ComparableBefore(runs[1:], runs[0]).ID, runs[0].ID, nil
+		base, target, ok, err := s.NewestComparablePair(ctx, contexts)
+		if err != nil {
+			return 0, 0, err
+		}
+		if !ok {
+			return 0, 0, noComparablePair(ctx, s, contexts)
+		}
+		return base.ID, target.ID, nil
 	}
 	ids := make([]int64, len(args))
 	for i, arg := range args {
-		if ids[i], err = s.ResolveRun(ctx, arg); err != nil {
+		var err error
+		if ids[i], err = s.ResolveRunForContexts(ctx, arg, contexts); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -515,16 +522,29 @@ func resolveRunPair(ctx context.Context, s *assessment.Store, args []string) (in
 	if err != nil {
 		return 0, 0, err
 	}
-	var earlier []assessment.Run
-	for _, r := range runs {
-		if r.ID != target.ID && r.StartedAt.Before(target.StartedAt) {
-			earlier = append(earlier, r)
-		}
+	base, ok, err := s.ComparableBase(ctx, target, contexts)
+	if err != nil {
+		return 0, 0, err
 	}
-	if len(earlier) == 0 {
-		return 0, 0, fmt.Errorf("no capture before %s to compare it with", args[0])
+	if !ok {
+		return 0, 0, fmt.Errorf("no capture before %s shares a context with it to compare it with", args[0])
 	}
-	return assessment.ComparableBefore(earlier, target).ID, target.ID, nil
+	return base.ID, target.ID, nil
+}
+
+// noComparablePair says why "capture diff" has nothing to compare by default.
+func noComparablePair(ctx context.Context, s *assessment.Store, contexts []string) error {
+	if len(contexts) > 0 {
+		return fmt.Errorf("need at least two captures of %s to compare", strings.Join(contexts, ", "))
+	}
+	runs, err := s.Runs(ctx)
+	if err != nil {
+		return err
+	}
+	if len(runs) < 2 {
+		return fmt.Errorf("need at least two captures to compare")
+	}
+	return fmt.Errorf("no two captures share a context, so nothing can be compared; name two captures to compare them anyway")
 }
 
 func validPolicyRule(rule string) bool {

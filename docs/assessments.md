@@ -87,7 +87,13 @@ and match case-insensitively after trimming whitespace.
   inferred appeared/vanished changes.
 - `latest`, `previous` and a date pick among the captures that recorded every
   scoped context, so a newer capture of another vCenter does not hide them.
-  An ID or label names its capture regardless.
+  An ID or label names its capture regardless. `describe capture` and
+  `capture diff` resolve their arguments the same way.
+- `capture diff` with no capture, or one, only pairs captures that share a
+  context, because a pair that shares none compares nothing. With no capture it
+  takes the newest such pair, passing over a newer capture that has no earlier
+  capture to compare with, and fails if there is no such pair. Naming two
+  captures compares them regardless, with coverage warnings.
 - VM history judges a gap only by the captures of the scoped contexts. A
   capture through another context, even of the same vCenter, is not reported
   as `vanished`.

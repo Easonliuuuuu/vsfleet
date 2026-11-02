@@ -59,10 +59,10 @@ func (s *Store) LoadExportDataForContexts(ctx context.Context, runID int64, sele
 		return ExportData{}, err
 	}
 	if run.Status == RunRunning || run.FinishedAt.IsZero() {
-		return ExportData{}, fmt.Errorf("assessment %d is still running", run.ID)
+		return ExportData{}, fmt.Errorf("capture %d is still running", run.ID)
 	}
 	if run.Status != RunComplete && run.Status != RunPartial && run.Status != RunFailed {
-		return ExportData{}, fmt.Errorf("assessment %d has unsupported status %q", run.ID, run.Status)
+		return ExportData{}, fmt.Errorf("capture %d has unsupported status %q", run.ID, run.Status)
 	}
 
 	contexts, contextIDs, err := loadExportContexts(ctx, tx, runID)
@@ -166,7 +166,7 @@ func getRunTx(ctx context.Context, tx *sql.Tx, id int64) (Run, error) {
 	err := tx.QueryRowContext(ctx, `SELECT id,source,label,note,pinned,tool_version,inventory_schema_version,started_at,finished_at,status,requested_contexts,successful_contexts,requested_collections,successful_collections FROM runs WHERE id=?`, id).
 		Scan(&r.ID, &r.Source, &r.Label, &r.Note, &pinned, &r.ToolVersion, &r.InventorySchemaVersion, &start, &finish, &r.Status, &r.RequestedContexts, &r.SuccessfulContexts, &r.RequestedCollections, &r.SuccessfulCollections)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Run{}, fmt.Errorf("assessment %d not found", id)
+		return Run{}, fmt.Errorf("capture %d not found", id)
 	}
 	if err != nil {
 		return Run{}, err
@@ -233,7 +233,7 @@ func loadExportContexts(ctx context.Context, tx *sql.Tx, runID int64) ([]Context
 		}
 		var source SourceInfo
 		if err := json.Unmarshal([]byte(payload), &source); err != nil {
-			return nil, nil, fmt.Errorf("assessment %d context source has malformed payload: %w", runID, err)
+			return nil, nil, fmt.Errorf("capture %d context source has malformed payload: %w", runID, err)
 		}
 		if contextRun, ok := byID[contextID]; ok {
 			contextRun.Source = &source
@@ -273,7 +273,7 @@ func loadExportVMs(ctx context.Context, tx *sql.Tx, contextIDs map[int64]Context
 			var vm vsphere.VM
 			if err := json.Unmarshal(payload, &vm); err != nil {
 				rows.Close()
-				return nil, fmt.Errorf("assessment %d VM %q has malformed payload: %w", contextIDs[contextID].RunID, moref, err)
+				return nil, fmt.Errorf("capture %d VM %q has malformed payload: %w", contextIDs[contextID].RunID, moref, err)
 			}
 			vm.ID, vm.InstanceUUID, vm.BIOSUUID = moref, instanceUUID, biosUUID
 			snapshots, err := loadExportSnapshots(ctx, tx, observationID)
@@ -337,7 +337,7 @@ func loadExportResources(ctx context.Context, tx *sql.Tx, runID int64) ([]Resour
 		}
 		var raw map[string]any
 		if err := json.Unmarshal(payload, &raw); err != nil {
-			return nil, fmt.Errorf("assessment %d %s %q has malformed payload: %w", runID, kind, id, err)
+			return nil, fmt.Errorf("capture %d %s %q has malformed payload: %w", runID, kind, id, err)
 		}
 		_ = raw
 		out = append(out, ResourceObservation{VCenterID: vcenterID, Context: contextName, Kind: strings.ToLower(kind), ID: id, Name: name, Payload: append(json.RawMessage(nil), payload...), CPUCapacity: nullFloatPtr(cpuCap), CPUUsed: nullFloatPtr(cpuUsed), MemoryCapacity: nullFloatPtr(memCap), MemoryUsed: nullFloatPtr(memUsed), StorageCapacity: nullFloatPtr(storageCap), StorageFree: nullFloatPtr(storageFree)})

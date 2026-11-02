@@ -13,7 +13,7 @@ import (
 // whichever vCenter the operator has selected — is asking about a context
 // that is simply not captured yet, which is an empty result to explain rather
 // than a mistake to report.
-var ErrUnknownStoredContext = errors.New("unknown assessment context")
+var ErrUnknownStoredContext = errors.New("unknown capture context")
 
 // NormalizeContextSelectors canonicalizes stored-assessment selectors. Empty
 // selectors are rejected so a typo cannot silently widen a query.
@@ -23,7 +23,7 @@ func NormalizeContextSelectors(selectors []string) ([]string, error) {
 	for _, raw := range selectors {
 		name := strings.ToLower(strings.TrimSpace(raw))
 		if name == "" {
-			return nil, fmt.Errorf("assessment context selector must not be blank")
+			return nil, fmt.Errorf("capture context selector must not be blank")
 		}
 		if !seen[name] {
 			seen[name] = true

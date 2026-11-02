@@ -175,7 +175,7 @@ func normalizeContexts(contexts []string) ([]string, error) {
 	for _, raw := range contexts {
 		name := strings.ToLower(strings.TrimSpace(raw))
 		if name == "" {
-			return nil, fmt.Errorf("assessment context selector must not be blank")
+			return nil, fmt.Errorf("capture context selector must not be blank")
 		}
 		if !seen[name] {
 			seen[name] = true

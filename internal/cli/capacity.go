@@ -170,7 +170,7 @@ window, per host, cluster or datastore.`),
 		},
 	}
 	flags.trendFlags.add(cmd)
-	cmd.Flags().StringVar(&flags.since, "since", "", "include assessments from this time window (e.g. 30d)")
+	cmd.Flags().StringVar(&flags.since, "since", "", "include captures from this time window (e.g. 30d)")
 	cmd.Flags().StringSliceVar(&flags.datastores, "datastore", nil, "only show datastore name(s)")
 	cmd.Flags().Float64Var(&flags.minFree, "min-free", 10, "project against this minimum free-space percentage")
 	cmd.Flags().StringVar(&flags.minFreeBytes, "min-free-bytes", "", "project against this minimum free-space floor")

@@ -71,7 +71,7 @@ func (s *Service) Report(ctx context.Context, runID int64, olderThan time.Durati
 // by a VM observed in another context sharing the same backing store.
 func (s *Service) LatestExportDataForContext(ctx context.Context, contextName, vcenterID string) (ExportData, error) {
 	if s == nil || s.Store == nil {
-		return ExportData{}, fmt.Errorf("historical assessments are unavailable")
+		return ExportData{}, fmt.Errorf("stored captures are unavailable")
 	}
 	runs, err := s.Store.Runs(ctx)
 	if err != nil {
@@ -92,7 +92,7 @@ func (s *Service) LatestExportDataForContext(ctx context.Context, contextName, v
 			return s.Store.LoadExportData(ctx, run.ID)
 		}
 	}
-	return ExportData{}, fmt.Errorf("no stored assessment for context %q", contextName)
+	return ExportData{}, fmt.Errorf("no stored capture for context %q", contextName)
 }
 
 // CanCapture reports whether this service can create new assessments. A
@@ -105,7 +105,7 @@ func (s *Service) CanCapture() bool {
 
 func (s *Service) Capture(ctx context.Context, opts CaptureOptions) (Run, error) {
 	if !s.CanCapture() {
-		return Run{}, fmt.Errorf("assessment collector is not configured")
+		return Run{}, fmt.Errorf("capture collector is not configured")
 	}
 	return s.Collector.Capture(ctx, opts)
 }
@@ -135,7 +135,7 @@ type CaptureOptions struct {
 // partial-success behavior. Every context has its own timeout and commit.
 func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, error) {
 	if c.Store == nil || c.Manager == nil {
-		return Run{}, fmt.Errorf("assessment collector is not configured")
+		return Run{}, fmt.Errorf("capture collector is not configured")
 	}
 	now := time.Now
 	if opts.Now != nil {
@@ -188,7 +188,7 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 			result := c.captureContext(ctx, cc, opts.BrowseDatastores, opts.IncludeLicenses, opts.FileInventory)
 			if err := c.Store.SaveContextWithLease(ctx, run.ID, result, now(), lease); err != nil {
 				result.Status = "failed"
-				result.Error = fmt.Sprintf("save assessment: %v", err)
+				result.Error = fmt.Sprintf("save capture: %v", err)
 			}
 			if opts.Progress != nil {
 				p := ContextProgress{Context: cc.Name, Status: result.Status, VMs: len(result.VMs), Error: errorFrom(result.Error)}

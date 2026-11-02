@@ -243,7 +243,7 @@ func (e *evaluator) run(now time.Time) Result {
 		vmGaps = append(vmGaps, note)
 	}
 	if len(data.Contexts) == 0 {
-		vmGaps = append(vmGaps, "the assessment has no contexts in scope")
+		vmGaps = append(vmGaps, "the capture has no contexts in scope")
 	}
 	for _, name := range assessment.BlindContexts(data.Contexts, []string{"vm"}) {
 		vmGaps = append(vmGaps, fmt.Sprintf("context %s: %s", name, assessment.CoverageReason(data.Contexts, name, []string{"vm"})))
@@ -320,7 +320,7 @@ func (e *evaluator) run(now time.Time) Result {
 	res.Notes = append([]string{
 		"Allocation based: compares configured vCPU, memory and provisioned disk with the stated target. It does not use performance history and does not infer rightsizing from point-in-time samples.",
 		"Generic planning scenario: it makes no claim of compatibility with any named hypervisor or cloud platform.",
-		"Read-only and offline: computed from the stored assessment; vCenter and the assessment are never modified.",
+		"Read-only and offline: computed from the stored capture; vCenter and the capture are never modified.",
 	}, res.Notes...)
 	return res
 }

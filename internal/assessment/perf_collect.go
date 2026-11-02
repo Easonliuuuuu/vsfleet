@@ -33,7 +33,7 @@ type PerfCaptureOptions struct {
 // order of opts.Contexts.
 func (c *Collector) CapturePerf(ctx context.Context, opts PerfCaptureOptions) ([]perf.Window, error) {
 	if c.Store == nil || c.Manager == nil {
-		return nil, fmt.Errorf("assessment collector is not configured")
+		return nil, fmt.Errorf("capture collector is not configured")
 	}
 	if opts.Now == nil {
 		opts.Now = time.Now

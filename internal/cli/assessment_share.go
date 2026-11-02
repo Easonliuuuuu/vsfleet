@@ -114,7 +114,7 @@ func printSharePlan(a *App, plan report.SharePlan) error {
 		partial = ", PARTIAL"
 	}
 	fmt.Fprintf(out, "Profile %s: %s\n", plan.Profile, plan.Summary)
-	fmt.Fprintf(out, "Assessment %d (%s%s); %s\n", plan.RunID, plan.RunStatus, partial, mode)
+	fmt.Fprintf(out, "Capture %d (%s%s); %s\n", plan.RunID, plan.RunStatus, partial, mode)
 	fmt.Fprintf(out, "Contexts: %s\n", strings.Join(plan.Contexts, ", "))
 	for _, g := range plan.Gaps {
 		fmt.Fprintf(out, "  coverage gap: %s %s %s\n", g.Context, g.Kind, g.Status)

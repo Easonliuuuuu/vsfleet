@@ -115,7 +115,7 @@ func TestOperationLeaseExpiryReclaimsSidecar(t *testing.T) {
 	if err := s.ReleaseCaptureLease(context.Background(), first); err != nil {
 		t.Fatal(err)
 	}
-	if lease, err := s.AcquireOperationLease(context.Background(), now.Add(3*time.Minute), "third"); err == nil || !strings.Contains(err.Error(), "another assessment operation is already running") {
+	if lease, err := s.AcquireOperationLease(context.Background(), now.Add(3*time.Minute), "third"); err == nil || !strings.Contains(err.Error(), "another capture operation is already running") {
 		if err == nil {
 			_ = s.ReleaseCaptureLease(context.Background(), lease)
 		}

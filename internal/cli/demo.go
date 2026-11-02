@@ -39,7 +39,7 @@ and writes nothing back: it does not remember the last screen the way a real
 run does. The header says DEMO on every screen so a screenshot cannot be
 mistaken for a live estate.
 
-The History pane holds five seeded, in-memory assessments, dated May to
+The History pane holds five seeded, in-memory captures, dated May to
 September, so diffs, trends, churn and capacity have real history. The newest
 includes intentionally unhealthy orphaned-VM and zombie-VMDK evidence. Nothing
 is written to disk.`,

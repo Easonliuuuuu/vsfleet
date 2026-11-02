@@ -17,7 +17,7 @@ func printNetworkBlindness(out io.Writer, blind []network.Blindness) {
 
 func printNetworkComparison(out io.Writer, comparison network.Comparison) error {
 	f := newFields(out)
-	f.add("Assessment", strconv.FormatInt(comparison.RunID, 10))
+	f.add("Capture", strconv.FormatInt(comparison.RunID, 10))
 	f.add("Source", clusterLabel(comparison.Source))
 	f.add("Target", clusterLabel(comparison.Target))
 	f.add("Confidence", comparison.Confidence)

@@ -218,7 +218,7 @@ func verifySQLiteFile(path string) error {
 
 // ErrRestoreNeedsForce reports a restore that would replace existing history
 // without the caller confirming it.
-var ErrRestoreNeedsForce = errors.New("restoring over existing assessment history requires --force")
+var ErrRestoreNeedsForce = errors.New("restoring over existing capture history requires --force")
 
 // Restore replaces the history database with source. Without force it only
 // restores into a history database that holds no data yet.

@@ -33,7 +33,7 @@ type partialExitError struct {
 }
 
 func (e *partialExitError) Error() string {
-	return fmt.Sprintf("assessment %d is partial: %d of %d contexts returned inventory", e.runID, e.successful, e.total)
+	return fmt.Sprintf("capture %d is partial: %d of %d contexts returned inventory", e.runID, e.successful, e.total)
 }
 func (e *partialExitError) ExitCode() int { return 3 }
 

@@ -99,7 +99,7 @@ func TestChurnTrendRejectsUnknownAndBlankContexts(t *testing.T) {
 	s := newTrendTestStore(t)
 	saveTrendRun(t, s, day(1), trendCtx{name: "prod", vcenter: "vc-1", vms: []vsphere.VM{testVM("app", "vm-1", "iu-1", "bu-1", "esx-1")}})
 
-	if _, err := s.ChurnTrend(context.Background(), TrendOptions{Contexts: []string{"ghost"}}); err == nil || !strings.Contains(err.Error(), "unknown assessment context") {
+	if _, err := s.ChurnTrend(context.Background(), TrendOptions{Contexts: []string{"ghost"}}); err == nil || !strings.Contains(err.Error(), "unknown capture context") {
 		t.Fatalf("unknown context error = %v", err)
 	}
 	// Case-insensitive, whitespace-trimmed match must succeed.
@@ -119,7 +119,7 @@ func TestTrendContextAbsentFromEligibleWindowIsError(t *testing.T) {
 
 	// edge exists in history but not within the --from window.
 	_, err := s.ChurnTrend(context.Background(), TrendOptions{FromID: r2.ID, Contexts: []string{"edge"}})
-	if err == nil || !strings.Contains(err.Error(), "unknown assessment context") {
+	if err == nil || !strings.Contains(err.Error(), "unknown capture context") {
 		t.Fatalf("absent-from-window error = %v", err)
 	}
 	// Without the window it resolves.

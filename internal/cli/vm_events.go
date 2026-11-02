@@ -26,7 +26,7 @@ did them and when. --for takes KIND/NAME; vm is the kind supported today, and
 NAME may also be an instance or BIOS UUID.
 
 This reads vCenter live and is bounded by what vCenter still keeps, usually
-the last 30 days. For changes across your stored assessments, which go back as
+the last 30 days. For changes across your stored captures, which go back as
 far as your history does, use "vsfleet describe vm NAME --history". Routine events (power,
 guest and tools state, task progress) are hidden unless --all is given.
 

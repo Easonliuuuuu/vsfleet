@@ -212,9 +212,9 @@ func AssessDatastoreFile(data assessment.ExportData, current vsphere.Datastore, 
 	}
 	if len(stores) != 1 {
 		if len(stores) == 0 {
-			result.Reasons = []string{"datastore was not observed in the selected assessment"}
+			result.Reasons = []string{"datastore was not observed in the selected capture"}
 		} else {
-			result.Reasons = []string{"datastore identity is ambiguous in the selected assessment"}
+			result.Reasons = []string{"datastore identity is ambiguous in the selected capture"}
 		}
 		return result
 	}
@@ -231,7 +231,7 @@ func AssessDatastoreFile(data assessment.ExportData, current vsphere.Datastore, 
 		}
 	}
 	if !result.Observed {
-		result.Reasons = []string{"file was not observed in the selected assessment"}
+		result.Reasons = []string{"file was not observed in the selected capture"}
 		return result
 	}
 	result.CheckedContexts = checkedContexts(data, store)
@@ -511,7 +511,7 @@ func Orphans(data assessment.ExportData) OrphanReport {
 				}
 				if recentDisk(file.Modified, data.Run.FinishedAt) {
 					entry.Confidence = ConfidenceSuspected
-					entry.Reasons = appendUnique(entry.Reasons, "file was modified within 24 hours of the assessment")
+					entry.Reasons = appendUnique(entry.Reasons, "file was modified within 24 hours of the capture")
 				}
 			}
 			entries = append(entries, entry)
@@ -551,7 +551,7 @@ func orphanCoverage(data assessment.ExportData, stores []orphanDatastore) Orphan
 			}
 			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanFailed, Reason: nonempty(store.ds.BrowseError, "datastore browse failed")})
 		default:
-			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanNotBrowsed, Reason: "assessment was captured without --browse-datastores"})
+			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanNotBrowsed, Reason: "capture was taken without --browse-datastores"})
 		}
 	}
 	sort.SliceStable(coverage.Gaps, func(i, j int) bool {

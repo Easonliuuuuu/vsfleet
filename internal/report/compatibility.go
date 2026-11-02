@@ -413,7 +413,7 @@ var sharedColumns = map[string]ColumnSpec{
 	"Object type":    {Kind: KindText, Note: "What the finding is about: vm, host, datastore, cluster, dvswitch or another captured resource."},
 
 	// vsfleetCoverage.
-	"Run ID":      {Kind: KindInteger, Note: "The stored assessment this export was rendered from."},
+	"Run ID":      {Kind: KindInteger, Note: "The stored capture this export was rendered from."},
 	"Run label":   {Kind: KindText, Empty: "when the run was captured without --label"},
 	"Run started": {Kind: KindDate, Note: "Rendered as a date cell in XLSX and as RFC3339 UTC in CSV."},
 	"Run finished": {Kind: KindDate, Empty: "while a run is unfinished",
@@ -445,7 +445,7 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 			Note: "The VM's resource pool or vApp path without the datacenter's host folder, as RVTools writes it, for example /DC-Lab/Cluster-DR/Resources."},
 	},
 	metadataSheetName: {
-		"Run ID":          {Kind: KindInteger, Note: "The stored assessment the row was rendered from."},
+		"Run ID":          {Kind: KindInteger, Note: "The stored capture the row was rendered from."},
 		"Captured at":     {Kind: KindDate, Note: "When the row's context was captured, in UTC. Rendered as a date cell in XLSX and as RFC3339 UTC in CSV."},
 		"Context":         {Kind: KindText, Note: "The configured vsfleet context the object came from."},
 		"vCenter ID":      {Kind: KindText, Empty: "when the capture did not record one", Note: "vCenter instance UUID. With Kind and Object ID it identifies the object across captures; names do not."},

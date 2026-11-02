@@ -183,10 +183,10 @@ func WriteRVToolsWith(w io.Writer, data assessment.ExportData, healthReport heal
 		return err
 	}
 	return writeWorkbook(w, sheets, excelize.DocProperties{
-		Title:       "vsfleet RVTools assessment export",
-		Subject:     "Persisted vsfleet assessment",
+		Title:       "vsfleet RVTools capture export",
+		Subject:     "Stored vsfleet capture",
 		Creator:     "vsfleet",
-		Description: "Offline export of a persisted vsfleet assessment",
+		Description: "Offline export of a stored vsfleet capture",
 		Created:     data.Run.StartedAt.UTC().Format(time.RFC3339),
 		Modified:    data.Run.StartedAt.UTC().Format(time.RFC3339),
 	})

@@ -73,6 +73,106 @@ func TestCaptureDiffTakesADate(t *testing.T) {
 	}
 }
 
+// seedPerContextCaptures stores one capture per context, in order, so IDs count
+// from 1. Each context keeps its own vCenter.
+func seedPerContextCaptures(t *testing.T, contexts ...string) string {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "history.db")
+	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i, name := range contexts {
+		seedRun(t, dbPath, when.Add(time.Duration(i)*time.Hour), "", assessment.ContextResult{Name: name, VCenterID: "vc-" + name, Status: "success"})
+	}
+	return dbPath
+}
+
+// Issue #540: -n scopes latest, previous and a date in "describe capture".
+func TestDescribeCaptureScopesSelectorsToContexts(t *testing.T) {
+	dbPath := seedPerContextCaptures(t, "a", "b", "a", "b")
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "latest", args: []string{"describe", "capture", "latest", "-n", "a"}, want: "Capture 3 "},
+		{name: "previous", args: []string{"describe", "capture", "previous", "-n", "b"}, want: "Capture 2 "},
+		{name: "date", args: []string{"describe", "capture", "2026-01-01T02:30:00Z", "-n", "b"}, want: "Capture 2 "},
+		{name: "unscoped", args: []string{"describe", "capture", "latest"}, want: "Capture 4 "},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if out := mustRunCLI(t, dbPath, tc.args...); !strings.HasPrefix(out, tc.want) {
+				t.Fatalf("%v:\n%s\nwant it to start %q", tc.args, out, tc.want)
+			}
+		})
+	}
+}
+
+// Issue #540: "capture diff" compares captures of one context, so a pair with
+// nothing in common cannot read as no changes.
+func TestCaptureDiffPairsCapturesThatShareAContext(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		contexts  []string
+		args      []string
+		base, tgt int64
+	}{
+		{name: "scoped default", contexts: []string{"a", "b", "a", "b"}, args: []string{"-n", "a"}, base: 1, tgt: 3},
+		{name: "scoped selectors", contexts: []string{"a", "b", "a", "b"}, args: []string{"previous", "latest", "-n", "a"}, base: 1, tgt: 3},
+		{name: "scoped date", contexts: []string{"a", "b", "a", "b"}, args: []string{"2026-01-01T02:30:00Z", "latest", "-n", "b"}, base: 2, tgt: 4},
+		{name: "one selector scoped", contexts: []string{"a", "b", "a", "b"}, args: []string{"latest", "-n", "a"}, base: 1, tgt: 3},
+		{name: "default skips another context", contexts: []string{"a", "b", "c", "a"}, base: 1, tgt: 4},
+		{name: "default passes over a capture with no partner", contexts: []string{"a", "a", "b"}, base: 1, tgt: 2},
+		{name: "one named skips another context", contexts: []string{"a", "b", "a"}, args: []string{"3"}, base: 1, tgt: 3},
+		{name: "two named compare regardless", contexts: []string{"a", "b"}, args: []string{"1", "2"}, base: 1, tgt: 2},
+		{name: "ID names its capture outside the scope", contexts: []string{"a", "b", "a"}, args: []string{"2", "3", "-n", "a"}, base: 2, tgt: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dbPath := seedPerContextCaptures(t, tc.contexts...)
+			out := mustRunCLI(t, dbPath, append([]string{"-o", "json", "capture", "diff"}, tc.args...)...)
+			var d assessment.Diff
+			if err := json.Unmarshal([]byte(out), &d); err != nil {
+				t.Fatalf("%v\n%s", err, out)
+			}
+			if d.Base.ID != tc.base || d.Target.ID != tc.tgt {
+				t.Fatalf("compared %d and %d, want %d and %d", d.Base.ID, d.Target.ID, tc.base, tc.tgt)
+			}
+		})
+	}
+}
+
+func TestCaptureDiffRefusesAPairThatSharesNoContext(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		contexts []string
+		args     []string
+		want     string
+	}{
+		{name: "default", contexts: []string{"a", "b"}, want: "no two captures share a context"},
+		{name: "one named", contexts: []string{"a", "b"}, args: []string{"2"}, want: "no capture before 2 shares a context"},
+		{name: "one capture", contexts: []string{"a"}, want: "need at least two captures to compare"},
+		{name: "scoped to one capture", contexts: []string{"a", "b"}, args: []string{"-n", "a"}, want: "need at least two captures of a to compare"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dbPath := seedPerContextCaptures(t, tc.contexts...)
+			if out, _, err := runCLI(t, dbPath, append([]string{"capture", "diff"}, tc.args...)...); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("err = %v, want it to contain %q; output:\n%s", err, tc.want, out)
+			}
+		})
+	}
+}
+
+// The diff compares by vCenter, so renaming the context between two captures
+// leaves them comparable.
+func TestCaptureDiffPairsARenamedContext(t *testing.T) {
+	when := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	dbPath := seedHistory(t, when, "", assessment.ContextResult{Name: "old", VCenterID: "vc-1", Status: "success"})
+	seedRun(t, dbPath, when.Add(time.Hour), "", assessment.ContextResult{Name: "new", VCenterID: "vc-1", Status: "success"})
+	var d assessment.Diff
+	out := mustRunCLI(t, dbPath, "-o", "json", "capture", "diff")
+	if err := json.Unmarshal([]byte(out), &d); err != nil || d.Base.ID != 1 || d.Target.ID != 2 {
+		t.Fatalf("capture diff = %s (err %v), want 1 → 2", out, err)
+	}
+}
+
 func TestGetPerfCollections(t *testing.T) {
 	dbPath := newTopologyTestHistoryDB(t)
 	seedPerformance(t, dbPath)

@@ -92,8 +92,9 @@ type captureReport struct {
 const captureStaleAge = 30 * 24 * time.Hour
 
 // captureDescriber describes a stored capture. It is read from the history
-// database, never live and never through --run, and -n narrows the coverage
-// it reports.
+// database, never live and never through --run. -n limits latest, previous
+// and a date to the captures of those contexts, and narrows the coverage it
+// reports.
 type captureDescriber struct{}
 
 func (captureDescriber) resolve(ctx context.Context, a *App, names []string) ([]any, []contextFailure, error) {
@@ -106,7 +107,7 @@ func (captureDescriber) resolve(ctx context.Context, a *App, names []string) ([]
 	}
 	var found []any
 	for _, name := range names {
-		id, err := s.ResolveRun(ctx, name)
+		id, err := s.ResolveRunForContexts(ctx, name, a.StoredContextNames())
 		if err != nil {
 			return found, nil, err
 		}

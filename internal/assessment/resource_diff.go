@@ -67,7 +67,7 @@ func nullFloatPtr(v sql.NullFloat64) *float64 {
 	return &v.Float64
 }
 
-func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, includeRuntime bool, selected []string, d *Diff) error {
+func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, includeRuntime bool, selected []string, gaps *importGaps, d *Diff) error {
 	base, err := s.loadResources(ctx, baseID)
 	if err != nil {
 		return err
@@ -148,7 +148,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 			}
 		}
 		changes := compareResources(kind, flattenComparable(baseByVC, targetByVC), flattenComparable(targetByVC, baseByVC), includeRuntime)
-		d.Resources = append(d.Resources, changes...)
+		d.Resources = append(d.Resources, gaps.resourceChanges(changes)...)
 	}
 	sort.SliceStable(d.Resources, func(i, j int) bool {
 		if d.Resources[i].Kind != d.Resources[j].Kind {

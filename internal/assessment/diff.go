@@ -49,8 +49,9 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	filterContextVMs(bv, bc, selected)
 	filterContextVMs(tv, tc, selected)
 	d := Diff{SchemaVersion: 1, Base: base, Target: target}
-	if base.Imported() != target.Imported() {
-		d.Warnings = append(d.Warnings, fmt.Sprintf("comparing an RVTools import with a live capture (%d and %d): fields the workbook does not carry, or records differently, show as changes", baseID, targetID))
+	gaps := newImportGaps(base, target)
+	if gaps.active() {
+		d.Warnings = append(d.Warnings, fmt.Sprintf("comparing an RVTools import with a live capture (%d and %d): fields the workbook records differently show as changes", baseID, targetID))
 	}
 	baseByVC := make(map[string][]contextVMs)
 	targetByVC := make(map[string][]contextVMs)
@@ -102,7 +103,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 		}
 	}
 	changes, snapshots := compareVMs(allBase, allTarget, includeRuntime)
-	d.VMs = append(d.VMs, changes...)
+	d.VMs = append(d.VMs, gaps.vmChanges(changes)...)
 	d.Snapshots = append(d.Snapshots, snapshots...)
 	for vc := range baseByVC {
 		if _, ok := targetByVC[vc]; !ok {
@@ -121,8 +122,11 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 		}
 	}
 	d.Counts = countChanges(d.VMs, d.Snapshots)
-	if err := s.infrastructureDiff(ctx, baseID, targetID, includeRuntime, selected, &d); err != nil {
+	if err := s.infrastructureDiff(ctx, baseID, targetID, includeRuntime, selected, gaps, &d); err != nil {
 		return Diff{}, err
+	}
+	if msg := gaps.warning(); msg != "" {
+		d.Warnings = append(d.Warnings, msg)
 	}
 	sort.Slice(d.VMs, func(i, j int) bool { return strings.ToLower(d.VMs[i].Name) < strings.ToLower(d.VMs[j].Name) })
 	sort.Slice(d.Snapshots, func(i, j int) bool {
@@ -587,7 +591,7 @@ func migrationConfig(vm, other vsphere.VM) any {
 		ConfigurationAvailable: vm.ConfigurationAvailable, GuestID: vm.GuestID, Firmware: vm.Firmware, HardwareVersion: knownBoth(vm.HardwareVersion, other.HardwareVersion),
 		SecureBootEnabled: vm.SecureBootEnabled, CoresPerSocket: vm.CoresPerSocket, CPUSockets: vm.CPUSockets,
 		AutoCoresPerSocket: vm.AutoCoresPerSocket, CPUAllocation: allocationCompat(vm.CPUAllocation), MemoryAllocation: allocationCompat(vm.MemoryAllocation),
-		MemoryReservationLockedToMax: vm.MemoryReservationLockedToMax, ManagedBy: vm.ManagedBy, Disks: migrationDisks(vm.Disks, other.Disks), NICs: migrationNICs(vm.NICs), TPMs: vm.TPMs, PCIDevices: vm.PCIDevices, Floppies: vm.Floppies,
+		MemoryReservationLockedToMax: vm.MemoryReservationLockedToMax, ManagedBy: vm.ManagedBy, Disks: migrationDisks(vm.Disks, other.Disks), NICs: migrationNICs(vm.NICs, other.NICs), TPMs: vm.TPMs, PCIDevices: vm.PCIDevices, Floppies: vm.Floppies,
 	}
 	return value
 }
@@ -656,13 +660,37 @@ type migrationNIC struct {
 	UPTCompatible  *bool  `json:"upt_compatibility_enabled,omitempty"`
 }
 
-func migrationNICs(values []vsphere.VMNIC) []migrationNIC {
+func migrationNICs(values, other []vsphere.VMNIC) []migrationNIC {
 	out := make([]migrationNIC, 0, len(values))
-	for _, value := range values {
-		out = append(out, migrationNIC{Key: value.Key, Adapter: value.Adapter, MACAddress: value.MACAddress, MACAddressType: value.MACAddressType, UPTCompatible: value.UPTCompatible})
+	for i, value := range values {
+		// A MAC address's letter case is how a source writes it, not a change.
+		out = append(out, migrationNIC{Key: nicKey(value, i, other), Adapter: value.Adapter, MACAddress: strings.ToLower(value.MACAddress), MACAddressType: value.MACAddressType, UPTCompatible: value.UPTCompatible})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Key < out[j].Key })
 	return out
+}
+
+// nicKey returns the device key the NIC is compared under. An RVTools import
+// records no device key, so a NIC without one takes the key of the NIC in
+// other with the same MAC address, or else the same label. A NIC matched by
+// neither is keyed by its position, below zero so it never meets a real key.
+func nicKey(nic vsphere.VMNIC, index int, other []vsphere.VMNIC) int32 {
+	if nic.Key != 0 {
+		return nic.Key
+	}
+	for _, same := range []func(a, b vsphere.VMNIC) bool{
+		func(a, b vsphere.VMNIC) bool {
+			return a.MACAddress != "" && strings.EqualFold(a.MACAddress, b.MACAddress)
+		},
+		func(a, b vsphere.VMNIC) bool { return a.Label != "" && a.Label == b.Label },
+	} {
+		for _, o := range other {
+			if o.Key != 0 && same(nic, o) {
+				return o.Key
+			}
+		}
+	}
+	return int32(-index - 1)
 }
 
 // vmResourceAllocationCompat keeps the diff package independent of the

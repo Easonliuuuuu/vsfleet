@@ -1598,7 +1598,7 @@ func applySnapshotRow(t sheetTable, row []string, vm *vsphere.VM, timezone *time
 		// (unknown, not "not a parent" / "not current") and ID is synthesized
 		// from name and creation time — the strongest identity this profile
 		// has, not a real managed-object ID.
-		ID:          fmt.Sprintf("import:%s@%d", name, createTime.UnixNano()),
+		ID:          fmt.Sprintf("%s%s@%d", vsphere.ImportedSnapshotIDPrefix, name, createTime.UnixNano()),
 		Name:        name,
 		Description: description,
 		CreateTime:  createTime,

@@ -3,6 +3,7 @@ package assessment
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
@@ -122,5 +123,42 @@ func TestMigrationFieldChangesNameTheDiffSubField(t *testing.T) {
 	}
 	if got := migrationFieldChanges(vsphere.VM{Disks: []vsphere.VMDisk{{Key: 2000}}}, vsphere.VM{Disks: []vsphere.VMDisk{{Key: 2000, SharedBus: "noSharing"}}}); len(got) != 0 {
 		t.Fatalf("late field read as change: %+v", got)
+	}
+}
+
+func TestCompareSnapshotsMatchesAnImportByNameAndSecond(t *testing.T) {
+	created := time.Date(2026, 9, 27, 16, 29, 35, 619_000_000, time.UTC)
+	live := vsphere.VMSnapshot{ID: "snapshot-1017", Name: "snap-1", Description: "before patch", CreateTime: created, Current: true}
+	imported := vsphere.VMSnapshot{ID: "import:snap-1@1790526575000000000", Name: "snap-1", Description: "before patch", CreateTime: created.Truncate(time.Second)}
+	recreated := live
+	recreated.ID = "snapshot-2001"
+	later := imported
+	later.CreateTime = created.Add(7 * time.Hour)
+	described := imported
+	described.Description = "after patch"
+	for _, tc := range []struct {
+		name          string
+		before, after vsphere.VMSnapshot
+		want          []string
+	}{
+		{"live then import", live, imported, nil},
+		{"import then live", imported, live, nil},
+		{"import at another time", live, later, []string{"created", "removed"}},
+		{"import with another description", live, described, []string{"changed"}},
+		{"live snapshot recreated under the same name", live, recreated, []string{"created", "removed"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := stored("app", "vc-a", "vm-1", "instance-1")
+			base.snapshots = []vsphere.VMSnapshot{tc.before}
+			target := stored("app", "vc-a", "vm-1", "instance-1")
+			target.snapshots = []vsphere.VMSnapshot{tc.after}
+			var got []string
+			for _, c := range compareSnapshots(base, target) {
+				got = append(got, c.Kind)
+			}
+			if !reflect.DeepEqual(sortedCopy(got), tc.want) {
+				t.Fatalf("snapshot changes = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

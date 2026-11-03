@@ -1,0 +1,16 @@
+# Synthetic exceptions for the gate tests.
+[[exception]]
+id = "GO-2030-0001"
+artifact = "example.test/parser"
+versions = ["v1.2.3"]
+justification = "Synthetic: the fixed release breaks the import format; tracked upstream."
+owner = "maintainer"
+expires = 2030-02-01
+
+[[exception]]
+id = "CVE-2030-2002"
+artifact = "tzdata"
+versions = ["2030a-1"]
+justification = "Synthetic: no fixed tzdata package exists yet."
+owner = "maintainer"
+expires = 2030-01-01

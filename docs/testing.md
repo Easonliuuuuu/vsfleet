@@ -145,6 +145,11 @@ smoke-tests the binaries and image. Leave its six cross-compiles and two image
 builds to CI on a small workstation. The [release matrix](test-catalog.md#release-snapshot-and-pins)
 describes the checks.
 
+`release-snapshot` then scans every snapshot binary and image for known
+vulnerabilities, and the `Vulnerabilities` workflow scans the Go source on
+every pull request. [Vulnerability scanning](security-scanning.md) owns the
+policy, exceptions, and triage.
+
 ## What vcsim does not prove
 
 Simulators test process isolation, collection, identity joins, persistence,

@@ -262,7 +262,21 @@ func printPerformanceSummary(out io.Writer, rows []assessment.PerfSummary) {
 		for k, v := range r.Signals {
 			counts[perf.Signal(k)] = v
 		}
-		fmt.Fprintf(out, "  %s: window #%d %s, %s to %s, %d of %d VMs sampled; %s\n", r.Context, r.WindowID, r.Status,
-			r.WindowStart.Local().Format("2006-01-02"), r.WindowEnd.Local().Format("2006-01-02"), r.VMsSampled, r.VMsRequested, signalCounts(counts))
+		signals := signalCounts(counts)
+		if n := counts[perf.Signal(assessment.NotSampled)]; n > 0 {
+			signals = strings.TrimPrefix(signals+fmt.Sprintf(", %d not sampled", n), "-, ")
+		}
+		window := fmt.Sprintf("window #%d %s", r.WindowID, r.Status)
+		if r.CollectedBy != "" && !strings.EqualFold(r.CollectedBy, r.Context) {
+			window += " collected by " + r.CollectedBy
+		}
+		switch r.Timing {
+		case "after":
+			window += ", starting after this capture"
+		case "before":
+			window += ", ending before this capture"
+		}
+		fmt.Fprintf(out, "  %s: %s, %s to %s, %d of %d VMs sampled; %s\n", r.Context, window,
+			r.WindowStart.Local().Format("2006-01-02"), r.WindowEnd.Local().Format("2006-01-02"), r.VMsSampled, r.VMsRequested, signals)
 	}
 }

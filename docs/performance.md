@@ -95,8 +95,14 @@ Missing, denied, or sparse inputs produce `cpu-only`, `unavailable`, or
 
 ## In reports
 
-`describe capture` shows each context's newest usable collection and window
-dates, or `not collected`. The RVTools workbook's `vsfleetPerformance` sheet
+`describe capture` shows, for each context, the usable collection whose
+window covers the capture's time, preferring the context's own collection and
+then the newest. Without one, it shows the newest collection and says whether
+that window starts after the capture or ends before it. Contexts that reach
+the same vCenter share its collections, so the line names the context that
+collected the window when it is another one. VMs the collection did not sample
+are counted as `not sampled`, apart from the sizing signals. A context with no
+collection shows `not collected`. The RVTools workbook's `vsfleetPerformance` sheet
 has one row per VM per counter: window, interval, sample counts, average, peak,
 P95, status, reason, sizing signal, and source. Missing statistics are blank;
 a context without a collection gets one `not collected` row.

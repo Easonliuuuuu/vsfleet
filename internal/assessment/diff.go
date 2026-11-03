@@ -717,14 +717,15 @@ func compareSnapshots(a, b storedVM) []SnapshotChange {
 
 // importedCounterpart finds the unmatched snapshot in base that s is when
 // either ID was made up by an RVTools import, which never equals vCenter's.
-// The two match by name and creation time to the second, the precision
-// RVTools records. remaining holds the base snapshots not yet matched.
+// The two match by name and by creation times less than a second apart: a
+// workbook holds whole seconds, which RVTools truncates and vsfleet's export
+// rounds. remaining holds the base snapshots not yet matched.
 func importedCounterpart(base []vsphere.VMSnapshot, remaining map[string]vsphere.VMSnapshot, s vsphere.VMSnapshot) (vsphere.VMSnapshot, bool) {
 	for _, old := range base {
 		if _, ok := remaining[old.ID]; !ok || (!old.Imported() && !s.Imported()) {
 			continue
 		}
-		if old.Name == s.Name && old.CreateTime.Truncate(time.Second).Equal(s.CreateTime.Truncate(time.Second)) {
+		if gap := old.CreateTime.Sub(s.CreateTime).Abs(); old.Name == s.Name && gap < time.Second {
 			return old, true
 		}
 	}

@@ -130,6 +130,8 @@ func TestCompareSnapshotsMatchesAnImportByNameAndSecond(t *testing.T) {
 	created := time.Date(2026, 9, 27, 16, 29, 35, 619_000_000, time.UTC)
 	live := vsphere.VMSnapshot{ID: "snapshot-1017", Name: "snap-1", Description: "before patch", CreateTime: created, Current: true}
 	imported := vsphere.VMSnapshot{ID: "import:snap-1@1790526575000000000", Name: "snap-1", Description: "before patch", CreateTime: created.Truncate(time.Second)}
+	rounded := imported
+	rounded.ID, rounded.CreateTime = "import:snap-1@1790526576000000000", created.Round(time.Second)
 	recreated := live
 	recreated.ID = "snapshot-2001"
 	later := imported
@@ -143,6 +145,8 @@ func TestCompareSnapshotsMatchesAnImportByNameAndSecond(t *testing.T) {
 	}{
 		{"live then import", live, imported, nil},
 		{"import then live", imported, live, nil},
+		{"vsfleet's export, rounded up to the second", live, rounded, nil},
+		{"two imports a second apart", imported, rounded, []string{"created", "removed"}},
 		{"import at another time", live, later, []string{"created", "removed"}},
 		{"import with another description", live, described, []string{"changed"}},
 		{"live snapshot recreated under the same name", live, recreated, []string{"created", "removed"}},

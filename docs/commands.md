@@ -426,8 +426,8 @@ Port groups join by context, datacenter, and switch name only when unique.
 Imports are always `partial` because resource pools and networks are
 unavailable. Diff, VM history, findings, and topology use them with coverage
 warnings. A workbook carries no snapshot ID, so a diff matches an imported
-snapshot by VM, name and creation time to the second, and does not compare
-which snapshot is current. Trends require `--include-partial`:
+snapshot by VM, name and a creation time less than a second apart, and does
+not compare which snapshot is current. Trends require `--include-partial`:
 
 ```sh
 vsfleet analyze snapshots --trend --include-partial

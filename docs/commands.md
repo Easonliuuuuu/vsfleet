@@ -425,7 +425,10 @@ Port groups join by context, datacenter, and switch name only when unique.
 
 Imports are always `partial` because resource pools and networks are
 unavailable. Diff, VM history, findings, and topology use them with coverage
-warnings. Trends require `--include-partial`:
+warnings. A diff between an import and a live capture leaves out every field
+the import left empty and names them in a warning; fields both sides recorded
+are compared. NICs without a device key are matched by MAC address, then by
+label. Trends require `--include-partial`:
 
 ```sh
 vsfleet analyze snapshots --trend --include-partial

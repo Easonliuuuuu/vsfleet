@@ -640,11 +640,11 @@ func (s *Store) recoverOrphanedRuns(ctx context.Context) error {
 	// open for compatibility, while never touching a run protected by a live
 	// lease in the current schema.
 	now := time.Now().UTC().UnixMilli()
-	_, err := s.db.ExecContext(ctx, `UPDATE context_runs SET vm_status='failed', error=CASE WHEN error='' THEN 'assessment interrupted' ELSE error END, finished_at=? WHERE vm_status='running' AND NOT EXISTS (SELECT 1 FROM capture_lease WHERE capture_lease.expires_at>?)`, now, now)
+	_, err := s.db.ExecContext(ctx, `UPDATE context_runs SET vm_status='failed', error=CASE WHEN error='' THEN 'capture interrupted' ELSE error END, finished_at=? WHERE vm_status='running' AND NOT EXISTS (SELECT 1 FROM capture_lease WHERE capture_lease.expires_at>?)`, now, now)
 	if err != nil {
 		return err
 	}
-	_, _ = s.db.ExecContext(ctx, `UPDATE context_collections SET status='failed', error=CASE WHEN error='' THEN 'assessment interrupted' ELSE error END, finished_at=? WHERE status='running' AND NOT EXISTS (SELECT 1 FROM capture_lease WHERE capture_lease.expires_at>?)`, now, now)
+	_, _ = s.db.ExecContext(ctx, `UPDATE context_collections SET status='failed', error=CASE WHEN error='' THEN 'capture interrupted' ELSE error END, finished_at=? WHERE status='running' AND NOT EXISTS (SELECT 1 FROM capture_lease WHERE capture_lease.expires_at>?)`, now, now)
 	_, err = s.db.ExecContext(ctx, `UPDATE runs SET status='failed', finished_at=? WHERE status='running' AND NOT EXISTS (SELECT 1 FROM capture_lease WHERE capture_lease.expires_at>?)`, now, now)
 	return err
 }
@@ -694,7 +694,7 @@ func (s *Store) AcquireOperationLease(ctx context.Context, now time.Time, operat
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO capture_lease(id,token,run_id,operation,acquired_at,expires_at) VALUES(1,?,0,?,?,?)`, token, operation, nowMS, now.Add(leaseDuration).UTC().UnixMilli()); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "constraint") {
-			return CaptureLease{}, fmt.Errorf("another assessment capture is already running")
+			return CaptureLease{}, fmt.Errorf("another capture is already running")
 		}
 		return CaptureLease{}, err
 	}
@@ -712,7 +712,7 @@ func (s *Store) SetCaptureLeaseRun(ctx context.Context, lease CaptureLease, runI
 	}
 	n, _ := res.RowsAffected()
 	if n != 1 {
-		return fmt.Errorf("assessment capture lease is no longer valid")
+		return fmt.Errorf("capture lease is no longer valid")
 	}
 	return nil
 }
@@ -725,7 +725,7 @@ func (s *Store) RenewCaptureLease(ctx context.Context, lease CaptureLease, now t
 	}
 	n, _ := res.RowsAffected()
 	if n != 1 {
-		return CaptureLease{}, fmt.Errorf("assessment capture lease is no longer valid")
+		return CaptureLease{}, fmt.Errorf("capture lease is no longer valid")
 	}
 	lease.ExpiresAt = expires
 	if err := s.renewSidecarLease(lease.Token, expires); err != nil {
@@ -772,7 +772,7 @@ func (s *Store) acquireSidecarLease(token string, now, expires time.Time) error 
 			}
 		}
 	}
-	return fmt.Errorf("another assessment operation is already running")
+	return fmt.Errorf("another capture operation is already running")
 }
 
 func (s *Store) renewSidecarLease(token string, expires time.Time) error {
@@ -787,7 +787,7 @@ func (s *Store) renewSidecarLease(token string, expires time.Time) error {
 	var owner string
 	var expiry int64
 	if _, err := fmt.Sscanf(string(b), "%d %s", &expiry, &owner); err != nil || owner != token {
-		return fmt.Errorf("assessment operation sidecar lease is no longer valid")
+		return fmt.Errorf("capture operation sidecar lease is no longer valid")
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
@@ -828,7 +828,7 @@ func (s *Store) ValidateCaptureLease(ctx context.Context, lease CaptureLease) er
 		return err
 	}
 	if n != 1 {
-		return fmt.Errorf("assessment capture lease is no longer valid")
+		return fmt.Errorf("capture lease is no longer valid")
 	}
 	return nil
 }
@@ -1039,7 +1039,7 @@ func (s *Store) saveContext(ctx context.Context, runID int64, result ContextResu
 		var token string
 		if err := tx.QueryRowContext(ctx, `SELECT token FROM capture_lease WHERE id=1 AND expires_at>?`, time.Now().UTC().UnixMilli()).Scan(&token); err != nil || token != lease.Token {
 			_ = tx.Rollback()
-			return fmt.Errorf("assessment capture lease is no longer valid")
+			return fmt.Errorf("capture lease is no longer valid")
 		}
 	}
 	return tx.Commit()
@@ -1131,7 +1131,7 @@ func (s *Store) finishRun(ctx context.Context, runID int64, now time.Time, lease
 	if lease != nil {
 		n, _ := res.RowsAffected()
 		if n != 1 {
-			return Run{}, fmt.Errorf("assessment capture lease is no longer valid")
+			return Run{}, fmt.Errorf("capture lease is no longer valid")
 		}
 	}
 	return s.GetRun(ctx, runID)
@@ -1143,7 +1143,7 @@ func (s *Store) GetRun(ctx context.Context, id int64) (Run, error) {
 	var pinned int
 	err := s.db.QueryRowContext(ctx, `SELECT id,source,label,note,pinned,tool_version,inventory_schema_version,started_at,finished_at,status,requested_contexts,successful_contexts,requested_collections,successful_collections FROM runs WHERE id=?`, id).Scan(&r.ID, &r.Source, &r.Label, &r.Note, &pinned, &r.ToolVersion, &r.InventorySchemaVersion, &start, &finish, &r.Status, &r.RequestedContexts, &r.SuccessfulContexts, &r.RequestedCollections, &r.SuccessfulCollections)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Run{}, fmt.Errorf("assessment %d not found", id)
+		return Run{}, fmt.Errorf("capture %d not found", id)
 	}
 	if err != nil {
 		return Run{}, err
@@ -1389,11 +1389,11 @@ func (s *Store) runsRecording(ctx context.Context, contexts []string, all bool) 
 func (s *Store) DeleteRun(ctx context.Context, id int64) error {
 	var pinned int
 	if err := s.db.QueryRowContext(ctx, `SELECT pinned FROM runs WHERE id=?`, id).Scan(&pinned); errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("assessment %d not found", id)
+		return fmt.Errorf("capture %d not found", id)
 	} else if err != nil {
 		return err
 	} else if pinned != 0 {
-		return fmt.Errorf("assessment %d is pinned; unpin it before deletion", id)
+		return fmt.Errorf("capture %d is pinned; unpin it before deletion", id)
 	}
 	res, err := s.db.ExecContext(ctx, `DELETE FROM runs WHERE id=?`, id)
 	if err != nil {
@@ -1404,7 +1404,7 @@ func (s *Store) DeleteRun(ctx context.Context, id int64) error {
 		return err
 	}
 	if n == 0 {
-		return fmt.Errorf("assessment %d not found", id)
+		return fmt.Errorf("capture %d not found", id)
 	}
 	return nil
 }

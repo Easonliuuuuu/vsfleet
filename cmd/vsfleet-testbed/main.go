@@ -67,7 +67,7 @@ func main() {
 	if manifest, readErr := os.ReadFile(lab.ManifestPath); readErr == nil {
 		fmt.Fprintf(os.Stderr, "%s", manifest)
 	}
-	fmt.Fprintln(os.Stderr, "All listeners are loopback-only; press c to add a catalog context and H for assessment history.")
+	fmt.Fprintln(os.Stderr, "All listeners are loopback-only; press c to add a catalog context and H for capture history.")
 
 	backend := tui.NewBackend(cfg, resolver, manager, vsphere.ConnectOptions{Resolver: resolver, UserAgent: version.UserAgent()})
 	if _, err := tui.Run(ctx, backend, tui.Options{Current: "prod-vc", Credentials: coord, Assessment: service}); err != nil {

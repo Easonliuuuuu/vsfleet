@@ -33,7 +33,7 @@ func newAnalyzeSizingCommand(a *App) *cobra.Command {
 		Short: "Test whether stored VMs fit a proposed destination (allocation based)",
 		Long: strings.TrimSpace(`
 Evaluate a read-only, offline destination-capacity scenario against a stored
-assessment. The scenario states a target host count, usable cores and RAM per
+capture. The scenario states a target host count, usable cores and RAM per
 host, datastore capacity, oversubscription, a growth allowance and how many
 host failures to tolerate (N-1 by default). VMs are scoped with --context and
 --cluster.
@@ -49,8 +49,8 @@ Each dimension concludes fit, insufficient or unknown. A missing target input,
 incomplete source coverage (partial or failed collections) or ambiguous storage
 identity gives unknown, never fit. This is a generic planning scenario, not a
 claim of compatibility with any named platform. Nothing is changed in vCenter
-or in the stored assessment.`),
-		Example: `  # Can everything in the latest assessment fit on 4 hosts, tolerating one failure?
+or in the stored capture.`),
+		Example: `  # Can everything in the latest capture fit on 4 hosts, tolerating one failure?
   vsfleet analyze sizing --hosts 4 --host-cores 32 --host-ram-gib 512 \
     --datastore-capacity 40TiB --cpu-ratio 4
 

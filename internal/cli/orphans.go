@@ -175,7 +175,7 @@ func printOrphans(a *App, report health.OrphanReport) {
 func orphanEmptyMessage(coverage health.OrphanCoverage) string {
 	switch {
 	case coverage.Datastores == 0:
-		return "No datastore inventory in this assessment; orphan scan NOT EVALUATED."
+		return "No datastore inventory in this capture; orphan scan NOT EVALUATED."
 	case coverage.Browsed == 0:
 		return fmt.Sprintf("No datastore browse evidence; orphan scan NOT EVALUATED (%s).", coverage.BrowseRemediation())
 	case !coverage.Complete():

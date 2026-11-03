@@ -52,7 +52,7 @@ func TestVCSIMContextIsolation(t *testing.T) {
 		if err != nil {
 			errMsg = err.Error()
 		}
-		if !strings.Contains(errMsg, "unknown assessment context") && !strings.Contains(stderr, "unknown assessment context") {
+		if !strings.Contains(errMsg, "unknown capture context") && !strings.Contains(stderr, "unknown capture context") {
 			t.Fatalf("invalid selector %s: err=%v, stdout=%q, stderr=%q", direction, err, stdout, stderr)
 		}
 	}

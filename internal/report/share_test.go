@@ -283,7 +283,7 @@ func TestSharePartialAssessmentStaysVisiblyPartial(t *testing.T) {
 	for _, r := range rows {
 		text += strings.Join(r, " | ") + "\n"
 	}
-	for _, want := range []string{"Partial assessment | yes", "Coverage gap", "denied", "not anonymous", "not guaranteed to be accepted by RVTools"} {
+	for _, want := range []string{"Partial capture | yes", "Coverage gap", "denied", "not anonymous", "not guaranteed to be accepted by RVTools"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("manifest lacks %q:\n%s", want, text)
 		}
@@ -300,7 +300,7 @@ func TestOrdinaryExportIsUnchangedByShareCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	entries := zipEntries(t, buf.Bytes())
-	if !strings.Contains(entries["docProps/core.xml"], "vsfleet RVTools assessment export") || strings.Contains(entries["xl/workbook.xml"], shareSheetName) {
+	if !strings.Contains(entries["docProps/core.xml"], "vsfleet RVTools capture export") || strings.Contains(entries["xl/workbook.xml"], shareSheetName) {
 		t.Fatal("the ordinary export must not gain share metadata or sheets")
 	}
 }

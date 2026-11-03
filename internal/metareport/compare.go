@@ -105,13 +105,13 @@ func Compare(base, target Result) Comparison {
 		}
 	}
 	if unknown > 0 {
-		out.Warnings = append(out.Warnings, fmt.Sprintf("%d object(s) could not be compared because membership is unknown in one or both assessments", unknown))
+		out.Warnings = append(out.Warnings, fmt.Sprintf("%d object(s) could not be compared because membership is unknown in one or both captures", unknown))
 	}
 	for _, w := range base.Warnings {
-		out.Warnings = append(out.Warnings, fmt.Sprintf("base assessment %d: %s", base.RunID, w))
+		out.Warnings = append(out.Warnings, fmt.Sprintf("base capture %d: %s", base.RunID, w))
 	}
 	for _, w := range target.Warnings {
-		out.Warnings = append(out.Warnings, fmt.Sprintf("target assessment %d: %s", target.RunID, w))
+		out.Warnings = append(out.Warnings, fmt.Sprintf("target capture %d: %s", target.RunID, w))
 	}
 	out.Complete = unknown == 0 && base.Complete && target.Complete
 	return out
@@ -168,7 +168,7 @@ func change(kind, before, after string, m Member) Change {
 	if kind == ChangeUnknown {
 		switch {
 		case before == stateNotObserved || after == stateNotObserved:
-			c.Reason = "collection not observed in one assessment"
+			c.Reason = "collection not observed in one capture"
 		default:
 			c.Reason = "a filtered metadata source could not be read"
 		}

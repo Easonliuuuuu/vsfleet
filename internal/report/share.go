@@ -400,7 +400,7 @@ func shareWarnings(plan SharePlan) []string {
 	}
 	w = append(w, "Object counts, capacities, versions and timestamps are retained and can identify an environment. This reduced workbook is not guaranteed to be accepted by RVTools or any other importer.")
 	if plan.Partial {
-		w = append(w, "Partial assessment: run status "+plan.RunStatus+" with "+fmt.Sprint(len(plan.Gaps))+" coverage gap(s); absent rows do not mean absent objects. See "+coverageOrManifest(plan)+".")
+		w = append(w, "Partial capture: run status "+plan.RunStatus+" with "+fmt.Sprint(len(plan.Gaps))+" coverage gap(s); absent rows do not mean absent objects. See "+coverageOrManifest(plan)+".")
 	}
 	if plan.Linkage == linkageAcross {
 		w = append(w, "Pseudonyms are stable across exports made with this key, so a recipient holding several exports can correlate them.")
@@ -439,7 +439,7 @@ func (p *preparedShare) shareRows(tr func(kind, value string) string) [][]any {
 	rows = append(rows,
 		[]any{"Run ID", fmt.Sprint(plan.RunID)},
 		[]any{"Run status", plan.RunStatus},
-		[]any{"Partial assessment", yes(plan.Partial)},
+		[]any{"Partial capture", yes(plan.Partial)},
 		[]any{"Source workbook", "reduced or transformed vsfleet export; not the ordinary RVTools-compatible export"},
 	)
 	for _, c := range plan.Contexts {

@@ -303,13 +303,13 @@ func (c Compiled) Evaluate(data assessment.ExportData) Result {
 		r.Warnings = append(r.Warnings, fmt.Sprintf("%d object(s) have undetermined membership because a filtered metadata source could not be read", n))
 	}
 	if r.RunStatus != "" && r.RunStatus != string(assessment.RunComplete) {
-		r.Warnings = append(r.Warnings, fmt.Sprintf("assessment %d finished with status %s", r.RunID, r.RunStatus))
+		r.Warnings = append(r.Warnings, fmt.Sprintf("capture %d finished with status %s", r.RunID, r.RunStatus))
 	}
 	r.Complete = complete && !hasMissingContext(r.Warnings)
 	return r
 }
 
-const missingContextPrefix = "requested context not in assessment: "
+const missingContextPrefix = "requested context not in capture: "
 
 func hasMissingContext(warnings []string) bool {
 	for _, w := range warnings {

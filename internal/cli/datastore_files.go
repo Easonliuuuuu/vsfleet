@@ -376,7 +376,7 @@ func relationshipSummary(entry vsphere.DatastoreEntry, result datastoreBrowseRes
 		return "referenced by " + label
 	}
 	if !result.haveAssessment {
-		return "unknown — no stored assessment"
+		return "unknown — no stored capture"
 	}
 	evaluated := health.AssessDatastoreFile(result.data, result.datastore, entry.Path)
 	return orphanLabel(evaluated.Confidence)

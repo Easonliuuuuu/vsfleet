@@ -165,7 +165,7 @@ func TestBrowseRemediationDistinguishesRequestedFromDenied(t *testing.T) {
 		wantReason        string
 	}{
 		{"complete clean browse", "success", "", "", "", ""},
-		{"not requested", "", "", "capture with --browse-datastores", OrphanScanNotBrowsed, "assessment was captured without --browse-datastores"},
+		{"not requested", "", "", "capture with --browse-datastores", OrphanScanNotBrowsed, "capture was taken without --browse-datastores"},
 		{"denied", "denied", permission, "browse denied on 1/1 datastores: grant Datastore.Browse", OrphanScanDenied, permission},
 		{"legacy failed permission text", "failed", permission, "browse denied on 1/1 datastores: grant Datastore.Browse", OrphanScanDenied, permission},
 		{"other failure", "failed", "host unreachable", "browse failed on 1/1 datastores: host unreachable", OrphanScanFailed, "host unreachable"},

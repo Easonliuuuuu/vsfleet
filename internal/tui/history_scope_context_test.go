@@ -152,7 +152,7 @@ func TestHistoryAllContextsScopePoolsTheEstate(t *testing.T) {
 // rejects a selector it never recorded, which is right for a typed CLI flag
 // but is not a mistake here: the operator simply has not captured the vCenter
 // they are looking at, and the pane has to say that rather than show a raw
-// "unknown assessment context" error.
+// "unknown capture context" error.
 func TestHistoryExplainsAVCenterWithNothingStored(t *testing.T) {
 	store, err := assessment.Open(filepath.Join(t.TempDir(), "history.db"))
 	if err != nil {
@@ -187,7 +187,7 @@ func TestHistoryExplainsAVCenterWithNothingStored(t *testing.T) {
 	if m.historyErr == nil || !strings.Contains(m.historyErr.Error(), "customer-a") {
 		t.Fatalf("Changes did not explain the empty scope by name: %v", m.historyErr)
 	}
-	if strings.Contains(m.historyErr.Error(), "unknown assessment context") {
+	if strings.Contains(m.historyErr.Error(), "unknown capture context") {
 		t.Fatalf("Changes leaked the store's selector error: %v", m.historyErr)
 	}
 	trends := strings.Join(m.viewHistoryTrends(), "\n")

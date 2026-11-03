@@ -52,8 +52,8 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	if base.Imported() != target.Imported() {
 		d.Warnings = append(d.Warnings, fmt.Sprintf("comparing an RVTools import with a live capture (%d and %d): fields the workbook does not carry, or records differently, show as changes", baseID, targetID))
 	}
-	baseByVC := make(map[string][]storedVM)
-	targetByVC := make(map[string][]storedVM)
+	baseByVC := make(map[string][]contextVMs)
+	targetByVC := make(map[string][]contextVMs)
 	// vcNames resolves a VCenterID back to the context name an operator
 	// configured. Both sides feed it so a vCenter present in only one run
 	// still resolves by name rather than falling back to its raw ID.
@@ -71,7 +71,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	}
 	for id, c := range bc {
 		if c.VCenterID != "" && Successful(c.VMStatus) {
-			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], withSnapshotCoverage(bv[id], c, "baseline", &d, snapshotBlind[c.VCenterID])...)
+			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], contextVMs{c.Name, withSnapshotCoverage(bv[id], c, "baseline", &d, snapshotBlind[c.VCenterID])})
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
@@ -83,7 +83,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	}
 	for id, c := range tc {
 		if c.VCenterID != "" && Successful(c.VMStatus) {
-			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], withSnapshotCoverage(tv[id], c, "target", &d, snapshotBlind[c.VCenterID])...)
+			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], contextVMs{c.Name, withSnapshotCoverage(tv[id], c, "target", &d, snapshotBlind[c.VCenterID])})
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
 			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
@@ -95,9 +95,10 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 	}
 	var allBase, allTarget []storedVM
 	for vc, values := range baseByVC {
-		if _, ok := targetByVC[vc]; ok {
-			allBase = append(allBase, values...)
-			allTarget = append(allTarget, targetByVC[vc]...)
+		if other, ok := targetByVC[vc]; ok {
+			b, t := vcenterVMs(values, other, &d)
+			allBase = append(allBase, b...)
+			allTarget = append(allTarget, t...)
 		}
 	}
 	changes, snapshots := compareVMs(allBase, allTarget, includeRuntime)

@@ -85,6 +85,9 @@ and match case-insensitively after trimming whitespace.
 - Blank names or names absent from every selected run return exit code `1`.
 - A context on only one side of a diff produces a coverage warning, without
   inferred appeared/vanished changes.
+- A diff compares each VM once per vCenter, however many contexts reach that
+  vCenter. When both captures recorded some of the same contexts, only those
+  are compared; when they share none, as after a rename, all of them are.
 - `latest`, `previous` and a date pick among the captures that recorded every
   scoped context, so a newer capture of another vCenter does not hide them.
   An ID or label names its capture regardless. `describe capture` and

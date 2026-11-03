@@ -366,6 +366,9 @@ type VMUSB struct {
 
 // VMSnapshot is one read-only entry in a VM snapshot tree.
 type VMSnapshot struct {
+	// ID is vCenter's snapshot moref, or, for a snapshot read from an
+	// RVTools workbook, an identity made up from ImportedSnapshotIDPrefix,
+	// name and creation time.
 	ID          string    `json:"id"`
 	NumericID   int32     `json:"numeric_id"`
 	ParentID    string    `json:"parent_id,omitempty"`
@@ -376,6 +379,13 @@ type VMSnapshot struct {
 	Quiesced    bool      `json:"quiesced"`
 	Current     bool      `json:"current"`
 }
+
+// ImportedSnapshotIDPrefix starts the ID of a snapshot read from an RVTools
+// workbook, which carries no snapshot moref.
+const ImportedSnapshotIDPrefix = "import:"
+
+// Imported reports whether the snapshot's ID was made up by an import.
+func (s VMSnapshot) Imported() bool { return strings.HasPrefix(s.ID, ImportedSnapshotIDPrefix) }
 
 // Host is an ESXi host.
 type Host struct {

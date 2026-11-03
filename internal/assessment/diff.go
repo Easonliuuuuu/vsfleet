@@ -713,20 +713,52 @@ func compareSnapshots(a, b storedVM) []SnapshotChange {
 		byID[s.ID] = s
 	}
 	var out []SnapshotChange
+	changed := func(old, s vsphere.VMSnapshot) {
+		// An import does not record which snapshot is current, so Current is
+		// compared only between two snapshots that carry it.
+		current := old.Current != s.Current && !old.Imported() && !s.Imported()
+		if old.Name != s.Name || old.Description != s.Description || current {
+			out = append(out, SnapshotChange{Kind: "changed", VMName: b.observation.VM.Name, Context: b.observation.Context, Name: s.Name, Before: old.Name, After: s.Name, CreateTime: s.CreateTime.UTC().Format(time.RFC3339)})
+		}
+	}
+	var unmatched []vsphere.VMSnapshot
 	for _, s := range b.snapshots {
 		if old, ok := byID[s.ID]; ok {
 			delete(byID, s.ID)
-			if old.Name != s.Name || old.Description != s.Description || old.Current != s.Current {
-				out = append(out, SnapshotChange{Kind: "changed", VMName: b.observation.VM.Name, Context: b.observation.Context, Name: s.Name, Before: old.Name, After: s.Name, CreateTime: s.CreateTime.UTC().Format(time.RFC3339)})
-			}
+			changed(old, s)
 		} else {
-			out = append(out, SnapshotChange{Kind: "created", VMName: b.observation.VM.Name, Context: b.observation.Context, Name: s.Name, After: s.CreateTime.UTC().Format(time.RFC3339), CreateTime: s.CreateTime.UTC().Format(time.RFC3339)})
+			unmatched = append(unmatched, s)
 		}
+	}
+	for _, s := range unmatched {
+		if old, ok := importedCounterpart(a.snapshots, byID, s); ok {
+			delete(byID, old.ID)
+			changed(old, s)
+			continue
+		}
+		out = append(out, SnapshotChange{Kind: "created", VMName: b.observation.VM.Name, Context: b.observation.Context, Name: s.Name, After: s.CreateTime.UTC().Format(time.RFC3339), CreateTime: s.CreateTime.UTC().Format(time.RFC3339)})
 	}
 	for _, s := range byID {
 		out = append(out, SnapshotChange{Kind: "removed", VMName: a.observation.VM.Name, Context: a.observation.Context, Name: s.Name, Before: s.CreateTime.UTC().Format(time.RFC3339), CreateTime: s.CreateTime.UTC().Format(time.RFC3339)})
 	}
 	return out
+}
+
+// importedCounterpart finds the unmatched snapshot in base that s is when
+// either ID was made up by an RVTools import, which never equals vCenter's.
+// The two match by name and by creation times less than a second apart: a
+// workbook holds whole seconds, which RVTools truncates and vsfleet's export
+// rounds. remaining holds the base snapshots not yet matched.
+func importedCounterpart(base []vsphere.VMSnapshot, remaining map[string]vsphere.VMSnapshot, s vsphere.VMSnapshot) (vsphere.VMSnapshot, bool) {
+	for _, old := range base {
+		if _, ok := remaining[old.ID]; !ok || (!old.Imported() && !s.Imported()) {
+			continue
+		}
+		if gap := old.CreateTime.Sub(s.CreateTime).Abs(); old.Name == s.Name && gap < time.Second {
+			return old, true
+		}
+	}
+	return vsphere.VMSnapshot{}, false
 }
 
 func (s *Store) snapshotAges(ctx context.Context, runID int64, olderThan time.Duration) ([]SnapshotAge, error) {

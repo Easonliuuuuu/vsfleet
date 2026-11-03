@@ -110,18 +110,31 @@ package's `testdata/fuzz/<Target>/` so they become regression seeds. The
 ## Kubernetes end-to-end
 
 Create the kind cluster and load `vsfleet:ci-test` and
-`vsfleet-vcsim:ci-test` images first, as the `kubernetes-e2e` CI job does.
+`vsfleet-vcsim:ci-test` images first, as the Kubernetes deployment workflow does.
 The script assumes those prerequisites exist:
 
 ```sh
 scripts/test-kubernetes.sh
 ```
 
-The `kubernetes-e2e` CI job runs the shipped CronJob in kind against two vcsim
+The Kubernetes deployment workflow runs the shipped CronJob in kind against two vcsim
 Services. It checks ConfigMap/Secret mounts, PVC ownership, DNS, persistence,
 and partial-capture exits. See the [case matrix](test-catalog.md#kubernetes-end-to-end)
 and script for prerequisites. These checks validate container deployment with
 synthetic endpoints.
+
+The separate `kubernetes.yml` workflow runs weekly on Monday at 09:17
+Asia/Taipei (01:17 UTC), and on PRs and pushes to `main` that change container,
+deployment, fixture, or backend inputs. TUI-only changes skip it. Start a
+manual run from **Actions → Kubernetes deployment → Run workflow**, including
+before a release. Scheduled runs use the default branch; GitHub may delay them.
+
+The workflow pins kind, kubectl, and the Kubernetes node image digest. Update
+these together when upgrading the test cluster. A run has a 25-minute limit,
+with 12 minutes reserved for the workload script and failure artifacts retained
+for 14 days. The test creates Jobs from a suspended CronJob; it validates
+deployment rather than scheduled execution. Its hostPath fixture is manually
+owned by UID 65532, so it does not verify CSI volume ownership handling.
 
 ## Release checks
 

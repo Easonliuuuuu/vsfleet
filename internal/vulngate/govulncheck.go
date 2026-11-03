@@ -67,13 +67,20 @@ type reach struct {
 const (
 	levelModule = iota + 1
 	levelPackage
+	// levelUnverified is a binary-mode finding for an advisory that covers
+	// a whole package, in a binary without a symbol table (built with -s).
+	// govulncheck cannot tell whether the package is linked in, so it
+	// reports a wildcard such as "golang.org/x/crypto/openpgp/*" whether or
+	// not the package is present.
+	levelUnverified
 	levelSymbol
 )
 
 // ParseGovulncheck reads govulncheck -format json output. A finding blocks
 // when its trace reaches a vulnerable symbol: in source mode the program
 // calls it, in binary mode the linker kept it. Findings that only import the
-// package or require the module are reported without blocking.
+// package or require the module are reported without blocking, as are
+// wildcard findings in stripped binaries, which the source scan settles.
 func ParseGovulncheck(r io.Reader) (Scan, error) {
 	dec := json.NewDecoder(r)
 	var (
@@ -102,6 +109,8 @@ func ParseGovulncheck(r io.Reader) (Scan, error) {
 			frame := f.Trace[0]
 			level := levelModule
 			switch {
+			case strings.HasSuffix(frame.Function, "*"):
+				level = levelUnverified
 			case frame.Function != "":
 				level = levelSymbol
 			case frame.Package != "":
@@ -147,6 +156,8 @@ func ParseGovulncheck(r io.Reader) (Scan, error) {
 		case levelSymbol:
 			finding.Blocking = true
 			finding.Reason = b.frame.symbol() + " is reachable"
+		case levelUnverified:
+			finding.Reason = b.frame.Package + " may be linked; a stripped binary cannot show it, so the source scan decides"
 		case levelPackage:
 			finding.Reason = "package imported, vulnerable code not called"
 		default:

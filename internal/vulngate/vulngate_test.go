@@ -83,10 +83,10 @@ func TestParseFindings(t *testing.T) {
 			}, "\n"),
 		},
 		{
-			name:    "govulncheck clean binary scan",
+			name:    "govulncheck binary scan downgrades stripped-binary wildcards",
 			parse:   govulncheck,
-			fixture: "govulncheck-clean.json",
-			want:    "",
+			fixture: "govulncheck-binary.json",
+			want:    "GO-2030-0005 example.test/crypto@v0.5.0 info: example.test/crypto/legacy may be linked; a stripped binary cannot show it, so the source scan decides",
 		},
 		{
 			name:    "grype blocks only fixable High and Critical",
@@ -247,7 +247,7 @@ func TestWriteMarkdown(t *testing.T) {
 		fixture string
 	}{
 		{"govulncheck-source.md", govulncheck, "govulncheck-source.json"},
-		{"govulncheck-clean.md", govulncheck, "govulncheck-clean.json"},
+		{"govulncheck-binary.md", govulncheck, "govulncheck-binary.json"},
 		{"grype-image.md", grype, "grype-image.json"},
 	}
 	for _, tt := range tests {
@@ -267,7 +267,8 @@ func TestWriteMarkdown(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := buf.String(); got != string(want) {
+			// Windows checkouts may convert the golden to CRLF.
+			if got := buf.String(); got != strings.ReplaceAll(string(want), "\r\n", "\n") {
 				t.Errorf("summary mismatch; rerun with -update and review:\n%s", got)
 			}
 		})

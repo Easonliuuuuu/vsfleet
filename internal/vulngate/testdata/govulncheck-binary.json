@@ -1,0 +1,6 @@
+{"config": {"protocol_version": "v1.0.0", "scanner_name": "govulncheck", "scanner_version": "v1.9.0", "db": "https://vuln.go.dev", "db_last_modified": "2030-01-10T00:00:00Z", "scan_level": "symbol", "scan_mode": "binary"}}
+{"progress": {"message": "Scanning your binary for known vulnerabilities..."}}
+{"osv": {"id": "GO-2030-0005", "summary": "Synthetic advisory covering every symbol of an unmaintained package"}}
+{"finding": {"osv": "GO-2030-0005", "trace": [{"module": "example.test/crypto", "version": "v0.5.0"}]}}
+{"finding": {"osv": "GO-2030-0005", "trace": [{"module": "example.test/crypto", "version": "v0.5.0", "package": "example.test/crypto/legacy"}]}}
+{"finding": {"osv": "GO-2030-0005", "trace": [{"module": "example.test/crypto", "version": "v0.5.0", "package": "example.test/crypto/legacy", "function": "test/crypto/legacy/*", "receiver": "example"}]}}

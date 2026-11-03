@@ -34,7 +34,7 @@ the job summary.
 
 | Scanner | Fails the gate | Reported only |
 | --- | --- | --- |
-| govulncheck | A vulnerable symbol is reachable: the source calls it, or the binary contains it | The package is imported but the vulnerable code is not called, or the module is required but the package is not imported |
+| govulncheck | A vulnerable symbol is reachable: the source calls it, or the binary contains it | The package is imported but the vulnerable code is not called, the module is required but the package is not imported, or a stripped binary yields only a wildcard symbol |
 | grype | A High or Critical finding with a fixed version available | Medium, Low, Negligible, or Unknown severity; High or Critical with no fix yet |
 
 The gate also fails, whatever the findings, when:
@@ -46,6 +46,12 @@ The gate also fails, whatever the findings, when:
   Grype also refuses a database older than 120 hours itself;
 - an exception is missing a field, has expired, or expires more than 90 days
   ahead.
+
+Release binaries are built with `-s -w`, so they carry no symbol table. For
+an advisory that covers a whole package, govulncheck then reports a wildcard
+such as `golang.org/x/crypto/openpgp/*` whether or not the package is linked
+in. The gate reports those without blocking; the source scan of the same
+code decides whether the package is used.
 
 govulncheck owns Go reachability. Grype also matches the Go binary inside
 the image, without reachability, so a Go advisory can appear in both reports.

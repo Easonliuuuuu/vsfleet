@@ -26,14 +26,14 @@ func TestRunExitCodes(t *testing.T) {
 		want       int
 		wantStdout string
 	}{
-		{"clean scan passes", []string{"-format", "govulncheck", "-exceptions", noExceptions, fixtures + "/govulncheck-clean.json"}, now, 0, "passed"},
+		{"binary scan without blocking findings passes", []string{"-format", "govulncheck", "-exceptions", noExceptions, fixtures + "/govulncheck-binary.json"}, now, 0, "passed"},
 		{"reachable finding fails", []string{"-format", "govulncheck", "-exceptions", noExceptions, fixtures + "/govulncheck-source.json"}, now, 1, "Blocking findings"},
 		{"fixable critical fails", []string{"-format", "grype", "-exceptions", noExceptions, fixtures + "/grype-image.json"}, now, 1, "fixable Critical"},
-		{"expired exception fails a clean scan", []string{"-format", "govulncheck", "-exceptions", fixtures + "/exceptions.toml", fixtures + "/govulncheck-clean.json"}, now, 1, "expired on 2030-01-01"},
+		{"expired exception fails a clean scan", []string{"-format", "govulncheck", "-exceptions", fixtures + "/exceptions.toml", fixtures + "/govulncheck-binary.json"}, now, 1, "expired on 2030-01-01"},
 		{"default database age applies per scanner", []string{"-format", "grype", "-exceptions", noExceptions, fixtures + "/grype-image.json"}, now.Add(6 * 24 * time.Hour), 1, "limit 120h0m0s"},
 		{"database outage is not a clean scan", []string{"-format", "grype", "-exceptions", noExceptions, fixtures + "/grype-invalid-db.json"}, now, 2, "produced no usable report"},
 		{"missing report", []string{"-format", "grype", "-exceptions", noExceptions, filepath.Join(dir, "absent.json")}, now, 2, "produced no usable report"},
-		{"missing exception file", []string{"-format", "govulncheck", "-exceptions", filepath.Join(dir, "absent.toml"), fixtures + "/govulncheck-clean.json"}, now, 2, ""},
+		{"missing exception file", []string{"-format", "govulncheck", "-exceptions", filepath.Join(dir, "absent.toml"), fixtures + "/govulncheck-binary.json"}, now, 2, ""},
 		{"unknown format", []string{"-format", "trivy", fixtures + "/grype-image.json"}, now, 2, ""},
 		{"no report argument", []string{"-format", "grype"}, now, 2, ""},
 	}

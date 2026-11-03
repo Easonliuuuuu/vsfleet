@@ -1,2 +1,0 @@
-{"config": {"protocol_version": "v1.0.0", "scanner_name": "govulncheck", "scanner_version": "v1.9.0", "db": "https://vuln.go.dev", "db_last_modified": "2030-01-10T00:00:00Z", "scan_level": "symbol", "scan_mode": "binary"}}
-{"progress": {"message": "Scanning your binary for known vulnerabilities..."}}

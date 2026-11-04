@@ -14,11 +14,11 @@ connects to a real vCenter.
 | [Multi-vCenter integration](#multi-vcenter-vcsim-integration) | `go test -tags integration -run '^TestVCSIM' ./tests/...` | `integration-vcsim` | every push and PR | several independent vCenter processes, one of which can be killed |
 | [TUI scenarios](#tui-scenarios) | `scripts/testbed test` | `tui-scenarios` (Linux, macOS, Windows) | every push and PR | the TUI model driven key by key, with render goldens |
 | [PTY journeys](#pty-journeys) | `scripts/testbed pty` | `tui-pty` (Linux) | every push and PR | the real testbed binary in a real terminal |
-| [Fuzzing](#fuzz-targets) | seeds: `go test ./...`; campaigns: `go test -fuzz` | seeds in `build`; campaigns in `fuzz.yml` | seeds always; 5 min per target nightly, 1 min on PRs that touch fuzzing | arbitrary keys, messages, files, and expressions |
-| [Kubernetes end-to-end](#kubernetes-end-to-end) | `scripts/test-kubernetes.sh` | `kubernetes-e2e` | every push and PR | the shipped CronJob in a kind cluster against two vcsim Services |
+| [Fuzzing](#fuzz-targets) | seeds: `go test ./...`; campaigns: `go test -fuzz` | seeds in `build`; campaigns in `fuzz.yml` | seeds always; campaigns nightly and on PRs that touch fuzzing | arbitrary keys, messages, files, and expressions |
+| [Kubernetes end-to-end](#kubernetes-end-to-end) | `scripts/test-kubernetes.sh` | `kubernetes-e2e` | weekly; PRs that change backend or deploy files | the shipped CronJob in a kind cluster against two vcsim Services |
 | [Release snapshot](#release-snapshot-and-pins) | `goreleaser release --snapshot` | `release-snapshot` | every push and PR | the full release build without publishing |
-| [Vulnerability scans](security-scanning.md) | `scripts/vulnscan` | `Go vulnerabilities`; scans in `release-snapshot` | Go source on every PR; artifacts with CI; daily rescan | reachable Go vulnerabilities, fixable High/Critical image findings, stale databases, expired exceptions |
-| [Action pins](repository-security.md#workflow-dependencies) | `scripts/check-action-pins.sh` | `Pinned actions` | every PR | an action or reusable workflow referenced by tag or branch, or without a version comment |
+| [Vulnerability scans](security-scanning.md) | `scripts/vulnscan` | `Go vulnerabilities`; scans in `release-snapshot` | every PR; daily rescan | reachable Go vulnerabilities, fixable High/Critical image findings, stale databases, expired exceptions |
+| [Action pins](repository-security.md#controls) | `scripts/check-action-pins.sh` | `Pinned actions` | every PR | an action or reusable workflow referenced by tag or branch, or without a version comment |
 | [Release pins](#release-snapshot-and-pins) | `scripts/check-release-pins.sh` | `build` (Linux) | every push and PR | drift between Dockerfile, goreleaser, docs, and the CronJob |
 
 The `build` job also runs `gofmt`, `go mod tidy`, `go vet`, the labeler
@@ -192,44 +192,16 @@ vcsim Deployments, `prod` and `edge`.
 This tier checks ConfigMap mounts, Secret-backed `file:` credentials, PVC
 ownership, and Service DNS.
 
-## Platform status badge
-
-The README platform badge reports the latest completed `build` matrix on
-`main`: native builds, vet, and tests with the race detector on Linux, macOS,
-and Windows. It turns green only when all three jobs succeed. A failure is
-red; cancelled, skipped, or unknown results are grey. Other CI jobs do not
-change this badge's result.
-
-The `platform-status` job publishes `platforms.json` on `package-status`
-after the matrix finishes, including failed runs, and commits only when the
-result changes. Pull requests and superseded CI runs do not publish badge
-data. The previous result remains visible while a new matrix runs, and
-badge caching can delay updates;
-click the badge to inspect CI runs on `main`. This status does not verify
-package installation or a live vCenter connection.
-
 ## Release snapshot and pins
 
-`release-snapshot` runs `goreleaser release --snapshot --skip=publish,sign`
-with the release Go version and configuration. It strips the multi-platform
-`index,` annotation prefix because buildx rejects it for loaded per-platform
-images. It checks six OS/architecture archives, three generated WinGet
-manifests, Linux binary `--version`, and amd64 image `--version`/`--help`,
-then scans every binary and image as described in
+`release-snapshot` builds the full release without publishing or signing,
+checks every OS/architecture archive and WinGet manifest, runs the Linux
+binary and amd64 image, then scans them as described in
 [vulnerability scanning](security-scanning.md).
 
-The `WinGet publication` workflow compares the latest stable GitHub release
-with Microsoft's public catalog after the release workflow completes and
-hourly at minute 17. Its offline checks cover an absent package, an older
-version, the exact released version, unrelated packages, and failed reads.
-Run them with `python scripts/test-winget-publication.py`.
-
-The README badge shows the checked version as pending or published; a failed
-check replaces it with `check failed`. The job summary also shows the latest
-catalog version. Badge data lives on `package-status`, with commits only when
-the result changes. Scheduled runs and badge caching can delay updates;
-click the badge for the latest check. Catalog presence does not verify a
-native Windows installation.
+`python scripts/test-winget-publication.py` checks the WinGet catalog
+comparison offline: an absent package, an older version, the released
+version, unrelated packages, and failed reads.
 
 `scripts/check-release-pins.sh` fails when:
 

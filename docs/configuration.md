@@ -18,7 +18,7 @@ current_context = "prod"
 [[contexts]]
 name = "prod"
 endpoint = "https://vcsa.example.internal"
-username = "administrator@vsphere.local"
+username = "svc-ro@vsphere.local"
 credential = "keyring:prod"
 
 [contexts.transport]
@@ -30,7 +30,7 @@ mode = "system"
 [[contexts]]
 name = "customer-enclave"
 endpoint = "https://vcsa.enclave.internal"
-username = "readonly@vsphere.local"
+username = "svc-ro@vsphere.local"
 credential = "keyring:customer-enclave"
 via = "prod"
 via_moref = "vm-1234"
@@ -97,23 +97,18 @@ context's `--timeout`.
 ### Without an OS keyring
 
 Headless servers, SSH sessions, WSL, and containers may lack an OS keyring.
-The CLI wizard and TUI add-context form probe it with a lookup, without writing
-a test entry. If unavailable, they explain the failure and offer `prompt`,
-`env`, `file`, and `exec`. Unattended sources ask for a reference, then test
-the connection through it.
-
-With `--password-stdin` and no `--credential`, unattended `config set-context`
-still attempts keyring storage. If the write fails, it saves
-`credential = "prompt"` and warns.
+The setup wizard and the TUI form detect this and offer `prompt`, `env`,
+`file`, and `exec` instead. `config set-context --password-stdin` falls back
+to `credential = "prompt"` with a warning when the keyring cannot be
+written.
 
 ### When a source stops answering
 
 A missing variable, file, or helper leaves the context configured but unable
-to connect. Restore the source or edit its reference; vsfleet never prompts as
-a fallback. The CLI prints the cause, such as
-`environment variable LAB_VC_PW is not set (env:LAB_VC_PW)`. The TUI names
-the source on the failure line and offers a fix in its
-[diagnosis](tui.md#a-password-source-that-is-gone), where `e` edits it.
+to connect, with the cause in the error, such as
+`environment variable LAB_VC_PW is not set (env:LAB_VC_PW)`. Restore the
+source or edit the reference; in the TUI,
+[diagnosis](tui.md#a-password-source-that-is-gone) offers both.
 
 ## Network routes
 
@@ -142,15 +137,10 @@ guests and `host_user` for ESXi hosts, falling back to the shared `user`.
 With no configured user, OpenSSH uses `~/.ssh/config` and then the local
 username.
 
-Per-machine users and private-key paths chosen in the TUI override these
-defaults and are saved in `state.json`. OpenSSH default lets
-`~/.ssh/config` and `ssh-agent` choose; an explicit identity uses public-key
-authentication only.
-
-An unauthenticated SOCKS5 or HTTP CONNECT context can generate
-`ssh -o ProxyCommand=...` with a compatible `nc`. HTTPS and authenticated
-proxies are declined: their TLS handshake or credentials cannot safely be
-represented in the generated command.
+A user or key chosen for one machine in the TUI overrides these defaults
+and is remembered. A context behind an unauthenticated SOCKS5 or HTTP proxy
+gets an `ssh -o ProxyCommand=...` command using `nc`; HTTPS and
+authenticated proxies are not supported for SSH.
 
 ### SSH routes
 
@@ -175,24 +165,14 @@ while the vCenter route may stay direct. The rendered command shows the route:
 | Key | Meaning |
 |---|---|
 | `context` | Required. The context the route applies to; guests in another context never match. |
-| `cidr` | Required. The destination network, normalized on load (`172.31.7.5/24` becomes `172.31.7.0/24`). |
+| `cidr` | Required. The destination network. |
 | `type` | `direct`, `socks5` or `http`. `direct` overrides a proxied context for that network. |
 | `proxy_address` | `host:port` of the proxy. Required for `socks5` and `http`; not allowed for `direct`. |
 
-Selection uses the guest IP reported by vSphere, even when SSH targets a DNS
-name. It never resolves a hostname or probes routes:
-
-1. Use the matching context/CIDR rule with the longest prefix.
-2. With no match, inherit the context's transport.
-3. Without a transport override, let OpenSSH choose normally.
-
-ESXi hosts use the context transport because their targets are host names.
-Proxy rules add `ProxyCommand` without replacing other OpenSSH configuration.
-A failed route is not retried through another route.
-
-Routes carry no credentials and reject HTTPS or authenticated proxies.
-Conflicting duplicate context/network rules and other invalid routes prevent
-startup; identical duplicates are allowed.
+The rule matching the VM's guest IP with the longest prefix wins; with no
+match, SSH uses the context's own route. ESXi hosts always use the context's
+route. Routes carry no credentials, and conflicting rules stop vsfleet from
+starting.
 
 ### Three complementary routing sources
 
@@ -200,19 +180,13 @@ Three sources can choose a VM's route:
 
 | Source | Scope |
 | --- | --- |
-| OpenSSH alias | An existing `~/.ssh/config` route, validated with bounded `ssh -G` against the VM's guest IP |
-| Per-VM remembered route | A TUI choice saved for one machine in `state.json` |
+| OpenSSH alias | An existing `~/.ssh/config` host that resolves to the VM's guest IP |
+| Per-VM remembered route | A TUI choice remembered for one machine |
 | `[[ssh.routes]]` | Context/CIDR policy in `config.toml` |
 
-See [destination and route](tui-actions.md#destination-and-route) for
-precedence and [alias discovery](tui-actions.md#openssh-alias-discovery) for
-validation. Aliases are revalidated on every use; stale entries are dropped
-and rediscovered. Route choices are explicit, never inferred by trying a
-connection.
-
-Per-VM preferences use the key `<context>/<moref>` and save only user,
-identity path, alias name, or route kind and proxy `host:port`. They contain
-no passwords, private-key contents, proxy credentials, or shell fragments.
+See [destination and route](tui-actions.md#destination-and-route) for which
+wins. vsfleet never picks a route by trying connections, and remembered
+choices hold no passwords or key contents.
 
 ## TLS policies
 
@@ -231,16 +205,21 @@ remote certificate, displays its fingerprints, and pins the selected value.
 
 The capture database is separate from `config.toml` and defaults to
 `<user-config-dir>/vsfleet/history.db`. Set `VSFLEET_DB` or pass `--db` to
-override it; `VSFLEET_HISTORY_DB` is still read for one release, with a
-warning. The private database contains inventory,
+override it. The database contains inventory,
 identifiers, paths, annotations, snapshot metadata, and coverage, but never
 credentials or session cookies.
 
 ## vSphere permissions
 
-The built-in ReadOnly role covers connection tests and standard inventory
-collection, including datastore backing identity. Optional reads need extra
-privileges:
+Give vsfleet its own account, such as `svc-ro@vsphere.local`, with the
+built-in ReadOnly role assigned at the vCenter root and propagated to
+children. vsfleet never changes anything, but only the role makes vCenter
+enforce that; do not use an administrator account.
+
+ReadOnly covers connection tests and standard inventory collection, including
+datastore backing identity. Objects the role cannot see are left out by
+vCenter, not reported as errors, so assign it at the root. Optional reads
+need extra privileges:
 
 | Feature | Additional privilege |
 | --- | --- |

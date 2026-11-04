@@ -51,7 +51,7 @@ var contextBehaviourFlags = map[string]bool{"no-test": true, "force": true}
 func (f *contextFlags) register(cmd *cobra.Command) {
 	fl := cmd.Flags()
 	fl.StringVar(&f.endpoint, "endpoint", "", "vCenter endpoint, e.g. https://vcsa.example.internal")
-	fl.StringVar(&f.username, "username", "", "vCenter username, e.g. administrator@vsphere.local")
+	fl.StringVar(&f.username, "username", "", "vCenter username, e.g. svc-ro@vsphere.local")
 	fl.StringVar(&f.via, "via", "", "parent context this was added from")
 	fl.StringVar(&f.viaMoRef, "via-moref", "", "managed object reference of the VM this was added from")
 	fl.StringVar(&f.credential, "credential", "", "credential reference: keyring:<key>, prompt, env:<VAR>, file:<path> or exec:<program>")
@@ -139,7 +139,7 @@ func newSetContextCommand(a *App) *cobra.Command {
 
   # Pin the presented certificate instead of trusting the system store
   vsfleet config set-context lab --endpoint https://vcsa.lab \
-    --username administrator@vsphere.local --tls thumbprint
+    --username svc-ro@vsphere.local --tls thumbprint
 
   # Take the password from a secret manager at connect time
   vsfleet config set-context ci --endpoint https://vcsa.example.internal \
@@ -438,7 +438,7 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 	if cc.Endpoint, err = ask("Endpoint", cc.Endpoint, true); err != nil {
 		return err
 	}
-	if cc.Username, err = ask("Username", firstNonEmpty(cc.Username, "administrator@vsphere.local"), true); err != nil {
+	if cc.Username, err = ask("Username", cc.Username, true); err != nil {
 		return err
 	}
 	// A new context's password goes to the OS keyring by default. Where there

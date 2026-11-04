@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the pinned vulnerability scanners into DIR and print DIR, for
-# $GITHUB_PATH. Bump a version and its checksums together; the policy and
-# the bump procedure are in docs/security-scanning.md.
+# $GITHUB_PATH. Bump a version and its checksums together; see
+# .github/workflows/README.md.
 #
 #   scripts/install-scanners.sh DIR [govulncheck] [grype]
 #

@@ -1,6 +1,7 @@
 # Terminal UI
 
 Run `vsfleet` to browse inventory, switch vCenters, and inspect resources.
+Press `?` on any screen for its keys.
 
 ## Browse screen
 
@@ -23,347 +24,172 @@ Run `vsfleet` to browse inventory, switch vCenters, and inspect resources.
 | `H` | Open History |
 | `?` / `q` | Help / quit |
 
-The selected row has a `▸` marker as well as highlighting, including under
-`NO_COLOR`. A focused text input lists its own keys; other keys enter text.
-`?` shows help for the current screen, and `Esc` returns there.
-
-For resource-specific controls, see [VM dashboards](tui-vm.md),
-[detail actions and SSH](tui-actions.md), [datastore browsing](tui-storage.md),
-and [networks and clusters](tui-network.md).
-
-## Filtering and searching
-
-1. Press `/` to filter the current view by name.
-2. The query line reports cached matches outside that view:
-   `/ubuntu   0 VMs in prod · 2 in the estate — tab to widen`.
-3. Press `Tab` to search all resource kinds and vCenters in cached inventory.
-4. Press `Tab` again or `Esc` to narrow back, preserving the query.
-
-While typing, `↑`/`↓` and `PgUp`/`PgDn` move the selection.
-`Enter` ends text entry and keeps that selection.
-
-## Browsing by folder
-
-Press `t` on the VMs or Templates tab to browse by folder, one level at a
-time, as in the vSphere client's VMs and Templates view. The footer shows
-`t folders` while the tab lists every object. The view opens at the top
-folder; press `t` again for the plain list, which keeps the selected row.
-
-- `Enter` on a folder opens it; `Esc` goes up one level.
-- The message line shows where you are: `in Taipei › Prod › Web`.
-- A level that holds only folders shows each folder's totals, at any depth:
-  VMs, how many are powered on, vCPU and memory; for templates, the count,
-  vCPU, memory and disk.
-- Beside VMs or templates, a folder row shows its name and count,
-  `▹ Web/  2 VMs`, under the objects' own columns.
-- With more than one datacenter in scope, the top level lists datacenters.
-- A filter searches the open folder and everything under it, and lists the
-  matches without their folders. A jump from another object, such as
-  *Show VMs on this host*, lists every match wherever it is filed.
-
-vApps appear in their folder as they do in the vSphere client's VMs and
-Templates view: marked `▣` and labelled `vApp`, with the VMs they hold, at
-any depth, in the counts. `Enter` on a vApp opens its
-[vApp page](#contexts-and-vapps), with its start order and members, and
-`Esc` returns to the folder. A vApp with no VMs is still listed. Folders
-that hold no VMs or templates are not shown.
-
-## Contexts and vApps
-
-On Contexts (`c`), use `Enter` to select a context, `a` for all contexts,
-`n`/`e`/`x` to add/edit/remove, `o` to log out, `d` to diagnose,
-and `Esc` to return.
-
-Logging out retains cached inventory and stops background refresh for that
-context. Selecting it or reloading with `r` logs in again. Sessions ended by
-vCenter are replaced on the next load.
-
-Browse-screen `a` includes only loaded vCenters; it does not connect others.
-Missing vCenters appear below the table with their state:
-
-```text
-○ not connected: edge-vc, dr-vc · R connects all · c then enter connects one, d diagnoses
-◐ connecting: lab-vc
-◐ credentials required: site-3 · R asks for them · c then enter picks one
-✕ old-vc: connection failed · c select, d diagnose
-```
-
-`R` connects all and prompts for needed credentials. `c`, then `Enter`,
-connects one and selects it; `c`, then `d`, diagnoses without connecting.
-Diagnosing a context whose password is typed at a prompt asks for it only when
-the context is not connected; a connected one reuses its live session.
-Long lists and narrow-terminal hints collapse to save space. Estate search
-reports the same missing-context reasons.
-
-In `vsfleet demo`, `n` opens a read-only setup preview. Connection tests,
-certificate discovery, and saving are disabled; `Esc` discards the form.
-
-### A password source that is gone
-
-`env:`, `file:`, and `exec:` passwords are read on each connection. A
-missing source leaves the context configured and identifies the cause:
-
-```text
-✕ lab-vc: LAB_VC_PW is not set · d diagnose
-✕ lab-vc: password file /home/ops/.config/vsfleet/lab.pw does not exist · d diagnose
-✕ lab-vc: password helper vsfleet-credential failed: Vault is sealed · d diagnose
-```
-
-Diagnosis (`d`) gives source-specific recovery steps:
-
-- `env:`: export the variable before restarting vsfleet. Reload cannot see
-  environment changes made after launch.
-- `file:`: restore the password file, then press `r`.
-- `exec:`: run the helper with `VSFLEET_CONTEXT` set to the context name;
-  once it works, press `r`.
-
-Press `e` in diagnosis to change the source. The form offers keyring, prompt,
-env, file, and exec, prefilled with saved settings. It tests the new source
-before saving. Moving off keyring removes the old entry after saving unless
-another context uses it. See [credential configuration](configuration.md#credentials).
-
-### vApp workspace
-
-`Enter` on a vApp shows CPU/memory allocation (limit, reservation, shares,
-expandable), startup order, and nested members with a `START` column. The
-vApp's limit is shared across members and can throttle VMs with unlimited
-individual settings.
-
-Arrow keys select nested vApps, VMs, and pools. `Enter` opens a VM inspector;
-`Esc` returns a level. VM headers offer [SSH/copy actions](tui-actions.md).
-A recognized vCenter VM can seed a context from its IP, copying the parent
-route. The saved context retains the VM reference and annotates its member
-row with the context name.
-
-Live charts sum member VM performance, including nested vApps:
-
-- CPU usage sums MHz. With a vApp limit, that limit is the chart ceiling and
-  `▲` marks samples within 5% of it. Otherwise the ceiling is member vCPUs
-  at host core speed.
-- Active memory sums against the vApp memory limit, or configured memory if
-  unlimited. The reservation appears alongside. A member whose `mem.active`
-  is not kept adds its [`mem.usage`](performance.md) share of configured
-  memory, and the title counts those members.
-- Members show peak CPU (MHz, `▲` when busy for their vCPUs), CPU ready,
-  and CPU limited time. `s` toggles startup order/busiest first.
-
-Under 100 columns or on short terminals, charts become sparklines.
-`<`/`>` changes range and `r` rereads, using the
-[VM refresh schedule](tui-vm.md#ranges-and-refresh). Unreadable members are
-named and excluded from totals.
-
-## History workspace
-
-Press `H` for Changes, Trends, Runs, and Health.
-`Tab`/`Shift+Tab` switches panes.
-
-Changes and Trends use the selected context, or all configured contexts in the
-all-vCenters view. `n` captures that same scope. Trends names contexts without
-stored data. It lists datastores projected to fill within 30 days and rising
-stale snapshots first. Then it shows CPU, memory and storage use, each
-datastore's fill level and weekly growth, and how VM and snapshot counts moved
-across up to 30 complete runs. The coverage matrix, Runs, and Health are always estate-wide.
-Health shows the latest stored assessment's migration verdict, categories,
-and default findings, ordered critical, warning, info. Under the verdict it
-names vCenters the assessment did not collect and rules it could not
-evaluate; the rules are listed after the findings. `Enter` opens a finding's
-full message, evidence, fix and rule. `/` filters findings by severity,
-category, rule, vCenter, object or message.
-Use [`vsfleet analyze health`](health.md) to tune thresholds.
-
-Changes starts with the newest two assessments. Its run axis goes oldest to
-newest and marks baseline `b` and target `t`. The baseline is always the
-older run:
-
-| Keys | Action |
-|---|---|
-| `b` / `t` | Choose end to move; active end is uppercase |
-| `←` / `→` | Move one run; an end stops at the other end |
-| `R` | Open full run picker for active end; a pick past the other end reorders the pair |
-| `c` | Set baseline to newest older run covering the target's vCenters |
-| `1`–`4`, `0` | Filter blocks/sizing/growth/churn; clear filter |
-| `Enter` | Open change inspector on narrow terminals |
-| `PgUp` / `PgDn` | Scroll the change inspector |
-| `h` | Open VM timeline from a change |
-| `n` | Capture current scope |
-| `e` / `N` / `p` in Runs | Edit label / operator note / pin |
-| `Enter` in Runs | Compare the selected run with the run before it |
-| `b` / `t` in Runs | Make the selected run the baseline / target |
-
-Runs details the selected run: which vCenters it reached, its duration,
-source, VM count where Trends counted it, pin and note.
-
-`?` lists the current pane's keys and what its marks and columns mean.
-Captures run in the background while inventory remains usable.
-`vsfleet demo` stores nothing, so it refuses `n`, `e`, `N` and `p`.
-
-Coverage uses `●` reached, `✕` not compared, and `·` no record.
-It collapses when visible runs have identical coverage; otherwise it names the
-missing sites. `c` clips the comparison to shared coverage.
-
-Changes rank migration blockers first: vanished VMs/hosts, snapshots older
-than 30 days, and changed migration configuration such as firmware, secure
-boot or devices. These stay separate. CPU layout, allocation and disk size
-changes count as sizing.
-Other identical changes may share a counted row such as
-`k8s-worker-0… 12 VMs`; the inspector lists all members and counts any it
-cannot fit. Wide terminals show the inspector beside the stream. The counts
-line starts with the vCenters in scope, since the run axis and coverage
-describe every vCenter. On short terminals the move hint, the coverage matrix
-and then the baseline/target lines give way so the stream keeps eight rows.
-
-See [assessments](assessments.md) for capture and comparison workflows.
-
-### VM timeline
-
-Press `h` on a VM's detail pane, a vApp member, or a Changes row to open that
-VM's timeline. It has three sources, one tab each:
-
-| Tab | Source | What it answers |
-|---|---|---|
-| `1 Changes` | Stored assessments | What changed between runs. Works offline and goes back as far as your history. |
-| `2 vCenter events` | vCenter's event log, read live | Who did what and when, including failed tasks and changes undone before the next run. Only as far back as vCenter keeps events, usually 30 days. |
-| `3 Combined` | Both | Each stored change beside the event that caused it, grouped by the gap between the two runs that bracket it. |
-
-A VM is recorded as `vanished` in the run right after its last observation
-when that run read the VM's vCenter, even if another vCenter failed in it.
-If that run could not read the VM's vCenter, the timeline records nothing.
-
-On Combined, `←` marks an event that caused the stored change on its line or
-above it. `‹` marks an event from before the first run that saw the VM:
-whatever it did is already part of that run's first observation, so no
-stored change records it. `·` marks an event that left no stored change: it
-failed, it was undone before the next run, it is newer than any run, or it is
-a kind of event assessments do not record. An event explains a change only when it falls
-between the same two runs, its kind can produce that change, it did not fail,
-and the details agree. An event logged while a run was collecting counts
-toward that run's changes if it explains one, and toward the next run's
-otherwise. For example, a migration explains `moved` only if it
-ended on the host the run recorded, and a reconfiguration that set memory to
-512 MB does not explain memory that ended at 256 MB.
-
-Event times are the vCenter's clock and run times are the local one, so each
-capture now measures the difference (one read-only `CurrentTime` call per
-vCenter) and stores it with the run. The timeline converts event times with it
-before placing them. History captured earlier has no stored difference; there,
-an event within five seconds of a run edge that explains nothing on its own
-side is attributed across the edge to a change that nothing else explains.
-
-vCenter events are read only when you open an events tab or press `r` on
-one. Opening a tab reads vCenters that are already connected. `r` also
-connects a configured vCenter that is not. The tab header always says `LIVE`, which
-vCenter the events came from, and the oldest event returned. A vCenter that
-is not connected, not configured, or refused the read is named rather than
-left out. Contexts that reach the same vCenter share one event log, so it is
-read once, through a connected context when there is one, and the others are
-not listed. A VM that moved between vCenters is read on each one, and a VM
-stored under more than one managed object ID, for example after it was
-re-registered, is read under each ID.
-
-| Keys | Action |
-|---|---|
-| `Tab` / `Shift+Tab`, `1`–`3` | Switch source |
-| `a` | Show unchanged runs (Changes) or routine power, guest and task events (events tabs) |
-| `r` | Read vCenter events again (events tabs) |
-| `Enter` | Open the change or event detail |
-
-DETAIL shows what a migration, rename, reconfiguration or clone changed, and
-for every other event vCenter's own message on one line, without the VM, host
-and datacenter it is about. `BY` widens with the terminal so a long user such
-as `VSPHERE.LOCAL\Administrator` is shown whole when there is room.
-
-vCenter logs a task when it is queued, not when it ends, so task rows take
-their result from the VM's task history: `✓` for a task that succeeded, `✕`
-with vCenter's error for one that failed. Failed tasks are not hidden as
-routine. A task still running, or one the history no longer holds, shows no
-result. If the account cannot read task history, the events still load and
-task rows show no result.
-
-The same event log is available on the command line as
-`vsfleet events --for vm/<name-or-uuid>`.
-
-## Refresh and cache behavior
-
-| Context state | Background behavior |
-|---|---|
-| Selected | Refresh every 20 seconds by default |
-| Successfully visited, inactive | Refresh every 200 seconds |
-| Unvisited or logged out | No connection |
-| Waiting for interactive credentials | Retry only when selected or explicitly reloaded |
-| Refresh failed | Keep cached inventory with warning |
-
-Use `--refresh 5s` to poll faster or `--refresh -1` to disable timers.
-Slow contexts poll at roughly three times their last load duration when that
-exceeds the interval.
-
-## Large estates
-
-Inventory loads have no fixed enumeration deadline; they fail when progress
-stops. Rows arrive in pages while the cursor stays on the selected machine.
-`--timeout` still bounds connection and authentication.
-
-Browsing omits expensive virtual disks, guest NIC bindings, and snapshot
-trees; [assessment capture](assessments.md) retrieves them. The path index
-is reused for two minutes; new VMs use their parent folder or vApp to retain
-their datacenter and path. A VM inside a vApp shows the vApp as its folder, as
-the vSphere client does: `/Apps/web-stack` for a vApp in the `Apps` folder.
-
-When credentials are required, the pane stays usable. Select or reload the
-context to open its masked password prompt.
-
-## Welcome animation
-
-On first run and after upgrades, a welcome animation lasts under three
-seconds while the remembered vCenter loads. Any key skips it; `Ctrl+C` quits.
-Upgrades show old/new versions and release notes. Below 64×18, the message
-line replaces the animation.
-
-`vsfleet demo` replays the animation on every launch without storing state.
-`VSFLEET_NO_WELCOME` or `CI` disables it. `state.json` stores
-`welcomed_version`; source builds share version `dev`.
-
-## Upgrade prompt
-
-A newer release known at launch prompts after the welcome animation:
-
-| Key | Action |
-|---|---|
-| `y` | Run upgrade in foreground and restart; Homebrew/`go install` on macOS/Linux only |
-| `c` | Copy upgrade command or release link; Scoop, winget, `.deb`/`.rpm`, archives |
-| `n` / `Esc` | Snooze for one week; badge remains |
-| `s` | Skip this release's prompt and badge |
-
-Failed upgrades show the exit status and reopen the current version. Releases
-discovered during a session add a header badge and prompt next launch.
-`update.json` stores checks, snoozes, and skips beside `state.json`.
-`VSFLEET_NO_UPDATE_NOTIFIER=1` disables checks, prompts, badges, and CLI notices.
+The selected row is marked `▸`, so it stays visible under `NO_COLOR`.
 
 <span id="vm-detail-dashboard"></span>
-
-## VM dashboard
-
-See [VM properties and performance charts](tui-vm.md).
-
 <span id="detail-pane-actions"></span>
 <span id="openssh-alias-discovery"></span>
 <span id="destination-and-route"></span>
-
-## Detail actions and SSH
-
-See [copying values, external tools, SSH destinations, and routing](tui-actions.md).
-
 <span id="datastore-file-browser"></span>
 <span id="real-vsphere-validation-gate"></span>
-
-## Datastore browser
-
-See [datastore browsing and recursive search](tui-storage.md).
-
 <span id="networks-and-switches"></span>
 <span id="vlan-map"></span>
 <span id="host-network-page"></span>
 <span id="cluster-workspace"></span>
 
-## Networks and clusters
+Other screens have their own pages: [VM dashboard](tui-vm.md),
+[detail actions and SSH](tui-actions.md), [datastore browser](tui-storage.md),
+and [networks and clusters](tui-network.md).
 
-See [switches, VLANs, host networking, and cluster relationships](tui-network.md).
+## Filtering and searching
+
+Press `/` to filter the current view by name. The query line also counts
+matches elsewhere: `/ubuntu   0 VMs in prod · 2 in the estate — tab to widen`.
+`Tab` searches every kind and vCenter in cached inventory; `Tab` again or
+`Esc` narrows back. `↑`/`↓` move the selection while typing, and `Enter`
+keeps it.
+
+## Browsing by folder
+
+Press `t` on the VMs or Templates tab to browse folders one level at a time,
+as in the vSphere client. `Enter` opens a folder, `Esc` goes up, and the
+message line shows where you are: `in Taipei › Prod › Web`. Folder rows show
+how many VMs they hold and their vCPU and memory totals. A filter searches
+the open folder and everything below it. vApps appear in their folder marked
+`▣`; `Enter` opens the [vApp page](#vapp-workspace).
+
+## Contexts and vApps
+
+On Contexts (`c`): `Enter` selects a context, `a` selects all, `n`/`e`/`x`
+add, edit or remove, `o` logs out, and `d` diagnoses. Logging out keeps
+cached inventory and stops refreshing that context.
+
+Browse-screen `a` shows only vCenters that are loaded. The others are listed
+below the table with their state:
+
+```text
+○ not connected: edge-vc, dr-vc · R connects all · c then enter connects one, d diagnoses
+◐ credentials required: site-3 · R asks for them · c then enter picks one
+✕ old-vc: connection failed · c select, d diagnose
+```
+
+In `vsfleet demo`, `n` opens a read-only preview of the setup form.
+
+### A password source that is gone
+
+`env:`, `file:` and `exec:` passwords are read on every connection, so a
+missing source shows its cause:
+
+```text
+✕ lab-vc: LAB_VC_PW is not set · d diagnose
+✕ lab-vc: password helper vsfleet-credential failed: Vault is sealed · d diagnose
+```
+
+`d` explains how to recover: export the variable and restart vsfleet, restore
+the file and press `r`, or fix the helper and press `r`. Press `e` there to
+switch to another source; the form tests it before saving. See
+[credentials](configuration.md#credentials).
+
+### vApp workspace
+
+`Enter` on a vApp shows its CPU and memory allocation, start order, and
+nested members. A vApp's limit is shared by its members and can throttle VMs
+that have no limit of their own. `Enter` on a member opens it; `Esc` goes
+back.
+
+Live charts sum member CPU and active memory against the vApp's limit, or
+its members' total when unlimited; `▲` marks samples near the limit. Members
+show peak CPU, CPU ready and CPU limited time, and `s` sorts by start order
+or busiest. `<`/`>` changes the range. Members that cannot be read are named
+and left out of the totals.
+
+## History workspace
+
+Press `H` for four panes, switched with `Tab`: Changes, Trends, Runs, and
+Health. `n` takes a capture of the current scope in the background.
+
+- **Changes** compares two captures, newest two by default. Migration
+  blockers come first (vanished VMs or hosts, old snapshots, changed
+  firmware or devices), then sizing, growth and churn.
+- **Trends** leads with datastores projected to fill within 30 days and
+  growing stale snapshots, then CPU, memory, storage, and VM counts across up
+  to 30 runs.
+- **Runs** lists captures with their coverage, duration, label, pin and note.
+- **Health** shows the latest migration verdict and findings, worst first.
+  `Enter` opens a finding, `/` filters. Use
+  [`vsfleet analyze health`](health.md) to tune thresholds.
+
+| Keys | Action |
+|---|---|
+| `b` / `t` | Choose which end of the comparison to move: baseline or target |
+| `←` / `→` | Move that end one run |
+| `R` | Pick a run from a list |
+| `c` | Set the baseline to the newest older run covering the same vCenters |
+| `1`–`4`, `0` | Filter blocks / sizing / growth / churn; clear |
+| `h` | Open the VM timeline from a change |
+| `e` / `N` / `p` in Runs | Edit label / note / pin |
+| `Enter` in Runs | Compare with the run before |
+
+The coverage line marks each vCenter `●` reached, `✕` not compared, or `·`
+no record; `c` limits the comparison to what both runs covered.
+`vsfleet demo` stores nothing, so it refuses `n`, `e`, `N` and `p`. See
+[assessments](assessments.md) for captures and comparisons.
+
+### VM timeline
+
+Press `h` on a VM, a vApp member, or a Changes row for that VM's timeline:
+
+| Tab | Shows |
+|---|---|
+| `1 Changes` | What changed between stored captures, as far back as your history |
+| `2 vCenter events` | Who did what and when, read live, including failed tasks and changes undone before the next capture; as far back as vCenter keeps events |
+| `3 Combined` | Each stored change beside the event that caused it |
+
+On Combined, `←` marks the event that caused a change, `‹` an event from
+before vsfleet first saw the VM, and `·` an event that left no stored
+change, for example because it failed or was undone.
+
+Events are read only when you open an events tab or press `r`. The header
+says `LIVE` and names the vCenter; a vCenter that could not be read is
+named, not left out. Task rows show `✓` or `✕` with vCenter's error. `a`
+shows unchanged runs or routine events. The same log is available as
+`vsfleet events --for vm/<name>`.
+
+## Refresh and cache behavior
+
+| Context | Background refresh |
+|---|---|
+| Selected | Every 20 seconds |
+| Visited before, not selected | Every 200 seconds |
+| Never visited or logged out | None |
+| Waiting for a password | Only when selected or reloaded |
+| Refresh failed | Keeps cached inventory, with a warning |
+
+`--refresh 5s` polls faster and `--refresh -1` turns timers off. Slow
+vCenters are polled less often.
+
+## Large estates
+
+Rows arrive in pages while the cursor stays put, and a load fails only when
+it stops making progress; `--timeout` bounds connecting and logging in.
+Browsing skips virtual disks, guest NICs and snapshot trees, which a
+[capture](assessments.md) collects.
+
+## Welcome animation
+
+On first run and after an upgrade, a short animation plays while the last
+vCenter loads; any key skips it. Upgrades also show release notes. Set
+`VSFLEET_NO_WELCOME` or `CI` to turn it off.
+
+## Upgrade prompt
+
+When a newer release is out, vsfleet asks at launch:
+
+| Key | Action |
+|---|---|
+| `y` | Upgrade and restart (Homebrew or `go install`, macOS and Linux) |
+| `c` | Copy the upgrade command or release link (other installs) |
+| `n` / `Esc` | Ask again in a week |
+| `s` | Skip this release |
+
+`VSFLEET_NO_UPDATE_NOTIFIER=1` turns off checks, prompts and notices.

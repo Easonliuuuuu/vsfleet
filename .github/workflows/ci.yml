@@ -39,9 +39,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload coverage report
         if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-report
           path: |
@@ -117,7 +117,7 @@ jobs:
       actions: read
       contents: write
     steps:
-      - uses: actions/github-script@v9
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           MATRIX_RESULT: ${{ needs.build.result }}
         with:
@@ -176,12 +176,12 @@ jobs:
     name: Staticcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
-      - uses: dominikh/staticcheck-action@v1
+      - uses: dominikh/staticcheck-action@9716614d4101e79b4340dd97b10e54d68234e431 # v1.4.1
         with:
           version: latest
           install-go: false
@@ -194,8 +194,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
@@ -203,7 +203,7 @@ jobs:
         run: go run ./cmd/vsfleet-harness test --results-dir "${{ runner.temp }}/vsfleet-scenarios"
       - name: Upload scenario diagnostics
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tui-scenario-results-${{ matrix.os }}
           path: ${{ runner.temp }}/vsfleet-scenarios
@@ -214,8 +214,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
@@ -223,7 +223,7 @@ jobs:
         run: scripts/testbed pty --results-dir "${{ runner.temp }}/vsfleet-pty"
       - name: Upload PTY failure artifacts
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tui-pty-results
           path: ${{ runner.temp }}/vsfleet-pty
@@ -234,18 +234,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
       # Mirrors the goreleaser job in release.yml, so a broken .goreleaser.yaml,
       # Dockerfile, or cross-compile fails here instead of at tag time.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           check-latest: true
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # A snapshot builds and loads one image per platform, and buildx
       # refuses index annotations on a single-platform export. Everything
@@ -254,7 +254,7 @@ jobs:
         run: sed 's/"index,manifest:/"manifest:/' .goreleaser.yaml > "${RUNNER_TEMP}/goreleaser-snapshot.yaml"
 
       - name: Build every release artifact without publishing
-        uses: goreleaser/goreleaser-action@v7
+        uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           version: "~> v2"
           args: release --snapshot --clean --skip=publish,sign --config ${{ runner.temp }}/goreleaser-snapshot.yaml
@@ -286,9 +286,9 @@ jobs:
     name: Kubernetes end-to-end
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
@@ -306,7 +306,7 @@ jobs:
           docker build -f Dockerfile.vcsim -t vsfleet-vcsim:ci-test .
 
       - name: Create Kubernetes test cluster
-        uses: helm/kind-action@v1
+        uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           cluster_name: vsfleet-ci
 
@@ -325,7 +325,7 @@ jobs:
           VSFLEET_K8S_DEBUG_DIR: ${{ runner.temp }}/kubernetes-debug
         run: ./scripts/test-kubernetes.sh
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: kubernetes-debug
@@ -335,9 +335,9 @@ jobs:
     name: Multi-vCenter vcsim integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "${{ env.GO_VERSION }}"
           check-latest: true
@@ -357,7 +357,7 @@ jobs:
         # The untagged in-process tests in tests/ already ran in the build job.
         run: go test -tags integration -race -run '^TestVCSIM' ./tests/... -timeout 20m
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with:
           name: vcsim-logs

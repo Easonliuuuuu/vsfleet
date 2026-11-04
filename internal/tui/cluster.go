@@ -111,6 +111,10 @@ func clusterRow(c vsphere.Cluster, inv *vsphere.Inventory, withContext bool) row
 		st, glyph = statusBad, glyphFail
 	case c.OverallStatus == "yellow":
 		st, glyph = statusWarn, glyphPending
+	case c.HAEnabled && c.HA.Failover().Refusing:
+		// A green overall status does not rule this out, and a cluster that
+		// refuses power-ons must not look healthy in the list.
+		st, glyph = statusWarn, glyphPending
 	}
 	kind := "Cluster"
 	if c.Standalone {
@@ -356,24 +360,20 @@ func haFields(c vsphere.Cluster, add func(string, string), marks map[string]fiel
 		add("VM monitoring", onWord(ha.VMMonitoring != "vmMonitoringDisabled"))
 	}
 
-	switch ha.Policy {
-	case vsphere.HAPolicyHostFailures:
-		if ha.FailoverLevel > 0 {
+	if fo := ha.Failover(); fo.Known {
+		switch ha.Policy {
+		case vsphere.HAPolicyHostFailures:
 			add("HA failover", fmt.Sprintf("tolerates %s (configured %d)", countWord(int(ha.CurrentFailoverLevel), "host failure", "host failures"), ha.FailoverLevel))
-			if ha.CurrentFailoverLevel < ha.FailoverLevel {
-				marks["HA failover"] = fieldMark{statusBad, ""}
-			} else {
-				marks["HA failover"] = fieldMark{statusGood, ""}
-			}
-		}
-	case vsphere.HAPolicyResources:
-		if ha.CPUFailoverPct > 0 || ha.MemFailoverPct > 0 {
+		case vsphere.HAPolicyResources:
 			add("HA failover", fmt.Sprintf("CPU %d%% · memory %d%% free for failover", ha.CPUFailoverPct, ha.MemFailoverPct))
-			if ha.CPUFailoverPct < ha.CPUReservePct || ha.MemFailoverPct < ha.MemReservePct {
-				marks["HA failover"] = fieldMark{statusBad, "below the reserve"}
-			} else {
-				marks["HA failover"] = fieldMark{statusGood, ""}
-			}
+		}
+		switch {
+		case fo.Refusing:
+			marks["HA failover"] = fieldMark{statusBad, "below reserve · power-ons refused"}
+		case len(fo.Short) > 0:
+			marks["HA failover"] = fieldMark{statusBad, "below the reserve"}
+		default:
+			marks["HA failover"] = fieldMark{statusGood, ""}
 		}
 	}
 

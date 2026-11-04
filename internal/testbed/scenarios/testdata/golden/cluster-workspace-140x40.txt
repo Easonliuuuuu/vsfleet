@@ -11,7 +11,7 @@ Resilience
   HA                  on
   Host monitoring     on
   VM monitoring       on
-  HA failover         CPU 44% · memory 11% free for failover  ✕ below the reserve
+  HA failover         CPU 44% · memory 11% free for failover  ✕ below reserve · power-ons refused
   Admission control   reserve CPU 25% · memory 25%
 
 Hosts

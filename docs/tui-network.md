@@ -106,7 +106,10 @@ HA failover capacity, disabled admission control, unavailable hosts, manual
 DRS, or missing mounts. Capacity shows used/total. Effective capacity subtracts
 unavailable hosts and hypervisor overhead; it has no usage percentage because
 host usage includes the hypervisor. Standalone hosts omit Resilience, EVC,
-and DRS.
+and DRS. A cluster whose failover capacity is below its admission-control
+reserve shows the warning glyph `◐` in the Clusters list even when vCenter shows it green,
+because vCenter refuses new power-ons there; `vsfleet analyze health` reports
+it as `ha-failover-capacity-low`.
 
 Storage puts incomplete shared mounts first and names missing hosts: VMs
 cannot run or restart there. A datastore mounted by exactly one host is

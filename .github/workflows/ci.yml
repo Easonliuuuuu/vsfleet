@@ -1,8 +1,10 @@
 name: CI
 
-# Documentation-only changes skip this workflow; docs.yml builds the site and
+# Documentation-only changes skip the jobs; docs.yml builds the site and
 # checks the release pins in README.md and docs/. The test catalogue stays
 # included because a Go test checks every scenario and fuzz target has a row.
+# Pull requests always run the workflow so that "CI result", the check the
+# main ruleset requires, reports on docs-only changes too.
 on:
   push:
     branches: [main]
@@ -15,14 +17,6 @@ on:
       - "!.github/ISSUE_TEMPLATE/**"
       - "docs/test-catalog.md"
   pull_request:
-    paths:
-      - "**"
-      - "!docs/**"
-      - "!**.md"
-      - "!mkdocs.yml"
-      - "!requirements-docs.txt"
-      - "!.github/ISSUE_TEMPLATE/**"
-      - "docs/test-catalog.md"
 
 permissions:
   contents: read
@@ -31,8 +25,36 @@ env:
   GO_VERSION: "1.26"
 
 jobs:
+  changes:
+    name: Detect code changes
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      # Mirrors the push path filter: a pull request touching only docs,
+      # Markdown, mkdocs or issue templates skips the jobs below.
+      - id: diff
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo code=true >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only HEAD^1 HEAD)
+          if printf '%s\n' "$files" | grep -qx 'docs/test-catalog.md' ||
+             printf '%s\n' "$files" | grep -vE '^(docs/|\.github/ISSUE_TEMPLATE/)|\.md$|^mkdocs\.yml$|^requirements-docs\.txt$' | grep -q .; then
+            echo code=true >> "$GITHUB_OUTPUT"
+          else
+            echo code=false >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build and test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -174,6 +196,8 @@ jobs:
 
   staticcheck:
     name: Staticcheck
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,6 +212,8 @@ jobs:
 
   tui-scenarios:
     name: TUI scenario harness
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -211,6 +237,8 @@ jobs:
 
   tui-pty:
     name: TUI real-terminal PTY journeys
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -231,6 +259,8 @@ jobs:
 
   release-snapshot:
     name: Release snapshot
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -322,6 +352,8 @@ jobs:
 
   integration-vcsim:
     name: Multi-vCenter vcsim integration
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -351,3 +383,19 @@ jobs:
         with:
           name: vcsim-logs
           path: ${{ runner.temp }}/vcsim-logs
+
+  result:
+    name: CI result
+    needs: [changes, build, staticcheck, tui-scenarios, tui-pty, release-snapshot, integration-vcsim]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            case "$result" in
+              success|skipped) ;;
+              *) echo "::error::A CI job ended $result"; exit 1 ;;
+            esac
+          done

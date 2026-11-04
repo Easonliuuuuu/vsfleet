@@ -9,8 +9,8 @@ covers known vulnerabilities in the code and image.
 - **Pinned actions.** Every workflow action is pinned to a commit SHA, so a
   moved tag cannot change what runs. A required check rejects anything else.
 - **Protected `main`.** Changes arrive only as squash-merged pull requests
-  that pass `Go vulnerabilities` and `Pinned actions`. History cannot be
-  rewritten.
+  that pass `CI result`, `Go vulnerabilities` and `Pinned actions`. History
+  cannot be rewritten.
 - **Immutable tags.** A published `v*` tag cannot be moved or deleted.
 - **Least-privilege tokens.** Workflows get a read-only token by default.
   Two personal tokens publish to Homebrew and WinGet, each scoped to its

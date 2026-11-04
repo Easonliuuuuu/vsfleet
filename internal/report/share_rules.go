@@ -75,7 +75,8 @@ var columnRules = map[string]colRule{
 	// vInfo / per-VM tabs.
 	"Powerstate": keep(), "Template": keep(), "Guest state": keep(), "CPUs": keep(), "Memory": keep(),
 	"Primary IP Address": ipRule, "In Use MiB": keep(), "DNS Name": name(kindName), "Connection state": keep(),
-	"NICs": keep(), "Disks": keep(), "Total disk capacity MiB": keep(),
+	"NICs": keep(), "Disks": keep(), "Total disk capacity MiB": keep(), "Provisioned MiB": keep(), "Unshared MiB": keep(),
+	"Consolidation Needed": keep(), "Log directory": pathRule, "Snapshot directory": pathRule, "Suspend directory": pathRule,
 	"Network #1": name(kindNetwork), "Network #2": name(kindNetwork), "Network #3": name(kindNetwork), "Network #4": name(kindNetwork),
 	"Network #5": name(kindNetwork), "Network #6": name(kindNetwork), "Network #7": name(kindNetwork), "Network #8": name(kindNetwork),
 	"Sockets": keep(), "Cores p/s": keep(), "Memory Reservation Locked To Max": keep(), "vApp": name(kindName), "EFI Secure boot": keep(), "Firmware": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),

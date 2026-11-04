@@ -1468,6 +1468,7 @@ func vmFromInfoRow(t sheetTable, row []string, contextName string) *vsphere.VM {
 	if upgrade != (vsphere.VMHardwareUpgrade{}) {
 		vm.HardwareUpgrade = &upgrade
 	}
+	applyVMStorageCells(t, row, vm)
 	return vm
 }
 

@@ -168,7 +168,7 @@ func TestNewVMCopiesMigrationConfiguration(t *testing.T) {
 }
 
 func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
-	for _, property := range []string{"config.guestId", "config.hardware.device", "config.hardware.numCoresPerSocket", "config.hardware.autoCoresPerSocket", "config.cpuAllocation", "config.memoryAllocation", "config.bootOptions", "config.firmware", "config.version", "config.scheduledHardwareUpgradeInfo", "config.managedBy", "config.memoryReservationLockedToMax", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2", "guest.toolsStatus"} {
+	for _, property := range []string{"config.guestId", "config.hardware.device", "config.hardware.numCoresPerSocket", "config.hardware.autoCoresPerSocket", "config.cpuAllocation", "config.memoryAllocation", "config.bootOptions", "config.firmware", "config.version", "config.scheduledHardwareUpgradeInfo", "config.managedBy", "config.memoryReservationLockedToMax", "guest.net", "guest.disk", "guest.toolsVersion", "guest.toolsVersionStatus2", "guest.toolsStatus", "config.files", "runtime.consolidationNeeded", "summary.storage.uncommitted", "summary.storage.unshared"} {
 		found := false
 		for _, candidate := range vmProps {
 			if candidate == property {
@@ -179,6 +179,48 @@ func TestVMPropertiesIncludeDeviceWalk(t *testing.T) {
 		if !found {
 			t.Errorf("vmProps does not include %q: %v", property, vmProps)
 		}
+	}
+}
+
+// Provisioned is committed plus uncommitted, as RVTools' vInfo reports it;
+// the values are vapp-web's in the nested lab.
+func TestNewVMCopiesStorageAndFiles(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		m                     mo.VirtualMachine
+		storage               bool
+		provisioned, unshared int64
+		files                 *VMFiles
+		consolidationNeeded   bool
+	}{
+		{"full capture", mo.VirtualMachine{
+			Runtime: types.VirtualMachineRuntimeInfo{ConsolidationNeeded: true},
+			Summary: types.VirtualMachineSummary{Storage: &types.VirtualMachineStorageSummary{Committed: 337 << 20, Uncommitted: 1024 << 20, Unshared: 0}},
+			Config: &types.VirtualMachineConfigInfo{Files: types.VirtualMachineFileInfo{
+				VmPathName: "[local-esxi02] vapp-web/vapp-web.vmx", LogDirectory: "[local-esxi02] vapp-web/",
+				SnapshotDirectory: "[local-esxi02] vapp-web/", SuspendDirectory: "[local-esxi02] vapp-web/"}},
+		}, true, 1361 << 20, 0, &VMFiles{VMPath: "[local-esxi02] vapp-web/vapp-web.vmx", LogDirectory: "[local-esxi02] vapp-web/",
+			SnapshotDirectory: "[local-esxi02] vapp-web/", SuspendDirectory: "[local-esxi02] vapp-web/"}, true},
+		// A listing reads configuration without config.files, and an
+		// inaccessible VM has no storage summary: neither is "no files" or
+		// "no storage".
+		{"listing", mo.VirtualMachine{Config: &types.VirtualMachineConfigInfo{}}, false, 0, 0, nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			vm := newVM(&Client{Context: &config.Context{Name: "prod"}}, &index{}, &tc.m)
+			if got := vm.ProvisionedBytes != nil && vm.UnsharedBytes != nil; got != tc.storage {
+				t.Fatalf("storage recorded = %v, want %v", got, tc.storage)
+			}
+			if tc.storage && (*vm.ProvisionedBytes != tc.provisioned || *vm.UnsharedBytes != tc.unshared) {
+				t.Errorf("provisioned, unshared = %d, %d; want %d, %d", *vm.ProvisionedBytes, *vm.UnsharedBytes, tc.provisioned, tc.unshared)
+			}
+			if !reflect.DeepEqual(vm.Files, tc.files) {
+				t.Errorf("files = %+v, want %+v", vm.Files, tc.files)
+			}
+			if vm.ConsolidationNeeded == nil || *vm.ConsolidationNeeded != tc.consolidationNeeded {
+				t.Errorf("consolidation needed = %v, want %v", vm.ConsolidationNeeded, tc.consolidationNeeded)
+			}
+		})
 	}
 }
 

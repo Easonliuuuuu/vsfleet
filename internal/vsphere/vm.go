@@ -28,6 +28,7 @@ var vmSummaryProps = []string{
 	"config.hardware.memoryMB",
 	"runtime.powerState",
 	"runtime.connectionState",
+	"runtime.consolidationNeeded",
 	"runtime.host",
 	"guest.ipAddress",
 	"guest.hostName",
@@ -37,6 +38,8 @@ var vmSummaryProps = []string{
 	"guest.toolsVersion",
 	"guest.toolsVersionStatus2",
 	"summary.storage.committed",
+	"summary.storage.uncommitted",
+	"summary.storage.unshared",
 	"datastore",
 }
 
@@ -58,6 +61,7 @@ var vmDetailProps = []string{
 	"config.firmware",
 	"config.version",
 	"config.scheduledHardwareUpgradeInfo",
+	"config.files",
 	"config.managedBy",
 	"config.memoryReservationLockedToMax",
 	"guest.net",
@@ -247,7 +251,10 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 			vm.ManagedBy = &VMManagedBy{ExtensionKey: strings.TrimSpace(cfg.ManagedBy.ExtensionKey), Type: strings.TrimSpace(cfg.ManagedBy.Type)}
 		}
 		vm.TPMs, vm.PCIDevices, vm.Floppies = walkMigrationDevices(cfg.Hardware.Device)
+		vm.Files = vmFiles(cfg.Files)
 	}
+	consolidationNeeded := m.Runtime.ConsolidationNeeded
+	vm.ConsolidationNeeded = &consolidationNeeded
 	if snap := m.Snapshot; snap != nil {
 		vm.Snapshots = flattenSnapshots(snap.RootSnapshotList, "", snap.CurrentSnapshot)
 	}
@@ -266,6 +273,8 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 	}
 	if s := m.Summary.Storage; s != nil {
 		vm.StorageGB = float64(s.Committed) / (1 << 30)
+		provisioned, unshared := s.Committed+s.Uncommitted, s.Unshared
+		vm.ProvisionedBytes, vm.UnsharedBytes = &provisioned, &unshared
 	}
 	return vm
 }

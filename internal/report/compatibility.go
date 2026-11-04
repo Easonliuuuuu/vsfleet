@@ -181,6 +181,9 @@ const hostCertificateEmpty = hostDetailsEmpty + ", or when vSphere reports no ho
 // vmConfigEmpty is when a column read from a VM's configuration is empty.
 const vmConfigEmpty = "for a capture predating inventory schema 13, or when vSphere returned no VM configuration"
 
+// vmFilesEmpty is when vInfo's storage and file columns are empty.
+const vmFilesEmpty = "for a capture predating inventory schema 28, or when vSphere did not return the value"
+
 // networkSlotSpec describes each of vInfo's eight Network #N columns.
 var networkSlotSpec = ColumnSpec{Kind: KindText, Empty: "for a slot past the VM's last NIC, a NIC that is not attached, or wherever NICs is empty",
 	Note: "Port group of the VM's Nth virtual NIC, in device order. A VM with more than eight NICs lists the rest on vNetwork only, as RVTools does."}
@@ -224,6 +227,15 @@ var sharedColumns = map[string]ColumnSpec{
 	"Network #1": networkSlotSpec, "Network #2": networkSlotSpec, "Network #3": networkSlotSpec, "Network #4": networkSlotSpec,
 	"Network #5": networkSlotSpec, "Network #6": networkSlotSpec, "Network #7": networkSlotSpec, "Network #8": networkSlotSpec,
 	"In Use MiB": {Kind: KindDecimal, Unit: "MiB", Note: "Committed storage across every disk, as vCenter reports it. Fractional MiB are retained; RVTools writes integer MiB."},
+	"Provisioned MiB": {Kind: KindDecimal, Unit: "MiB", Empty: vmFilesEmpty,
+		Note: "Space the VM's files may take on its datastores: committed plus uncommitted, as vCenter reports them. Fractional MiB are retained; RVTools writes integer MiB."},
+	"Unshared MiB": {Kind: KindDecimal, Unit: "MiB", Empty: vmFilesEmpty,
+		Note: "Space only this VM uses, so the space freed if it were deleted. Fractional MiB are retained; RVTools writes integer MiB."},
+	"Consolidation Needed": {Kind: KindBoolean, Empty: "for a capture predating inventory schema 28",
+		Note: "True when a snapshot removal left disk files behind that need consolidating."},
+	"Log directory":      {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore directory of the VM's log files, e.g. [datastore1] vm/."},
+	"Snapshot directory": {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore directory of the VM's snapshot files."},
+	"Suspend directory":  {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore directory of the VM's suspend files."},
 	"HW version": {Kind: KindInteger, Empty: "for a capture predating inventory schema 23",
 		Note: "Virtual hardware version: the number from vSphere's vmx-<n> key, as RVTools writes it."},
 	"HW upgrade status": {Kind: KindText, Empty: "for a capture predating inventory schema 23, or when vSphere reports no scheduled upgrade",
@@ -441,6 +453,7 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Limit":       {Kind: KindInteger, Unit: "MiB", Empty: vmConfigEmpty, Note: "-1 means unlimited, as vSphere and RVTools write it."},
 	},
 	"vInfo": {
+		"Path": {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore path of the VM's configuration file, e.g. [datastore1] vm/vm.vmx, or .vmtx for a template."},
 		"Resource pool": {Kind: KindText, Empty: "for a template, a capture that did not collect resource pools, or a vApp whose parent pool is ambiguous",
 			Note: "The VM's resource pool or vApp path without the datacenter's host folder, as RVTools writes it, for example /DC-Lab/Cluster-DR/Resources."},
 	},

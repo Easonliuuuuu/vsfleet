@@ -18,6 +18,7 @@ connects to a real vCenter.
 | [Kubernetes end-to-end](#kubernetes-end-to-end) | `scripts/test-kubernetes.sh` | `kubernetes-e2e` | every push and PR | the shipped CronJob in a kind cluster against two vcsim Services |
 | [Release snapshot](#release-snapshot-and-pins) | `goreleaser release --snapshot` | `release-snapshot` | every push and PR | the full release build without publishing |
 | [Vulnerability scans](security-scanning.md) | `scripts/vulnscan` | `Go vulnerabilities`; scans in `release-snapshot` | Go source on every PR; artifacts with CI; daily rescan | reachable Go vulnerabilities, fixable High/Critical image findings, stale databases, expired exceptions |
+| [Action pins](repository-security.md#workflow-dependencies) | `scripts/check-action-pins.sh` | `Pinned actions` | every PR | an action or reusable workflow referenced by tag or branch, or without a version comment |
 | [Release pins](#release-snapshot-and-pins) | `scripts/check-release-pins.sh` | `build` (Linux) | every push and PR | drift between Dockerfile, goreleaser, docs, and the CronJob |
 
 The `build` job also runs `gofmt`, `go mod tidy`, `go vet`, the labeler

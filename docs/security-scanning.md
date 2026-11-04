@@ -122,7 +122,9 @@ says, there is no guaranteed response time.
 database verifies govulncheck; the script checks grype's archive against the
 SHA-256 sums from the grype release. To upgrade grype, change
 `GRYPE_VERSION` and both checksums together, taking them from the release's
-`checksums.txt`. Dependabot does not update these pins.
+`checksums.txt`. Dependabot does not update these pins;
+[repository and release security](repository-security.md#tools-the-workflows-download)
+lists every hand-bumped tool.
 
 Run a scan locally with the same gate. It scans with your local Go
 toolchain, so an older patch release reports its standard library findings:

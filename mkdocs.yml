@@ -73,6 +73,7 @@ nav:
       - Testing: testing.md
       - Test catalogue: test-catalog.md
       - Vulnerability scanning: security-scanning.md
+      - Repository and release security: repository-security.md
       - Writing documentation: writing.md
       - Contribution policy: https://github.com/Easonliuuuuu/vsfleet/blob/main/CONTRIBUTING.md
       - Security policy: https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md

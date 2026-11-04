@@ -86,7 +86,9 @@ request, every release before publication, and the supported release daily
 for known vulnerabilities in vsfleet's Go code, dependencies, and container
 image. [Vulnerability scanning](https://easonliuuuuu.github.io/vsfleet/security-scanning/)
 describes what fails a build, how exceptions work, and how findings are
-triaged.
+triaged. [Repository and release security](https://easonliuuuuu.github.io/vsfleet/repository-security/)
+covers pinned workflow dependencies, release tag protection, publishing
+credentials, and the response to a compromise.
 
 ---
 

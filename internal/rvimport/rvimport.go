@@ -108,6 +108,13 @@ var headerAliases = map[string]map[string]string{
 		"link speed mb": "Speed",
 		"wake on lan":   "WakeOn",
 	},
+	// vsfleet wrote "Device" before inventory schema 31.
+	sheetVCD: {
+		"device": "Device Node",
+	},
+	sheetVUSB: {
+		"device": "Device Node",
+	},
 	sheetVDisk: {
 		"sharedbus":              "Shared Bus",
 		"scsi label":             "Label",
@@ -1559,7 +1566,8 @@ func applyNetworkRow(t sheetTable, row []string, vm *vsphere.VM) {
 
 func applyCDRow(t sheetTable, row []string, vm *vsphere.VM) {
 	vm.CDROMs = append(vm.CDROMs, vsphere.VMCDROM{
-		Label:            t.cell(row, "Device"),
+		Label:            t.cell(row, "Device Node"),
+		Summary:          t.cell(row, "Device Type"),
 		Key:              int32(parseInt(t.cell(row, "Device Key"))),
 		Connected:        parseOptBool(t.cell(row, "Connected")),
 		StartsConnected:  parseOptBool(t.cell(row, "Starts Connected")),
@@ -1578,7 +1586,8 @@ func applyCDRow(t sheetTable, row []string, vm *vsphere.VM) {
 
 func applyUSBRow(t sheetTable, row []string, vm *vsphere.VM) {
 	vm.USBs = append(vm.USBs, vsphere.VMUSB{
-		Label:            t.cell(row, "Device"),
+		Label:            t.cell(row, "Device Node"),
+		Summary:          t.cell(row, "Device Type"),
 		Key:              int32(parseInt(t.cell(row, "Device Key"))),
 		Connected:        parseOptBool(t.cell(row, "Connected")),
 		Vendor:           int32(parseInt(t.cell(row, "Vendor ID"))),

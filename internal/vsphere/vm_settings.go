@@ -34,6 +34,9 @@ type VMSettings struct {
 	BootDelay        *int64 `json:"boot_delay,omitempty"`
 	BootRetryEnabled *bool  `json:"boot_retry_enabled,omitempty"`
 	BootRetryDelay   *int64 `json:"boot_retry_delay,omitempty"`
+	// SRMPlaceholder reports a placeholder VM Site Recovery Manager keeps at
+	// the recovery site for a protected VM; nil before inventory schema 31.
+	SRMPlaceholder *bool `json:"srm_placeholder,omitempty"`
 }
 
 // VMState is what changes with the VM's life rather than its configuration:
@@ -50,7 +53,17 @@ type VMState struct {
 	MinRequiredEVCModeKey string `json:"min_required_evc_mode_key,omitempty"`
 	CustomizationStatus   string `json:"customization_status,omitempty"`
 	GuestDetailedData     string `json:"guest_detailed_data,omitempty"`
+	// GuestOSReported is the guest OS VMware Tools reports, which can differ
+	// from the one the configuration names (VM.GuestOS).
+	GuestOSReported string `json:"guest_os_reported,omitempty"`
 }
+
+// The vCenter extension and managed-entity type Site Recovery Manager marks
+// its placeholder VMs with.
+const (
+	srmExtensionKey    = "com.vmware.vcDr"
+	srmPlaceholderType = "placeholderVm"
+)
 
 // vmSettingsProps are read with the full property set on every vCenter.
 var vmSettingsProps = []string{
@@ -63,6 +76,7 @@ var vmSettingsProps = []string{
 	"runtime.suspendInterval",
 	"runtime.minRequiredEVCModeKey",
 	"configStatus",
+	"guest.guestFullName",
 }
 
 // versionedVMProps are properties a vCenter older than their API version
@@ -147,6 +161,8 @@ func vmSettings(m *mo.VirtualMachine, apiVersion string) *VMSettings {
 		installBoot = v.GetVmConfigInfo().InstallBootRequired
 	}
 	s.InstallBootRequired = &installBoot
+	placeholder := cfg.ManagedBy != nil && cfg.ManagedBy.ExtensionKey == srmExtensionKey && cfg.ManagedBy.Type == srmPlaceholderType
+	s.SRMPlaceholder = &placeholder
 	if b := cfg.BootOptions; b != nil {
 		delay, retryDelay := b.BootDelay, b.BootRetryDelay
 		s.EnterBIOSSetup, s.BootDelay, s.BootRetryEnabled, s.BootRetryDelay = clonePtr(b.EnterBIOSSetup), &delay, clonePtr(b.BootRetryEnabled), &retryDelay
@@ -185,6 +201,7 @@ func vmState(m *mo.VirtualMachine) *VMState {
 	}
 	if g := m.Guest; g != nil {
 		s.GuestDetailedData = strings.TrimSpace(g.GuestDetailedData)
+		s.GuestOSReported = strings.TrimSpace(g.GuestFullName)
 		if c := g.CustomizationInfo; c != nil {
 			s.CustomizationStatus = c.CustomizationStatus
 		}

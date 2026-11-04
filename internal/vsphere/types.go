@@ -353,8 +353,11 @@ type VMNIC struct {
 // devices where it cannot report a current state (for example, a powered-off
 // VM); nil is therefore different from a known disconnected device.
 type VMCDROM struct {
-	Key              int32  `json:"key"`
-	Label            string `json:"label"`
+	Key   int32  `json:"key"`
+	Label string `json:"label"`
+	// Summary is vSphere's description of the drive and its backing, e.g.
+	// ISO [datastore1] iso/x.iso; empty before inventory schema 31.
+	Summary          string `json:"summary,omitempty"`
 	Connected        *bool  `json:"connected,omitempty"`
 	StartsConnected  *bool  `json:"starts_connected,omitempty"`
 	BackingType      string `json:"backing_type,omitempty"`
@@ -373,8 +376,11 @@ type VMCDROM struct {
 // not represented here: they are infrastructure for USB attachments, not
 // devices an operator can accidentally leave connected to a guest.
 type VMUSB struct {
-	Key              int32    `json:"key"`
-	Label            string   `json:"label"`
+	Key   int32  `json:"key"`
+	Label string `json:"label"`
+	// Summary is vSphere's description of the device and its backing;
+	// empty before inventory schema 31.
+	Summary          string   `json:"summary,omitempty"`
 	Connected        *bool    `json:"connected,omitempty"`
 	Vendor           int32    `json:"vendor,omitempty"`
 	Product          int32    `json:"product,omitempty"`

@@ -53,7 +53,7 @@ func TestVMSettingsAndStateConvertVCenterValues(t *testing.T) {
 	m := &mo.VirtualMachine{
 		ManagedEntity: mo.ManagedEntity{ConfigStatus: types.ManagedEntityStatusGreen},
 		Runtime:       types.VirtualMachineRuntimeInfo{BootTime: &booted, MinRequiredEVCModeKey: "intel-cascadelake"},
-		Guest: &types.GuestInfo{GuestDetailedData: "distroName='VMware Photon OS'",
+		Guest: &types.GuestInfo{GuestDetailedData: "distroName='VMware Photon OS'", GuestFullName: "VMware Photon OS (64-bit)",
 			CustomizationInfo: &types.GuestInfoCustomizationInfo{CustomizationStatus: "TOOLSDEPLOYPKG_IDLE"}},
 		Config: &types.VirtualMachineConfigInfo{
 			CreateDate: &created, ChangeVersion: "2026-11-02T12:25:03.553253Z", ChangeTrackingEnabled: &no,
@@ -66,12 +66,14 @@ func TestVMSettingsAndStateConvertVCenterValues(t *testing.T) {
 	}
 	zero, retry, monitors, ram, interval := int64(0), int64(10000), int32(1), int64(4096), int64(0)
 	wantSettings := &VMSettings{CreateDate: &created, EnableUUID: &yes, ChangeTracking: &no, LatencySensitivity: "normal", Monitors: &monitors,
-		VideoRAMKiB: &ram, FixedPassthruHotPlug: &no, InstallBootRequired: &no, EnterBIOSSetup: &no, BootDelay: &zero, BootRetryEnabled: &no, BootRetryDelay: &retry}
+		VideoRAMKiB: &ram, FixedPassthruHotPlug: &no, InstallBootRequired: &no, EnterBIOSSetup: &no, BootDelay: &zero, BootRetryEnabled: &no, BootRetryDelay: &retry,
+		SRMPlaceholder: &no}
 	if got := vmSettings(m, "8.0.3.0"); !reflect.DeepEqual(got, wantSettings) {
 		t.Errorf("settings = %+v\nwant       %+v", got, wantSettings)
 	}
 	wantState := &VMState{ChangeVersion: "2026-11-02T12:25:03.553253Z", ConfigStatus: "green", BootTime: &booted, RebootPowerOff: &no,
-		SuspendInterval: &interval, MinRequiredEVCModeKey: "intel-cascadelake", CustomizationStatus: "TOOLSDEPLOYPKG_IDLE", GuestDetailedData: "distroName='VMware Photon OS'"}
+		SuspendInterval: &interval, MinRequiredEVCModeKey: "intel-cascadelake", CustomizationStatus: "TOOLSDEPLOYPKG_IDLE", GuestDetailedData: "distroName='VMware Photon OS'",
+		GuestOSReported: "VMware Photon OS (64-bit)"}
 	if got := vmState(m); !reflect.DeepEqual(got, wantState) {
 		t.Errorf("state = %+v\nwant    %+v", got, wantState)
 	}
@@ -84,5 +86,28 @@ func TestVMSettingsAndStateConvertVCenterValues(t *testing.T) {
 	}
 	if got := vmSettings(m, "8.0.3.0").OpNotificationTimeout; got == nil || *got != 0 {
 		t.Errorf("op notification timeout 0 from vCenter 8.0 = %v, want 0", got)
+	}
+}
+
+// Site Recovery Manager marks the placeholder it keeps at the recovery site
+// with its own extension key and type. Another extension's VM, such as an
+// ESX Agent Manager cluster agent, is not a placeholder.
+func TestVMSettingsMarksOnlySRMPlaceholders(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		managedBy *types.ManagedByInfo
+		want      bool
+	}{
+		{"SRM placeholder", &types.ManagedByInfo{ExtensionKey: "com.vmware.vcDr", Type: "placeholderVm"}, true},
+		{"SRM-managed, not a placeholder", &types.ManagedByInfo{ExtensionKey: "com.vmware.vcDr", Type: "testVm"}, false},
+		{"cluster agent", &types.ManagedByInfo{ExtensionKey: "com.vmware.vim.eam", Type: "cluster-agent"}, false},
+		{"unmanaged", nil, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := &mo.VirtualMachine{Config: &types.VirtualMachineConfigInfo{ManagedBy: tc.managedBy}}
+			if got := vmSettings(m, "8.0.3.0").SRMPlaceholder; got == nil || *got != tc.want {
+				t.Errorf("SRM placeholder = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

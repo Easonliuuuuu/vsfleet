@@ -76,14 +76,14 @@ func TestWalkDevicesExtractsDisksAndGuestNetworks(t *testing.T) {
 func TestWalkDevicesNormalizesCDROMAndUSBAndExcludesControllers(t *testing.T) {
 	connected, starts, autodetect := true, true, false
 	cdrom := &types.VirtualCdrom{VirtualDevice: types.VirtualDevice{
-		Key: 401, DeviceInfo: &types.Description{Label: "CD/DVD drive 1"}, ControllerKey: 100,
+		Key: 401, DeviceInfo: &types.Description{Label: "CD/DVD drive 1", Summary: "ISO [datastore-1] images/installer.iso"}, ControllerKey: 100,
 		Connectable: &types.VirtualDeviceConnectInfo{Connected: connected, StartConnected: starts},
 		Backing: &types.VirtualCdromIsoBackingInfo{VirtualDeviceFileBackingInfo: types.VirtualDeviceFileBackingInfo{
 			FileName: "[datastore-1] images/installer.iso", Datastore: &types.ManagedObjectReference{Type: "Datastore", Value: "datastore-1"}, BackingObjectId: &[]string{"backing-1"}[0],
 		}},
 	}}
 	usb := &types.VirtualUSB{VirtualDevice: types.VirtualDevice{
-		Key: 501, DeviceInfo: &types.Description{Label: "USB device 1"}, ControllerKey: 300,
+		Key: 501, DeviceInfo: &types.Description{Label: "USB device 1", Summary: "Remote host esx-1"}, ControllerKey: 300,
 		Backing: &types.VirtualUSBRemoteHostBackingInfo{VirtualDeviceDeviceBackingInfo: types.VirtualDeviceDeviceBackingInfo{DeviceName: "vid:1234 pid:5678", UseAutoDetect: &autodetect}, Hostname: "esx-1"},
 	}, Connected: true, Vendor: 0x1234, Product: 0x5678, Family: []string{"storage", "hid"}, Speed: []string{"high", "full"}}
 	cdController := &types.VirtualIDEController{VirtualController: types.VirtualController{VirtualDevice: types.VirtualDevice{Key: 100, DeviceInfo: &types.Description{Label: "IDE controller 0"}}}}
@@ -94,14 +94,14 @@ func TestWalkDevicesNormalizesCDROMAndUSBAndExcludesControllers(t *testing.T) {
 		t.Fatalf("normalized devices = %d disks, %d NICs, %d CD-ROMs, %d USBs", len(disks), len(nics), len(cdroms), len(usbs))
 	}
 	gotCD := cdroms[0]
-	if gotCD.Label != "CD/DVD drive 1" || gotCD.BackingType != "iso" || gotCD.BackingPath == "" || gotCD.BackingDatastore != "datastore-1" || gotCD.BackingObjectID != "backing-1" {
+	if gotCD.Label != "CD/DVD drive 1" || gotCD.Summary != "ISO [datastore-1] images/installer.iso" || gotCD.BackingType != "iso" || gotCD.BackingPath == "" || gotCD.BackingDatastore != "datastore-1" || gotCD.BackingObjectID != "backing-1" {
 		t.Errorf("CD-ROM normalization = %+v", gotCD)
 	}
 	if gotCD.Connected == nil || !*gotCD.Connected || gotCD.StartsConnected == nil || !*gotCD.StartsConnected || gotCD.Controller != "IDE" {
 		t.Errorf("CD-ROM connection/controller = %+v", gotCD)
 	}
 	gotUSB := usbs[0]
-	if gotUSB.Label != "USB device 1" || gotUSB.BackingType != "remoteHost" || gotUSB.BackingDevice != "vid:1234 pid:5678" || gotUSB.BackingHost != "esx-1" || gotUSB.Vendor != 0x1234 || gotUSB.Product != 0x5678 || gotUSB.Controller != "USB" {
+	if gotUSB.Label != "USB device 1" || gotUSB.Summary != "Remote host esx-1" || gotUSB.BackingType != "remoteHost" || gotUSB.BackingDevice != "vid:1234 pid:5678" || gotUSB.BackingHost != "esx-1" || gotUSB.Vendor != 0x1234 || gotUSB.Product != 0x5678 || gotUSB.Controller != "USB" {
 		t.Errorf("USB normalization = %+v", gotUSB)
 	}
 	if gotUSB.Connected == nil || !*gotUSB.Connected || gotUSB.UseAutoDetect == nil || *gotUSB.UseAutoDetect || !reflect.DeepEqual(gotUSB.Family, []string{"hid", "storage"}) || !reflect.DeepEqual(gotUSB.Speed, []string{"full", "high"}) {

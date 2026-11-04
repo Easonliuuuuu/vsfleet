@@ -188,6 +188,9 @@ const vmConfigEmpty = "for a capture predating inventory schema 13, or when vSph
 // vmSettingsEmpty is when vInfo's settings and state columns are empty.
 const vmSettingsEmpty = "for a capture predating inventory schema 29, or when vSphere did not report the value"
 
+// vmRepeatedEmpty is when a column RVTools repeats on the VM sheets is empty.
+const vmRepeatedEmpty = "for a capture predating inventory schema 31"
+
 // vmFilesEmpty is when vInfo's storage and file columns are empty.
 const vmFilesEmpty = "for a capture predating inventory schema 28, or when vSphere did not return the value"
 
@@ -202,6 +205,8 @@ var sharedColumns = map[string]ColumnSpec{
 	"VM":         {Kind: KindText, Note: "VM name as vCenter reports it; not unique across an estate."},
 	"Powerstate": {Kind: KindText, Note: "poweredOn, poweredOff or suspended."},
 	"Template":   {Kind: KindBoolean, Note: "True for a VM template."},
+	"SRM Placeholder": {Kind: KindBoolean, Empty: vmRepeatedEmpty + ", or when vSphere returned no VM configuration",
+		Note: "True for the placeholder VM Site Recovery Manager keeps at the recovery site for a protected VM: config.managedBy names the com.vmware.vcDr extension and type placeholderVm."},
 	"Annotation": {Kind: KindText, Empty: "when the VM has no notes", Note: "Free text; may contain newlines."},
 	"Datacenter": {Kind: KindText},
 	"Cluster":    {Kind: KindText, Empty: "for a VM on a standalone host"},
@@ -209,8 +214,10 @@ var sharedColumns = map[string]ColumnSpec{
 	"Folder": {Kind: KindText, Empty: "for a VM inside a vApp, whose vApp is named on vInfo instead",
 		Note: "Inventory folder path rooted at the datacenter, as RVTools writes it, for example /DC-Lab or /DC-Lab/Discovered virtual machine."},
 	"OS according to the configuration file": {Kind: KindText, Note: "The configured guest OS identifier, which is what the VM claims to be — not what the guest actually runs."},
-	"VM ID":                                  {Kind: KindText, Note: "vCenter managed object reference, e.g. vm-1042. Unique within one vCenter, not across an estate."},
-	"VM UUID":                                {Kind: KindText, Note: "Instance UUID: unique to this VM instance, and the identifier vsfleet tracks a VM by across captures."},
+	osToolsHeader: {Kind: KindText, Empty: vmRepeatedEmpty + ", or when VMware Tools has not reported a guest OS",
+		Note: "The guest OS VMware Tools reports, which is what the guest runs. Compare it with OS according to the configuration file to find a VM whose configured OS is wrong."},
+	"VM ID":   {Kind: KindText, Note: "vCenter managed object reference, e.g. vm-1042. Unique within one vCenter, not across an estate."},
+	"VM UUID": {Kind: KindText, Note: "Instance UUID: unique to this VM instance, and the identifier vsfleet tracks a VM by across captures."},
 	"SMBIOS UUID": {Kind: KindText, Empty: "when vCenter does not report one",
 		Note: "The BIOS UUID the guest sees. It is preserved by a clone, so it is not a reliable unique key."},
 	"VI SDK Server":   {Kind: KindText, Note: "The configured endpoint's host, and port when one is configured, without the URL scheme, as RVTools writes it (for example 192.168.150.10). It is not a value vCenter reported."},
@@ -570,10 +577,12 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Free %":       {Kind: KindDecimal, Unit: "percent", Note: "Rounded to two decimals; RVTools writes integers. A filesystem VMware Tools reports with zero capacity is given 0 rather than an empty cell, because anything summing the column would read an empty cell as full."},
 	},
 	"vCD": {
-		"Device":               {Kind: KindText, Note: "Virtual CD/DVD device label."},
-		"Device Key":           {Kind: KindInteger, Note: "vSphere virtual-device key."},
-		"Connected":            {Kind: KindBoolean, Empty: "when vSphere omits connectable state"},
-		"Starts Connected":     {Kind: KindBoolean, Empty: "when vSphere omits connectable state"},
+		"Device Node":      {Kind: KindText, Note: "Virtual CD/DVD device label, e.g. CD/DVD drive 1. vsfleet wrote it as Device before inventory schema 31."},
+		"Device Key":       {Kind: KindInteger, Note: "vSphere virtual-device key."},
+		"Connected":        {Kind: KindBoolean, Empty: "when vSphere omits connectable state"},
+		"Starts Connected": {Kind: KindBoolean, Empty: "when vSphere omits connectable state"},
+		"Device Type": {Kind: KindText, Empty: vmRepeatedEmpty + ", or when vSphere reports no summary",
+			Note: "vSphere's summary of the drive and its backing, e.g. ISO [datastore1] iso/x.iso or ATAPI CD/DVD drive 0."},
 		"Backing type":         {Kind: KindText, Empty: "when vSphere omits backing information"},
 		"Backing path":         {Kind: KindText, Empty: "when the backing has no file path"},
 		"Backing device":       {Kind: KindText, Empty: "when the backing has no host-device identity"},
@@ -586,7 +595,11 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Unit number":          {Kind: KindInteger, Empty: "when vSphere does not expose one"},
 	},
 	"vUSB": {
-		"Device":               {Kind: KindText, Note: "Virtual USB device label."},
+		"Device Node": {Kind: KindText, Note: "Virtual USB device label. vsfleet wrote it as Device before inventory schema 31."},
+		"Device Type": {Kind: KindText, Empty: vmRepeatedEmpty + ", or when vSphere reports no summary",
+			Note: "vSphere's summary of the device and its backing."},
+		usbOSToolsHeader: {Kind: KindText, Empty: vmRepeatedEmpty + ", or when VMware Tools has not reported a guest OS",
+			Note: "The guest OS VMware Tools reports. RVTools spells this column with a lower-case t on vUSB only."},
 		"Device Key":           {Kind: KindInteger, Note: "vSphere virtual-device key."},
 		"Connected":            {Kind: KindBoolean, Empty: "when the persisted capture has no connection state"},
 		"Vendor ID":            {Kind: KindInteger, Empty: "when vSphere reports no vendor identifier"},

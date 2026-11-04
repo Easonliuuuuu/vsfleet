@@ -101,54 +101,34 @@ status rather than sample values.
 
 ## Fuzzing
 
-Seeds run with `go test ./...`. `fuzz.yml` runs five minutes per target
-nightly and one minute on PRs that touch fuzzing. Start a campaign manually
-from **Actions → Fuzz → Run workflow**. Commit failing inputs under the
-package's `testdata/fuzz/<Target>/` so they become regression seeds. The
-[target matrix](test-catalog.md#fuzz-targets) lists inputs and invariants.
+Seeds run with `go test ./...`; CI also runs timed campaigns. Commit a
+failing input under the package's `testdata/fuzz/<Target>/` so it becomes a
+regression seed. The [target matrix](test-catalog.md#fuzz-targets) lists
+inputs and invariants.
 
 ## Kubernetes end-to-end
 
-Create the kind cluster and load `vsfleet:ci-test` and
-`vsfleet-vcsim:ci-test` images first, as the Kubernetes deployment workflow does.
-The script assumes those prerequisites exist:
+Create a kind cluster and load the `vsfleet:ci-test` and
+`vsfleet-vcsim:ci-test` images, then run:
 
 ```sh
 scripts/test-kubernetes.sh
 ```
 
-The Kubernetes deployment workflow runs the shipped CronJob in kind against two vcsim
-Services. It checks ConfigMap/Secret mounts, PVC ownership, DNS, persistence,
-and partial-capture exits. See the [case matrix](test-catalog.md#kubernetes-end-to-end)
-and script for prerequisites. These checks validate container deployment with
-synthetic endpoints.
-
-The separate `kubernetes.yml` workflow runs weekly on Monday at 09:17
-Asia/Taipei (01:17 UTC), and on PRs and pushes to `main` that change container,
-deployment, fixture, or backend inputs. TUI-only changes skip it. Start a
-manual run from **Actions → Kubernetes deployment → Run workflow**, including
-before a release. Scheduled runs use the default branch; GitHub may delay them.
-
-The workflow pins kind, kubectl, and the Kubernetes node image digest. Update
-these together when upgrading the test cluster. A run has a 25-minute limit,
-with 12 minutes reserved for the workload script and failure artifacts retained
-for 14 days. The test creates Jobs from a suspended CronJob; it validates
-deployment rather than scheduled execution. Its hostPath fixture is manually
-owned by UID 65532, so it does not verify CSI volume ownership handling.
+It runs the shipped CronJob against two vcsim Services and checks mounts,
+credentials, persistence, DNS, and partial-capture exits; see the
+[case matrix](test-catalog.md#kubernetes-end-to-end). It validates
+deployment, not scheduled execution or CSI volume ownership.
 
 ## Release checks
 
-`scripts/check-release-pins.sh` runs in the Linux `build` job to catch base
-image, annotation, and released-version drift. `release-snapshot` uses the
-release goreleaser configuration with `--snapshot --skip=publish,sign`, then
-smoke-tests the binaries and image. Leave its six cross-compiles and two image
-builds to CI on a small workstation. The [release matrix](test-catalog.md#release-snapshot-and-pins)
-describes the checks.
+CI builds a full release snapshot, smoke-tests the binaries and image, and
+scans them; leave this to CI on a small workstation. See the
+[release matrix](test-catalog.md#release-snapshot-and-pins) and
+[vulnerability scanning](security-scanning.md).
 
-`release-snapshot` then scans every snapshot binary and image for known
-vulnerabilities, and the `Vulnerabilities` workflow scans the Go source on
-every pull request. [Vulnerability scanning](security-scanning.md) owns the
-policy, exceptions, and triage.
+When each of these runs in CI is listed in the
+[workflows README](https://github.com/Easonliuuuuu/vsfleet/blob/main/.github/workflows/README.md).
 
 ## What vcsim does not prove
 

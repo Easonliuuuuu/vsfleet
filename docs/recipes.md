@@ -24,7 +24,7 @@ job. Store its reference in `config.toml`, never the password.
 VCENTER_PASSWORD="$CI_VCENTER_SECRET" \
   vsfleet config set-context prod \
   --endpoint https://vcsa.example.internal \
-  --username administrator@vsphere.local \
+  --username svc-ro@vsphere.local \
   --credential env:VCENTER_PASSWORD \
   --tls system
 
@@ -55,7 +55,7 @@ Configure the context before starting the unit:
 ```sh
 vsfleet config set-context prod \
   --endpoint https://vcsa.example.internal \
-  --username administrator@vsphere.local \
+  --username svc-ro@vsphere.local \
   --credential exec:/usr/local/bin/vsfleet-systemd-credential \
   --tls system --no-test
 ```
@@ -79,7 +79,7 @@ exec vault read -field=password "secret/vcenter/$VSFLEET_CONTEXT"
 ```sh
 vsfleet config set-context prod \
   --endpoint https://vcsa.example.internal \
-  --username administrator@vsphere.local \
+  --username svc-ro@vsphere.local \
   --credential exec:/usr/local/bin/vsfleet-credential \
   --tls system
 ```

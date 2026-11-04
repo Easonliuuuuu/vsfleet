@@ -21,6 +21,14 @@
 * **vsphere:** pass the connection test with the built-in ReadOnly role instead of requiring `Sessions.ValidateSession` ([#189](https://github.com/Easonliuuuuu/vsfleet/issues/189))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.6.4](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.3...v0.6.4) (2026-11-04)
+
+
+### Bug Fixes
+
+* **deps:** bump excelize to v2.11.1 for its High advisories ([97abe83](https://github.com/Easonliuuuuu/vsfleet/commit/97abe83d5f42e72a7d794672df1ea92d36cfbaf6))
+* **release:** build with the newest Go 1.26 patch and release from release branches ([cb47e51](https://github.com/Easonliuuuuu/vsfleet/commit/cb47e51b2f541fca8e0cddda6aad5e230bd65804))
+
 ## [0.6.3](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.2...v0.6.3) (2026-10-12)
 
 

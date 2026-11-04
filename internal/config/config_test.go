@@ -111,13 +111,34 @@ func TestLoadMissingFileIsEmpty(t *testing.T) {
 	}
 }
 
-func TestLoadSSHUsers(t *testing.T) {
-	cfg, err := config.Load(write(t, sample+"\n[ssh]\nuser = \"legacy\"\nvm_user = \"ubuntu\"\nhost_user = \"root\"\n"))
+// An [ssh] table from an older release still loads, survives a save, and
+// produces the notice saying it no longer has any effect.
+func TestLegacySSHTableIsKeptAndNoticed(t *testing.T) {
+	path := write(t, sample+"\n[ssh]\nvm_user = \"ubuntu\"\n\n[[ssh.routes]]\ncontext = \"lab\"\ncidr = \"10.0.0.0/8\"\ntype = \"socks5\"\nproxy_address = \"127.0.0.1:1080\"\n")
+	cfg, err := config.Load(path)
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.SSH.User != "legacy" || cfg.SSH.VMUser != "ubuntu" || cfg.SSH.HostUser != "root" {
-		t.Fatalf("SSH users parsed as %+v", cfg.SSH)
+	if cfg.LegacySSHNotice() == "" {
+		t.Error("no notice for a config with an [ssh] table")
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	again, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load after Save: %v", err)
+	}
+	if again.LegacySSH["vm_user"] != "ubuntu" {
+		t.Errorf("[ssh] table after a save = %+v, want it kept", again.LegacySSH)
+	}
+
+	plain, err := config.Load(write(t, sample))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if n := plain.LegacySSHNotice(); n != "" {
+		t.Errorf("notice %q for a config without [ssh]", n)
 	}
 }
 

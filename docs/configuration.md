@@ -125,68 +125,13 @@ by `vsfleet config set-context --help`.
 
 ## SSH
 
-```toml
-[ssh]
-user = "ubuntu"
-# vm_user = "ubuntu"
-# host_user = "root"
-```
+<span id="ssh-routes"></span>
+<span id="three-complementary-routing-sources"></span>
 
-The [SSH handoff](tui-actions.md#detail-pane-actions) uses `vm_user` for VM
-guests and `host_user` for ESXi hosts, falling back to the shared `user`.
-With no configured user, OpenSSH uses `~/.ssh/config` and then the local
-username.
-
-A user or key chosen for one machine in the TUI overrides these defaults
-and is remembered. A context behind an unauthenticated SOCKS5 or HTTP proxy
-gets an `ssh -o ProxyCommand=...` command using `nc`; HTTPS and
-authenticated proxies are not supported for SSH.
-
-### SSH routes
-
-Use `[[ssh.routes]]` when a VM guest network needs a different route from
-its vCenter. Rules select the SSH route by context and destination CIDR:
-
-```toml
-[ssh]
-vm_user = "devops"
-
-[[ssh.routes]]
-context = "tdc-1f"
-cidr = "172.31.7.0/24"
-type = "http"
-proxy_address = "100.109.21.17:8080"
-```
-
-This sends SSH to `tdc-1f` guests in `172.31.7.0/24` through HTTP CONNECT,
-while the vCenter route may stay direct. The rendered command shows the route:
-`ssh -o 'ProxyCommand=nc -X connect -x 100.109.21.17:8080 %h %p'`.
-
-| Key | Meaning |
-|---|---|
-| `context` | Required. The context the route applies to; guests in another context never match. |
-| `cidr` | Required. The destination network. |
-| `type` | `direct`, `socks5` or `http`. `direct` overrides a proxied context for that network. |
-| `proxy_address` | `host:port` of the proxy. Required for `socks5` and `http`; not allowed for `direct`. |
-
-The rule matching the VM's guest IP with the longest prefix wins; with no
-match, SSH uses the context's own route. ESXi hosts always use the context's
-route. Routes carry no credentials, and conflicting rules stop vsfleet from
-starting.
-
-### Three complementary routing sources
-
-Three sources can choose a VM's route:
-
-| Source | Scope |
-| --- | --- |
-| OpenSSH alias | An existing `~/.ssh/config` host that resolves to the VM's guest IP |
-| Per-VM remembered route | A TUI choice remembered for one machine |
-| `[[ssh.routes]]` | Context/CIDR policy in `config.toml` |
-
-See [destination and route](tui-actions.md#destination-and-route) for which
-wins. vsfleet never picks a route by trying connections, and remembered
-choices hold no passwords or key contents.
+The TUI's [SSH action](tui-actions.md#ssh) runs plain `ssh <address>`; set
+users, keys and routes in `~/.ssh/config`. Older releases read an `[ssh]`
+table here. It is now ignored, and the TUI says so at startup until you
+remove it.
 
 ## TLS policies
 

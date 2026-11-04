@@ -158,27 +158,24 @@ func runUIOnce(a *App, cmd *cobra.Command, notice string) (bool, error) {
 		fmt.Fprintf(a.errOut(), "warning: stored captures unavailable: %v\n", historyErr)
 	}
 	release := version.Release()
+	noticeBad := notice != ""
+	if notice == "" {
+		notice = cfg.LegacySSHNotice()
+	}
 	opts := tui.Options{
 		Current:     current,
 		AllContexts: a.AllContexts,
 		Kind:        remembered.Kind,
 		Sort:        remembered.Sort,
 
-		RefreshInterval:  a.RefreshInterval,
-		Credentials:      coordinator,
-		In:               a.in(),
-		Out:              a.out(),
-		Assessment:       assessmentService,
-		SSHUser:          cfg.SSH.User,
-		SSHVMUser:        cfg.SSH.VMUser,
-		SSHHostUser:      cfg.SSH.HostUser,
-		SSHRoutes:        cfg.SSH.Routes,
-		SSHUsers:         remembered.SSHUsers,
-		SSHIdentityFiles: remembered.SSHIdentityFiles,
-		SSHDestinations:  remembered.SSHDestinations,
-		Welcome:          welcomeFor(remembered.WelcomedVersion, release, len(cfg.Contexts) > 0, os.Getenv),
-		Notice:           notice,
-		NoticeBad:        notice != "",
+		RefreshInterval: a.RefreshInterval,
+		Credentials:     coordinator,
+		In:              a.in(),
+		Out:             a.out(),
+		Assessment:      assessmentService,
+		Welcome:         welcomeFor(remembered.WelcomedVersion, release, len(cfg.Contexts) > 0, os.Getenv),
+		Notice:          notice,
+		NoticeBad:       noticeBad,
 	}
 	a.updates().uiOptions(&opts)
 	snap, runErr := tui.Run(cmd.Context(), backend, opts)
@@ -186,7 +183,7 @@ func runUIOnce(a *App, cmd *cobra.Command, notice string) (bool, error) {
 	// really started (no TTY, say) has nothing truthful to say about where
 	// the cursor was.
 	if runErr == nil {
-		if err := uistate.Save("", uistate.State{Context: snap.Context, Kind: snap.Kind, Sort: snap.Sort, SSHUsers: snap.SSHUsers, SSHIdentityFiles: snap.SSHIdentityFiles, SSHDestinations: snap.SSHDestinations, WelcomedVersion: release}); err != nil {
+		if err := uistate.Save("", uistate.State{Context: snap.Context, Kind: snap.Kind, Sort: snap.Sort, WelcomedVersion: release}); err != nil {
 			fmt.Fprintf(a.errOut(), "warning: could not remember the last screen (%v)\n", err)
 		}
 	}

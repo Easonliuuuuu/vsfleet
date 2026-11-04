@@ -113,7 +113,6 @@ func footerVariants() []footerVariant {
 			m.mode, m.ds = modeDatastoreFind, &dsWorkspace{findPrompt: true}
 		})},
 		footerVariant{name: "credential prompt", build: plain(func(m *Model) { m.credPrompt = &credPromptState{} })},
-		footerVariant{name: "ssh prompt", build: plain(func(m *Model) { m.sshPrompt = &sshPromptState{} })},
 	)
 	return out
 }

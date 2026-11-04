@@ -57,8 +57,6 @@ func (m *Model) View() string {
 	// priority ahead of m.mode instead of being one more case inside it.
 	case m.credPrompt != nil:
 		body = strings.Join(m.viewCredPrompt(), "\n")
-	case m.sshPrompt != nil:
-		body = strings.Join(m.viewSSHPrompt(), "\n")
 	case m.mode == modeDetail:
 		body = strings.Join(m.viewDetail(), "\n")
 	case m.mode == modeVAppDetail:
@@ -243,7 +241,7 @@ func (m *Model) viewMessage() string {
 	if m.message == "" {
 		return ""
 	}
-	if m.messageInventory && (m.mode != modeBrowse || m.credPrompt != nil || m.sshPrompt != nil) {
+	if m.messageInventory && (m.mode != modeBrowse || m.credPrompt != nil) {
 		return ""
 	}
 	style := t.dim

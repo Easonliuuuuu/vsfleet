@@ -28,33 +28,14 @@ type Config struct {
 	Version        int        `toml:"version"`
 	CurrentContext string     `toml:"current_context,omitempty"`
 	Contexts       []*Context `toml:"contexts"`
-	// SSH configures the TUI's SSH handoff action. It is not per-context: an
-	// operator's own username is the same person regardless of which
-	// vCenter the highlighted VM or host happens to live behind.
-	SSH SSHConfig `toml:"ssh,omitempty"`
+	// LegacySSH is the [ssh] table older releases used for SSH users and
+	// routes. SSH now leaves both to ~/.ssh/config; the table is kept so
+	// saving the file does not silently delete it, and LegacySSHNotice
+	// tells the operator it no longer has any effect.
+	LegacySSH map[string]any `toml:"ssh,omitempty"`
 
 	// path is where this config was loaded from, used by Save.
 	path string
-}
-
-// SSHConfig holds settings for the TUI's SSH handoff action — see the
-// detail pane's field-cursor actions in package tui. It is optional
-// throughout: a config with no [ssh] table gets a zero SSHConfig, and SSH
-// falls back to its own usual resolution (~/.ssh/config, then the local
-// username) rather than vsfleet inventing one.
-type SSHConfig struct {
-	// User is the backwards-compatible default remote username for both VMs
-	// and ESXi hosts. VMUser and HostUser take precedence when set.
-	User string `toml:"user,omitempty" json:"user,omitempty"`
-	// VMUser is the default remote username for VM guest addresses.
-	VMUser string `toml:"vm_user,omitempty" json:"vm_user,omitempty"`
-	// HostUser is the default remote username for ESXi host addresses.
-	HostUser string `toml:"host_user,omitempty" json:"host_user,omitempty"`
-	// Routes choose how the workstation reaches an SSH target from its
-	// context and destination CIDR, independently of how vsfleet reaches
-	// the vCenter. No matching route leaves the context's own transport in
-	// charge; see SSHRoute.
-	Routes []SSHRoute `toml:"routes,omitempty" json:"routes,omitempty"`
 }
 
 // DefaultPath returns the configuration file path, honouring VSFLEET_CONFIG and
@@ -102,13 +83,19 @@ func Load(path string) (*Config, error) {
 	for _, c := range cfg.Contexts {
 		c.Normalize()
 	}
-	for i := range cfg.SSH.Routes {
-		cfg.SSH.Routes[i].Normalize()
-	}
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// LegacySSHNotice is a one-line note when the file still has an [ssh] table,
+// which no release since SSH handed routing to OpenSSH reads; "" otherwise.
+func (c *Config) LegacySSHNotice() string {
+	if len(c.LegacySSH) == 0 {
+		return ""
+	}
+	return "[ssh] in config.toml is no longer used: set SSH users, keys and routes in ~/.ssh/config"
 }
 
 // Path returns the file this configuration is bound to.
@@ -132,7 +119,7 @@ func (c *Config) Validate() error {
 	if c.CurrentContext != "" && !seen[c.CurrentContext] {
 		return fmt.Errorf("current_context %q does not name a configured context", c.CurrentContext)
 	}
-	return c.SSH.validate(seen)
+	return nil
 }
 
 // Context returns the context with the given name. An empty name returns the

@@ -194,7 +194,6 @@ type configView struct {
 	Version        int               `json:"version"`
 	CurrentContext string            `json:"current_context,omitempty"`
 	Contexts       []*config.Context `json:"contexts"`
-	SSH            *config.SSHConfig `json:"ssh,omitempty"`
 }
 
 func newConfigViewCommand(a *App) *cobra.Command {
@@ -224,7 +223,7 @@ the one named with -n.`,
 			if err != nil {
 				return err
 			}
-			view := &config.Config{Version: cfg.Version, CurrentContext: cfg.CurrentContext, Contexts: cfg.Contexts, SSH: cfg.SSH}
+			view := &config.Config{Version: cfg.Version, CurrentContext: cfg.CurrentContext, Contexts: cfg.Contexts}
 			if minify {
 				c, err := a.SingleContext("")
 				if err != nil {
@@ -236,11 +235,7 @@ the one named with -n.`,
 				view.Contexts = []*config.Context{}
 			}
 			if a.json() {
-				v := configView{Version: view.Version, CurrentContext: view.CurrentContext, Contexts: view.Contexts}
-				if !isZeroSSH(view.SSH) {
-					v.SSH = &view.SSH
-				}
-				return writeJSON(a.out(), v)
+				return writeJSON(a.out(), configView{Version: view.Version, CurrentContext: view.CurrentContext, Contexts: view.Contexts})
 			}
 			b, err := toml.Marshal(view)
 			if err != nil {
@@ -252,10 +247,6 @@ the one named with -n.`,
 	}
 	cmd.Flags().BoolVar(&minify, "minify", false, "show only the selected context")
 	return cmd
-}
-
-func isZeroSSH(s config.SSHConfig) bool {
-	return s.User == "" && s.VMUser == "" && s.HostUser == "" && len(s.Routes) == 0
 }
 
 // contextRenames maps each removed "context" subcommand to its new form.

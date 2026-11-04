@@ -42,17 +42,6 @@ func freeTextInputs() []freeTextInput {
 		openBrowser(t, m)
 		return m
 	}
-	sshField := func(focus sshPromptFocus) func(t *testing.T) *Model {
-		return plain(func(t *testing.T, m *Model) {
-			openSSHPrompt(t, m, findRow(t, m, vsphere.KindVM, "app-01"))
-			m.sshPrompt.focus = focus
-			m.sshPrompt.syncFocus()
-			m.sshPrompt.pathInput.Cursor.SetMode(cursor.CursorStatic)
-			if focus == sshFocusPath {
-				m.sshPrompt.pathInput.Focus()
-			}
-		})
-	}
 	return []freeTextInput{
 		{
 			name:   "browse filter",
@@ -151,25 +140,6 @@ func freeTextInputs() []freeTextInput {
 			}),
 			value:  func(m *Model) string { return m.credPrompt.input.Value() },
 			active: func(m *Model) bool { return m.credPrompt != nil },
-		},
-		{
-			name:   "ssh prompt user",
-			open:   sshField(sshFocusUser),
-			value:  func(m *Model) string { return m.sshPrompt.input.Value() },
-			active: func(m *Model) bool { return m.sshPrompt != nil },
-		},
-		{
-			name:    "ssh prompt key path",
-			open:    sshField(sshFocusPath),
-			value:   func(m *Model) string { return m.sshPrompt.pathInput.Value() },
-			active:  func(m *Model) bool { return m.sshPrompt != nil },
-			escapes: 2,
-		},
-		{
-			name:   "ssh prompt proxy address",
-			open:   sshField(sshFocusProxyAddr),
-			value:  func(m *Model) string { return m.sshPrompt.proxyInput.Value() },
-			active: func(m *Model) bool { return m.sshPrompt != nil },
 		},
 	}
 }

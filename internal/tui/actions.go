@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"net/netip"
 	"slices"
 	"strings"
 	"unicode"
@@ -10,18 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
-	"github.com/easonliuuuuu/vsfleet/internal/uistate"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
-)
-
-// Per-VM route override kinds — the values uistate.SSHDestination.Route
-// carries when Kind is "route". "openssh" and "direct" need no address;
-// "http" and "socks5" are the same unauthenticated proxy types
-// config.SSHRoute already supports, reused so routeOverrideArgs (see
-// handoff.go) can build on proxyArgs instead of duplicating it.
-const (
-	sshRouteOpenSSH = "openssh"
-	sshRouteDirect  = "direct"
 )
 
 // action is one entry in the field cursor's action list: what to call it, an
@@ -157,281 +147,71 @@ func (m *Model) hostClientAction(r row) action {
 	return action{label: "Open in Host Client", detail: url, run: func(m *Model) tea.Cmd { return m.openURLCmd(url) }}
 }
 
-// sshAction is "SSH to <user>@<address>", offered on a VM's or host's object
-// header and on a VM's IP address and DNS name fields alike — the target and
-// the route are the same question wherever it is asked from. The label names
-// the user ssh will really connect as, so it never reads as if the address
-// alone were enough; see sshShownUser.
-func (m *Model) sshAction(r row, address string) action {
-	label := "SSH to " + address
+// sshAction is "SSH to <address>", run as plain "ssh <address>". vSphere
+// says which addresses a machine has, not which one this workstation can
+// reach or through what, so vsfleet adds no user, key or route: the
+// operator's ~/.ssh/config decides those. note, when set, says where the
+// address came from, such as the network its adapter is on.
+func (m *Model) sshAction(address, note string) action {
 	if address == "" {
 		return action{label: "SSH", disabled: "no address available"}
 	}
-	if m.demo {
-		return action{label: label, disabled: demoDisabledReason}
-	}
-	spec, reason := m.sshSpec(r, address)
-	if reason != "" {
-		return action{label: label, disabled: reason}
-	}
-	shown := spec
-	shown.User = m.sshShownUser(spec)
-	return action{label: "SSH to " + sshTarget(shown), detail: sshCommand(shown), run: func(m *Model) tea.Cmd { return m.sshCmd(spec) }}
-}
-
-// sshAsAction opens the combined destination, username and identity picker
-// instead of connecting immediately. vSphere cannot supply a guest's login —
-// VMware Tools reports no account names — and a nonstandard private-key path
-// is not part of OpenSSH's default search list; an OpenSSH alias, or a
-// per-VM route override, is not something the object header's single "SSH
-// to ..." action can offer a choice between either.
-func (m *Model) sshAsAction(r row, address string) action {
-	const label = "SSH with a different destination, user or key…"
-	if address == "" {
-		return action{label: label, disabled: "no address available"}
+	label := "SSH to " + address
+	if note != "" {
+		label += " · " + note
 	}
 	if m.demo {
 		return action{label: label, disabled: demoDisabledReason}
 	}
-	spec, reason := m.sshSpec(r, address)
-	if reason != "" {
-		return action{label: label, disabled: reason}
-	}
-	prefill, explicit := m.sshShownUser(spec), spec.User != ""
-	key := sshUserKey(r)
-	info := m.sshDestInfoFor(r)
-	return action{label: label, detail: address, run: func(m *Model) tea.Cmd {
-		return m.openSSHPrompt(r, spec, key, prefill, explicit, sshIdentityKey(r), info)
-	}}
+	return action{label: label, detail: sshCommand(address), run: func(m *Model) tea.Cmd { return m.sshCmd(address) }}
 }
 
-// sshAliasAction is the menu's top SSH entry once discovery has proven an
-// OpenSSH alias already reaches this VM: "ssh <alias>", with OpenSSH itself
-// — never vsfleet — owning whatever ProxyJump, ProxyCommand, Port or other
-// route that alias's Host block applies.
-func (m *Model) sshAliasAction(r row, alias string) action {
-	spec := SSHSpec{Address: alias, Alias: true, User: m.sshUserFor(r), IdentityFile: m.sshIdentityFor(r)}
-	shown := spec
-	shown.User = m.sshShownUser(spec)
-	label := "SSH to " + sshTarget(shown) + " — OpenSSH alias"
-	return action{label: label, detail: sshCommand(shown), run: func(m *Model) tea.Cmd {
-		m.rememberSSHDestination(sshUserKey(r), uistate.SSHDestination{Kind: "openssh_alias", Alias: alias})
-		return m.sshCmd(spec)
-	}}
+// sshDestination is one address a VM can be reached at, and where it came
+// from.
+type sshDestination struct {
+	address string
+	note    string
 }
 
-// sshChooseAliasAction is offered instead of sshAliasAction when discovery
-// found more than one alias and none is remembered: choosing arbitrarily
-// among several routes an operator might have configured for different
-// reasons is exactly what the design this issue follows refuses to do, so
-// the destination picker opens instead.
-func (m *Model) sshChooseAliasAction(r row, info sshDestInfo) action {
-	label := fmt.Sprintf("Choose OpenSSH alias… (%d matches)", len(info.aliases))
-	targets := sshTargets(r)
-	address := ""
-	if len(targets) > 0 {
-		address = targets[0]
-	}
-	spec, reason := m.sshSpec(r, address)
-	if reason != "" {
-		return action{label: label, disabled: reason}
-	}
-	prefill, explicit := m.sshShownUser(spec), spec.User != ""
-	key := sshUserKey(r)
-	return action{label: label, run: func(m *Model) tea.Cmd {
-		return m.openSSHPrompt(r, spec, key, prefill, explicit, sshIdentityKey(r), info)
-	}}
-}
-
-// sshSpec builds the plain (non-alias) SSH handoff for one of a VM's or
-// host's own native addresses — its guest DNS name or IP, never an OpenSSH
-// alias, which sshAliasAction builds directly instead so a menu entry
-// labeled with the guest's own address is never silently redirected
-// elsewhere. Precedence, most specific first: a remembered per-VM route
-// override, an explicit SSH route for this context and the machine's IP
-// (#178), else the context's own transport, else whatever ssh(1) resolves
-// on its own. The override and #178 route are both matched on the row's IP
-// rather than on address, which may be the guest's DNS name — otherwise
-// neither would apply to the first action offered on most VMs, and matching
-// a name would need a lookup just to draw the menu.
-func (m *Model) sshSpec(r row, address string) (SSHSpec, string) {
-	spec := SSHSpec{Address: address, User: m.sshUserFor(r), IdentityFile: m.sshIdentityFor(r)}
-	if dest, ok := m.sshDestinations[sshUserKey(r)]; ok && dest.Kind == "route" {
-		args, reason := routeOverrideArgs(dest.Route, dest.ProxyAddress)
-		if reason != "" {
-			return spec, reason
+// vmSSHDestinations lists every address a VM reports, name first: the guest
+// DNS name, then the primary IP, then each other address on its adapters,
+// labelled with the adapter's network. Which one is reachable from here is
+// something only the operator knows, so all of them are offered. Adapter
+// addresses come from a capture; a live listing knows only the primary IP.
+func vmSSHDestinations(r row) []sshDestination {
+	var out []sshDestination
+	seen := map[string]bool{}
+	add := func(address, note string) {
+		if address == "" || seen[address] {
+			return
 		}
-		spec.ProxyArgs = args
-		return spec, ""
+		seen[address] = true
+		out = append(out, sshDestination{address: address, note: note})
 	}
-	return m.autoSSHSpec(spec, r)
-}
-
-// autoSSHSpec is sshSpec's fallback tail — #178's route, then the context
-// transport, then plain ssh(1) — factored out so the SSH prompt's
-// "Automatic" route choice can preview and use the exact same resolution
-// without first consulting (or overwriting) a remembered override that the
-// operator has not actually confirmed yet.
-func (m *Model) autoSSHSpec(spec SSHSpec, r row) (SSHSpec, string) {
-	transport, routed := config.ResolveSSHRoute(m.sshRoutes, r.context, r.target.address)
-	if !routed {
-		st := m.byName[r.context]
-		if st == nil {
-			return spec, ""
-		}
-		transport = st.cc.Transport
-	}
-	args, reason := proxyArgs(transport)
-	if reason != "" {
-		return spec, reason
-	}
-	spec.ProxyArgs = args
-	return spec, ""
-}
-
-// sshDestInfo is the result of one bounded alias-discovery pass for a VM: a
-// deterministically ordered, deduplicated set of OpenSSH aliases confirmed
-// (via a bounded "ssh -G", never trusted from config text alone) to reach
-// its guest IP, plus which one — if any — should be preferred without
-// asking. err is a non-fatal discovery problem to show alongside whatever
-// aliases were still found, the same way identity discovery's err works.
-type sshDestInfo struct {
-	aliases   []string
-	preferred string
-	err       error
-}
-
-// sshDiscoveryCache memoizes the most recent sshDestInfoFor result. Building
-// one row's action menu calls into it from several places — the alias
-// action, each native target's action, the "different destination" prompt —
-// and a key mismatch (a different VM, or none yet queried) is simply a
-// cache miss, not something that needs invalidating explicitly.
-type sshDiscoveryCache struct {
-	key  string
-	info sshDestInfo
-}
-
-// sshDestInfoFor runs (or reuses the last) bounded alias discovery for r,
-// dropping a remembered alias from state the moment discovery proves it no
-// longer reaches this VM's current guest IP — "fail closed and rediscover,"
-// never fall back to silently connecting somewhere else. Demo mode and a VM
-// with no known guest IP both skip discovery entirely and report no
-// aliases, the same "nothing to say" empty value sshSpec's own fallbacks
-// already treat as unremarkable.
-func (m *Model) sshDestInfoFor(r row) sshDestInfo {
-	if m.demo || r.target.address == "" {
-		return sshDestInfo{}
-	}
-	key := sshUserKey(r)
-	if key == "" {
-		return sshDestInfo{}
-	}
-	if m.sshDiscovery != nil && m.sshDiscovery.key == key {
-		return m.sshDiscovery.info
-	}
-	remembered := ""
-	if dest, ok := m.sshDestinations[key]; ok && dest.Kind == "openssh_alias" {
-		remembered = dest.Alias
-	}
-	aliases, stale, err := m.handoff.DiscoverSSHDestinations(r.target.address, remembered)
-	if stale {
-		delete(m.sshDestinations, key)
-		remembered = ""
-	}
-	preferred := ""
-	switch {
-	case remembered != "" && slices.Contains(aliases, remembered):
-		preferred = remembered
-	case len(aliases) == 1:
-		preferred = aliases[0]
-	}
-	info := sshDestInfo{aliases: aliases, preferred: preferred, err: err}
-	m.sshDiscovery = &sshDiscoveryCache{key: key, info: info}
-	return info
-}
-
-// rememberSSHDestination persists dest as key's SSH destination, replacing
-// whatever was remembered before. An empty key (a row with no MoRef) is a
-// no-op — there is nothing stable to key it by.
-func (m *Model) rememberSSHDestination(key string, dest uistate.SSHDestination) {
-	if key == "" {
-		return
-	}
-	if m.sshDestinations == nil {
-		m.sshDestinations = map[string]uistate.SSHDestination{}
-	}
-	m.sshDestinations[key] = dest
-}
-
-// forgetSSHDestination removes key's remembered SSH destination — chosen
-// when the operator picks "Automatic" explicitly, the same way choosing
-// OpenSSH default forgets a remembered identity.
-func (m *Model) forgetSSHDestination(key string) {
-	delete(m.sshDestinations, key)
-}
-
-// sshUserFor picks the user vsfleet itself supplies for row r, most specific
-// first: what the operator last typed for this exact machine, then the
-// configured per-kind default, then the shared one. Empty means vsfleet has
-// no opinion and ssh(1) resolves it.
-func (m *Model) sshUserFor(r row) string {
-	if key := sshUserKey(r); key != "" {
-		if u := m.sshUsers[key]; u != "" {
-			return u
-		}
-	}
-	switch r.kind {
-	case vsphere.KindHost:
-		if m.sshHostUser != "" {
-			return m.sshHostUser
-		}
-	case vsphere.KindVM:
-		if m.sshVMUser != "" {
-			return m.sshVMUser
-		}
-	}
-	return m.sshUser
-}
-
-func (m *Model) sshIdentityFor(r row) string {
-	if key := sshIdentityKey(r); key != "" {
-		return m.sshIdentityFiles[key]
-	}
-	return ""
-}
-
-// sshUserKey identifies one machine for remembering the user typed for it. A
-// moref is only unique within one vCenter, so the context is part of it.
-func sshUserKey(r row) string {
-	if r.target.moref == "" {
-		return ""
-	}
-	return r.context + "/" + r.target.moref
-}
-
-func sshIdentityKey(r row) string { return sshUserKey(r) }
-
-// sshShownUser is the user to display for spec: the one vsfleet supplies, or
-// else whatever ssh(1) would resolve on its own. Demo mode never asks —
-// "vsfleet demo" launches nothing, including ssh -G.
-func (m *Model) sshShownUser(spec SSHSpec) string {
-	if spec.User != "" || m.demo {
-		return spec.User
-	}
-	return m.handoff.ResolveUser(spec.Address)
-}
-
-// sshTargets lists what a VM can be reached at, name first: a name is the
-// only thing a Host block in ~/.ssh/config can match, while the IP is kept
-// because it cannot fail on a resolver that has never heard of the guest's
-// own idea of its name.
-func sshTargets(r row) []string {
-	var out []string
 	if h := r.target.hostName; h != "" && !isLoopbackName(h) {
-		out = append(out, h)
+		add(h, "guest DNS name")
 	}
-	if a := r.target.address; a != "" && (len(out) == 0 || out[0] != a) {
-		out = append(out, a)
+	var nics []vsphere.VMNIC
+	if r.vm != nil {
+		nics = r.vm.NICs
+	}
+	primaryNote := "primary IP"
+	for _, n := range nics {
+		if slices.Contains(n.IPv4, r.target.address) || slices.Contains(n.IPv6, r.target.address) {
+			if n.Network != "" {
+				primaryNote += ", " + n.Network
+			}
+			break
+		}
+	}
+	add(r.target.address, primaryNote)
+	for _, n := range nics {
+		for _, a := range append(append([]string(nil), n.IPv4...), n.IPv6...) {
+			if ip, err := netip.ParseAddr(a); err == nil && ip.IsLinkLocalUnicast() {
+				continue
+			}
+			add(a, n.Network)
+		}
 	}
 	return out
 }
@@ -443,76 +223,25 @@ func isLoopbackName(name string) bool {
 	return name == "localhost" || strings.HasPrefix(name, "localhost.")
 }
 
-// vmSSHActions is every SSH entry for a VM's header: an OpenSSH alias entry
-// first when discovery found one to prefer or several to choose between,
-// then one action per native target (its guest DNS name, its IP), then the
-// combined prompt aimed at the first.
+// vmSSHActions is one SSH entry per address the VM reports. The notes only
+// help to tell several addresses apart, so a single one goes without.
 func (m *Model) vmSSHActions(r row) []action {
-	targets := sshTargets(r)
-	out := make([]action, 0, len(targets)+2)
-	if !m.demo {
-		if info := m.sshDestInfoFor(r); info.preferred != "" {
-			out = append(out, m.sshAliasAction(r, info.preferred))
-		} else if len(info.aliases) > 1 {
-			out = append(out, m.sshChooseAliasAction(r, info))
-		}
+	dests := vmSSHDestinations(r)
+	switch len(dests) {
+	case 0:
+		return []action{m.sshAction("", "")}
+	case 1:
+		return []action{m.sshAction(dests[0].address, "")}
 	}
-	for _, t := range targets {
-		out = append(out, m.sshAction(r, t))
-	}
-	if len(targets) > 0 {
-		out = append(out, m.sshAsAction(r, targets[0]))
+	out := make([]action, 0, len(dests))
+	for _, d := range dests {
+		out = append(out, m.sshAction(d.address, d.note))
 	}
 	return out
 }
 
-// sshCommandCopyAction is "Copy ssh user@address" — the string an operator
-// pastes into a second tmux pane rather than handing this program's own
-// terminal over.
-func (m *Model) sshCommandCopyAction(r row, address string) action {
-	spec, _ := m.sshSpec(r, address)
-	spec.User = m.sshShownUser(spec)
-	cmd := sshCommand(spec)
-	return action{label: "Copy " + cmd, run: func(m *Model) tea.Cmd { return m.copyCmd(cmd) }}
-}
-
-func sshTarget(spec SSHSpec) string {
-	if spec.User != "" {
-		return spec.User + "@" + spec.Address
-	}
-	return spec.Address
-}
-
-func sshCommand(spec SSHSpec) string {
-	args := sshArgs(spec)
-	quoted := make([]string, len(args))
-	for i, arg := range args {
-		quoted[i] = shellQuote(arg)
-	}
-	return "ssh " + strings.Join(quoted, " ")
-}
-
-func sshArgs(spec SSHSpec) []string {
-	args := append([]string{}, spec.ProxyArgs...)
-	if !spec.Alias {
-		// An alias's own Host block may set its own ConnectTimeout — or
-		// deliberately not — and layering vsfleet's default over it would
-		// be exactly the kind of reconstruction #187 exists to avoid. Every
-		// other target still gets it, since nothing else pins one.
-		args = append(args, "-o", "ConnectTimeout=15")
-	}
-	if spec.IdentityFile != "" {
-		args = append(args,
-			"-i", spec.IdentityFile,
-			"-o", "IdentitiesOnly=yes",
-			"-o", "PubkeyAuthentication=yes",
-			"-o", "PreferredAuthentications=publickey",
-			"-o", "PasswordAuthentication=no",
-			"-o", "KbdInteractiveAuthentication=no",
-			"-o", "BatchMode=no",
-		)
-	}
-	return append(args, sshTarget(spec))
+func sshCommand(address string) string {
+	return "ssh " + shellQuote(address)
 }
 
 func shellQuote(value string) string {
@@ -677,10 +406,7 @@ func (m *Model) objectActions(r row) []action {
 		out = append(out, m.openAction(r))
 		out = append(out, copyNamed("Copy MoRef", r.target.moref))
 	case vsphere.KindHost:
-		out = append(out, m.sshAction(r, r.target.address))
-		if r.target.address != "" {
-			out = append(out, m.sshAsAction(r, r.target.address))
-		}
+		out = append(out, m.sshAction(r.target.address, ""))
 		out = append(out, m.hostClientAction(r))
 		out = append(out, m.openAction(r))
 		out = append(out, jumpAction("Show VMs on this host", vsphere.KindVM, "host", r.name))
@@ -716,9 +442,9 @@ func (m *Model) objectActions(r row) []action {
 func (m *Model) fieldActions(r row, f field) []action {
 	switch {
 	case r.kind == vsphere.KindVM && f.label == "IP address":
-		return m.sshFieldActions(r, f.value)
+		return m.sshFieldActions(f.value)
 	case r.kind == vsphere.KindVM && f.label == "DNS name":
-		return m.sshFieldActions(r, f.value)
+		return m.sshFieldActions(f.value)
 	case r.kind == vsphere.KindVM && f.label == "Host":
 		return []action{jumpToNamed("Show this host", vsphere.KindHost, f.value), copyAction(f.value)}
 	case r.kind == vsphere.KindVM && f.label == "Cluster":
@@ -739,16 +465,15 @@ func (m *Model) fieldActions(r row, f field) []action {
 	}
 }
 
-func (m *Model) sshFieldActions(r row, address string) []action {
-	var out []action
-	if !m.demo {
-		if info := m.sshDestInfoFor(r); info.preferred != "" {
-			out = append(out, m.sshAliasAction(r, info.preferred))
-		} else if len(info.aliases) > 1 {
-			out = append(out, m.sshChooseAliasAction(r, info))
-		}
+// sshFieldActions is what a VM's IP address or DNS name line offers: SSH to
+// that address, or copy the command or the address to use elsewhere.
+func (m *Model) sshFieldActions(address string) []action {
+	cmd := sshCommand(address)
+	return []action{
+		m.sshAction(address, ""),
+		{label: "Copy " + cmd, run: func(m *Model) tea.Cmd { return m.copyCmd(cmd) }},
+		copyAction(address),
 	}
-	return append(out, m.sshAction(r, address), m.sshAsAction(r, address), m.sshCommandCopyAction(r, address), copyAction(address))
 }
 
 // runAction closes the popup (if one was open) and, unless the action

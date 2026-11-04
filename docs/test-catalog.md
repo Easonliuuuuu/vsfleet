@@ -35,13 +35,13 @@ Packages needing a vCenter use an in-process simulator.
 | --- | --- | --- |
 | `internal/assessment` | History, capture selectors (ID, label, date), diffs, trends, capacity, timelines, policy, perf, migrations | interruption, writer leases, renamed/moved VMs, missing contexts, failed collections, old schemas |
 | `internal/cli` | Commands, flags, exits, JSON, examples | invalid inputs, offline import/export, no clobbering, add-context credential choices without a keyring |
-| `internal/config` | Load/save validation, SSH routes, thumbprints | future versions, duplicate names, dangling `via`, route preservation |
+| `internal/config` | Load/save validation, thumbprints | future versions, duplicate names, dangling `via`, a leftover `[ssh]` table kept and noticed |
 | `internal/contextops` | CLI/TUI context saving | keyring cleanup only after save and when requested; shared keys preserved; cleanup failure cannot undo edit |
 | `internal/credentials` | Keyring, prompt, env, file, exec sources | lookup-only probing, isolated resolvers, unset/empty variables, missing/failing/silent/slow helpers, no unattended prompts, concise failure reasons |
 | `internal/decommission` | The VM decommission check | strict blockers, unknown coverage, ambiguous identity, unresolved dependencies |
 | `internal/demo` | Offline demo estate | referential integrity, event log agrees with stored history, duplicate names, five seeded runs with health findings, welcome opt-out |
 | `internal/health` | Health, readiness, orphan/zombie disks | thresholds, empty/partial/truncated evidence, duplicate datastore names, schema gates, passthrough |
-| `internal/humanize`, `internal/limiter`, `internal/uistate` | Formatting, bounded concurrency, persisted TUI state | cancellation while waiting for a slot, corrupt or missing state files, untrustworthy saved SSH destinations |
+| `internal/humanize`, `internal/limiter`, `internal/uistate` | Formatting, bounded concurrency, persisted TUI state | cancellation while waiting for a slot, corrupt or missing state files, state from older releases |
 | `internal/metareport` | Saved metadata reports | unreadable sources produce undetermined membership; failed collections cannot imply removal |
 | `internal/network` | Cross-vCenter network comparison | VLAN gaps, MTU mismatches, a blind distributed switch, ambiguous cluster names |
 | `internal/perf` | Performance summaries and sizing classification | missing samples that are not zero, too few samples, periodic peaks vs sustained low use, contention |
@@ -51,11 +51,10 @@ Packages needing a vCenter use an in-process simulator.
 | `internal/rvimport` | RVTools import | missing/extra fields, duplicate identities, size limits, malformed/repeated imports, no mutation client |
 | `internal/session` | Operation deadlines and streaming idle timeouts | long work that keeps streaming, silent streams, timeout errors naming their stage |
 | `internal/sizing` | Destination sizing (N-1, growth, storage) | partial coverage that is never *fit*, shared RDMs counted once, missing assumptions reported as unknown |
-| `internal/sshalias` | OpenSSH alias discovery | nested/cyclic includes, depth/file/byte/candidate limits, stale aliases |
 | `internal/testbed` | The loopback testbed lab itself | authenticated routes start, and wrong fixture credentials are rejected |
 | `internal/topology` | Topology and blast-radius queries | shared datastores across contexts, same-named objects that must stay distinct, blind contexts that downgrade results |
 | `internal/transport` | Direct, SOCKS5, and HTTP(S) proxy dialers | offline proxies, ambient proxy variables that must be ignored |
-| `internal/tui` | Browse/detail, dashboards, history, datastore browser, prompts, context forms | stale replies, narrow renders, failed reloads, refresh tiers, demo restrictions, SSH precedence, unavailable keyring, missing credential diagnosis/edit |
+| `internal/tui` | Browse/detail, dashboards, history, datastore browser, prompts, context forms | stale replies, narrow renders, failed reloads, refresh tiers, demo restrictions, SSH destinations and argument safety, unavailable keyring, missing credential diagnosis/edit |
 | `internal/vsphere` | Read-only simulator inventory | paging, failed/denied collections, provenance, perf gaps, key-free license metadata |
 | `cmd/vsfleet-demo` | The demo binary | seeded assessment history is wired in |
 | `cmd/vsfleet-vulngate`, `internal/vulngate` | Vulnerability gate verdicts and exit codes | synthetic govulncheck and grype reports, reachability levels, exceptions by alias, expiry, stale or missing databases |
@@ -173,7 +172,6 @@ See [Fuzzing](testing.md#fuzzing) for seeds, campaigns, and regression inputs.
 | `FuzzParseWorkbook` | `internal/rvimport` | a block of arbitrary cells (header row included) written into one worksheet of a real vsfleet-written workbook | `Parse` returns a result or an error, never a panic, and reports the same thing for the same workbook twice |
 | `FuzzLoadSaveRoundTrip` | `internal/config` | arbitrary configuration text | anything `Load` accepts survives `Save` and loads back to the same contexts |
 | `FuzzNormalizeThumbprintIsIdempotent` | `internal/config` | arbitrary thumbprint text | normalizing twice changes nothing |
-| `FuzzDiscover` | `internal/sshalias` | an arbitrary `~/.ssh/config` plus one includable file, under small limits | only `ErrTruncated` as an error, never more aliases than the limit, only literal unique aliases. Includes that could leave the temporary home are skipped |
 | `FuzzParseAndEvaluate` | `internal/query` | arbitrary `--where` expressions with tags and custom attributes readable or not | accepted unquoted predicates print back to an identical parse, `tag.`/`custom.` always carry a name, and `Evaluate` never contradicts `Match` |
 
 ## Kubernetes end-to-end

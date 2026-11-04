@@ -107,7 +107,7 @@ See [Performance history](performance.md).
 | Health and planning | `internal/health`, `internal/decommission`, `internal/sizing`, `internal/network`, `internal/topology` |
 | Performance summaries | `internal/perf` |
 | Export, import, and metadata reports | `internal/report`, `internal/rvimport`, `internal/metareport` |
-| Workstation state and integrations | `internal/uistate`, `internal/sshalias`, `internal/update` |
+| Workstation state and integrations | `internal/uistate`, `internal/update` |
 | Formatting and build metadata | `internal/humanize`, `internal/version` |
 | Synthetic development fixtures | `internal/demo`, `internal/testbed`, `cmd/vsfleet-demo`, `cmd/vsfleet-testbed` |
 

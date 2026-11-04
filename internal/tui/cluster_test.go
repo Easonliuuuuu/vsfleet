@@ -57,6 +57,30 @@ func TestClusterFieldsJudgeFailoverCapacity(t *testing.T) {
 	}
 }
 
+func TestClusterRowWarnsWhenAdmissionControlRefusesPowerOns(t *testing.T) {
+	short := &vsphere.ClusterHA{AdmissionControl: true, Policy: vsphere.HAPolicyResources, CPUReservePct: 25, MemReservePct: 25, CPUFailoverPct: 40, MemFailoverPct: 11}
+	off := *short
+	off.AdmissionControl = false
+	met := *short
+	met.MemFailoverPct = 30
+	for _, tc := range []struct {
+		name string
+		ha   *vsphere.ClusterHA
+		want rowStatus
+	}{
+		{"refusing", short, statusWarn},
+		{"admission control off", &off, statusGood},
+		{"capacity met", &met, statusGood},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := vsphere.Cluster{Name: "compute", Hosts: 4, OverallStatus: "green", HAEnabled: true, HA: tc.ha}
+			if r := clusterRow(c, nil, false); r.status != tc.want {
+				t.Fatalf("row status = %v, want %v", r.status, tc.want)
+			}
+		})
+	}
+}
+
 func TestClusterFieldsDoNotInventEvidence(t *testing.T) {
 	// An older capture or an RVTools import has none of the health fields:
 	// they read as unknown, never as "none" or "off".

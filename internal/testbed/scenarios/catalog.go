@@ -753,7 +753,7 @@ func assertResult(result Result) error {
 		if result.Observation.Mode != "detail" {
 			return fmt.Errorf("scenario %s left the cluster pane (mode %q)", result.Name, result.Observation.Mode)
 		}
-		for _, want := range []string{"compute-b", "[0 Summary]", "HA failover", "below the reserve"} {
+		for _, want := range []string{"compute-b", "[0 Summary]", "HA failover", "below reserve"} {
 			if !strings.Contains(result.View, want) {
 				return fmt.Errorf("scenario %s is missing %q from compute-b's Summary", result.Name, want)
 			}

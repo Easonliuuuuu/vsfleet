@@ -188,6 +188,12 @@ var rules = []Rule{
 		},
 	},
 	{
+		ID: "ha-failover-capacity-low", Category: CategoryAvailability, Severity: SeverityCritical,
+		Recommendation: "Add host capacity, power off or move VMs, or lower the admission-control reserve deliberately.", NeedsCollections: []string{"cluster"},
+		Summary: "cluster has less HA failover capacity than its admission-control policy keeps", Needs: "cluster HA configuration and failover capacity",
+		Eval: evaluateHAFailoverCapacity, Resolve: resolveHAFailoverCapacity,
+	},
+	{
 		ID: "host-device-passthrough", Category: CategoryMigration, Severity: SeverityWarning, MinSchema: 13,
 		Recommendation: "Remove or explicitly account for host-device passthrough before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM depends on a host PCI or direct-path device", Needs: "VM host-device passthrough inventory",

@@ -126,11 +126,12 @@ func (m *Model) liveRefresh() bool { return m.refreshInterval > 0 }
 // VMs, and backends without the live query, return nil: the pane says why
 // in place of the charts.
 func (m *Model) ensureVMPerf(force bool) tea.Cmd {
+	addrs := m.loadVMAddresses(force)
 	load := m.loadVMPerf(force)
 	if load == nil && !m.showingVMPerf() {
-		return nil
+		return addrs
 	}
-	return tea.Batch(load, m.armVMPerfTick())
+	return tea.Batch(addrs, load, m.armVMPerfTick())
 }
 
 // showingVMPerf reports whether a VM's charts, or a vApp's member charts,

@@ -737,8 +737,12 @@ type Model struct {
 	// reply that a refresh has superseded is dropped. perfRangeIdx indexes
 	// perfRanges and survives moving between VMs, which is how two VMs are
 	// compared over the same window.
-	vmPerf       map[string]*vmPerfEntry
-	vmPerfGen    uint64
+	vmPerf    map[string]*vmPerfEntry
+	vmPerfGen uint64
+	// vmAddrs holds the adapter addresses read for VMs opened from a live
+	// listing, by row key; see loadVMAddresses.
+	vmAddrs      map[string]*vmAddrEntry
+	vmAddrGen    uint64
 	perfRangeIdx int
 	// vmPerfTick is the token of the live-refresh chain for the open VM
 	// pane; vmPerfAfter schedules its ticks, tea.Tick when nil. Tests
@@ -1519,9 +1523,13 @@ func (m *Model) detailRow() (row, bool) {
 		if m.vappVM == nil {
 			return row{}, false
 		}
-		return *m.vappVM, true
+		return m.withVMAddresses(*m.vappVM), true
 	}
-	return m.currentRow()
+	r, ok := m.currentRow()
+	if !ok {
+		return r, false
+	}
+	return m.withVMAddresses(r), true
 }
 
 // clearVAppWorkspace drops both the workspace tree and its selected member.
@@ -1596,6 +1604,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case vmPerfMsg:
 		m.applyVMPerf(msg)
+		return m, nil
+
+	case vmAddrsMsg:
+		m.applyVMAddresses(msg)
 		return m, nil
 
 	case vappPerfMsg:

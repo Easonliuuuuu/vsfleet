@@ -37,8 +37,9 @@ before clearing anything else.
 <span id="destination-and-route"></span>
 
 A VM's header offers one **SSH to …** entry per address it reports: its guest
-DNS name, its primary IP, and, when viewing a capture, every other address on
-its adapters, labelled with the adapter's network. A host offers its
+DNS name, its primary IP, and every other address on its adapters, labelled
+with the adapter's network. The same addresses are listed as **Other IPs** in
+the VM pane. A host offers its
 registered name.
 
 vsfleet runs plain `ssh <address>` and adds nothing. vSphere tells it which

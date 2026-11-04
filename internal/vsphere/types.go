@@ -949,19 +949,24 @@ type VAppStartEntry struct {
 // Datastore is a backing store for VM files.
 type Datastore struct {
 	Location
-	Metadata        Metadata         `json:"metadata"`
-	ID              string           `json:"id"`
-	Name            string           `json:"name"`
-	Type            string           `json:"type"`
-	Accessible      bool             `json:"accessible"`
-	CapacityBytes   int64            `json:"capacity_bytes"`
-	FreeBytes       int64            `json:"free_bytes"`
-	Maintenance     string           `json:"maintenance"`
-	Files           []DatastoreFile  `json:"files,omitempty"`
-	BrowseStatus    string           `json:"browse_status,omitempty"`
-	BrowseError     string           `json:"browse_error,omitempty"`
-	Backing         DatastoreBacking `json:"backing,omitempty"`
-	BrowseTruncated bool             `json:"browse_truncated,omitempty"`
+	Metadata      Metadata `json:"metadata"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Type          string   `json:"type"`
+	Accessible    bool     `json:"accessible"`
+	CapacityBytes int64    `json:"capacity_bytes"`
+	FreeBytes     int64    `json:"free_bytes"`
+	// UncommittedBytes is the space the datastore's thin disks may still
+	// grow into, as vSphere's summary.uncommitted reports it. Nil means not
+	// read: an older capture, or an inaccessible datastore, for which
+	// vSphere does not report it.
+	UncommittedBytes *int64           `json:"uncommitted_bytes,omitempty"`
+	Maintenance      string           `json:"maintenance"`
+	Files            []DatastoreFile  `json:"files,omitempty"`
+	BrowseStatus     string           `json:"browse_status,omitempty"`
+	BrowseError      string           `json:"browse_error,omitempty"`
+	Backing          DatastoreBacking `json:"backing,omitempty"`
+	BrowseTruncated  bool             `json:"browse_truncated,omitempty"`
 	// FileInventory is the opt-in all-file inventory behind the vFileInfo
 	// export. nil means the capture never requested it, which must never be
 	// read as "no files". Orphan analysis does not consume it.

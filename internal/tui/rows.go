@@ -760,9 +760,17 @@ func datastoreRow(d vsphere.Datastore, inv *vsphere.Inventory, withContext bool)
 		st, glyph = statusWarn, glyphOnline
 	}
 	hostsValue, mark, marked := datastoreHosts(d, inv)
-	var marks map[string]fieldMark
+	marks := map[string]fieldMark{}
 	if marked {
-		marks = map[string]fieldMark{"Hosts": mark}
+		marks["Hosts"] = mark
+	}
+	provisioned := "-"
+	if p, ok := d.ProvisionedBytes(); ok {
+		pct, _ := d.ProvisionedPercent()
+		provisioned = fmt.Sprintf("%s (%.0f%% of capacity)", humanize.Bytes(p), pct)
+		if d.Overcommitted() {
+			marks["Provisioned"] = fieldMark{statusWarn, "thin disks can outgrow it"}
+		}
 	}
 	return row{
 		key:     d.Context + "/" + d.ID,
@@ -786,6 +794,7 @@ func datastoreRow(d vsphere.Datastore, inv *vsphere.Inventory, withContext bool)
 			{"Capacity", humanize.Bytes(d.CapacityBytes)},
 			{"Used", fmt.Sprintf("%s (%.0f%%)", humanize.Bytes(d.UsedBytes()), d.UsedPercent())},
 			{"Free", humanize.Bytes(d.FreeBytes)},
+			{"Provisioned", provisioned},
 			{"Hosts", hostsValue},
 			{"Maintenance", humanize.Dash(d.Maintenance)},
 			{"Datacenter", humanize.Dash(d.Datacenter)},

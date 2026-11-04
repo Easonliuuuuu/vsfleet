@@ -1859,7 +1859,7 @@ func clusterFromRow(t sheetTable, row []string, contextName string) vsphere.Clus
 }
 
 func datastoreFromRow(t sheetTable, row []string, contextName string) vsphere.Datastore {
-	return vsphere.Datastore{
+	d := vsphere.Datastore{
 		Location:      vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:            t.cell(row, "Object ID"),
 		Name:          t.cell(row, "Name"),
@@ -1870,6 +1870,8 @@ func datastoreFromRow(t sheetTable, row []string, contextName string) vsphere.Da
 		Maintenance:   t.cell(row, "Maintenance mode"),
 		Backing:       vsphere.DatastoreBacking{URL: t.cell(row, "URL")},
 	}
+	d.UncommittedBytes = datastoreUncommitted(d, t.cell(row, "Provisioned MiB"))
+	return d
 }
 
 func dvSwitchFromRow(t sheetTable, row []string, contextName string) vsphere.DVSwitch {

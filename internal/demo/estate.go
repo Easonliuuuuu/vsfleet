@@ -804,11 +804,14 @@ func (e *estate) mountDatastores(s siteSpec, hostIdx map[string][]int) {
 
 func (e *estate) finishDatastores(s siteSpec) {
 	inv := e.inv
-	stored := map[string]int64{}
+	stored, uncommitted := map[string]int64{}, map[string]int64{}
 	for _, vm := range append(append([]vsphere.VM(nil), inv.VMs...), inv.Templates...) {
 		for _, d := range vm.Disks {
 			if n, _, ok := vsphere.SplitDatastorePath(d.BackingPath); ok {
 				stored[n] += d.CapacityBytes * 6 / 10
+				// Demo disks are thin and 60% written: the rest is what
+				// they may still grow into.
+				uncommitted[n] += d.CapacityBytes - d.CapacityBytes*6/10
 			}
 		}
 	}
@@ -831,6 +834,10 @@ func (e *estate) finishDatastores(s siteSpec) {
 			used = max(used, int64(float64(capBytes)*fill))
 		}
 		ds.CapacityBytes, ds.FreeBytes = capBytes, capBytes-used
+		if ds.Accessible {
+			u := uncommitted[spec.name]
+			ds.UncommittedBytes = &u
+		}
 		switch {
 		case spec.sharedUUID != "":
 			ds.Backing = vsphere.DatastoreBacking{VMFSUUID: spec.sharedUUID, Extents: []string{"naa.demo.6000"}}

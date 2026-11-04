@@ -128,6 +128,36 @@ func TestWriteRVToolsVDatastoreURL(t *testing.T) {
 	}
 }
 
+// Provisioned MiB is in use plus uncommitted space, so a 2 TiB datastore
+// with 1 TiB free and 2 TiB uncommitted has provisioned 3 TiB.
+func TestWriteRVToolsVDatastoreProvisioned(t *testing.T) {
+	uncommitted := int64(2 << 40)
+	for _, tc := range []struct {
+		name        string
+		uncommitted *int64
+		want        string
+	}{
+		{"recorded", &uncommitted, "3145728"},
+		{"not recorded", nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := sampleExportData(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+			payload, err := json.Marshal(vsphere.Datastore{ID: "ds-1", Name: "datastore-1", Accessible: true, CapacityBytes: 2 << 40, FreeBytes: 1 << 40, UncommittedBytes: tc.uncommitted})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range data.Resources {
+				if data.Resources[i].Kind == "datastore" {
+					data.Resources[i].Payload = payload
+				}
+			}
+			if got := firstRowByHeader(t, data, "vDatastore")["Provisioned MiB"]; got != tc.want {
+				t.Errorf("Provisioned MiB = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // The columns vsfleet writes keep RVTools' relative order, so a pipeline
 // reading by position between shared columns sees the same layout. vInfo is
 // the full header of the RVTools 4.8.2.1 export of the nested lab.
@@ -171,7 +201,7 @@ func TestCapturedColumnsFollowRVToolsOrder(t *testing.T) {
 			"Uplink port", "PCI", "WakeOn", "VI SDK Server", "VI SDK UUID"}},
 		{"vSC_VMK", vmkHeaders, []string{"Host", "Datacenter", "Cluster", "Port Group", "Device", "Mac Address", "DHCP", "IP Address",
 			"IP 6 Address", "Subnet mask", "Gateway", "IP 6 Gateway", "MTU", "VI SDK Server", "VI SDK UUID"}},
-		{"vDatastore", datastoreHeaders, []string{"Name", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "URL", "Object ID", "VI SDK Server", "VI SDK UUID"}},
+		{"vDatastore", datastoreHeaders, []string{"Name", "Capacity MiB", "Provisioned MiB", "In Use MiB", "Free MiB", "Free %", "URL", "Object ID", "VI SDK Server", "VI SDK UUID"}},
 	} {
 		t.Run(tc.sheet, func(t *testing.T) {
 			position := map[string]int{}

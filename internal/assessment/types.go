@@ -68,8 +68,11 @@ type RunStatus string
 // Schema 30 adds each host's configuration status, quarantine state, memory
 // tiering, ATS settings, power policies, Windows and DNS search domains,
 // service tag, OEM strings and default gateways to Host.Details; older runs
-// have none, which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "30"
+// have none, which readers must treat as "not read". Schema 31 records each
+// accessible datastore's uncommitted space (Datastore.UncommittedBytes), from
+// which its provisioned space follows; older runs have none, which readers
+// must treat as "not read", never as "nothing provisioned".
+const CurrentInventorySchemaVersion = "31"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20
@@ -77,6 +80,10 @@ const InventoryVAppSchema = 20
 // InventoryHostMountSchema is the first inventory schema that records the
 // datastores each host mounts.
 const InventoryHostMountSchema = 21
+
+// InventoryDatastoreProvisionedSchema is the first inventory schema that
+// records datastore uncommitted space.
+const InventoryDatastoreProvisionedSchema = 31
 
 // InventoryNetworkMissingSchema is the first inventory schema that marks VM
 // NICs backed by a deleted network.

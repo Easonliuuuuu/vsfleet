@@ -113,7 +113,7 @@ func (c *Client) listVMs(ctx context.Context, idx *index) ([]VM, error) {
 // something ordered; the complete slice is sorted again before it is
 // returned, since sorted pages do not make a sorted whole.
 func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions, onPage func([]VM)) ([]VM, error) {
-	props := propsFor(opts.Detail)
+	props := propsForAPI(opts.Detail, c.About.APIVersion)
 	pageSize := opts.pageSize()
 	if pageSize == 0 {
 		// Nobody asked for pages, so nobody is waiting to see one. Take the
@@ -122,7 +122,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 		if err := retrieve(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, &raw); err != nil {
 			return nil, err
 		}
-		return newVMs(ctx, c, idx, raw), nil
+		return newVMs(ctx, c, idx, raw, opts.Detail), nil
 	}
 	var out []VM
 	err := retrievePages(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, pageSize, func(page []types.ObjectContent) error {
@@ -130,7 +130,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 		if err := mo.LoadObjectContent(page, &raw); err != nil {
 			return err
 		}
-		vms := newVMs(ctx, c, idx, raw)
+		vms := newVMs(ctx, c, idx, raw, opts.Detail)
 		out = append(out, vms...)
 		if onPage != nil {
 			onPage(vms)
@@ -144,7 +144,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 	return out, nil
 }
 
-func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine) []VM {
+func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine, detail Detail) []VM {
 	out := make([]VM, 0, len(raw))
 	refs := make([]types.ManagedObjectReference, 0, len(raw))
 	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
@@ -156,6 +156,9 @@ func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine)
 	for i := range raw {
 		vm := newVM(c, idx, &raw[i])
 		vm.Metadata = metadata[raw[i].Self]
+		if detail != DetailSummary {
+			vm.Settings, vm.State = vmSettings(&raw[i], c.About.APIVersion), vmState(&raw[i])
+		}
 		out = append(out, vm)
 	}
 	sortVMs(out)
@@ -218,6 +221,9 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 		Cluster:         idx.clusterOf(m.Runtime.Host),
 		Folder:          idx.folderPath(parent, loc.Datacenter),
 		Datastores:      idx.names(m.Datastore),
+	}
+	if m.Parent != nil {
+		vm.FolderID = m.Parent.Value
 	}
 	if cfg := m.Config; cfg != nil {
 		vm.ConfigurationAvailable = true

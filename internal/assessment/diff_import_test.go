@@ -24,11 +24,16 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 		{Key: 4000, Label: "Network adapter 1", Adapter: "Vmxnet3", MACAddress: "00:50:56:b9:7a:0a", MACAddressType: "assigned"},
 		{Key: 4001, Label: "Network adapter 2", Adapter: "Vmxnet3", MACAddress: "00:50:56:b9:7a:0b", MACAddressType: "assigned"},
 	}
+	created := time.Date(2026, 9, 27, 16, 29, 23, 229018000, time.UTC)
+	live.Settings = &vsphere.VMSettings{CreateDate: &created}
 	liveHost := vsphere.Host{Location: vsphere.Location{Datacenter: "dc1", Path: "/dc1/host/esx-1"}, ID: "host-1", Name: "esx-1", Version: "8.0.3"}
 	// What the lab's workbook stores for the same VM and host.
 	imported := live
 	imported.ConfigurationAvailable, imported.Firmware, imported.GuestID = false, "", ""
 	imported.Disks = []vsphere.VMDisk{{Key: 2000, CapacityBytes: 10 << 30}}
+	// RVTools writes the collector's local time, to the second.
+	createdLocal := time.Date(2026, 9, 27, 9, 29, 23, 0, time.UTC)
+	imported.Settings = &vsphere.VMSettings{CreateDate: &createdLocal}
 	imported.NICs = []vsphere.VMNIC{
 		{Label: "Network adapter 2", Adapter: "Vmxnet3", MACAddress: "00:50:56:B9:7A:0B"},
 		{Label: "Network adapter 1", Adapter: "Vmxnet3", MACAddress: "00:50:56:b9:7a:0a"},
@@ -41,6 +46,9 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 	remac.NICs = []vsphere.VMNIC{{Label: "Network adapter 1", Adapter: "Vmxnet3", MACAddress: "00:50:56:b9:00:01"}, imported.NICs[0]}
 	firmwareLost := live
 	firmwareLost.Firmware = ""
+	recreated := live
+	recreatedAt := created.Add(24 * time.Hour)
+	recreated.Settings = &vsphere.VMSettings{CreateDate: &recreatedAt}
 
 	type side struct {
 		source string
@@ -58,6 +66,7 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 		{"a real change across the import", side{"cli", live, liveHost}, side{SourceRVToolsImport, resized, importedHost}, []string{"memory"}, true},
 		{"a NIC's MAC changed, matched by label", side{"cli", live, liveHost}, side{SourceRVToolsImport, remac, importedHost}, []string{"migration_configuration.nics[4000].mac_address"}, true},
 		{"two live captures still compare every field", side{"cli", live, liveHost}, side{"cli", firmwareLost, liveHost}, []string{"migration_configuration.firmware"}, false},
+		{"two live captures compare the creation date", side{"cli", live, liveHost}, side{"cli", recreated, liveHost}, []string{"settings.create_date"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, err := Open(filepath.Join(t.TempDir(), "history.db"))

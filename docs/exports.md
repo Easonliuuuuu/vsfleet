@@ -118,8 +118,9 @@ What to expect:
   coverage gap. It can lower a verdict's confidence but never improve it.
 - **Imports are always partial**, because RVTools has no resource pool
   membership or network IDs. Trends need `--include-partial`.
-- **Diffs against a live capture** skip every field the import left empty
-  and name them in a warning.
+- **Diffs against a live capture** skip every field the import left empty,
+  and the VM creation date, which RVTools writes in local time to the
+  second. A warning names them.
 - **VMs are matched** by managed-object ID, then instance UUID, BIOS UUID,
   and name, so same-named VMs in different vCenters stay distinct. Host
   devices join only by ID or a host name unique in that vCenter; ambiguous

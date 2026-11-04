@@ -146,8 +146,13 @@ type VM struct {
 	Files *VMFiles `json:"files,omitempty"`
 	// ConsolidationNeeded reports that vCenter found disk files a snapshot
 	// removal left behind; nil when it was not read.
-	ConsolidationNeeded *bool  `json:"consolidation_needed,omitempty"`
-	Annotation          string `json:"annotation"`
+	ConsolidationNeeded *bool `json:"consolidation_needed,omitempty"`
+	// FolderID is the managed object ID of the VM's folder, empty for a VM
+	// inside a vApp, whose parent is the vApp.
+	FolderID   string      `json:"folder_id,omitempty"`
+	Settings   *VMSettings `json:"settings,omitempty"`
+	State      *VMState    `json:"state,omitempty"`
+	Annotation string      `json:"annotation"`
 	// ConfigurationAvailable distinguishes a VM whose full configuration was
 	// collected from one for which vSphere returned only summary properties.
 	// Migration rules must treat false as missing evidence, not as an empty

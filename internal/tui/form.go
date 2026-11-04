@@ -111,7 +111,7 @@ func newContextForm(edit *contextState) *contextForm {
 	f := &contextForm{
 		name:       newFormInput("prod", 36),
 		endpoint:   newFormInput("https://vcsa.example.internal", 48),
-		username:   newFormInput("administrator@vsphere.local", 40),
+		username:   newFormInput("svc-ro@vsphere.local", 40),
 		password:   newFormSecret(40),
 		datacenter: newFormInput("optional", 30),
 		proxyAddr:  newFormInput("127.0.0.1:1080", 30),
@@ -298,7 +298,7 @@ func (f *contextForm) rows() []formRow {
 	if f.via != "" {
 		rows = append(rows, formRow{label: "Added from", kind: rowStatic, static: f.via})
 	}
-	rows = append(rows, formRow{label: "Username", kind: rowText, input: &f.username, hint: "e.g. administrator@vsphere.local"})
+	rows = append(rows, formRow{label: "Username", kind: rowText, input: &f.username, hint: "e.g. svc-ro@vsphere.local"})
 	if f.noKeyring != "" {
 		rows = append(rows, formRow{label: "OS keyring", kind: rowStatic, static: "not available here — choose where the password comes from",
 			hint: f.noKeyring})

@@ -103,3 +103,28 @@ func TestOlderVNICColumnNamesAreRead(t *testing.T) {
 		t.Errorf("NIC = %+v", n)
 	}
 }
+
+func TestParseHexWWN(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want *int64
+	}{
+		{"2100001B32A1B2C3", ptr(int64(0x2100001b32a1b2c3))},
+		{"21:00:00:1b:32:a1:b2:c3", ptr(int64(0x2100001b32a1b2c3))},
+		{"DFFFFFFFFFFFFFFF", ptr(int64(-0x2000000000000001))},
+		{"FFFFFFFFFFFFFFFF", ptr(int64(-1))},
+		{"1B", ptr(int64(0x1b))},
+		{"", nil},
+		{"12345678901234567", nil},
+		{"-1", nil},
+		{"12345678-1234567", nil},
+		{"zz", nil},
+	} {
+		got := parseHexWWN(tc.in)
+		if (got == nil) != (tc.want == nil) || (got != nil && *got != *tc.want) {
+			t.Errorf("parseHexWWN(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+func ptr[T any](v T) *T { return &v }

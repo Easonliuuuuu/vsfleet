@@ -50,10 +50,20 @@ func parseHexWWN(value string) *int64 {
 	if value == "" {
 		return nil
 	}
-	n, err := strconv.ParseUint(value, 16, 64)
+	if len(value) > 16 || strings.Trim(value, "0123456789abcdefABCDEF") != "" {
+		return nil
+	}
+	// Each half fits in an int64, so a WWN whose top bit is set wraps to the
+	// negative long vSphere reports without converting from an unsigned type.
+	value = strings.Repeat("0", 16-len(value)) + value
+	hi, err := strconv.ParseInt(value[:8], 16, 64)
 	if err != nil {
 		return nil
 	}
-	v := int64(n)
+	lo, err := strconv.ParseInt(value[8:], 16, 64)
+	if err != nil {
+		return nil
+	}
+	v := hi<<32 | lo
 	return &v
 }

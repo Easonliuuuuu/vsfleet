@@ -26,16 +26,27 @@ env:
   RESULTS: ${{ github.workspace }}/vulnerability-results
 
 jobs:
+  # Lives here, not in ci.yml, because this workflow runs on every pull
+  # request and so can be a required check. docs/repository-security.md.
+  action-pins:
+    name: Pinned actions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Reject actions not pinned to a commit SHA
+        run: scripts/check-action-pins.sh
+
   go-source:
     name: Go vulnerabilities
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The same toolchain line as the release job, so the standard library
       # scanned here is the one releases ship.
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
@@ -48,7 +59,7 @@ jobs:
 
       - name: Keep scan results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vulnerability-results-source
           path: ${{ env.RESULTS }}
@@ -64,9 +75,9 @@ jobs:
       IMAGE: ghcr.io/easonliuuuuu/vsfleet
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
@@ -110,7 +121,7 @@ jobs:
 
       - name: Keep scan results
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vulnerability-results-published
           path: ${{ env.RESULTS }}

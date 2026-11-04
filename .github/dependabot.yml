@@ -10,10 +10,15 @@ updates:
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: all-dependencies
+  # Workflows pin actions to commit SHAs with a "# vX.Y.Z" comment;
+  # Dependabot moves both. The cooldown skips releases younger than a week,
+  # so a hijacked release is usually caught upstream before it is proposed.
   - package-ecosystem: github-actions
     directory: "/"
     patterns: ["*"]
     multi-ecosystem-group: all-dependencies
+    cooldown:
+      default-days: 7
   # Go modules use regular groups so govmomi gets its own PR. It supplies
   # both the vSphere client and the vcsim simulator CI tests against, so a
   # bump should be reviewed alone and checked against the lab vCenter.

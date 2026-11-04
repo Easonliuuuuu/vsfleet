@@ -54,10 +54,20 @@ func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool)
 	var raw []mo.HostSystem
 	props := hostProps
 	if withConfig {
-		props = append(append(append([]string(nil), props...), hostConfigProps...), hostDetailProps...)
+		props = append(append(append([]string(nil), props...), hostConfigProps...), hostDetailPropsForAPI(c.About.APIVersion)...)
 	}
 	if err := retrieve(ctx, c, idx.root, []string{"HostSystem"}, []string{"HostSystem"}, props, &raw); err != nil {
 		return nil, err
+	}
+	var ats map[types.ManagedObjectReference][2]*int64
+	if withConfig {
+		var managers []types.ManagedObjectReference
+		for i := range raw {
+			if m := raw[i].ConfigManager.AdvancedOption; m != nil {
+				managers = append(managers, *m)
+			}
+		}
+		ats = hostATSSettings(ctx, c, managers)
 	}
 	out := make([]Host, 0, len(raw))
 	refs := make([]types.ManagedObjectReference, 0, len(raw))
@@ -70,6 +80,10 @@ func (c *Client) listHostsWith(ctx context.Context, idx *index, withConfig bool)
 	for i := range raw {
 		host := newHostWithConfig(c, idx, &raw[i], withConfig)
 		host.Metadata = metadata[raw[i].Self]
+		if m := raw[i].ConfigManager.AdvancedOption; host.Details != nil && m != nil {
+			values := ats[*m]
+			host.Details.ATSHeartbeat, host.Details.ATSLocking = values[0], values[1]
+		}
 		out = append(out, host)
 	}
 	sort.Slice(out, func(i, j int) bool { return nameLess(out[i].Name, out[j].Name) })

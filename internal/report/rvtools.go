@@ -54,15 +54,20 @@ var (
 	// sourceHeaders are the RVTools 4.8.2 vSource columns, in RVTools order,
 	// followed by vsfleet's own context column. The two VI SDK columns are the
 	// same provenance pair every other worksheet carries.
-	sourceHeaders       = []string{"Name", "OS type", "API type", "API version", "Version", "Patch level", "Build", "Fullname", "Product name", "Product version", "Product line", "Vendor", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	hbaHeaders          = append([]string{"Device", "Bus", "Status", "Model", "Driver", "Pci", "Storage protocol", "WWNN", "WWPN", "iSCSI name", "iSCSI alias", "Type"}, hostTailHeaders...)
-	nicHeaders          = append([]string{"Device", "PCI", "Driver", "Mac Address", "Link speed Mb", "Duplex", "Wake on LAN", "Switch"}, hostTailHeaders...)
-	switchHeaders       = append([]string{"Switch", "# Ports", "Free Ports", "MTU", "Uplinks", "Promiscuous Mode", "Mac Changes", "Forged Transmits", "Traffic Shaping"}, hostTailHeaders...)
-	portHeaders         = append([]string{"Port Group", "Switch", "VLAN", "Promiscuous Mode", "Mac Changes", "Forged Transmits"}, hostTailHeaders...)
-	dvsTailHeaders      = []string{"Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	dvSwitchHeaders     = append([]string{"Switch", "# Ports", "Max Ports", "MTU", "Vendor", "Version", "UUID", "Description", "Contact", "Contact detail", "Hosts", "Uplink ports", "Link discovery protocol", "Link discovery operation", "LACP version"}, dvsTailHeaders...)
-	dvPortHeaders       = append([]string{"Port", "Switch", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Allow Promiscuous", "Mac Changes", "Forged Transmits", "Policy", "Notify Switch", "Rolling Order", "In Traffic Shaping", "Out Traffic Shaping", "Blocked", "Auto expand", "Active Uplink", "Standby Uplink", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
-	vmkHeaders          = append([]string{"Device", "Port Group", "Mac Address", "MTU", "TSO", "Netstack", "DHCP", "IP Address", "Subnet mask", "Service console"}, hostTailHeaders...)
+	sourceHeaders = []string{"Name", "OS type", "API type", "API version", "Version", "Patch level", "Build", "Fullname", "Product name", "Product version", "Product line", "Vendor", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	// hbaHeaders, nicHeaders and vmkHeaders follow RVTools' vHBA, vNIC and
+	// vSC_VMK order: the host first, then the adapter, with vsfleet's own
+	// columns after the last RVTools column they extend.
+	hbaHeaders = hostLeadHeaders("Device", "Type", "Status", "Bus", "Pci", "Driver", "Model", "Storage protocol", "WWN", "WWNN", "WWPN",
+		"iSCSI name", "iSCSI alias")
+	nicHeaders      = hostLeadHeaders("Network Device", "Driver", "Speed", "Duplex", "MAC", "Switch", "Uplink port", "PCI", "WakeOn")
+	switchHeaders   = append([]string{"Switch", "# Ports", "Free Ports", "MTU", "Uplinks", "Promiscuous Mode", "Mac Changes", "Forged Transmits", "Traffic Shaping"}, hostTailHeaders...)
+	portHeaders     = append([]string{"Port Group", "Switch", "VLAN", "Promiscuous Mode", "Mac Changes", "Forged Transmits"}, hostTailHeaders...)
+	dvsTailHeaders  = []string{"Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	dvSwitchHeaders = append([]string{"Switch", "# Ports", "Max Ports", "MTU", "Vendor", "Version", "UUID", "Description", "Contact", "Contact detail", "Hosts", "Uplink ports", "Link discovery protocol", "Link discovery operation", "LACP version"}, dvsTailHeaders...)
+	dvPortHeaders   = append([]string{"Port", "Switch", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Allow Promiscuous", "Mac Changes", "Forged Transmits", "Policy", "Notify Switch", "Rolling Order", "In Traffic Shaping", "Out Traffic Shaping", "Blocked", "Auto expand", "Active Uplink", "Standby Uplink", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
+	vmkHeaders      = hostLeadHeaders("Port Group", "Device", "Mac Address", "DHCP", "IP Address", "IP 6 Address", "Subnet mask", "Gateway",
+		"IP 6 Gateway", "MTU", "TSO", "Netstack", "Service console")
 	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Local disk", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
 	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "Effective Cpu", "TotalMemory", "Effective Memory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS default VM behavior", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -139,7 +144,7 @@ func rvtoolsSheetsFor(data assessment.ExportData, healthReport health.Report, op
 		{name: sourceSheetName, headers: sourceHeaders, rows: sourceRows(data)},
 		{name: "vRP", headers: resourcePoolHeaders, rows: resourcePoolRows(data)},
 		{name: "vCluster", headers: clusterHeaders, rows: clusterRows(data)},
-		{name: "vHost", headers: hostHeaders, rows: hostRows(data)},
+		{name: "vHost", headers: hostHeaders, rows: hostRows(data), dateCols: headerPositions(hostHeaders, vHostDateHeaders...)},
 		{name: "vHBA", headers: hbaHeaders, rows: hbaRows(data)},
 		{name: "vNIC", headers: nicHeaders, rows: nicRows(data)},
 		{name: "vSwitch", headers: switchHeaders, rows: switchRows(data)},
@@ -713,6 +718,23 @@ func hostRows(data assessment.ExportData) [][]any {
 
 var hostTailHeaders = []string{"Host", "Datacenter", "Cluster", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 
+// hostLeadHeaders lays out a host adapter worksheet as RVTools does: Host,
+// Datacenter and Cluster, the adapter columns, then the host's Object ID
+// and the provenance columns.
+func hostLeadHeaders(columns ...string) []string {
+	out := append([]string{}, hostTailHeaders[:3]...)
+	out = append(out, columns...)
+	return append(out, hostTailHeaders[3:]...)
+}
+
+// hostLeadRow is hostLeadHeaders' row: the host's tail cells around the
+// adapter's.
+func hostLeadRow(tail, cells []any) []any {
+	out := append([]any{}, tail[:3]...)
+	out = append(out, cells...)
+	return append(out, tail[3:]...)
+}
+
 func hostTail(data assessment.ExportData, resource assessment.ResourceObservation, host vsphere.Host) []any {
 	return []any{
 		nonempty(host.Name, resource.Name), host.Datacenter, host.Cluster,
@@ -748,9 +770,9 @@ func hbaRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, item := range hostConfigResources(data) {
 		for _, hba := range item.host.HBAs {
-			row := []any{hba.Device, hba.Bus, hba.Status, hba.Model, hba.Driver, hba.PCI, hba.StorageProtocol,
-				optionalInt64(hba.WWNN), optionalInt64(hba.WWPN), optionalString(hba.IScsiName), optionalString(hba.IScsiAlias), hba.Type}
-			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+			row := []any{hba.Device, hba.Type, hba.Status, hba.Bus, hba.PCI, hba.Driver, hba.Model, hba.StorageProtocol, hbaWWN(hba),
+				optionalInt64(hba.WWNN), optionalInt64(hba.WWPN), optionalString(hba.IScsiName), optionalString(hba.IScsiAlias)}
+			rows = append(rows, hostLeadRow(hostTail(data, item.resource, item.host), row))
 		}
 	}
 	return rows
@@ -760,8 +782,9 @@ func nicRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, item := range hostConfigResources(data) {
 		for _, nic := range item.host.NICs {
-			row := []any{nic.Device, nic.PCI, nic.Driver, nic.MAC, optionalInt32(nic.LinkSpeedMB), optionalBool(nic.Duplex), nic.WakeOnLAN, optionalString(nic.Switch)}
-			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+			row := []any{nic.Device, nic.Driver, optionalInt32(nic.LinkSpeedMB), optionalBool(nic.Duplex), optionalString(nic.MAC),
+				optionalString(nic.Switch), optionalString(nic.Uplink), nic.PCI, nic.WakeOnLAN}
+			rows = append(rows, hostLeadRow(hostTail(data, item.resource, item.host), row))
 		}
 	}
 	return rows
@@ -847,8 +870,10 @@ func vmkRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, item := range hostConfigResources(data) {
 		for _, vmk := range item.host.VMKs {
-			row := []any{vmk.Device, vmk.PortGroup, vmk.MAC, vmk.MTU, optionalBool(vmk.TSO), vmk.Netstack, optionalBool(vmk.DHCP), optionalString(vmk.IP), optionalString(vmk.SubnetMask), vmk.ServiceConsole}
-			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
+			gateway, gateway6 := vmkGateways(item.host)
+			row := []any{vmk.PortGroup, vmk.Device, vmk.MAC, optionalBool(vmk.DHCP), optionalString(vmk.IP), vmkIPv6(vmk), optionalString(vmk.SubnetMask),
+				gateway, gateway6, vmk.MTU, optionalBool(vmk.TSO), vmk.Netstack, vmk.ServiceConsole}
+			rows = append(rows, hostLeadRow(hostTail(data, item.resource, item.host), row))
 		}
 	}
 	return rows

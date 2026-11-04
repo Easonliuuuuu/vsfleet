@@ -9,14 +9,25 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-// hostHeaders are RVTools 4.8.1.4's vHost columns that vsfleet captures, in
+// hostHeaders are RVTools 4.8.2's vHost columns that vsfleet captures, in
 // RVTools' order, followed by vsfleet's context column.
-var hostHeaders = []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "CPU Model", "Speed", "HT Available", "HT Active",
-	"# CPU", "Cores per CPU", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# NICs", "# HBAs", "# VMs total", "# VMs", "VMs per Core",
-	"# vCPUs", "vCPUs per Core", "vRAM", "VMotion support", "Storage VMotion support", "Current EVC", "Max EVC", "ESX Version", "Boot time",
-	"DNS Servers", "DHCP", "Domain", "NTP Server(s)", "NTPD running", "Time Zone", "Time Zone Name", "GMT Offset", "Vendor", "Model",
-	"Serial number", "BIOS Vendor", "BIOS Version", "BIOS Date", "Certificate Issuer", "Certificate Start Date", "Certificate Expiry Date",
-	"Certificate Subject", "Object ID", "UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+var hostHeaders = []string{"Host", "Datacenter", "Cluster", "Config status", "in Maintenance Mode", "in Quarantine Mode", "CPU Model",
+	"Speed", "HT Available", "HT Active", "# CPU", "Cores per CPU", "# Cores", "CPU usage %", "# Memory", "Memory Tiering Type",
+	"Memory usage %", "# NICs", "# HBAs", "# VMs total", "# VMs", "VMs per Core", "# vCPUs", "vCPUs per Core", "vRAM", "VMotion support",
+	"Storage VMotion support", "Current EVC", "Max EVC", "ATS Heartbeat", "ATS Locking", "Current CPU power man. policy",
+	"Supported CPU power man.", "Host Power Policy", "ESX Version", "Boot time", "DNS Servers", "DHCP", "Domain", "Domain List",
+	"DNS Search Order", "NTP Server(s)", "NTPD running", "Time Zone", "Time Zone Name", "GMT Offset", "Vendor", "Model", "Serial number",
+	"Service tag", "OEM specific string", "BIOS Vendor", "BIOS Version", "BIOS Date", "Certificate Issuer", "Certificate Start Date",
+	"Certificate Expiry Date", "Certificate Subject", "Object ID", autoDeployIdentity, "UUID", "VI SDK Server", "VI SDK UUID",
+	"vsfleet Context"}
+
+// vHostDateHeaders are the vHost columns written as date cells, in the
+// layout vSnapshot and vInfo use, which an import reads back to the second.
+var vHostDateHeaders = []string{"Boot time", "BIOS Date", "Certificate Start Date", "Certificate Expiry Date"}
+
+// autoDeployIdentity is the host custom attribute vSphere Auto Deploy sets,
+// which RVTools lists as a vHost column of its own.
+const autoDeployIdentity = "AutoDeploy.MachineIdentity"
 
 // hostRow renders one vHost row. A host captured before its details were
 // read has a nil Details, and every detail cell stays empty.
@@ -44,17 +55,31 @@ func hostRow(data assessment.ExportData, densities map[hostKey]hostDensity, r as
 	if d.GMTOffset != nil {
 		gmtOffset = *d.GMTOffset
 	}
-	row := []any{nonempty(h.Name, r.Name), h.Datacenter, h.Cluster, h.InMaintenance, optionalString(d.CPUModel), h.CPUMHz,
-		optionalBool(d.HTAvailable), optionalBool(d.HTActive), packages, coresPerCPU, h.CPUCores, hostCPUPercent(h), h.MemoryMB,
-		hostMemoryPercent(h)}
+	row := []any{nonempty(h.Name, r.Name), h.Datacenter, h.Cluster, optionalString(d.ConfigStatus), h.InMaintenance,
+		optionalBool(d.InQuarantine), optionalString(d.CPUModel), h.CPUMHz, optionalBool(d.HTAvailable), optionalBool(d.HTActive), packages,
+		coresPerCPU, h.CPUCores, hostCPUPercent(h), h.MemoryMB, optionalString(d.MemoryTiering), hostMemoryPercent(h)}
 	row = append(append(row, hostAdapterCounts(data, h)...), h.VMCount)
 	row = append(row, hostDensityCells(data, densities, r.Context, h)...)
 	return append(row, optionalBool(d.VMotion), optionalBool(d.StorageVMotion), optionalString(d.CurrentEVC), optionalString(d.MaxEVC),
-		version, optionalTime(d.BootTime), optionalString(strings.Join(d.DNSServers, ", ")), optionalBool(d.DNSDHCP), optionalString(d.Domain),
-		optionalString(strings.Join(d.NTPServers, ", ")), optionalBool(d.NTPDRunning), optionalString(d.TimeZone), optionalString(d.TimeZoneName),
-		gmtOffset, h.Vendor, h.Model, optionalString(d.SerialNumber), optionalString(d.BIOSVendor), optionalString(d.BIOSVersion),
-		optionalTime(d.BIOSDate), certIssuer, certStart, certExpiry, certSubject, nonempty(h.ID, r.ID), optionalString(d.UUID),
-		sdkServer(data, r.Context), r.VCenterID, r.Context)
+		optionalInt64(d.ATSHeartbeat), optionalInt64(d.ATSLocking), optionalString(d.CPUPowerPolicy), optionalString(d.CPUPowerSupport),
+		optionalString(d.HostPowerPolicy), version, optionalTime(d.BootTime), optionalString(strings.Join(d.DNSServers, ", ")),
+		optionalBool(d.DNSDHCP), optionalString(d.Domain), optionalString(strings.Join(d.DomainList, ", ")),
+		optionalString(strings.Join(d.SearchDomains, ", ")), optionalString(strings.Join(d.NTPServers, ", ")), optionalBool(d.NTPDRunning),
+		optionalString(d.TimeZone), optionalString(d.TimeZoneName), gmtOffset, h.Vendor, h.Model, optionalString(d.SerialNumber),
+		optionalString(d.ServiceTag), optionalString(d.OEMString), optionalString(d.BIOSVendor), optionalString(d.BIOSVersion),
+		optionalTime(d.BIOSDate), certIssuer, certStart, certExpiry, certSubject, nonempty(h.ID, r.ID), customAttribute(h.Metadata, autoDeployIdentity),
+		optionalString(d.UUID), sdkServer(data, r.Context), r.VCenterID, r.Context)
+}
+
+// customAttribute is the value of the named custom attribute, empty when
+// the object has none or its attributes were not read.
+func customAttribute(m vsphere.Metadata, name string) any {
+	for _, a := range m.CustomAttributes {
+		if a.Name == name {
+			return optionalString(a.Value)
+		}
+	}
+	return nil
 }
 
 // hostAdapterCounts writes # NICs and # HBAs, both empty unless the host's

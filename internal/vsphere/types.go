@@ -488,6 +488,34 @@ type HostDetails struct {
 	// GMTOffset is the time zone's current offset from UTC in seconds.
 	GMTOffset   *int32           `json:"gmt_offset,omitempty"`
 	Certificate *HostCertificate `json:"certificate,omitempty"`
+	// ConfigStatus is the host's configuration health, gray, green, yellow
+	// or red. InQuarantine reports whether Proactive HA put it in quarantine.
+	ConfigStatus string `json:"config_status,omitempty"`
+	InQuarantine *bool  `json:"in_quarantine,omitempty"`
+	// MemoryTiering is the memory tiering type, for example noTiering.
+	// vCenter before 7.0 Update 3 does not report it.
+	MemoryTiering string `json:"memory_tiering,omitempty"`
+	// ATSHeartbeat and ATSLocking are the VMFS3.UseATSForHBOnVMFS5 and
+	// VMFS3.HardwareAcceleratedLocking advanced settings: 1 enabled, 0 not.
+	ATSHeartbeat *int64 `json:"ats_heartbeat,omitempty"`
+	ATSLocking   *int64 `json:"ats_locking,omitempty"`
+	// CPUPowerPolicy and CPUPowerSupport are the hardware CPU power
+	// management policy and support; HostPowerPolicy is the host power
+	// policy's short name, for example dynamic.
+	CPUPowerPolicy  string `json:"cpu_power_policy,omitempty"`
+	CPUPowerSupport string `json:"cpu_power_support,omitempty"`
+	HostPowerPolicy string `json:"host_power_policy,omitempty"`
+	// DomainList is the Windows domains available for user searches;
+	// SearchDomains the DNS search domains, in order of preference.
+	DomainList    []string `json:"domain_list,omitempty"`
+	SearchDomains []string `json:"search_domains,omitempty"`
+	ServiceTag    string   `json:"service_tag,omitempty"`
+	// OEMString is the OEM specific strings, joined with ", ".
+	OEMString string `json:"oem_string,omitempty"`
+	// Gateway and IPv6Gateway are the default TCP/IP stack's default
+	// gateways, which vSC_VMK lists on every VMkernel adapter.
+	Gateway     string `json:"gateway,omitempty"`
+	IPv6Gateway string `json:"ipv6_gateway,omitempty"`
 }
 
 // HostCertificate is the host's SSL certificate, without its key material.

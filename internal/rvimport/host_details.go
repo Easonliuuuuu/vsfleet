@@ -54,6 +54,7 @@ func applyHostDetails(t sheetTable, row []string, h *vsphere.Host, timezone *tim
 		}
 		d.Certificate = &c
 	}
+	applyHostConfigCells(t, row, &d)
 	version := t.cell(row, "ESX Version")
 	if m := esxProductName.FindStringSubmatch(version); m != nil {
 		h.Version, h.Build, d.ProductName = m[1], m[2], version

@@ -291,6 +291,9 @@ func changedResourceFields(kind string, before, after json.RawMessage, includeRu
 			out = append(out, FieldChange{Field: key, Before: bs, After: as})
 		}
 	}
+	if kind == "host" {
+		out = append(out, hostDetailChanges(before, after, includeRuntime)...)
+	}
 	out = append(out, metadataFieldChanges(before, after)...)
 	return out
 }

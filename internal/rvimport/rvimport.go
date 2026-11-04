@@ -101,6 +101,13 @@ var headerAliases = map[string]map[string]string{
 	sheetVInfo: {
 		"vm smbios uuid": "SMBIOS UUID",
 	},
+	// vsfleet wrote its own vNIC names before inventory schema 30.
+	sheetVNIC: {
+		"device":        "Network Device",
+		"mac address":   "MAC",
+		"link speed mb": "Speed",
+		"wake on lan":   "WakeOn",
+	},
 	sheetVDisk: {
 		"sharedbus":              "Shared Bus",
 		"scsi label":             "Label",
@@ -1701,7 +1708,7 @@ func applyHbaRow(t sheetTable, row []string, host *vsphere.Host) {
 		PCI:             t.cell(row, "PCI"),
 		StorageProtocol: t.cell(row, "Storage protocol"),
 		WWNN:            parseWWN(t.cell(row, "WWNN")),
-		WWPN:            parseWWN(t.cell(row, "WWPN")),
+		WWPN:            firstWWN(parseHexWWN(t.cell(row, "WWN")), parseWWN(t.cell(row, "WWPN"))),
 		IScsiName:       t.cell(row, "iSCSI name"),
 		IScsiAlias:      t.cell(row, "iSCSI alias"),
 		Type:            t.cell(row, "Type"),
@@ -1710,14 +1717,15 @@ func applyHbaRow(t sheetTable, row []string, host *vsphere.Host) {
 
 func applyHostNICRow(t sheetTable, row []string, host *vsphere.Host) {
 	host.NICs = append(host.NICs, vsphere.HostNIC{
-		Device:      t.cell(row, "Device"),
+		Device:      t.cell(row, "Network Device"),
 		PCI:         t.cell(row, "PCI"),
 		Driver:      t.cell(row, "Driver"),
-		MAC:         t.cell(row, "Mac Address"),
-		LinkSpeedMB: parseOptInt32(t.cell(row, "Link speed Mb")),
+		MAC:         t.cell(row, "MAC"),
+		LinkSpeedMB: parseOptInt32(t.cell(row, "Speed")),
 		Duplex:      parseOptBool(t.cell(row, "Duplex")),
-		WakeOnLAN:   parseBool(t.cell(row, "Wake on LAN")),
+		WakeOnLAN:   parseBool(t.cell(row, "WakeOn")),
 		Switch:      t.cell(row, "Switch"),
+		Uplink:      t.cell(row, "Uplink port"),
 	})
 }
 
@@ -1732,8 +1740,10 @@ func applyVMKRow(t sheetTable, row []string, host *vsphere.Host) {
 		DHCP:           parseOptBool(t.cell(row, "DHCP")),
 		IP:             t.cell(row, "IP Address"),
 		SubnetMask:     t.cell(row, "Subnet mask"),
+		IPv6:           splitList(t.cell(row, "IP 6 Address")),
 		ServiceConsole: parseBool(t.cell(row, "Service console")),
 	})
+	applyVMKGateways(t, row, host)
 }
 
 func applyMultipathRow(t sheetTable, row []string, host *vsphere.Host) {
@@ -1787,6 +1797,17 @@ func applyMultipathRow(t sheetTable, row []string, host *vsphere.Host) {
 		Disabled:     int(parseInt(t.cell(row, "Disabled paths"))),
 		WorkingPaths: int(parseInt(t.cell(row, "Working paths"))),
 	})
+}
+
+// firstWWN is the first world wide name a row reports. WWN comes first: it
+// is text, while a spreadsheet may round the WWPN number to 15 digits.
+func firstWWN(values ...*int64) *int64 {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
 }
 
 func parseWWN(value string) *int64 {

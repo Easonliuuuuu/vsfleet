@@ -19,9 +19,10 @@ type importGaps struct {
 	leftOut, inexact map[string]bool
 }
 
-// importInexactFields are VM fields RVTools records in the collector's local
-// time and to the second, so an import never equals a live capture on them.
-var importInexactFields = map[string]bool{"settings.create_date": true}
+// importInexactFields are the VM and host fields RVTools records in the
+// collector's local time and to the second, so an import never equals a live
+// capture on them.
+var importInexactFields = map[string]bool{"settings.create_date": true, "details.boot_time": true}
 
 func newImportGaps(base, target Run) *importGaps {
 	return &importGaps{base: base.Imported(), target: target.Imported(), leftOut: map[string]bool{}, inexact: map[string]bool{}}

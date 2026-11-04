@@ -111,10 +111,10 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	}
 	for sheet, cells := range map[string]map[string]string{
 		"vDisk":    {"T1": "Label", "U1": "SCSI Unit #", "V1": "Unit #", "W1": "Shared Bus", "Z1": "Raw Comp. Mode"},
-		"vHBA":     {"F1": "Pci"},
+		"vHBA":     {"H1": "Pci", "L1": "WWN"},
 		"vSwitch":  {"C1": "Free Ports", "F1": "Promiscuous Mode", "G1": "Mac Changes", "H1": "Forged Transmits", "I1": "Traffic Shaping"},
 		"vPort":    {"A1": "Port Group", "D1": "Promiscuous Mode", "E1": "Mac Changes", "F1": "Forged Transmits"},
-		"vSC_VMK":  {"B1": "Port Group"},
+		"vSC_VMK":  {"D1": "Port Group", "E1": "Device", "K1": "Gateway"},
 		"dvSwitch": {"A1": "Switch", "C1": "Max Ports"},
 		"dvPort":   {"A1": "Port", "B1": "Switch", "I1": "Allow Promiscuous", "J1": "Mac Changes", "K1": "Forged Transmits", "L1": "Policy", "M1": "Notify Switch", "N1": "Rolling Order", "O1": "In Traffic Shaping", "P1": "Out Traffic Shaping", "S1": "Active Uplink", "T1": "Standby Uplink"},
 		"vCluster": {"E1": "numEffectiveHosts"},
@@ -175,11 +175,11 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 		t.Fatalf("vTools version status=%q", got)
 	}
 	for sheet, cells := range map[string][2]string{
-		"vHBA":       {"A2", "vmhba0"},
-		"vNIC":       {"A2", "vmnic0"},
+		"vHBA":       {"D2", "vmhba0"},
+		"vNIC":       {"D2", "vmnic0"},
 		"vSwitch":    {"A2", "vSwitch0"},
 		"vPort":      {"A2", "Management Network"},
-		"vSC_VMK":    {"A2", "vmk0"},
+		"vSC_VMK":    {"E2", "vmk0"},
 		"vMultiPath": {"A2", "naa.123"},
 	} {
 		if got, _ := f.GetCellValue(sheet, cells[0]); got != cells[1] {
@@ -372,8 +372,8 @@ func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 	}
 
 	vmk := readCSV(t, byName["vSC_VMK.csv"])
-	if vmk[0][1] != "Port Group" || vmk[1][1] != "Management Network" {
-		t.Fatalf("vSC_VMK.csv port group header/value=%q/%q", vmk[0][1], vmk[1][1])
+	if vmk[0][3] != "Port Group" || vmk[1][3] != "Management Network" {
+		t.Fatalf("vSC_VMK.csv port group header/value=%q/%q", vmk[0][3], vmk[1][3])
 	}
 
 	vSnapshot := readCSV(t, byName["vSnapshot.csv"])

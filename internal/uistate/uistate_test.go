@@ -50,6 +50,7 @@ func TestSaveThenLoadRoundTrips(t *testing.T) {
 
 	want := State{
 		Context: "customer-a", Kind: "network", Sort: "status", WelcomedVersion: "0.10.0",
+		Sorts: map[string]string{"vm": "memory:desc", "host": "version:asc"},
 	}
 	if err := Save("", want); err != nil {
 		t.Fatalf("Save: %v", err)

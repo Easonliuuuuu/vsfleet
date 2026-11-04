@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1261,10 +1262,16 @@ func (m *Model) networkTreeRows() []row {
 			kept = append(kept, netRowGroup{head: g.head, children: kids})
 		}
 	}
-	if m.sortMode == sortByStatus {
+	if k, desc := m.sortFor(vsphere.KindNetwork).resolve(sortKeysFor(vsphere.KindNetwork)); k.id == statusKey.id {
 		sort.SliceStable(kept, func(i, j int) bool {
-			return statusRank(kept[i].head.status) < statusRank(kept[j].head.status)
+			a, b := statusRank(kept[i].head.status), statusRank(kept[j].head.status)
+			if desc {
+				return a > b
+			}
+			return a < b
 		})
+	} else if desc {
+		slices.Reverse(kept)
 	}
 	nameAt := 0
 	if withContext {

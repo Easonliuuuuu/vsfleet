@@ -162,7 +162,7 @@ func (m *Model) folderRows() []row {
 				out = append(out, r)
 			}
 		}
-		m.sortMode.apply(out)
+		m.applySort(out)
 		return out
 	}
 
@@ -235,7 +235,7 @@ func (m *Model) folderRows() []row {
 		}
 		out = append(out, m.folderRow(child, n, tally[n], len(leaves) == 0))
 	}
-	m.sortMode.apply(leaves)
+	m.applySort(leaves)
 	return append(out, leaves...)
 }
 

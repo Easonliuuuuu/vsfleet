@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"math"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -24,46 +23,6 @@ const (
 	statusWarn
 	statusBad
 )
-
-// sortMode orders the resource table. It is deliberately just two settings:
-// the grouped, alphabetical order that rowsFor already produces needs no
-// further sorting to earn its name, and the one thing worth reordering for
-// is surfacing trouble — a suspended VM or a host in maintenance anywhere in
-// the scope, not only the one at the top of its own vCenter's list.
-type sortMode int
-
-const (
-	sortByName sortMode = iota
-	sortByStatus
-)
-
-func (s sortMode) label() string {
-	if s == sortByStatus {
-		return "status"
-	}
-	return "name"
-}
-
-func (s sortMode) next() sortMode {
-	if s == sortByStatus {
-		return sortByName
-	}
-	return sortByStatus
-}
-
-// apply reorders rows in place. Name order is left exactly as rowsFor built
-// it — grouped by context, alphabetical within each — because that grouping
-// is itself information once more than one vCenter is in scope. Status order
-// uses a stable sort, so within a status the name grouping survives as the
-// tiebreaker.
-func (s sortMode) apply(rows []row) {
-	if s != sortByStatus {
-		return
-	}
-	sort.SliceStable(rows, func(i, j int) bool {
-		return statusRank(rows[i].status) < statusRank(rows[j].status)
-	})
-}
 
 // statusRank orders the worst news first: a failure before a warning before
 // a healthy row before one with nothing to report.
@@ -190,6 +149,10 @@ type row struct {
 	// cluster is the cluster a cluster row was built from, so its pane can
 	// draw the Hosts & VMs and Storage pages. Nil for every other kind.
 	cluster *vsphere.Cluster
+	// esxi and datastore are the host and datastore a row of those kinds was
+	// built from, for the table's sort orders (see sort.go). Nil otherwise.
+	esxi      *vsphere.Host
+	datastore *vsphere.Datastore
 	// marks are verdicts on detail fields, by label, drawn after the value
 	// the way a VM's field marks are. Kinds without any leave it nil.
 	marks map[string]fieldMark
@@ -722,6 +685,7 @@ func hostRow(h vsphere.Host, withContext bool) row {
 		// Client link both use.
 		target: actionTarget{moref: h.ID, morefKind: "HostSystem", address: h.Name, path: h.Path},
 		joins:  actionJoins{cluster: h.Cluster},
+		esxi:   &h,
 	}
 }
 
@@ -828,8 +792,9 @@ func datastoreRow(d vsphere.Datastore, inv *vsphere.Inventory, withContext bool)
 			{"Inventory path", humanize.Dash(d.Path)},
 			{"Managed object", d.ID},
 		},
-		marks:  marks,
-		target: actionTarget{moref: d.ID, morefKind: "Datastore", path: "[" + d.Name + "]", inaccessible: !d.Accessible},
+		marks:     marks,
+		target:    actionTarget{moref: d.ID, morefKind: "Datastore", path: "[" + d.Name + "]", inaccessible: !d.Accessible},
+		datastore: &d,
 	}
 }
 

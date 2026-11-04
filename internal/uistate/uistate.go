@@ -26,7 +26,12 @@ const EnvStatePath = "VSFLEET_STATE"
 type State struct {
 	Context string `json:"context,omitempty"`
 	Kind    string `json:"kind,omitempty"`
-	Sort    string `json:"sort,omitempty"`
+	// Sorts is each browse tab's order, by kind, as the interface reports
+	// it ("vm": "memory:desc").
+	Sorts map[string]string `json:"sorts,omitempty"`
+	// Sort is the one order older releases kept for every tab. It is read
+	// so that order carries over, and no longer written.
+	Sort string `json:"sort,omitempty"`
 	// WelcomedVersion is the release the welcome animation last played for
 	// (see version.Release). A different running release plays it once more,
 	// as an update; an empty value means it has never played.

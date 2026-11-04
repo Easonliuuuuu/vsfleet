@@ -470,8 +470,13 @@ type Options struct {
 	// Kind is the resource tab to start on. An unrecognised or empty value
 	// starts on VMs, the same as a first run.
 	Kind string
-	// Sort is the sort mode to start in: "status", or anything else
-	// (including empty) for the default name order.
+	// Sorts is the order each tab starts in, by kind, as Snapshot.Sorts
+	// reported it ("vm": "memory:desc"). A tab it does not name, or names
+	// an order it does not offer, starts in name order.
+	Sorts map[string]string
+	// Sort is the single order an older release remembered for every tab:
+	// "status" puts each tab that has one in problems-first order. It is
+	// read only when Sorts is empty.
 	Sort string
 	// RefreshInterval is how often inventory is re-read in the background.
 	// Zero means DefaultRefreshInterval; negative means never, leaving the
@@ -533,7 +538,8 @@ type Options struct {
 type Snapshot struct {
 	Context string
 	Kind    string
-	Sort    string
+	// Sorts is each tab's order, by kind; a tab in name order is left out.
+	Sorts map[string]string
 	// Upgrade reports that the operator answered the launch prompt with
 	// "upgrade now": the caller runs the upgrade once the terminal is back.
 	Upgrade bool
@@ -595,7 +601,7 @@ func (m *Model) Observe() Observation {
 // Snapshot reports the interface's current position, for the caller to
 // persist once the program exits.
 func (m *Model) Snapshot() Snapshot {
-	snap := Snapshot{Kind: string(m.kind), Sort: m.sortMode.label()}
+	snap := Snapshot{Kind: string(m.kind), Sorts: encodeSorts(m.sorts)}
 	if st := m.current(); st != nil {
 		snap.Context = st.cc.Name
 	}
@@ -620,12 +626,18 @@ type Model struct {
 	states []*contextState
 	byName map[string]*contextState
 
-	selected  int
-	kind      vsphere.Kind
-	sortMode  sortMode
-	allScope  bool
-	filtering bool
-	mode      mode
+	selected int
+	kind     vsphere.Kind
+	// sorts is each tab's order; a tab missing from it is in name order.
+	// sortMenu is the open sort menu, nil when closed. searchByStatus is the
+	// search table's order, which offers only name and status because it
+	// mixes every kind.
+	sorts          map[vsphere.Kind]sortOrder
+	sortMenu       *sortMenu
+	searchByStatus bool
+	allScope       bool
+	filtering      bool
+	mode           mode
 
 	cursor  int
 	offset  int
@@ -864,10 +876,6 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 	if k, err := apiresource.ParseInventory(opts.Kind, vsphere.AllKinds); err == nil {
 		kind = k
 	}
-	sm := sortByName
-	if opts.Sort == "status" {
-		sm = sortByStatus
-	}
 	m := &Model{
 		ctx:          ctx,
 		backend:      backend,
@@ -879,7 +887,7 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		runEditInput: newRunEditInput(),
 		byName:       make(map[string]*contextState, len(contexts)),
 		kind:         kind,
-		sortMode:     sm,
+		sorts:        decodeSorts(opts.Sorts, opts.Sort),
 		allScope:     opts.AllContexts,
 		width:        100,
 		height:       30,
@@ -1366,7 +1374,11 @@ func (m *Model) ensureSearch(query string) *searchState {
 			st.searched++
 		}
 	}
-	m.sortMode.apply(st.rows)
+	if m.searchByStatus {
+		sortRows(st.rows, []sortKey{statusKey}, sortOrder{key: statusKey.id})
+	} else {
+		sortRows(st.rows, []sortKey{nameKey}, sortOrder{})
+	}
 	m.search, m.searchDirty = st, false
 	return st
 }
@@ -1404,7 +1416,7 @@ func (m *Model) rows() []row {
 		}
 		out = kept
 	}
-	m.sortMode.apply(out)
+	m.applySort(out)
 	return out
 }
 
@@ -2623,6 +2635,10 @@ func filterMoveDelta(msg tea.KeyMsg, page int) int {
 }
 
 func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
+	if m.sortMenu != nil {
+		m.handleSortMenuKey(msg)
+		return nil
+	}
 	switch {
 	case key.Matches(msg, m.keys.Kind):
 		m.selectKindByNumber(msg.String())
@@ -2682,8 +2698,9 @@ func (m *Model) handleBrowseKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Doctor):
 		return m.diagnose()
 	case key.Matches(msg, m.keys.Sort):
-		m.sortMode = m.sortMode.next()
-		m.cursor, m.offset = 0, 0
+		m.openSortMenu()
+	case key.Matches(msg, m.keys.Reverse):
+		m.reverseSort()
 	case key.Matches(msg, m.keys.Fold):
 		if m.kind == vsphere.KindNetwork && !m.netFlat {
 			m.toggleFold()
@@ -2900,7 +2917,7 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Open):
 		return m.open()
 	case key.Matches(msg, m.keys.Sort):
-		m.sortMode = m.sortMode.next()
+		m.searchByStatus = !m.searchByStatus
 		m.searchDirty = true
 		m.cursor, m.offset = 0, 0
 	case key.Matches(msg, m.keys.Reload):

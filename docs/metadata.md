@@ -59,7 +59,7 @@ vsfleet export metadata --definition ./pci.toml --run nightly --format csv --fil
 vsfleet export metadata --definition pci-production --base baseline
 ```
 
-- `where` uses the [`--where` language](commands.md#inventory-and-search);
+- `where` uses the [`--where` language](commands.md#where-language);
   predicates are ANDed. Unknown keys, kinds, fields, and columns are errors.
 - `columns` accepts `context`, `vcenter_id`, `kind`, `id`, `name`, `path`,
   any scalar inventory field of the selected kinds (for example `cpu` or

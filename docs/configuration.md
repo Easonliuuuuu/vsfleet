@@ -18,7 +18,7 @@ current_context = "prod"
 [[contexts]]
 name = "prod"
 endpoint = "https://vcsa.example.internal"
-username = "administrator@vsphere.local"
+username = "svc-ro@vsphere.local"
 credential = "keyring:prod"
 
 [contexts.transport]
@@ -30,7 +30,7 @@ mode = "system"
 [[contexts]]
 name = "customer-enclave"
 endpoint = "https://vcsa.enclave.internal"
-username = "readonly@vsphere.local"
+username = "svc-ro@vsphere.local"
 credential = "keyring:customer-enclave"
 via = "prod"
 via_moref = "vm-1234"
@@ -211,9 +211,15 @@ credentials or session cookies.
 
 ## vSphere permissions
 
-The built-in ReadOnly role covers connection tests and standard inventory
-collection, including datastore backing identity. Optional reads need extra
-privileges:
+Give vsfleet its own account, such as `svc-ro@vsphere.local`, with the
+built-in ReadOnly role assigned at the vCenter root and propagated to
+children. vsfleet never changes anything, but only the role makes vCenter
+enforce that; do not use an administrator account.
+
+ReadOnly covers connection tests and standard inventory collection, including
+datastore backing identity. Objects the role cannot see are left out by
+vCenter, not reported as errors, so assign it at the root. Optional reads
+need extra privileges:
 
 | Feature | Additional privilege |
 | --- | --- |

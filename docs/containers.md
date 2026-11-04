@@ -32,7 +32,7 @@ current_context = "prod"
 [[contexts]]
 name = "prod"
 endpoint = "https://vcsa.example.internal"
-username = "administrator@vsphere.local"
+username = "svc-ro@vsphere.local"
 credential = "file:/run/secrets/vsfleet-prod"
 
 [contexts.transport]

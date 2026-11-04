@@ -2,7 +2,7 @@
 
 | Workflow | Runs | Does |
 | --- | --- | --- |
-| `ci.yml` | PRs and pushes to `main`, except docs-only changes | Format, vet, race tests on Linux/macOS/Windows, staticcheck, TUI scenarios, PTY journeys, vcsim integration, and a release snapshot that is built, smoke-tested, and scanned. Publishes the README platform badge. |
+| `ci.yml` | PRs and pushes to `main`; docs-only changes skip the jobs | Format, vet, race tests on Linux/macOS/Windows, staticcheck, TUI scenarios, PTY journeys, vcsim integration, and a release snapshot that is built, smoke-tested, and scanned. `CI result` sums them up for branch protection. Publishes the README platform badge. |
 | `vulnerabilities.yml` | Every PR and push to `main`; daily 04:41 UTC | `Go vulnerabilities` and `Pinned actions`, the two checks `main` requires. The daily run also scans the published release and keeps one issue open while it fails. |
 | `docs.yml` | Changes to `docs/`, `README.md`, or `mkdocs.yml` | `mkdocs build --strict`; deploys GitHub Pages from `main`. |
 | `fuzz.yml` | Nightly 03:17 UTC; PRs that touch fuzz tests | 5 minutes per target nightly, 1 minute on PRs. |

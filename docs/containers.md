@@ -23,9 +23,7 @@ system CA certificates and timezone data, but no shell or package manager.
 ## Configuration, secrets, and history
 
 Mount a read-only configuration file and set `VSFLEET_CONFIG`. Put the capture
-database on a writable volume with `VSFLEET_DB`. The image still reads
-`VSFLEET_HISTORY_DB` for one release, with a warning; rename it. Use a `file:`
-credential so the password stays out of the process environment:
+database on a writable volume with `VSFLEET_DB`. Use a `file:` credential so the password stays out of the process environment:
 
 ```toml
 version = 1

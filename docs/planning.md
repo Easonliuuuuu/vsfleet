@@ -10,20 +10,18 @@ informational findings are advisories. `--fail-on-blockers` exits 2 for blockers
 Failed or missing collectors force `unknown`, with blind vCenters named in
 `Not evaluated`.
 
-Migration configuration evidence starts with schema 13:
+What each kind of VM configuration means for readiness:
 
 | Evidence | Finding severity |
 | --- | --- |
 | RDM, shared disks, vTPM, PCI/SR-IOV/vGPU passthrough | Blocking warning |
 | Firmware/Secure Boot, CPU socket/core topology, CPU/memory reservations and limits, manual MACs, floppies, extension ownership | Informational advisory |
 
-`host-device-passthrough` requires PCI/vGPU or SR-IOV evidence; ordinary
-VMXNET3 UPT compatibility does not block. Missing VM configuration keeps the
-verdict `unknown`, even if no special device is present. When some VMs in a
-context lack it, such as an inaccessible or orphaned VM that vCenter returns
-no configuration for, the rules still evaluate the other VMs and
-`Not evaluated` counts the VMs left out. A context is blind only when none of
-its VMs has the evidence, as in an RVTools import.
+Ordinary VMXNET3 adapters do not count as passthrough. VMs whose
+configuration vCenter did not return, such as orphaned VMs, are counted under
+`Not evaluated` and the rest are still checked; a context with no VM
+configuration at all, such as an RVTools import, keeps the verdict
+`unknown`.
 
 ## VM decommission review
 
@@ -36,32 +34,28 @@ and stored topology. It reports only and performs no decommissioning action.
   datastore, network, host or cluster it uses, or the LUN behind a raw device
   mapping. The message names the reference. A LUN on the VM's host that no
   datastore maps to does not count.
-- `no-blockers`: collected technical gates passed. This schema-2 verdict
-  (formerly `ready`) does not authorize deletion.
+- `no-blockers`: every collected check passed. This does not authorize
+  deletion.
 
-Ownership, backup policy, and application dependencies remain `not_assessed`
-advisories until their metadata sources are collected; the verdict excludes
-them. `--fail-on-blockers` exits 2 only for `blocked`.
+Ownership, backup policy, and application dependencies are not assessed;
+check them yourself. `--fail-on-blockers` exits 2 only for `blocked`.
 
 ## Topology and dependency queries
 
 `analyze topology`, `analyze deps`, and `analyze blast-radius` query stored
 evidence offline. Each takes a subject as `KIND/NAME` or `KIND NAME`, and
-`deps` and `blast-radius` take `--depth` (1 to 5). Cross-context merges require matching VM instance/BIOS UUIDs,
-datastore backing identity, distributed switch/port-group keys, or NSX IDs.
-Names are context-scoped fallbacks marked `inferred`.
+`deps` and `blast-radius` take `--depth` (1 to 5). Objects in different
+vCenters are treated as the same only when their IDs match, such as a VM's
+UUID or a datastore's backing; a match by name alone is marked `inferred`.
 
 | Confidence | Meaning |
 | --- | --- |
 | `complete` | Required collections answered; all relationships resolved |
 | `partial` | Blind collection, unresolved reference, or reconstructed network |
-| `unknown` | Unresolved subject, all checked contexts blind, or non-local datastore without backing identity in schema 11+ |
+| `unknown` | The subject could not be resolved, or no context had the evidence |
 
-Ambiguous names return every matching subject with an ambiguity header.
-Narrow with `--context`.
-
-Pre-schema-12 runs reconstruct networks from switches, host port groups, and VM
-NIC references. Results name the schema gap and remain at most `partial`.
+An ambiguous name returns every match; narrow it with `-n`. Captures from
+older vsfleet versions give at most `partial` network results.
 
 ## Cross-cluster network readiness
 
@@ -80,8 +74,7 @@ The table output is the verdict; `-o wide` adds the comparison behind it, and
 | `blocked` | Attached mapping gap or VLAN, MTU, security, or host-coverage mismatch |
 | `unknown` | Unresolved cluster or blind relevant collection |
 
-Confidence is `complete`, `partial`, or `unknown`. Reconstructed or
-pre-schema-12 evidence is partial; blind contexts force unknown.
+Confidence follows the [topology rules](#topology-and-dependency-queries).
 `--fail-on-blockers` exits 2 for blocked results.
 
 ## Destination sizing scenarios
@@ -110,10 +103,10 @@ also requires `--rdm-capacity`.
 | `--growth-pct` | 0 |
 | `--ha-host-failures` | 1 (N-1); 0 disables |
 
-Scope uses `--context`/`--all-contexts` and repeatable
-`--cluster NAME|CONTEXT/NAME`. Templates are excluded; powered-off VMs need
-`--include-powered-off`. Output lists excluded VMs and reasons, every input
-as provided/defaulted/missing, run ID, capture time, scope, and generation time.
+Scope uses `-n`/`-A` and repeatable `--cluster NAME|CONTEXT/NAME`.
+Templates are excluded; powered-off VMs need `--include-powered-off`. Output
+lists the excluded VMs and every input, and whether it was given or
+defaulted.
 
 ### Calculations
 
@@ -127,33 +120,25 @@ Output prints each formula with its numbers:
 | `datastore-capacity` (GiB) | sum(provisioned datastore-backed disk) x (1 + growth/100) | target datastore capacity |
 | `rdm-capacity` (GiB) | sum(RDM LUN capacity) x (1 + growth/100) | target RDM capacity |
 
-Datastore-backed provisioned disks, RDM LUN capacity, and guest filesystem use
-are separate. Guest use is split into datastore-backed, RDM-backed, and
-unattributed rows. Shared disks count once; datastore backing identity (VMFS
-UUID, extents, NFS remote, vVol, URL) and RDM LUN identity deduplicate across
-contexts. Verdicts use provisioned size. Committed use is shown, including
-whether it alone fits; guest use is informational.
+Verdicts use provisioned size. Shared disks and datastores or LUNs seen from
+several vCenters count once. Committed and guest-filesystem use are shown for
+reference, including whether committed use alone would fit.
 
 ### Verdicts
 
 Each dimension is `fit`, `insufficient`, or `unknown`. Overall precedence is
 insufficient > unknown > fit.
 
-`unknown` is produced by a missing target input, a partial or failed source
-collection (a run that is not `complete`, or a context whose VM or datastore
-collection did not answer), VMs with no recorded allocation or disk
-configuration, disks on a datastore missing from the stored inventory,
-same-named datastores in several contexts with no matching backing identity, and
-a shared-bus RDM with no LUN identity. Missing evidence leaves dimensions that
-are already `insufficient` unchanged. `--fail-unless-fit` returns exit code 2
+A dimension is `unknown` when an input is missing, the capture is not
+complete, or some VM's allocation, disks or datastore were not recorded.
+Missing evidence never turns `insufficient` into something better. `--fail-unless-fit` returns exit code 2
 unless every dimension is `fit`.
 
-Output shows oversubscription, memory reservations, HA allowance, and storage
-assumptions (full provisioned size, no thin-provisioning or deduplication
-credit). CPU reservations in MHz are reported without comparison because
-target core frequency is not an input. Scoped migration blocker/advisory counts
-and unevaluated rule counts accompany the result. Run network readiness
-separately with a source/target cluster mapping.
+Output also shows oversubscription, the HA allowance, and migration
+blockers in scope. Storage gets no thin-provisioning or deduplication credit,
+and CPU reservations are listed but not compared, because target core speed
+is not an input. Check networks separately with
+[network readiness](#cross-cluster-network-readiness).
 
 ### Limits
 

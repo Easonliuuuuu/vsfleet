@@ -7,8 +7,9 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
-// applyVMSettingsCells reads vInfo's folder ID, boot, hardware and identity
-// settings and the power and guest state columns. Settings and State stay
+// applyVMSettingsCells reads vInfo's folder ID, boot, hardware, identity and
+// SRM placeholder settings and the power and guest state columns, including
+// the guest OS VMware Tools reports. Settings and State stay
 // nil when the row carries none of them, as an older workbook does, so the VM
 // reads as "not read". Every cell is read first so the column report sees
 // each one.
@@ -28,6 +29,7 @@ func applyVMSettingsCells(t sheetTable, row []string, vm *vsphere.VM, timezone *
 		BootDelay:             parseOptInt64(t.cell(row, "Boot delay")),
 		BootRetryEnabled:      parseOptBool(t.cell(row, "Boot retry enabled")),
 		BootRetryDelay:        parseOptInt64(t.cell(row, "Boot retry delay")),
+		SRMPlaceholder:        parseOptBool(t.cell(row, "SRM Placeholder")),
 	}
 	st := vsphere.VMState{
 		ConfigStatus:          t.cell(row, "Config status"),
@@ -36,6 +38,7 @@ func applyVMSettingsCells(t sheetTable, row []string, vm *vsphere.VM, timezone *
 		SuspendInterval:       parseOptInt64(t.cell(row, "Suspend Interval")),
 		MinRequiredEVCModeKey: t.cell(row, "min Required EVC Mode Key"),
 		GuestDetailedData:     t.cell(row, "Guest Detailed Data"),
+		GuestOSReported:       t.cell(row, "OS according to the VMware Tools"),
 	}
 	if c := t.cell(row, "Customization Info"); c != "" {
 		st.CustomizationStatus = "TOOLSDEPLOYPKG_" + strings.TrimPrefix(c, "TOOLSDEPLOYPKG_")

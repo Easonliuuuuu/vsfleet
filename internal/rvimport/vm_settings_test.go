@@ -15,7 +15,7 @@ func TestVInfoSettingsAndStateAreImported(t *testing.T) {
 	columns := []string{"Config status", "PowerOn", "Suspend Interval", "Creation date", "Change Version", "Fixed Passthru HotPlug",
 		"min Required EVC Mode Key", "Latency Sensitivity", "Op Notification Timeout", "EnableUUID", "CBT", "Num Monitors", "Video Ram KiB",
 		"Folder ID", "Boot Required", "Boot delay", "Boot retry delay", "Boot retry enabled", "Boot BIOS setup", "Reboot PowerOff",
-		"Customization Info", "Guest Detailed Data"}
+		"Customization Info", "Guest Detailed Data", "SRM Placeholder", "OS according to the VMware Tools"}
 	created := time.Date(2026, 9, 27, 15, 45, 42, 0, time.UTC)
 	booted := time.Date(2026, 11, 2, 12, 25, 6, 0, time.UTC)
 	no, zero, retry, monitors, ram := false, int64(0), int64(10000), int32(1), int64(4096)
@@ -27,12 +27,13 @@ func TestVInfoSettingsAndStateAreImported(t *testing.T) {
 		state    *vsphere.VMState
 	}{
 		{"RVTools 4.8.2.1", []string{"green", "2026/11/02 12:25:06", "0", "2026/09/27 15:45:42", "2026/11/02 12:25:03", "False", "intel-cascadelake",
-			"normal", "", "", "", "1", "4096", "group-v11", "False", "0", "10000", "False", "False", "False", "IDLE", "distroName='VMware Photon OS'"},
+			"normal", "", "", "", "1", "4096", "group-v11", "False", "0", "10000", "False", "False", "False", "IDLE", "distroName='VMware Photon OS'", "False", "VMware Photon OS (64-bit)"},
 			"group-v11",
 			&vsphere.VMSettings{CreateDate: &created, LatencySensitivity: "normal", Monitors: &monitors, VideoRAMKiB: &ram, FixedPassthruHotPlug: &no,
-				InstallBootRequired: &no, EnterBIOSSetup: &no, BootDelay: &zero, BootRetryEnabled: &no, BootRetryDelay: &retry},
+				InstallBootRequired: &no, EnterBIOSSetup: &no, BootDelay: &zero, BootRetryEnabled: &no, BootRetryDelay: &retry, SRMPlaceholder: &no},
 			&vsphere.VMState{ChangeVersion: "2026-11-02T12:25:03Z", ConfigStatus: "green", BootTime: &booted, RebootPowerOff: &no, SuspendInterval: &zero,
-				MinRequiredEVCModeKey: "intel-cascadelake", CustomizationStatus: "TOOLSDEPLOYPKG_IDLE", GuestDetailedData: "distroName='VMware Photon OS'"}},
+				MinRequiredEVCModeKey: "intel-cascadelake", CustomizationStatus: "TOOLSDEPLOYPKG_IDLE", GuestDetailedData: "distroName='VMware Photon OS'",
+				GuestOSReported: "VMware Photon OS (64-bit)"}},
 		{"older workbook", make([]string, len(columns)), "", nil, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -84,6 +85,33 @@ func TestVInfoSMBIOSUUIDImportsUnderEitherNameWithoutJoiningClones(t *testing.T)
 			}
 			if len(result.Report.Ambiguities) != 0 {
 				t.Errorf("ambiguities = %+v, want none", result.Report.Ambiguities)
+			}
+		})
+	}
+}
+
+// RVTools names the device label column Device Node; vsfleet wrote Device
+// before inventory schema 31, and both import. The vCD Device Type cell is
+// vm-iso's in the real RVTools 4.8.2.1 export of the nested lab.
+func TestVCDAndVUSBDeviceNodeAndTypeImportUnderEitherName(t *testing.T) {
+	for _, header := range []string{"Device Node", "Device"} {
+		t.Run(header, func(t *testing.T) {
+			f := openFixture(t, writeFixtureWorkbook(t, func(data *assessment.ExportData) {
+				data.VMs[0].Observation.VM.CDROMs = []vsphere.VMCDROM{{Key: 3000, Label: "CD/DVD drive 1", Summary: "ISO [nfs-shared] ISO/test.iso"}}
+				data.VMs[0].Observation.VM.USBs = []vsphere.VMUSB{{Key: 4000, Label: "USB device 1", Summary: "Remote host esx-1"}}
+			}))
+			setColumnValue(t, f, sheetVCD, "Device Node", 1, header)
+			setColumnValue(t, f, sheetVUSB, "Device Node", 1, header)
+			result, err := Parse(f, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			vm := findVM(result, "alpha", "web-01")
+			if len(vm.CDROMs) != 1 || vm.CDROMs[0].Label != "CD/DVD drive 1" || vm.CDROMs[0].Summary != "ISO [nfs-shared] ISO/test.iso" {
+				t.Errorf("CD-ROMs = %+v", vm.CDROMs)
+			}
+			if len(vm.USBs) != 1 || vm.USBs[0].Label != "USB device 1" || vm.USBs[0].Summary != "Remote host esx-1" {
+				t.Errorf("USBs = %+v", vm.USBs)
 			}
 		})
 	}

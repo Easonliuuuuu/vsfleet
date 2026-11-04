@@ -53,3 +53,46 @@ func TestCompareVMsReportsSchema29FieldsOnlyWhenBothRunsRecordedThem(t *testing.
 		})
 	}
 }
+
+// Schema 31 adds whether a VM is an SRM placeholder, a setting, and the guest
+// OS VMware Tools reports, which is state. A run from before schema 31 has
+// settings without the placeholder flag, which is not a change.
+func TestCompareVMsReportsSRMPlaceholderAndToolsOS(t *testing.T) {
+	yes, no := true, false
+	for _, tc := range []struct {
+		name          string
+		before, after func(*vsphere.VM)
+		runtime       bool
+		want          []FieldChange
+	}{
+		{"became an SRM placeholder",
+			func(vm *vsphere.VM) { vm.Settings = &vsphere.VMSettings{SRMPlaceholder: &no} },
+			func(vm *vsphere.VM) { vm.Settings = &vsphere.VMSettings{SRMPlaceholder: &yes} }, false,
+			[]FieldChange{{Field: "settings.srm_placeholder", Before: "false", After: "true"}}},
+		{"base captured before schema 31",
+			func(vm *vsphere.VM) { vm.Settings = &vsphere.VMSettings{} },
+			func(vm *vsphere.VM) { vm.Settings = &vsphere.VMSettings{SRMPlaceholder: &no} }, false, nil},
+		{"guest upgraded",
+			func(vm *vsphere.VM) { vm.State = &vsphere.VMState{GuestOSReported: "Ubuntu Linux (64-bit)"} },
+			func(vm *vsphere.VM) { vm.State = &vsphere.VMState{GuestOSReported: "Rocky Linux (64-bit)"} }, true,
+			[]FieldChange{{Field: "state.guest_os_reported", Before: `"Ubuntu Linux (64-bit)"`, After: `"Rocky Linux (64-bit)"`}}},
+		{"guest upgraded without runtime fields",
+			func(vm *vsphere.VM) { vm.State = &vsphere.VMState{GuestOSReported: "Ubuntu Linux (64-bit)"} },
+			func(vm *vsphere.VM) { vm.State = &vsphere.VMState{GuestOSReported: "Rocky Linux (64-bit)"} }, false, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base := stored("app", "vc-a", "vm-1", "instance-1")
+			target := base
+			tc.before(&base.observation.VM)
+			tc.after(&target.observation.VM)
+			changes, _ := compareVMs([]storedVM{base}, []storedVM{target}, tc.runtime)
+			var got []FieldChange
+			for _, c := range changes {
+				got = append(got, c.Fields...)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("fields = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}

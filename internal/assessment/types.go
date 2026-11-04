@@ -68,8 +68,13 @@ type RunStatus string
 // Schema 30 adds each host's configuration status, quarantine state, memory
 // tiering, ATS settings, power policies, Windows and DNS search domains,
 // service tag, OEM strings and default gateways to Host.Details; older runs
-// have none, which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "30"
+// have none, which readers must treat as "not read". Schema 31 records
+// whether each VM is a Site Recovery Manager placeholder
+// (VMSettings.SRMPlaceholder), the guest OS VMware Tools reports
+// (VMState.GuestOSReported) and each CD/DVD and USB device's summary
+// (VMCDROM.Summary, VMUSB.Summary); older runs have none, which readers must
+// treat as "not read".
+const CurrentInventorySchemaVersion = "31"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

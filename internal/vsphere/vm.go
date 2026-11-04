@@ -548,7 +548,7 @@ func (b *normalizedBacking) file(info types.VirtualDeviceFileBackingInfo) {
 
 func newVMCDROM(device *types.VirtualCdrom, controller deviceController) VMCDROM {
 	out := VMCDROM{
-		Key: device.Key, Label: deviceLabel(device.DeviceInfo),
+		Key: device.Key, Label: deviceLabel(device.DeviceInfo), Summary: deviceSummary(device.DeviceInfo),
 		Controller: controller.typeName, ControllerLabel: controller.label,
 		UnitNumber: clonePtr(device.UnitNumber),
 	}
@@ -564,7 +564,7 @@ func newVMCDROM(device *types.VirtualCdrom, controller deviceController) VMCDROM
 func newVMUSB(device *types.VirtualUSB, controller deviceController) VMUSB {
 	connected := device.Connected
 	out := VMUSB{
-		Key: device.Key, Label: deviceLabel(device.DeviceInfo), Connected: &connected,
+		Key: device.Key, Label: deviceLabel(device.DeviceInfo), Summary: deviceSummary(device.DeviceInfo), Connected: &connected,
 		Vendor: device.Vendor, Product: device.Product,
 		Family: append([]string(nil), device.Family...), Speed: append([]string(nil), device.Speed...),
 		Controller: controller.typeName, ControllerLabel: controller.label,
@@ -729,6 +729,16 @@ func deviceLabel(info types.BaseDescription) string {
 		return ""
 	}
 	return info.GetDescription().Label
+}
+
+// deviceSummary is vSphere's one-line description of a device and its
+// backing, e.g. ISO [datastore1] iso/x.iso, which RVTools writes as Device
+// Type.
+func deviceSummary(info types.BaseDescription) string {
+	if info == nil {
+		return ""
+	}
+	return strings.TrimSpace(info.GetDescription().Summary)
 }
 
 func classifyAddress(out *VMNIC, address string) {

@@ -165,6 +165,12 @@ func TestCapturedColumnsFollowRVToolsOrder(t *testing.T) {
 			"GMT Offset", "Vendor", "Model", "Serial number", "Service tag", "OEM specific string", "BIOS Vendor", "BIOS Version",
 			"BIOS Date", "Certificate Issuer", "Certificate Start Date", "Certificate Expiry Date", "Certificate Status",
 			"Certificate Subject", "Object ID", "AutoDeploy.MachineIdentity", "UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vHBA", hbaHeaders, []string{"Host", "Datacenter", "Cluster", "Device", "Type", "Status", "Bus", "Pci", "Driver", "Model", "WWN",
+			"VI SDK Server", "VI SDK UUID"}},
+		{"vNIC", nicHeaders, []string{"Host", "Datacenter", "Cluster", "Network Device", "Driver", "Speed", "Duplex", "MAC", "Switch",
+			"Uplink port", "PCI", "WakeOn", "VI SDK Server", "VI SDK UUID"}},
+		{"vSC_VMK", vmkHeaders, []string{"Host", "Datacenter", "Cluster", "Port Group", "Device", "Mac Address", "DHCP", "IP Address",
+			"IP 6 Address", "Subnet mask", "Gateway", "IP 6 Gateway", "MTU", "VI SDK Server", "VI SDK UUID"}},
 		{"vDatastore", datastoreHeaders, []string{"Name", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "URL", "Object ID", "VI SDK Server", "VI SDK UUID"}},
 	} {
 		t.Run(tc.sheet, func(t *testing.T) {

@@ -65,7 +65,11 @@ type RunStatus string
 // "not read". Schema 29 records each VM's folder ID, boot, hardware and
 // identity settings and its power and guest state (VM.FolderID, Settings,
 // State); older runs have none, which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "29"
+// Schema 30 adds each host's configuration status, quarantine state, memory
+// tiering, ATS settings, power policies, Windows and DNS search domains,
+// service tag, OEM strings and default gateways to Host.Details; older runs
+// have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "30"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

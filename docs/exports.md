@@ -54,7 +54,10 @@ Notes on specific sheets:
   allocation. Volatile usage figures are not included.
 - **`vHost`**: density columns (`# VMs`, `# vCPUs`, `vRAM`, per-core ratios)
   count powered-on VMs only, as RVTools does. `Certificate Status` is not
-  written.
+  written, and neither is `Console`, the service console memory of ESX
+  hosts, which ESXi does not have.
+- **`vSC_VMK`**: `Gateway` and `IP 6 Gateway` are the host's default
+  gateways, repeated on every adapter.
 - **`dvPort`**: one row per distributed port group, not per runtime port.
 
 ## Datastore file inventory (vFileInfo)
@@ -154,6 +157,7 @@ Known value differences:
 | `vHost`, `# VMs total` | Includes templates | Excludes templates |
 | `vHost`, certificate issuer, subject and dates | Filled | Empty |
 | `vHBA`, `Type` | vSphere type, such as `HostBlockHba` | Label, such as `Block SCSI` |
+| `vHBA`, `WWNN`, `WWPN`, `Storage protocol`, iSCSI columns; `vSC_VMK`, `TSO`, `Netstack`, `Service console` | vsfleet extensions | Not present |
 | `dvPort`, `VLAN` on an uplink port group | `trunk 0-4094` | Empty |
 | `vCluster`, `DRS default VM behavior` with DRS off | Empty | The stored level |
 | Capacity, free and usage MiB and `%` columns | Decimals | Integers |

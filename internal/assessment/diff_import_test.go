@@ -26,7 +26,9 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 	}
 	created := time.Date(2026, 9, 27, 16, 29, 23, 229018000, time.UTC)
 	live.Settings = &vsphere.VMSettings{CreateDate: &created}
-	liveHost := vsphere.Host{Location: vsphere.Location{Datacenter: "dc1", Path: "/dc1/host/esx-1"}, ID: "host-1", Name: "esx-1", Version: "8.0.3"}
+	booted := time.Date(2026, 11, 2, 12, 24, 40, 840856000, time.UTC)
+	liveHost := vsphere.Host{Location: vsphere.Location{Datacenter: "dc1", Path: "/dc1/host/esx-1"}, ID: "host-1", Name: "esx-1", Version: "8.0.3",
+		Details: &vsphere.HostDetails{BootTime: &booted}}
 	// What the lab's workbook stores for the same VM and host.
 	imported := live
 	imported.ConfigurationAvailable, imported.Firmware, imported.GuestID = false, "", ""
@@ -40,6 +42,11 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 	}
 	importedHost := liveHost
 	importedHost.Location = vsphere.Location{}
+	bootedLocal := time.Date(2026, 11, 2, 5, 24, 41, 0, time.UTC)
+	importedHost.Details = &vsphere.HostDetails{BootTime: &bootedLocal}
+	rebootedHost := liveHost
+	rebooted := booted.Add(time.Hour)
+	rebootedHost.Details = &vsphere.HostDetails{BootTime: &rebooted}
 	resized := imported
 	resized.MemoryMB = 8192
 	remac := imported
@@ -60,13 +67,16 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 		base, target side
 		want         []string
 		wantLeftOut  bool
+		runtime      bool
 	}{
-		{"live then import", side{"cli", live, liveHost}, side{SourceRVToolsImport, imported, importedHost}, nil, true},
-		{"import then live", side{SourceRVToolsImport, imported, importedHost}, side{"cli", live, liveHost}, nil, true},
-		{"a real change across the import", side{"cli", live, liveHost}, side{SourceRVToolsImport, resized, importedHost}, []string{"memory"}, true},
-		{"a NIC's MAC changed, matched by label", side{"cli", live, liveHost}, side{SourceRVToolsImport, remac, importedHost}, []string{"migration_configuration.nics[4000].mac_address"}, true},
-		{"two live captures still compare every field", side{"cli", live, liveHost}, side{"cli", firmwareLost, liveHost}, []string{"migration_configuration.firmware"}, false},
-		{"two live captures compare the creation date", side{"cli", live, liveHost}, side{"cli", recreated, liveHost}, []string{"settings.create_date"}, false},
+		{"live then import", side{"cli", live, liveHost}, side{SourceRVToolsImport, imported, importedHost}, nil, true, false},
+		{"import then live", side{SourceRVToolsImport, imported, importedHost}, side{"cli", live, liveHost}, nil, true, false},
+		{"a real change across the import", side{"cli", live, liveHost}, side{SourceRVToolsImport, resized, importedHost}, []string{"memory"}, true, false},
+		{"a NIC's MAC changed, matched by label", side{"cli", live, liveHost}, side{SourceRVToolsImport, remac, importedHost}, []string{"migration_configuration.nics[4000].mac_address"}, true, false},
+		{"two live captures still compare every field", side{"cli", live, liveHost}, side{"cli", firmwareLost, liveHost}, []string{"migration_configuration.firmware"}, false, false},
+		{"two live captures compare the creation date", side{"cli", live, liveHost}, side{"cli", recreated, liveHost}, []string{"settings.create_date"}, false, false},
+		{"runtime fields across the import", side{"cli", live, liveHost}, side{SourceRVToolsImport, imported, importedHost}, nil, true, true},
+		{"two live captures compare the boot time", side{"cli", live, liveHost}, side{"cli", live, rebootedHost}, []string{"host.details.boot_time"}, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, err := Open(filepath.Join(t.TempDir(), "history.db"))
@@ -99,7 +109,7 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 				}
 				ids[i] = r.ID
 			}
-			d, err := s.Diff(ctx, ids[0], ids[1], false)
+			d, err := s.Diff(ctx, ids[0], ids[1], tc.runtime)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -420,6 +420,7 @@ func nonzeroInt64(value int64) *int64 {
 
 func int32Ptr(value int32) *int32 { return &value }
 func boolPtr(value bool) *bool    { return &value }
+func int64Ptr(value int64) *int64 { return &value }
 
 func boolPtrValue(value *bool) *bool {
 	if value == nil {

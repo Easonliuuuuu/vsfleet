@@ -115,8 +115,8 @@ var columnRules = map[string]colRule{
 	"in Maintenance Mode": keep(), "# Cores": keep(), "CPU usage %": keep(), "# Memory": keep(), "Memory usage %": keep(),
 	"# NICs": keep(), "# HBAs": keep(), "# VMs total": keep(), "ESX Version": keep(), "Model": keep(), "Bus": keep(), "Status": keep(), "Driver": keep(),
 	"Pci": keep(), "PCI": keep(), "Storage protocol": keep(), "WWNN": id(kindID), "WWPN": id(kindID),
-	"iSCSI name": id(kindID), "iSCSI alias": name(kindName), "Type": keep(), "Link speed Mb": keep(), "Duplex": keep(),
-	"Wake on LAN": keep(), "Switch": name(kindSwitch), "# Ports": keep(), "Free Ports": keep(), "MTU": keep(),
+	"iSCSI name": id(kindID), "iSCSI alias": name(kindName), "Type": keep(), "Duplex": keep(),
+	"Switch": name(kindSwitch), "# Ports": keep(), "Free Ports": keep(), "MTU": keep(),
 	"Uplinks": topo(), "Promiscuous Mode": keep(), "Mac Changes": keep(), "Forged Transmits": keep(),
 	"Traffic Shaping": keep(), "Port Group": name(kindNetwork), "VLAN": topo(),
 	"CPU Model": keep(), "HT Available": keep(), "HT Active": keep(), "# CPU": keep(), "Cores per CPU": keep(),
@@ -126,6 +126,11 @@ var columnRules = map[string]colRule{
 	"Time Zone": keep(), "Time Zone Name": keep(), "GMT Offset": keep(), "Serial number": id(kindID),
 	"BIOS Vendor": keep(), "BIOS Version": keep(), "BIOS Date": keep(), "Certificate Issuer": text(),
 	"Certificate Start Date": keep(), "Certificate Expiry Date": keep(), "Certificate Subject": text(),
+	"in Quarantine Mode": keep(), "Memory Tiering Type": keep(), "ATS Heartbeat": keep(), "ATS Locking": keep(),
+	"Current CPU power man. policy": keep(), "Supported CPU power man.": keep(), "Host Power Policy": keep(),
+	"Domain List": nameList(kindName), "DNS Search Order": nameList(kindName), "Service tag": id(kindID),
+	"OEM specific string": text(), "AutoDeploy.MachineIdentity": id(kindID), "WWN": id(kindID),
+	"Network Device": keep(), "MAC": id(kindMAC), "Uplink port": topo(), "WakeOn": keep(),
 
 	// dvSwitch / dvPort / vSC_VMK / vMultiPath.
 	"Max Ports": keep(), "UUID": id(kindUUID), "Contact": text(), "Contact detail": text(), "Hosts": nameList(kindHost),
@@ -135,6 +140,7 @@ var columnRules = map[string]colRule{
 	"Out Traffic Shaping": keep(), "Blocked": keep(), "Auto expand": keep(), "Active Uplink": topo(),
 	"Standby Uplink": topo(), "Logical switch UUID": id(kindUUID), "Segment ID": topo(),
 	"TSO": keep(), "Netstack": keep(), "DHCP": keep(), "IP Address": ipRule, "Subnet mask": topo(),
+	"IP 6 Address": ipRule, "Gateway": ipRule, "IP 6 Gateway": ipRule,
 	"Service console": keep(), "LUN": id(kindID), "Device path": pathRule, "Local disk": keep(), "Path count": keep(),
 	"Active paths": keep(), "Standby paths": keep(), "Dead paths": keep(), "Disabled paths": keep(), "Working paths": keep(),
 

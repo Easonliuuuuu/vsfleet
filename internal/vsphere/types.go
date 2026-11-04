@@ -134,7 +134,20 @@ type VM struct {
 	Folder        string   `json:"folder"`
 	Datastores    []string `json:"datastores"`
 	StorageGB     float64  `json:"storage_gb"`
-	Annotation    string   `json:"annotation"`
+	// ProvisionedBytes is the space the VM's files may take on its
+	// datastores: committed plus uncommitted, as vCenter's storage summary
+	// reports them. UnsharedBytes is the part only this VM uses. Both are nil
+	// for a capture predating inventory schema 28, or when vCenter returned
+	// no storage summary; readers must treat nil as "not read".
+	ProvisionedBytes *int64 `json:"provisioned_bytes,omitempty"`
+	UnsharedBytes    *int64 `json:"unshared_bytes,omitempty"`
+	// Files is where the VM keeps its configuration, logs, snapshots and
+	// suspend files; nil when they were not read.
+	Files *VMFiles `json:"files,omitempty"`
+	// ConsolidationNeeded reports that vCenter found disk files a snapshot
+	// removal left behind; nil when it was not read.
+	ConsolidationNeeded *bool  `json:"consolidation_needed,omitempty"`
+	Annotation          string `json:"annotation"`
 	// ConfigurationAvailable distinguishes a VM whose full configuration was
 	// collected from one for which vSphere returned only summary properties.
 	// Migration rules must treat false as missing evidence, not as an empty
@@ -165,6 +178,16 @@ type VM struct {
 	Floppies                     []VMFloppy            `json:"floppies,omitempty"`
 	Snapshots                    []VMSnapshot          `json:"snapshots,omitempty"`
 	Partitions                   []VMPartition         `json:"partitions,omitempty"`
+}
+
+// VMFiles holds the datastore paths of a VM's files, as vSphere writes them:
+// "[datastore] vm/vm.vmx" for the configuration file, and the directory
+// "[datastore] vm/" for the others.
+type VMFiles struct {
+	VMPath            string `json:"vm_path,omitempty"`
+	LogDirectory      string `json:"log_directory,omitempty"`
+	SnapshotDirectory string `json:"snapshot_directory,omitempty"`
+	SuspendDirectory  string `json:"suspend_directory,omitempty"`
 }
 
 // VMResourceAllocation records the VM-level CPU or memory reservation and

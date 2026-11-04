@@ -42,7 +42,7 @@ var (
 	// omits Folder), but vDisk, vNetwork, vSnapshot, vCPU, vMemory, and vTools
 	// all end in exactly these columns.
 	vmTailHeaders    = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	vmHeaders        = []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "CPUs", "Memory", "NICs", "Disks", "Total disk capacity MiB", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4", "Network #5", "Network #6", "Network #7", "Network #8", "Resource pool", "Folder", "vApp", "In Use MiB", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	vmHeaders        = []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "Consolidation Needed", "CPUs", "Memory", "NICs", "Disks", "Total disk capacity MiB", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4", "Network #5", "Network #6", "Network #7", "Network #8", "Resource pool", "Folder", "vApp", "Provisioned MiB", "In Use MiB", "Unshared MiB", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Path", "Log directory", "Snapshot directory", "Suspend directory", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs", "Sockets", "Cores p/s", "Reservation", "Limit"}, vmTailHeaders...)
 	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit"}, vmTailHeaders...)
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -430,11 +430,13 @@ func vmRows(data assessment.ExportData) [][]any {
 			upgrade = *vm.HardwareUpgrade
 		}
 		place := places[placementKey{obs.Context, vm.ID}]
-		row := []any{vm.Name, vm.PowerState, vm.IsTemplate, optionalString(vm.GuestHostName), optionalString(vm.ConnectionState), vm.GuestState, vm.CPU, vm.MemoryMB,
+		row := []any{vm.Name, vm.PowerState, vm.IsTemplate, optionalString(vm.GuestHostName), optionalString(vm.ConnectionState), vm.GuestState, optionalBool(vm.ConsolidationNeeded), vm.CPU, vm.MemoryMB,
 			deviceCount(data, vm, len(vm.NICs)), deviceCount(data, vm, len(vm.Disks)), totalDiskCapacityMiB(data, vm), vm.IPAddress}
 		row = append(row, networkSlots(data, vm)...)
 		row = append(row, optionalString(place.resourcePool), rvtoolsFolder(places, obs), optionalString(place.vApp),
-			storageMiB(vm.StorageGB), optionalBool(vm.SecureBootEnabled), optionalString(vm.Firmware), hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion), vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context)
+			bytesMiB(vm.ProvisionedBytes), storageMiB(vm.StorageGB), bytesMiB(vm.UnsharedBytes), optionalBool(vm.SecureBootEnabled), optionalString(vm.Firmware), hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion))
+		row = append(row, vmFileCells(vm.Files)...)
+		row = append(row, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context)
 		rows = append(rows, row)
 	}
 	return rows

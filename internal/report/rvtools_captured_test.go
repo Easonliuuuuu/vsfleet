@@ -128,19 +128,29 @@ func TestWriteRVToolsVDatastoreURL(t *testing.T) {
 	}
 }
 
-// The columns vsfleet writes keep RVTools 4.8.1.4's relative order, so a
-// pipeline reading by position between shared columns sees the same layout.
+// The columns vsfleet writes keep RVTools' relative order, so a pipeline
+// reading by position between shared columns sees the same layout. vInfo is
+// the full header of the RVTools 4.8.2.1 export of the nested lab.
 func TestCapturedColumnsFollowRVToolsOrder(t *testing.T) {
 	for _, tc := range []struct {
 		sheet   string
 		headers []string
 		rvtools []string
 	}{
-		{"vInfo", vmHeaders, []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "CPUs", "Memory", "NICs", "Disks",
-			"Total disk capacity MiB", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4", "Network #5", "Network #6",
-			"Network #7", "Network #8", "Resource pool", "Folder", "vApp", "In Use MiB", "EFI Secure boot", "Firmware", "HW version",
-			"HW upgrade status", "HW upgrade policy", "HW target", "Annotation", "Datacenter", "Cluster", "Host",
-			"OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vInfo", vmHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Config status", "DNS Name", "Connection state",
+			"Guest state", "Heartbeat", "Consolidation Needed", "PowerOn", "Suspended To Memory", "Suspend time", "Suspend Interval",
+			"Creation date", "Change Version", "CPUs", "Overall Cpu Readiness", "Memory", "Active Memory", "NICs", "Disks",
+			"Total disk capacity MiB", "Fixed Passthru HotPlug", "min Required EVC Mode Key", "Latency Sensitivity",
+			"Op Notification Timeout", "EnableUUID", "CBT", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4",
+			"Network #5", "Network #6", "Network #7", "Network #8", "Num Monitors", "Video Ram KiB", "Resource pool", "Folder ID",
+			"Folder", "vApp", "DAS protection", "FT State", "FT Role", "FT Latency", "FT Bandwidth", "FT Sec. Latency",
+			"Vm Failover In Progress", "Provisioned MiB", "In Use MiB", "Unshared MiB", "HA Restart Priority", "HA Isolation Response",
+			"HA VM Monitoring", "Cluster rule(s)", "Cluster rule name(s)", "Boot Required", "Boot delay", "Boot retry delay",
+			"Boot retry enabled", "Boot BIOS setup", "Reboot PowerOff", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status",
+			"HW upgrade policy", "HW target", "Path", "Log directory", "Snapshot directory", "Suspend directory", "Annotation",
+			"Datacenter", "Cluster", "Host", "OS according to the configuration file", "OS according to the VMware Tools",
+			"Customization Info", "Guest Detailed Data", "VM ID", "SMBIOS UUID", "VM UUID", "VI SDK Server type", "VI SDK API Version",
+			"VI SDK Server", "VI SDK UUID"}},
 		{"vCPU", cpuHeaders, []string{"VM", "Powerstate", "Template", "CPUs", "Sockets", "Cores p/s", "Reservation", "Limit", "Annotation",
 			"Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
 		{"vMemory", memoryHeaders, []string{"VM", "Powerstate", "Template", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit",

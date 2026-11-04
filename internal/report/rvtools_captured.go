@@ -59,3 +59,21 @@ func effectiveCapacity(c vsphere.Cluster, value int64) any {
 	}
 	return value
 }
+
+// bytesMiB writes a byte count as MiB, empty when it was not read. Like In
+// Use MiB, fractional MiB are retained.
+func bytesMiB(bytes *int64) any {
+	if bytes == nil {
+		return nil
+	}
+	return float64(*bytes) / miB
+}
+
+// vmFileCells writes vInfo's Path, Log directory, Snapshot directory and
+// Suspend directory, all empty when the VM's files were not read.
+func vmFileCells(files *vsphere.VMFiles) []any {
+	if files == nil {
+		return []any{nil, nil, nil, nil}
+	}
+	return []any{optionalString(files.VMPath), optionalString(files.LogDirectory), optionalString(files.SnapshotDirectory), optionalString(files.SuspendDirectory)}
+}

@@ -1,135 +1,51 @@
 # Vulnerability scanning
 
-CI checks Go code with [govulncheck](https://go.dev/doc/security/vuln/) and
-the container image with [grype](https://github.com/anchore/grype). Each scan
-is judged by `cmd/vsfleet-vulngate` against one policy and one exception
-file, so a pull request, a release, and the daily rescan fail for the same
-reasons.
-
-## When scans run
-
-| Trigger | What is scanned | Workflow job |
-| --- | --- | --- |
-| Every pull request and push to `main` | Go source, with the release toolchain | `Vulnerabilities / Go vulnerabilities` |
-| Pull requests that run CI | Every snapshot release binary, and each snapshot image | `CI / Release snapshot` |
-| Release, before anything is published | Go source with the release toolchain, and the pinned base image for both platforms | `Release / goreleaser` |
-| Daily at 04:41 UTC, or on demand | Go source on `main`; every binary and both image platforms of the supported release, by digest | `Vulnerabilities` |
-
-`Go vulnerabilities` runs on every pull request, documentation-only ones
-included, so the `main` ruleset can require it.
-
-The release image is the pinned distroless base plus the release binary, and
-the release job gates both before GoReleaser publishes. The release job does
-not build a separate image to scan; CI's snapshot job scans the image built
-from the same configuration. If the release gate fails, release-please has
-already created the tag and release, but no binaries, packages, or images
-exist for it. Fix the finding on `main` and let the next release supersede
-it.
-
-Every run keeps its JSON reports and verdicts as a
-`vulnerability-results-*` artifact for 90 days. The verdict also appears in
-the job summary.
+CI scans the Go code with [govulncheck](https://go.dev/doc/security/vuln/)
+and the container image with [grype](https://github.com/anchore/grype). Pull
+requests, releases, and a daily rescan of the published release apply the
+same rules. The [workflows README](https://github.com/Easonliuuuuu/vsfleet/blob/main/.github/workflows/README.md)
+lists when each scan runs.
 
 ## What fails
 
-| Scanner | Fails the gate | Reported only |
+| Scanner | Blocks | Reported only |
 | --- | --- | --- |
-| govulncheck | A vulnerable symbol is reachable: the source calls it, or the binary contains it | The package is imported but the vulnerable code is not called, the module is required but the package is not imported, or a stripped binary yields only a wildcard symbol |
-| grype | A High or Critical finding with a fixed version available | Medium, Low, Negligible, or Unknown severity; High or Critical with no fix yet |
+| govulncheck | vsfleet calls the vulnerable code | the vulnerable code is present but never called |
+| grype | a High or Critical finding with a fix available | lower severities, or no fix yet |
 
-The gate also fails, whatever the findings, when:
+A scan also fails when it could not run, when its vulnerability database is
+stale, or when an exception is invalid or expired.
 
-- the scanner exits with an error or produces no report, for example when its
-  database cannot be downloaded. The summary says the scan did not run;
-- the vulnerability database is too old: 14 days since `vuln.go.dev` last
-  changed for govulncheck, 120 hours since the grype database was built.
-  Grype also refuses a database older than 120 hours itself;
-- an exception is missing a field, has expired, or expires more than 90 days
-  ahead.
+If the release scan fails, the tag and release exist but nothing is
+published. Fix the finding on `main`; the next release supersedes it.
 
-Release binaries are built with `-s -w`, so they carry no symbol table. For
-an advisory that covers a whole package, govulncheck then reports a wildcard
-such as `golang.org/x/crypto/openpgp/*` whether or not the package is linked
-in. The gate reports those without blocking; the source scan of the same
-code decides whether the package is used.
+## Fixing a finding
 
-govulncheck owns Go reachability. Grype also matches the Go binary inside
-the image, without reachability, so a Go advisory can appear in both reports.
-One exception can cover both through its aliases.
+1. **Go standard library:** rerun once the fixed Go patch is out; CI always
+   uses the newest one.
+2. **Go module:** bump it. Dependabot may already have.
+3. **Base image:** merge Dependabot's digest bump, or bump the `Dockerfile`
+   by hand.
+4. **No fix, or vsfleet is not affected:** add an exception.
 
 ## Exceptions
 
-Add an exception to `.github/vulnerability-exceptions.toml` only when a
-blocking finding cannot be fixed yet, or does not affect vsfleet:
+Add one to `.github/vulnerability-exceptions.toml`:
 
 ```toml
 [[exception]]
 id = "GO-2026-0000"
 aliases = ["CVE-2026-00000", "GHSA-xxxx-xxxx-xxxx"]
-artifact = "github.com/example/module"
+artifact = "github.com/example/module"   # as the report names it
 versions = ["v1.2.3"]
 justification = "No fixed release exists; vsfleet only opens files the operator supplies. Remove when upstream tags a fix."
 owner = "Easonliuuuuu"
-expires = 2026-12-31
+expires = 2026-12-31                     # at most 90 days ahead
 ```
 
-| Key | Meaning |
-| --- | --- |
-| `id`, `aliases` | Advisory IDs the exception matches; a finding matches when any of its IDs appears |
-| `artifact` | Go module path, `stdlib`, or OS package name, exactly as the report shows it |
-| `versions` | The affected versions the exception covers; a new version needs a new review |
-| `justification` | Why the finding is accepted and what ends the exception |
-| `owner` | Who renews or removes it |
-| `expires` | Last day the exception applies, in UTC; at most 90 days ahead |
-
-Unknown keys are errors, so a misspelled key cannot silently change what an
-exception covers. An expired exception fails every scan until it is removed
-or renewed with a new review.
-
-## Triage
-
-1. **Go standard library.** CI and releases use the latest Go 1.26 patch
-   release, so rerun the job once the fixed Go release is out. Do not pin
-   `go-version-file: go.mod`: setup-go reads the `go 1.26.0` line as an
-   exact release and builds with an unpatched standard library.
-2. **Go module, fix released.** Bump the module, run the tests, and merge.
-   Dependabot's weekly update may already have it.
-3. **Base image packages.** Dependabot bumps the distroless digest in the
-   `Dockerfile`; merge that update, or bump it by hand when the daily scan
-   finds a fixable package first.
-4. **No fix, or not exploitable in vsfleet.** Add an exception with a
-   justification and a short expiry, then revisit it before it expires.
-5. **Reported-only findings.** No action is required. Pick up the fix
-   through normal dependency updates.
-
-The daily run opens one issue titled "Daily vulnerability scan is failing",
-comments on it while the scan keeps failing, and closes it after the next
-clean run.
+An expired exception fails every scan until it is renewed or removed.
 
 ## Support scope
 
-Only the latest stable release, its binaries, packages, and its
-`ghcr.io/easonliuuuuu/vsfleet` image, receives security fixes. The daily scan
-covers that release by image digest; older releases are fixed by upgrading.
-When the scan finds a blocking vulnerability in the supported release, the
-fix ships as a patch release. vsfleet has one maintainer, so as the
-[security policy](https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md)
-says, there is no guaranteed response time.
-
-## Scanner versions
-
-`scripts/install-scanners.sh` pins govulncheck and grype. The Go checksum
-database verifies govulncheck; the script checks grype's archive against the
-SHA-256 sums from the grype release. To upgrade grype, change
-`GRYPE_VERSION` and both checksums together, taking them from the release's
-`checksums.txt`. Dependabot does not update these pins;
-[repository and release security](repository-security.md#tools-the-workflows-download)
-lists every hand-bumped tool.
-
-Run a scan locally with the same gate. It scans with your local Go
-toolchain, so an older patch release reports its standard library findings:
-
-```sh
-dir="$(scripts/install-scanners.sh "$HOME/.cache/vsfleet-scanners" govulncheck)"
-PATH="$dir:$PATH" scripts/vulnscan govulncheck "Go source" /tmp/vuln ./...
-```
+Only the latest stable release receives security fixes, as a patch release.
+See the [security policy](https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md).

@@ -79,6 +79,17 @@ backup controls, and remove runs explicitly with `vsfleet capture delete
 
 ---
 
+## Supported Versions and Scanning
+
+Only the latest stable release receives security fixes. CI checks every pull
+request, every release before publication, and the supported release daily
+for known vulnerabilities in vsfleet's Go code, dependencies, and container
+image. [Vulnerability scanning](https://easonliuuuuu.github.io/vsfleet/security-scanning/)
+describes what fails a build, how exceptions work, and how findings are
+triaged.
+
+---
+
 ## Reporting a Vulnerability
 
 Open an [issue](https://github.com/Easonliuuuuu/vsfleet/issues/new/choose)

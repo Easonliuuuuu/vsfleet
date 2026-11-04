@@ -47,9 +47,12 @@ jobs:
           ref: ${{ needs.release-please.outputs.tag_name }}
           fetch-depth: 0
 
+      # Not go-version-file: setup-go reads go.mod's `go 1.26.0` as an exact
+      # patch release, which shipped v0.6.2 and v0.6.3 with go1.26.0's
+      # unpatched standard library. Keep this in step with ci.yml.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: "1.26"
           check-latest: true
 
       - uses: docker/setup-buildx-action@v4
@@ -65,6 +68,33 @@ jobs:
 
       - name: Read the base image from the Dockerfile
         run: scripts/base-image-env.sh >> "$GITHUB_ENV"
+
+      # Nothing is published until the source scan with this toolchain and
+      # the pinned base image both pass. The final image is that base plus
+      # the binary; CI's release-snapshot job scans the built image itself.
+      - name: Install vulnerability scanners
+        run: scripts/install-scanners.sh "${RUNNER_TEMP}/scanners" >> "$GITHUB_PATH"
+
+      - name: Gate release on vulnerabilities
+        env:
+          RESULTS: ${{ runner.temp }}/vulnerability-results
+        run: |
+          failed=0
+          scripts/vulnscan govulncheck "release source" "$RESULTS" ./... || failed=1
+          for platform in linux/amd64 linux/arm64; do
+            scripts/vulnscan grype "release base image ${platform}" "$RESULTS" \
+              "registry:${BASE_IMAGE_NAME}@${BASE_IMAGE_DIGEST}" --platform "$platform" || failed=1
+          done
+          exit "$failed"
+
+      - name: Keep scan results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vulnerability-results-release
+          path: ${{ runner.temp }}/vulnerability-results
+          if-no-files-found: ignore
+          retention-days: 90
 
       - uses: goreleaser/goreleaser-action@v7
         with:

@@ -17,6 +17,7 @@ connects to a real vCenter.
 | [Fuzzing](#fuzz-targets) | seeds: `go test ./...`; campaigns: `go test -fuzz` | seeds in `build`; campaigns in `fuzz.yml` | seeds always; 5 min per target nightly, 1 min on PRs that touch fuzzing | arbitrary keys, messages, files, and expressions |
 | [Kubernetes end-to-end](#kubernetes-end-to-end) | `scripts/test-kubernetes.sh` | `kubernetes-e2e` | every push and PR | the shipped CronJob in a kind cluster against two vcsim Services |
 | [Release snapshot](#release-snapshot-and-pins) | `goreleaser release --snapshot` | `release-snapshot` | every push and PR | the full release build without publishing |
+| [Vulnerability scans](security-scanning.md) | `scripts/vulnscan` | `Go vulnerabilities`; scans in `release-snapshot` | Go source on every PR; artifacts with CI; daily rescan | reachable Go vulnerabilities, fixable High/Critical image findings, stale databases, expired exceptions |
 | [Release pins](#release-snapshot-and-pins) | `scripts/check-release-pins.sh` | `build` (Linux) | every push and PR | drift between Dockerfile, goreleaser, docs, and the CronJob |
 
 The `build` job also runs `gofmt`, `go mod tidy`, `go vet`, the labeler
@@ -56,6 +57,7 @@ Packages needing a vCenter use an in-process simulator.
 | `internal/tui` | Browse/detail, dashboards, history, datastore browser, prompts, context forms | stale replies, narrow renders, failed reloads, refresh tiers, demo restrictions, SSH precedence, unavailable keyring, missing credential diagnosis/edit |
 | `internal/vsphere` | Read-only simulator inventory | paging, failed/denied collections, provenance, perf gaps, key-free license metadata |
 | `cmd/vsfleet-demo` | The demo binary | seeded assessment history is wired in |
+| `cmd/vsfleet-vulngate`, `internal/vulngate` | Vulnerability gate verdicts and exit codes | synthetic govulncheck and grype reports, reachability levels, exceptions by alias, expiry, stale or missing databases |
 
 ## In-process simulator tests
 
@@ -211,7 +213,9 @@ package installation or a live vCenter connection.
 with the release Go version and configuration. It strips the multi-platform
 `index,` annotation prefix because buildx rejects it for loaded per-platform
 images. It checks six OS/architecture archives, three generated WinGet
-manifests, Linux binary `--version`, and amd64 image `--version`/`--help`.
+manifests, Linux binary `--version`, and amd64 image `--version`/`--help`,
+then scans every binary and image as described in
+[vulnerability scanning](security-scanning.md).
 
 The `WinGet publication` workflow compares the latest stable GitHub release
 with Microsoft's public catalog after the release workflow completes and

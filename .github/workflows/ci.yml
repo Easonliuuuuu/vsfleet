@@ -239,10 +239,12 @@ jobs:
           fetch-depth: 0
 
       # Mirrors the goreleaser job in release.yml, so a broken .goreleaser.yaml,
-      # Dockerfile, or cross-compile fails here instead of at tag time.
+      # Dockerfile, or cross-compile fails here instead of at tag time. Both
+      # use GO_VERSION, not go.mod: setup-go reads go.mod's `go 1.26.0` as
+      # an exact patch release and would build with its unpatched stdlib.
       - uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ env.GO_VERSION }}
           check-latest: true
 
       - uses: docker/setup-buildx-action@v4
@@ -284,6 +286,39 @@ jobs:
           test -n "$image" || { echo "goreleaser loaded no vsfleet image"; docker image ls; exit 1; }
           docker run --rm --platform linux/amd64 "$image" --version
           docker run --rm --platform linux/amd64 "$image" --help >/dev/null
+
+      - name: Install vulnerability scanners
+        run: scripts/install-scanners.sh "${RUNNER_TEMP}/scanners" >> "$GITHUB_PATH"
+
+      # The artifacts a release would publish, scanned as built: every
+      # binary for reachable Go vulnerabilities, and each image for OS and
+      # bundled Go vulnerabilities. See docs/security-scanning.md.
+      - name: Scan release binaries and images
+        env:
+          RESULTS: ${{ runner.temp }}/vulnerability-results
+        run: |
+          failed=0
+          for bin in dist/vsfleet_*/vsfleet dist/vsfleet_*/vsfleet.exe; do
+            [[ -e "$bin" ]] || continue
+            target="$(basename "$(dirname "$bin")")"
+            scripts/vulnscan govulncheck "snapshot ${target#vsfleet_}" "$RESULTS" -mode binary "$bin" || failed=1
+          done
+          # One scan per image ID; the snapshot tags each image several ways.
+          images="$(docker image ls --format '{{.ID}} {{.Repository}}:{{.Tag}}' | grep ' ghcr.io/easonliuuuuu/vsfleet:' | sort -u -k1,1 | cut -d' ' -f2)"
+          test -n "$images"
+          for image in $images; do
+            scripts/vulnscan grype "snapshot image ${image##*:}" "$RESULTS" "docker:${image}" || failed=1
+          done
+          exit "$failed"
+
+      - name: Keep scan results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vulnerability-results-snapshot
+          path: ${{ runner.temp }}/vulnerability-results
+          if-no-files-found: ignore
+          retention-days: 90
 
   integration-vcsim:
     name: Multi-vCenter vcsim integration

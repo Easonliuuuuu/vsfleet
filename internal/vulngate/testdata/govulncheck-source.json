@@ -1,0 +1,25 @@
+{
+  "config": {
+    "protocol_version": "v1.0.0",
+    "scanner_name": "govulncheck",
+    "scanner_version": "v1.9.0",
+    "db": "https://vuln.go.dev",
+    "db_last_modified": "2030-01-10T00:00:00Z",
+    "go_version": "go1.40.1",
+    "scan_level": "symbol",
+    "scan_mode": "source"
+  }
+}
+{"progress": {"message": "Scanning your code and 3 packages across 2 dependent modules for known vulnerabilities..."}}
+{"osv": {"id": "GO-2030-0001", "aliases": ["CVE-2030-1001", "GHSA-aaaa-bbbb-cccc"], "summary": "Synthetic reachable flaw in example.test/parser"}}
+{"osv": {"id": "GO-2030-0002", "aliases": ["CVE-2030-1002"], "summary": "Synthetic flaw in an imported, uncalled package"}}
+{"osv": {"id": "GO-2030-0003", "summary": "Synthetic flaw in a required, unimported module"}}
+{"osv": {"id": "GO-2030-0004", "aliases": ["CVE-2030-1004"], "summary": "Synthetic standard library flaw"}}
+{"finding": {"osv": "GO-2030-0001", "fixed_version": "v1.2.4", "trace": [{"module": "example.test/parser", "version": "v1.2.3"}]}}
+{"finding": {"osv": "GO-2030-0001", "fixed_version": "v1.2.4", "trace": [{"module": "example.test/parser", "version": "v1.2.3", "package": "example.test/parser/xml"}]}}
+{"finding": {"osv": "GO-2030-0001", "fixed_version": "v1.2.4", "trace": [{"module": "example.test/parser", "version": "v1.2.3", "package": "example.test/parser/xml", "function": "Decode", "receiver": "*Reader"}, {"module": "example.test/app", "package": "example.test/app", "function": "main"}]}}
+{"finding": {"osv": "GO-2030-0001", "fixed_version": "v1.2.4", "trace": [{"module": "example.test/parser", "version": "v1.2.3", "package": "example.test/parser/xml", "function": "Decode", "receiver": "*Reader"}, {"module": "example.test/app", "package": "example.test/app", "function": "load"}]}}
+{"finding": {"osv": "GO-2030-0002", "fixed_version": "v0.9.0", "trace": [{"module": "example.test/net", "version": "v0.8.0"}]}}
+{"finding": {"osv": "GO-2030-0002", "fixed_version": "v0.9.0", "trace": [{"module": "example.test/net", "version": "v0.8.0", "package": "example.test/net/html"}]}}
+{"finding": {"osv": "GO-2030-0003", "trace": [{"module": "example.test/crypto", "version": "v0.5.0"}]}}
+{"finding": {"osv": "GO-2030-0004", "fixed_version": "v1.40.2", "trace": [{"module": "stdlib", "version": "v1.40.1", "package": "net/http", "function": "Do", "receiver": "*Client"}, {"module": "example.test/app", "package": "example.test/app", "function": "fetch"}]}}

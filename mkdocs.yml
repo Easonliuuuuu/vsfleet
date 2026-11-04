@@ -72,6 +72,7 @@ nav:
       - Synthetic testbed: testbed.md
       - Testing: testing.md
       - Test catalogue: test-catalog.md
+      - Vulnerability scanning: security-scanning.md
       - Writing documentation: writing.md
       - Contribution policy: https://github.com/Easonliuuuuu/vsfleet/blob/main/CONTRIBUTING.md
       - Security policy: https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md

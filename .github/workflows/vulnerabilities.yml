@@ -1,0 +1,149 @@
+name: Vulnerabilities
+
+# Policy, exceptions, and triage: docs/security-scanning.md.
+#
+# The Go source check runs on every pull request, documentation included, so
+# it can be a required status check. The daily run rescans main and the
+# supported published release, because a new advisory can affect code that
+# has not changed.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "41 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vulnerabilities-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GO_VERSION: "1.26"
+  RESULTS: ${{ github.workspace }}/vulnerability-results
+
+jobs:
+  go-source:
+    name: Go vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # The same toolchain line as the release job, so the standard library
+      # scanned here is the one releases ship.
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Install scanner
+        run: scripts/install-scanners.sh "${RUNNER_TEMP}/scanners" govulncheck >> "$GITHUB_PATH"
+
+      - name: Scan Go source
+        run: scripts/vulnscan govulncheck "Go source" "$RESULTS" ./...
+
+      - name: Keep scan results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vulnerability-results-source
+          path: ${{ env.RESULTS }}
+          if-no-files-found: error
+          retention-days: 90
+
+  published:
+    name: Published release vulnerabilities
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: ghcr.io/easonliuuuuu/vsfleet
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Install scanners
+        run: scripts/install-scanners.sh "${RUNNER_TEMP}/scanners" >> "$GITHUB_PATH"
+
+      # Only the latest stable release is supported; older releases are fixed
+      # by upgrading.
+      - name: Find the supported release
+        run: |
+          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          test -n "$tag"
+          digest="$(docker buildx imagetools inspect "${IMAGE}:${tag}" --format '{{json .Manifest}}' | jq -r .digest)"
+          [[ "$digest" == sha256:* ]] || { echo "::error::No image digest for ${IMAGE}:${tag}"; exit 1; }
+          printf 'TAG=%s\nDIGEST=%s\n' "$tag" "$digest" >> "$GITHUB_ENV"
+          printf 'Scanning %s, image `%s@%s`.\n\n' "$tag" "$IMAGE" "$digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Download release binaries
+        run: |
+          mkdir -p "${RUNNER_TEMP}/release"
+          cd "${RUNNER_TEMP}/release"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*.tar.gz' --pattern '*.zip'
+          for archive in *.tar.gz; do mkdir "${archive%.tar.gz}" && tar -xzf "$archive" -C "${archive%.tar.gz}"; done
+          for archive in *.zip; do unzip -q "$archive" -d "${archive%.zip}"; done
+
+      # Every scan runs even when an earlier one fails, so one run reports
+      # everything that needs fixing.
+      - name: Scan release binaries and image
+        run: |
+          failed=0
+          for bin in "${RUNNER_TEMP}"/release/vsfleet_*/vsfleet "${RUNNER_TEMP}"/release/vsfleet_*/vsfleet.exe; do
+            [[ -e "$bin" ]] || continue
+            target="$(basename "$(dirname "$bin")")"
+            scripts/vulnscan govulncheck "${TAG} ${target#vsfleet_*_}" "$RESULTS" -mode binary "$bin" || failed=1
+          done
+          for platform in linux/amd64 linux/arm64; do
+            scripts/vulnscan grype "${TAG} image ${platform}" "$RESULTS" "registry:${IMAGE}@${DIGEST}" --platform "$platform" || failed=1
+          done
+          exit "$failed"
+
+      - name: Keep scan results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: vulnerability-results-published
+          path: ${{ env.RESULTS }}
+          if-no-files-found: error
+          retention-days: 90
+
+  # One open issue tracks a failing daily scan: opened on the first failure,
+  # commented on while it keeps failing, closed by the next clean run.
+  notify:
+    name: Track daily scan failures
+    needs: [go-source, published]
+    if: always() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TITLE: Daily vulnerability scan is failing
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+    steps:
+      - run: |
+          issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq "[.[] | select(.title == env.TITLE)][0].number // empty")"
+          if [[ "$FAILED" == true ]]; then
+            body="The scheduled vulnerability scan failed: ${RUN_URL}
+
+          The run summary lists each blocking finding, scanner outage, or expired exception, and the vulnerability-results artifacts keep the JSON for 90 days. Triage follows docs/security-scanning.md."
+            if [[ -n "$issue" ]]; then
+              gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "Still failing: ${RUN_URL}"
+            else
+              gh issue create --repo "$GITHUB_REPOSITORY" --title "$TITLE" --label workflows --body "$body"
+            fi
+          elif [[ -n "$issue" ]]; then
+            gh issue close "$issue" --repo "$GITHUB_REPOSITORY" --comment "The daily scan passed again: ${RUN_URL}"
+          fi

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Run one vulnerability scan, keep its JSON, and judge it with
+# vsfleet-vulngate. The Markdown verdict goes to stdout and, in Actions, to
+# the job summary.
+#
+#   scripts/vulnscan govulncheck NAME RESULTS_DIR [govulncheck args...]
+#   scripts/vulnscan grype NAME RESULTS_DIR TARGET [grype args...]
+#
+# Exit 1 means a finding or exception failed the gate; exit 2 means the
+# scanner or its database failed, which is never reported as clean.
+set -uo pipefail
+
+scanner="${1:?usage: vulnscan govulncheck|grype NAME RESULTS_DIR ARGS...}"
+name="${2:?missing NAME}"
+results="${3:?missing RESULTS_DIR}"
+shift 3
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+mkdir -p "$results"
+file="${name//[^A-Za-z0-9._-]/_}"
+report="$results/$file.$scanner.json"
+log="$results/$file.$scanner.log"
+summary="$results/$file.md"
+
+case "$scanner" in
+  govulncheck) govulncheck -format json "$@" >"$report" 2>"$log" ;;
+  # grype refuses a database older than its validation age (120h) and
+  # exits non-zero, so an outage or stale mirror is a failure here.
+  grype) GRYPE_CHECK_FOR_APP_UPDATE=false grype "$@" -o json --file "$report" 2>"$log" ;;
+  *) printf 'vulnscan: unknown scanner %s\n' "$scanner" >&2; exit 2 ;;
+esac
+status=$?
+
+if [[ $status -ne 0 ]]; then
+  {
+    printf '## %s: FAILED\n\n%s exited %d before producing a verdict. The scan did not run, so nothing is known to be clean.\n\n```text\n' "$name" "$scanner" "$status"
+    tail -n 20 "$log"
+    printf '```\n'
+  } | tee "$summary"
+  gate=2
+else
+  (cd "$repo_root" && go run ./cmd/vsfleet-vulngate -format "$scanner" \
+    -exceptions "$repo_root/.github/vulnerability-exceptions.toml" \
+    -title "$name" "$report") | tee "$summary"
+  gate=${PIPESTATUS[0]}
+fi
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  { cat "$summary"; printf '\n'; } >>"$GITHUB_STEP_SUMMARY"
+fi
+exit "$gate"

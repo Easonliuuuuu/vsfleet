@@ -40,57 +40,14 @@ func TestHostClientURL(t *testing.T) {
 	}
 }
 
-func TestProxyArgsDeclinesAuthenticatedProxy(t *testing.T) {
-	tc := config.TransportConfig{Type: config.TransportSOCKS5, Address: "127.0.0.1:1080", Username: "bastion-user"}
-	args, reason := proxyArgs(tc)
-	if args != nil || reason == "" {
-		t.Fatalf("expected an authenticated proxy declined, got args=%v reason=%q", args, reason)
+// A guest-reported name with shell metacharacters is quoted in the command
+// offered for copying.
+func TestSSHCommandQuotesTheAddress(t *testing.T) {
+	if got, want := sshCommand("10.20.0.11"), "ssh 10.20.0.11"; got != want {
+		t.Errorf("sshCommand() = %q, want %q", got, want)
 	}
-}
-
-func TestProxyArgsSOCKS5(t *testing.T) {
-	tc := config.TransportConfig{Type: config.TransportSOCKS5, Address: "127.0.0.1:1080"}
-	args, reason := proxyArgs(tc)
-	if reason != "" {
-		t.Fatalf("unexpected decline: %q", reason)
-	}
-	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "-X 5") || !strings.Contains(joined, "127.0.0.1:1080") {
-		t.Errorf("expected a SOCKS5 ProxyCommand, got %v", args)
-	}
-}
-
-func TestProxyArgsHTTPConnect(t *testing.T) {
-	tc := config.TransportConfig{Type: config.TransportHTTPProxy, Address: "proxy.internal:3128"}
-	args, reason := proxyArgs(tc)
-	if reason != "" {
-		t.Fatalf("unexpected decline: %q", reason)
-	}
-	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "-X connect") || !strings.Contains(joined, "proxy.internal:3128") {
-		t.Errorf("expected an HTTP CONNECT ProxyCommand, got %v", args)
-	}
-}
-
-func TestProxyArgsHTTPSIsExplicitlyUnsupported(t *testing.T) {
-	tc := config.TransportConfig{Type: config.TransportHTTPSProxy, Address: "proxy.internal:3129"}
-	args, reason := proxyArgs(tc)
-	if args != nil || reason == "" || !strings.Contains(reason, "HTTPS") {
-		t.Fatalf("expected HTTPS proxy to be declined, got args=%v reason=%q", args, reason)
-	}
-}
-
-func TestSSHCommandIncludesProxyAndQuotesOption(t *testing.T) {
-	got := sshCommand(SSHSpec{
-		Address: "10.20.0.11",
-		User:    "ubuntu",
-		ProxyArgs: []string{
-			"-o", "ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p",
-		},
-	})
-	want := "ssh -o 'ProxyCommand=nc -X 5 -x 127.0.0.1:1080 %h %p' -o ConnectTimeout=15 ubuntu@10.20.0.11"
-	if got != want {
-		t.Fatalf("sshCommand() = %q, want %q", got, want)
+	if got, want := sshCommand("app;01"), "ssh 'app;01'"; got != want {
+		t.Errorf("sshCommand() = %q, want %q", got, want)
 	}
 }
 

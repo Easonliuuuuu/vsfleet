@@ -42,12 +42,11 @@ jobs:
           - { package: ./internal/tui, target: FuzzStaleMessagesCannotReplaceNewerState }
           - { package: ./internal/tui, target: FuzzRenderIsBoundedAndDeterministic }
           # Parsers for input that comes from outside vsfleet: imported
-          # RVTools workbooks, hand-edited configuration, ~/.ssh/config, and
+          # RVTools workbooks, hand-edited configuration, and
           # --where expressions.
           - { package: ./internal/rvimport, target: FuzzParseWorkbook }
           - { package: ./internal/config, target: FuzzLoadSaveRoundTrip }
           - { package: ./internal/config, target: FuzzNormalizeThumbprintIsIdempotent }
-          - { package: ./internal/sshalias, target: FuzzDiscover }
           - { package: ./internal/query, target: FuzzParseAndEvaluate }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -21,7 +21,6 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/health"
 	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
-	"github.com/easonliuuuuu/vsfleet/internal/uistate"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -501,31 +500,6 @@ type Options struct {
 	// and that promise has to hold for these actions too, not just for the
 	// vSphere API calls the rest of the program makes.
 	Demo bool
-	// SSHVMUser and SSHHostUser are the optional default remote usernames the
-	// SSH handoff action fills in for VM guests and ESXi hosts. Empty values
-	// leave ssh(1) to resolve a user from its normal configuration.
-	SSHVMUser   string
-	SSHHostUser string
-	// SSHUser is the backwards-compatible shared fallback for both target
-	// kinds. Per-kind values take precedence when set.
-	SSHUser string
-	// SSHRoutes route SSH handoffs by context and destination CIDR,
-	// independently of each context's vCenter transport. Nil leaves every
-	// handoff on its context's transport.
-	SSHRoutes []config.SSHRoute
-	// SSHUsers seeds the users typed into the SSH prompt in earlier runs,
-	// keyed "<context>/<moref>"; Snapshot hands the current set back for the
-	// caller to persist.
-	SSHUsers map[string]string
-	// SSHIdentityFiles seeds the private-key paths selected for machines in
-	// earlier runs, keyed "<context>/<moref>"; Snapshot hands the current set
-	// back for the caller to persist.
-	SSHIdentityFiles map[string]string
-	// SSHDestinations seeds the SSH destination — an OpenSSH alias or a
-	// per-VM route override — chosen for machines in earlier runs, keyed
-	// "<context>/<moref>"; Snapshot hands the current set back for the
-	// caller to persist. See uistate.SSHDestination.
-	SSHDestinations map[string]uistate.SSHDestination
 	// Handoff is what the detail pane's actions use to reach the clipboard,
 	// the browser, and a terminal. Nil gets the real implementation; tests
 	// substitute a recording fake, the same seam Backend already is (see
@@ -560,15 +534,6 @@ type Snapshot struct {
 	Context string
 	Kind    string
 	Sort    string
-	// SSHUsers is every user remembered for a machine, keyed
-	// "<context>/<moref>".
-	SSHUsers map[string]string
-	// SSHIdentityFiles is every private-key path remembered for a machine,
-	// keyed "<context>/<moref>".
-	SSHIdentityFiles map[string]string
-	// SSHDestinations is every SSH destination remembered for a machine,
-	// keyed "<context>/<moref>".
-	SSHDestinations map[string]uistate.SSHDestination
 	// Upgrade reports that the operator answered the launch prompt with
 	// "upgrade now": the caller runs the upgrade once the terminal is back.
 	Upgrade bool
@@ -631,24 +596,6 @@ func (m *Model) Observe() Observation {
 // persist once the program exits.
 func (m *Model) Snapshot() Snapshot {
 	snap := Snapshot{Kind: string(m.kind), Sort: m.sortMode.label()}
-	if len(m.sshUsers) > 0 {
-		snap.SSHUsers = make(map[string]string, len(m.sshUsers))
-		for k, v := range m.sshUsers {
-			snap.SSHUsers[k] = v
-		}
-	}
-	if len(m.sshIdentityFiles) > 0 {
-		snap.SSHIdentityFiles = make(map[string]string, len(m.sshIdentityFiles))
-		for k, v := range m.sshIdentityFiles {
-			snap.SSHIdentityFiles[k] = v
-		}
-	}
-	if len(m.sshDestinations) > 0 {
-		snap.SSHDestinations = make(map[string]uistate.SSHDestination, len(m.sshDestinations))
-		for k, v := range m.sshDestinations {
-			snap.SSHDestinations[k] = v
-		}
-	}
 	if st := m.current(); st != nil {
 		snap.Context = st.cc.Name
 	}
@@ -866,11 +813,6 @@ type Model struct {
 	// shortcut — see handleCredPromptKey.
 	credCoord  *PromptCoordinator
 	credPrompt *credPromptState
-	// sshPrompt is the combined SSH user and identity overlay, open while
-	// non-nil. It owns the keyboard like credPrompt does, but ranks below it;
-	// see handleKey.
-	sshPrompt *sshPromptState
-
 	// demo labels the header as sample data; see Options.Demo.
 	demo bool
 
@@ -893,30 +835,6 @@ type Model struct {
 	// handoff reaches the clipboard, the browser, and a terminal on the
 	// operator's own workstation; see Options.Handoff.
 	handoff Handoff
-	// sshVMUser and sshHostUser are the configured per-kind defaults; see
-	// Options.SSHVMUser and Options.SSHHostUser.
-	sshVMUser   string
-	sshHostUser string
-	// sshUser is the backwards-compatible shared fallback.
-	sshUser string
-	// sshRoutes are the configured SSH routes; see Options.SSHRoutes.
-	sshRoutes []config.SSHRoute
-	// sshUsers are the users typed into the SSH prompt, per machine; see
-	// sshUserKey. Snapshot exports them so they outlive the process.
-	sshUsers map[string]string
-	// sshIdentityFiles are the private-key paths selected for a machine, per
-	// machine, keyed by context and managed object reference.
-	sshIdentityFiles map[string]string
-	// sshDestinations are the SSH destinations (an OpenSSH alias or a
-	// per-VM route override) remembered per machine, keyed by context and
-	// managed object reference; see sshUserKey. Snapshot exports them so
-	// they outlive the process.
-	sshDestinations map[string]uistate.SSHDestination
-	// sshDiscovery caches the most recent alias-discovery result so building
-	// one row's action menu — which calls into it from several places —
-	// runs "ssh -G" against each candidate at most once. It is invalidated
-	// simply by not matching the next row's key; see sshDestInfoFor.
-	sshDiscovery *sshDiscoveryCache
 	// out is where a launched process's own I/O and the OSC 52 clipboard
 	// escape are written — the same stream Options.Out gives Bubble Tea.
 	out io.Writer
@@ -962,21 +880,14 @@ func New(ctx context.Context, backend Backend, opts Options) *Model {
 		width:        100,
 		height:       30,
 
-		refreshInterval:  refreshInterval(opts.RefreshInterval),
-		credCoord:        opts.Credentials,
-		assessment:       opts.Assessment,
-		demo:             opts.Demo,
-		sshVMUser:        opts.SSHVMUser,
-		sshHostUser:      opts.SSHHostUser,
-		sshUser:          opts.SSHUser,
-		sshRoutes:        append([]config.SSHRoute(nil), opts.SSHRoutes...),
-		sshUsers:         copySSHUsers(opts.SSHUsers),
-		sshIdentityFiles: copySSHIdentityFiles(opts.SSHIdentityFiles),
-		sshDestinations:  copySSHDestinations(opts.SSHDestinations),
-		handoff:          opts.Handoff,
-		out:              opts.Out,
-		updateBadge:      opts.UpdateBadge,
-		checkUpdate:      opts.CheckUpdate,
+		refreshInterval: refreshInterval(opts.RefreshInterval),
+		credCoord:       opts.Credentials,
+		assessment:      opts.Assessment,
+		demo:            opts.Demo,
+		handoff:         opts.Handoff,
+		out:             opts.Out,
+		updateBadge:     opts.UpdateBadge,
+		checkUpdate:     opts.CheckUpdate,
 	}
 	if opts.Notice != "" {
 		m.setMessage(opts.Notice, opts.NoticeBad)
@@ -1711,9 +1622,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case sshIdentitiesMsg:
-		return m, m.applySSHIdentities(msg)
-
 	case credRequestMsg:
 		// A second concurrent ask cannot arrive here: the coordinator only
 		// hands out another request after this one is resolved and the
@@ -2383,34 +2291,6 @@ func (m *Model) canCapture() bool {
 	return m.assessment != nil && m.assessment.CanCapture()
 }
 
-func copySSHUsers(in map[string]string) map[string]string {
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		if v != "" {
-			out[k] = v
-		}
-	}
-	return out
-}
-
-func copySSHIdentityFiles(in map[string]string) map[string]string {
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		if strings.TrimSpace(v) != "" {
-			out[k] = v
-		}
-	}
-	return out
-}
-
-func copySSHDestinations(in map[string]uistate.SSHDestination) map[string]uistate.SSHDestination {
-	out := make(map[string]uistate.SSHDestination, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	// The credential overlay owns every key ahead of anything else, filter
 	// and form included: it can appear over any screen, since it answers a
@@ -2498,14 +2378,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 // this and still quits from every input. A new text input belongs here and in
 // TestFreeTextInputsOwnQuitAndHelpKeys.
 //
-// The order is the priority of the overlays: the SSH prompt ranks below the
-// credential prompt (the caller answers it first) but above everything else, then
-// the filter, the context form and its delete confirmation, the run label
+// The order is the priority of the overlays, after the credential prompt the
+// caller answers first: the filter, the context form and its delete confirmation, the run label
 // editor and the datastore Find prompt.
 func (m *Model) handleInputKey(msg tea.KeyMsg) (tea.Cmd, bool) {
 	switch {
-	case m.sshPrompt != nil:
-		return m.handleSSHPromptKey(msg), true
 	case m.filtering:
 		return m.handleFilterKey(msg), true
 	case m.mode == modeForm:

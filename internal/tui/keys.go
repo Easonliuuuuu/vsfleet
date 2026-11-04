@@ -174,15 +174,14 @@ type keyMap struct {
 	// text input has focus, every other key is typed into it, so the footer
 	// must list only what the input itself answers to. FilterApply and
 	// FilterClear are the filter's enter and esc, FindRun the datastore Find
-	// prompt's enter, SaveRun the run label/note editor's. Continue,
-	// SwitchField and ForceQuit are the credential and SSH prompts, which
-	// own the keyboard ahead of everything else.
+	// prompt's enter, SaveRun the run label/note editor's. Continue and
+	// ForceQuit are the credential prompt's, which owns the keyboard ahead of
+	// everything else.
 	FilterApply key.Binding
 	FilterClear key.Binding
 	FindRun     key.Binding
 	SaveRun     key.Binding
 	Continue    key.Binding
-	SwitchField key.Binding
 	ForceQuit   key.Binding
 }
 
@@ -282,7 +281,6 @@ func defaultKeys() keyMap {
 		FindRun:     key.NewBinding(key.WithHelp("enter", "search")),
 		SaveRun:     key.NewBinding(key.WithHelp("enter", "save")),
 		Continue:    key.NewBinding(key.WithHelp("enter", "continue")),
-		SwitchField: key.NewBinding(key.WithHelp("tab", "switch field")),
 		ForceQuit:   key.NewBinding(key.WithHelp("ctrl+c", "quit")),
 	}
 }
@@ -460,13 +458,9 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 	// A focused text input takes every printable key, so the screen's own
 	// shortcuts are not available until it lets go. Advertising them anyway
 	// meant the line said "H history" while "H" was being typed into a filter.
-	// The same precedence handleKey applies: the credential and SSH overlays
-	// first, then the filter, then the per-mode inputs below.
+	// The same precedence handleKey applies: the credential overlay first, then the filter, then the per-mode inputs below.
 	if m.credPrompt != nil {
 		return []key.Binding{k.Continue, k.CancelAction, k.ForceQuit}
-	}
-	if m.sshPrompt != nil {
-		return []key.Binding{k.Continue, k.SwitchField, k.CancelAction, k.ForceQuit}
 	}
 	if m.filtering {
 		switch m.mode {

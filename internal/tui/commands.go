@@ -661,12 +661,6 @@ type handoffResultMsg struct {
 	err  error
 }
 
-type sshIdentitiesMsg struct {
-	prompt     *sshPromptState
-	identities []SSHIdentity
-	err        error
-}
-
 // copyCmd writes value to the clipboard through m.handoff. It never blocks
 // the interface: OSC 52 and the local clipboard command both return long
 // before an operator could notice.
@@ -691,13 +685,13 @@ func (m *Model) openURLCmd(url string) tea.Cmd {
 // tea.ExecCommand adapter. It keeps OpenSSH's stderr visible while retaining
 // its final diagnostic, and prints a clear handoff line after Bubble Tea has
 // released the alternate screen.
-func (m *Model) sshCmd(spec SSHSpec) tea.Cmd {
-	cmd, err := m.handoff.SSH(spec)
+func (m *Model) sshCmd(address string) tea.Cmd {
+	cmd, err := m.handoff.SSH(address)
 	if err != nil {
 		return func() tea.Msg { return handoffResultMsg{verb: "ssh", err: err} }
 	}
 	diagnostic := &tailBuffer{max: 8 * 1024}
-	process := &sshExecCommand{cmd: cmd, diagnostic: diagnostic, banner: "Connecting: " + sshCommand(spec) + " (Ctrl-C to cancel)"}
+	process := &sshExecCommand{cmd: cmd, diagnostic: diagnostic, banner: "Connecting: " + sshCommand(address) + " (Ctrl-C to cancel)"}
 	return tea.Exec(process, func(err error) tea.Msg {
 		return handoffResultMsg{verb: "ssh session ended", err: sshFailure(err, diagnostic.String())}
 	})

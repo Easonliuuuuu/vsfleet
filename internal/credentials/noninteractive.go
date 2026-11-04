@@ -177,8 +177,7 @@ func (f *File) Delete(context.Context, Ref) error {
 // The reference names a program and nothing else: no arguments and no shell.
 // Splitting a command string would mean choosing a quoting dialect and getting
 // it subtly wrong in the one place where being wrong hands an attacker a shell,
-// and a secret passed as an argument is visible to anyone who can run ps — the
-// same reason the TUI refuses to put a proxy password on ssh's command line.
+// and a secret passed as an argument is visible to anyone who can run ps.
 // A helper that needs arguments is a two-line wrapper script; the context name
 // and the reference reach it through VSFLEET_CONTEXT and VSFLEET_CREDENTIAL_REF
 // so one wrapper can serve an entire estate.

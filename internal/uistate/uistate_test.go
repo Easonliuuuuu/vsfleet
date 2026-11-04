@@ -50,13 +50,6 @@ func TestSaveThenLoadRoundTrips(t *testing.T) {
 
 	want := State{
 		Context: "customer-a", Kind: "network", Sort: "status", WelcomedVersion: "0.10.0",
-		SSHUsers:         map[string]string{"prod/vm-1": "tdclab", "lab/host-2": "root"},
-		SSHIdentityFiles: map[string]string{"prod/vm-1": "/home/op/.ssh/id_devops"},
-		SSHDestinations: map[string]SSHDestination{
-			"prod/vm-1": {Kind: "openssh_alias", Alias: "app-prod"},
-			"prod/vm-2": {Kind: "route", Route: "http", ProxyAddress: "100.109.21.17:8080"},
-			"lab/vm-1":  {Kind: "route", Route: "direct"},
-		},
 	}
 	if err := Save("", want); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -66,49 +59,18 @@ func TestSaveThenLoadRoundTrips(t *testing.T) {
 	}
 }
 
-// A state file written before the SSH fields existed must still load.
+// A state file written by an older release, including the SSH choices it
+// used to remember, still loads; the SSH fields are ignored.
 func TestLoadOfOlderStateFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
-	if err := os.WriteFile(path, []byte(`{"context":"prod","kind":"vm","sort":"name"}`), 0o600); err != nil {
+	raw := `{"context":"prod","kind":"vm","sort":"name",
+		"ssh_users":{"prod/vm-1":"tdclab"},
+		"ssh_destinations":{"prod/vm-1":{"kind":"openssh_alias","alias":"app-prod"}}}`
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	want := State{Context: "prod", Kind: "vm", Sort: "name"}
 	if got := Load(path); !reflect.DeepEqual(got, want) {
 		t.Errorf("older state file loaded as %+v, want %+v", got, want)
-	}
-}
-
-// Load drops any destination it cannot prove is safe — an unknown kind, an
-// alias that looks like an ssh(1) option, or a proxy address that is not a
-// plain host:port — rather than handing back something a caller might trust
-// enough to put on an ssh(1) argument list.
-func TestLoadSanitizesUntrustworthySSHDestinations(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "state.json")
-	raw := `{
-		"ssh_destinations": {
-			"prod/vm-1": {"kind": "openssh_alias", "alias": "app-prod"},
-			"prod/vm-2": {"kind": "openssh_alias", "alias": "-oProxyCommand=evil"},
-			"prod/vm-3": {"kind": "openssh_alias", "alias": "root@app-prod"},
-			"prod/vm-4": {"kind": "route", "route": "socks5", "proxy_address": "127.0.0.1:1080"},
-			"prod/vm-5": {"kind": "route", "route": "socks5", "proxy_address": "-x 127.0.0.1:1080"},
-			"prod/vm-6": {"kind": "shell_out", "alias": "app-prod"},
-			"prod/vm-7": {"kind": "route", "route": "sudo rm -rf /"},
-			"prod/vm-8": {"kind": "route", "route": "http", "proxy_address": "proxy.lab:3128"},
-			"prod/vm-9": {"kind": "openssh_alias", "alias": "app-prod", "route": "direct"},
-			"prod/vm-10": {"kind": "route", "route": "direct", "proxy_address": "127.0.0.1:1080"},
-			"prod/vm-11": {"kind": "route", "route": "openssh", "alias": "app-prod"}
-		}
-	}`
-	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	got := Load(path)
-	want := map[string]SSHDestination{
-		"prod/vm-1": {Kind: "openssh_alias", Alias: "app-prod"},
-		"prod/vm-4": {Kind: "route", Route: "socks5", ProxyAddress: "127.0.0.1:1080"},
-		"prod/vm-8": {Kind: "route", Route: "http", ProxyAddress: "proxy.lab:3128"},
-	}
-	if !reflect.DeepEqual(got.SSHDestinations, want) {
-		t.Errorf("Load returned %+v, want only the safe entries %+v", got.SSHDestinations, want)
 	}
 }

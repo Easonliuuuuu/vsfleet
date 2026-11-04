@@ -122,13 +122,9 @@ func TestFooterWhileEditingARunListsOnlyWhatWorks(t *testing.T) {
 	}
 }
 
-func TestFooterUnderCredentialAndSSHPromptsListsOnlyTheirKeys(t *testing.T) {
+func TestFooterUnderCredentialPromptListsOnlyItsKeys(t *testing.T) {
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod"})
 
 	m.credPrompt = &credPromptState{}
 	requireFooter(t, m, []string{"enter continue", "esc cancel", "ctrl+c quit"}, []string{"kind", "history", "filter"})
-	m.credPrompt = nil
-
-	m.sshPrompt = &sshPromptState{}
-	requireFooter(t, m, []string{"enter continue", "tab switch field", "esc cancel", "ctrl+c quit"}, []string{"kind", "history", "filter"})
 }

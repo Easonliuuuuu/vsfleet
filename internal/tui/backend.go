@@ -322,6 +322,13 @@ func (b *sessionBackend) VMPerfSeries(ctx context.Context, cc *config.Context, v
 	})
 }
 
+// VMGuestNICs implements vmAddressBackend.
+func (b *sessionBackend) VMGuestNICs(ctx context.Context, cc *config.Context, vmID string) ([]vsphere.VMNIC, error) {
+	return liveQuery(ctx, b, cc, func(client *vsphere.Client, opCtx context.Context) ([]vsphere.VMNIC, error) {
+		return client.VMGuestNICs(opCtx, vmID)
+	})
+}
+
 // VMEvents implements vmEventsBackend.
 func (b *sessionBackend) VMEvents(ctx context.Context, cc *config.Context, vmID string, limit int) (vsphere.VMEventListing, error) {
 	return liveQuery(ctx, b, cc, func(client *vsphere.Client, opCtx context.Context) (vsphere.VMEventListing, error) {

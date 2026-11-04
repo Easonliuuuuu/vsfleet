@@ -1828,7 +1828,7 @@ func TestFormEscapeCancelsWithoutQuitting(t *testing.T) {
 func TestSortBringsTroubleToTheTop(t *testing.T) {
 	inv := inventoryFor("prod")
 	// app-01 sorts first alphabetically. Giving build-runner-3 the worse
-	// status is what makes name order and status order actually disagree,
+	// status is what makes name order and power order actually disagree,
 	// so the test tells them apart rather than passing by coincidence.
 	inv.VMs[1].PowerState = "suspended"
 	b := &fakeBackend{
@@ -1842,21 +1842,18 @@ func TestSortBringsTroubleToTheTop(t *testing.T) {
 		t.Fatalf("name order should put app-01 first, got %q", rows[0].name)
 	}
 
-	press(t, m, "s")
-	if m.sortMode != sortByStatus {
-		t.Fatalf("'s' should switch to status order, sortMode is %v", m.sortMode)
-	}
+	press(t, m, "s", "p")
 	rows = m.rows()
 	if rows[0].name != "build-runner-3" {
-		t.Errorf("status order should put the suspended VM first, got %q", rows[0].name)
+		t.Errorf("power order should put the suspended VM first, got %q", rows[0].name)
 	}
-	if !strings.Contains(m.View(), "sort: status") {
+	if !strings.Contains(m.View(), "sort: power ↑") {
 		t.Errorf("the active sort should be visible in the header:\n%s", m.View())
 	}
 
-	press(t, m, "s")
-	if m.sortMode != sortByName {
-		t.Fatalf("'s' should cycle back to name order, sortMode is %v", m.sortMode)
+	press(t, m, "s", "n")
+	if rows := m.rows(); rows[0].name != "app-01" {
+		t.Fatalf("choosing name should restore name order, got %q first", rows[0].name)
 	}
 }
 
@@ -1865,7 +1862,7 @@ func TestSnapshotReportsCurrentPosition(t *testing.T) {
 	m := newTestModel(t, b, Options{Current: "prod"})
 
 	press(t, m, "right") // Templates tab
-	press(t, m, "s")     // status sort
+	press(t, m, "s", "c")
 
 	snap := m.Snapshot()
 	if snap.Context != "prod" {
@@ -1874,14 +1871,17 @@ func TestSnapshotReportsCurrentPosition(t *testing.T) {
 	if snap.Kind != "template" {
 		t.Errorf("snapshot kind is %q, want template", snap.Kind)
 	}
-	if snap.Sort != "status" {
-		t.Errorf("snapshot sort is %q, want status", snap.Sort)
+	if got := snap.Sorts["template"]; got != "cpu:desc" {
+		t.Errorf("snapshot template sort is %q, want cpu:desc", got)
+	}
+	if _, ok := snap.Sorts["vm"]; ok {
+		t.Errorf("a tab in name order should not be remembered: %v", snap.Sorts)
 	}
 }
 
 func TestOptionsSeedTheStartingPosition(t *testing.T) {
 	b := twoHealthy()
-	m := New(context.Background(), b, Options{Current: "customer-a", Kind: "host", Sort: "status"})
+	m := New(context.Background(), b, Options{Current: "customer-a", Kind: "host", Sorts: map[string]string{"host": "version:desc"}})
 
 	if got := m.current(); got == nil || got.cc.Name != "customer-a" {
 		t.Errorf("starting context is %v, want customer-a", got)
@@ -1889,8 +1889,8 @@ func TestOptionsSeedTheStartingPosition(t *testing.T) {
 	if m.kind != vsphere.KindHost {
 		t.Errorf("starting kind is %v, want host", m.kind)
 	}
-	if m.sortMode != sortByStatus {
-		t.Errorf("starting sort is %v, want status", m.sortMode)
+	if got := m.sortFor(vsphere.KindHost); got != (sortOrder{key: "version", desc: true}) {
+		t.Errorf("starting host sort is %+v, want version descending", got)
 	}
 }
 

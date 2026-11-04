@@ -111,7 +111,15 @@ type keyMap struct {
 	FindFiles key.Binding
 	CopyPath  key.Binding
 
-	Sort key.Binding
+	// Sort opens the sort menu, and Reverse flips the current order without
+	// it. SortReverse and SortChoose are the open menu's own keys, and
+	// SortKeys is Sort and Reverse's shared help line, which keeps the help
+	// overlay inside the minimum terminal height the way NetKeys does.
+	Sort        key.Binding
+	Reverse     key.Binding
+	SortReverse key.Binding
+	SortChoose  key.Binding
+	SortKeys    key.Binding
 	// Fold and NetView belong to the Networks tab: fold the switch under the
 	// cursor, and switch between port groups grouped by switch and the plain
 	// list. On the VMs and Templates tabs NetView switches between browsing
@@ -239,7 +247,11 @@ func defaultKeys() keyMap {
 		FindFiles: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "find in datastore")),
 		CopyPath:  key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy datastore path")),
 
-		Sort:         key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort: name/status")),
+		Sort:         key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "sort")),
+		Reverse:      key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "reverse sort")),
+		SortReverse:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "reverse")),
+		SortChoose:   key.NewBinding(key.WithHelp("enter", "sort")),
+		SortKeys:     key.NewBinding(key.WithHelp("s/S", "sort menu · reverse")),
 		Fold:         key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "fold switch")),
 		NetView:      key.NewBinding(key.WithKeys("t"), key.WithHelp("t", "networks: tree/list")),
 		SwitchPage:   key.NewBinding(key.WithKeys("0", "1"), key.WithHelp("0/1", "page")),
@@ -309,7 +321,7 @@ func (k keyMap) helpSections(demo bool) []helpSection {
 		// Datastores section's height and "diagnose" falls off a 30 row terminal.
 		{"History", []key.Binding{k.History}},
 		{"Connection", []key.Binding{k.Reload, k.ReloadAll, k.Doctor}},
-		{"Table", []key.Binding{k.Sort, k.NetKeys}},
+		{"Table", []key.Binding{k.SortKeys, k.NetKeys}},
 		// f and y act on a datastore, not on a kind, so they get a section of
 		// their own rather than sitting among the keys that switch kinds.
 		{"Datastores", []key.Binding{k.FindFiles, k.CopyPath}},
@@ -554,7 +566,7 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		}
 		return []key.Binding{k.UseContext, k.AllScopeBrief, k.NewContext, k.EditContext, k.DeleteContext, k.LogoutContext, k.Doctor, k.Back, k.Help, k.Quit}
 	case modeSearch:
-		return []key.Binding{k.Open, k.Filter, k.Sort, k.Reload, k.Back, k.Help, k.Quit}
+		return []key.Binding{k.Open, k.Filter, described(k.Sort, "s", "sort: name/status"), k.Reload, k.Back, k.Help, k.Quit}
 	case modeChanges:
 		// Capture is only offered when the service can actually run one; a
 		// store-only history (the demo) drops the "n" hint rather than
@@ -624,6 +636,9 @@ func (k keyMap) footerHints(m *Model) []key.Binding {
 		// discoverable even when a narrow terminal truncates the footer. Enter
 		// opening the selected row is conventional and remains in the help view,
 		// and the kind keys are printed on the tab bar itself.
+		if m.mode == modeBrowse && m.sortMenu != nil {
+			return []key.Binding{k.FormMove, k.SortChoose, k.SortReverse, k.CancelAction, k.Help}
+		}
 		hints := []key.Binding{k.History, k.Contexts, k.AllScopeBrief, k.Filter}
 		if m.mode == modeBrowse {
 			if b, ok := k.viewToggle(m); ok {

@@ -16,6 +16,7 @@ Press `?` on any screen for its keys.
 | `/` | Filter table |
 | `Tab` | Widen filter to estate search |
 | `Esc` | Clear filter, restore view, or go up a folder |
+| `s` / `S` | Open the [sort menu](#sorting) / reverse the sort |
 | `r` / `R` | Reload current/all contexts |
 | `d` | Diagnose selected row's vCenter |
 | `space` / `t` on Networks | Fold switch / toggle tree and plain list |
@@ -48,6 +49,29 @@ matches elsewhere: `/ubuntu   0 VMs in prod · 2 in the estate — tab to widen`
 `Tab` searches every kind and vCenter in cached inventory; `Tab` again or
 `Esc` narrows back. `↑`/`↓` move the selection while typing, and `Enter`
 keeps it.
+
+## Sorting
+
+Press `s` to choose the order of the current tab. The menu lists the tab's
+columns with a letter each: `s` then `m` sorts VMs by memory. Choosing the
+current order again, or `r` in the menu, reverses it; `S` reverses it without
+opening the menu.
+
+| Tab | Sorts by |
+|---|---|
+| VMs | name, power, CPU, memory, IP address, host, datacenter |
+| Templates | name, guest OS, CPU, memory, disk, datacenter |
+| Hosts | name, state, cluster, CPU used, memory used, VMs, version |
+| Clusters | name, status, hosts, cores, memory, DRS, HA, datacenter |
+| Datastores | name, status, type, capacity, free, used %, datacenter |
+| Networks, vApps | name, status |
+
+Numbers start largest first and text A to Z. Values not reported sort last
+either way, and ties fall back to name. Names and versions compare their
+numbers, so `web-2` comes before `web-10`. The header shows the order, such as
+`sort: memory ↓`, and the sorted column's heading carries the arrow. Each tab
+keeps its own order, and vsfleet remembers it for the next run. Search results
+sort by name or status (`s` toggles).
 
 ## Browsing by folder
 

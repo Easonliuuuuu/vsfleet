@@ -166,6 +166,7 @@ func runUIOnce(a *App, cmd *cobra.Command, notice string) (bool, error) {
 		Current:     current,
 		AllContexts: a.AllContexts,
 		Kind:        remembered.Kind,
+		Sorts:       remembered.Sorts,
 		Sort:        remembered.Sort,
 
 		RefreshInterval: a.RefreshInterval,
@@ -183,7 +184,7 @@ func runUIOnce(a *App, cmd *cobra.Command, notice string) (bool, error) {
 	// really started (no TTY, say) has nothing truthful to say about where
 	// the cursor was.
 	if runErr == nil {
-		if err := uistate.Save("", uistate.State{Context: snap.Context, Kind: snap.Kind, Sort: snap.Sort, WelcomedVersion: release}); err != nil {
+		if err := uistate.Save("", uistate.State{Context: snap.Context, Kind: snap.Kind, Sorts: snap.Sorts, WelcomedVersion: release}); err != nil {
 			fmt.Fprintf(a.errOut(), "warning: could not remember the last screen (%v)\n", err)
 		}
 	}

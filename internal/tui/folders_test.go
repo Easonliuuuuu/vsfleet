@@ -100,7 +100,7 @@ func TestFolderViewBrowsesOneLevelAtATime(t *testing.T) {
 		{[]string{"enter", "j", "enter"}, "Customer-Facing-Web,DB,ops-01", "Customer-Facing-Web", "in Taipei › Prod"},
 		{[]string{"enter"}, "web-01,web-02", "web-01", "in Taipei › Prod › Customer-Facing-Web"},
 		// t lists every VM again and keeps the selection.
-		{[]string{"t"}, "api-01,cache-01,db-01,jump-01,ops-01,web-01,web-02,dr-tainan", "web-01", ""},
+		{[]string{"t"}, "api-01,cache-01,db-01,dr-tainan,jump-01,ops-01,web-01,web-02", "web-01", ""},
 	}
 	for _, s := range steps {
 		press(t, m, s.keys...)

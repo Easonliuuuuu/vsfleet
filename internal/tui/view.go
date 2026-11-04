@@ -102,6 +102,9 @@ func (m *Model) View() string {
 	default:
 		second = m.viewTabs(m.width)
 		body = strings.Join(m.viewBrowse(), "\n")
+		if m.sortMenu != nil {
+			body = overlay(body, m.sortMenuBox(), m.width, m.bodyHeight(), m.theme.faint)
+		}
 	}
 	// A screen with little to say (an empty history pane, say) must still
 	// fill the body, or the message and key lines ride up under it instead of
@@ -177,7 +180,7 @@ func (m *Model) viewHeader() string {
 	// that has one.
 	right := ""
 	if m.mode == modeBrowse {
-		right = t.faint.Render("sort: " + m.sortMode.label())
+		right = t.faint.Render(m.sortLabel())
 	}
 	return joinEnds(left, right, m.width)
 }
@@ -335,14 +338,13 @@ func (m *Model) viewBrowse() []string {
 	cols := m.browseColumns()
 	widths := layoutColumns(cols, w-glyphGutter)
 	m.fitColumns(cols, widths)
-	head := make([]string, 0, len(cols))
-	for i, c := range cols {
-		if widths[i] == 0 {
-			continue
-		}
-		head = append(head, pad(c.title, widths[i], c.right))
+	sorted, desc := m.sortedColumn()
+	if m.folderView() && foldersOnly(m.rows()) {
+		// A level of folders has its own columns and is listed by name;
+		// only the VMs under them follow the order.
+		sorted = ""
 	}
-	lines = append(lines, t.header.Render(strings.Repeat(" ", glyphGutter)+strings.Join(head, strings.Repeat(" ", cellGap))))
+	lines = append(lines, t.header.Render(strings.Repeat(" ", glyphGutter)+tableHeadings(cols, widths, sorted, sortArrow(desc))))
 
 	rows := m.rows()
 	h := m.tableHeight()

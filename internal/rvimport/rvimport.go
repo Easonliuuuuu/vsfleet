@@ -97,6 +97,10 @@ const (
 // spelling as well as these aliases. vDisk reads RVTools' names and keeps the
 // ones vsfleet exported before schema 24, so older workbooks still import.
 var headerAliases = map[string]map[string]string{
+	// vsfleet wrote "VM SMBIOS UUID" before inventory schema 29.
+	sheetVInfo: {
+		"vm smbios uuid": "SMBIOS UUID",
+	},
 	sheetVDisk: {
 		"sharedbus":              "Shared Bus",
 		"scsi label":             "Label",
@@ -520,8 +524,8 @@ func (t sheetTable) missingCritical() []string {
 
 // optionalColumns are read when present but never worth reporting as missing:
 // a workbook that lacks them is ordinary (vsfleet Context exists only in
-// workbooks vsfleet itself exported; VM SMBIOS UUID only on vInfo).
-var optionalColumns = map[string]bool{"vsfleet context": true, "vm smbios uuid": true}
+// workbooks vsfleet itself exported; SMBIOS UUID only on vInfo).
+var optionalColumns = map[string]bool{"vsfleet context": true, "smbios uuid": true}
 
 // probe runs every mapper that reads this worksheet over an empty row, so the
 // column report reflects what the importer reads rather than which columns
@@ -545,7 +549,7 @@ func (t sheetTable) probe() {
 	scratchVM, scratchHost := &vsphere.VM{}, &vsphere.Host{}
 	switch t.name {
 	case sheetVInfo:
-		vmFromInfoRow(t, nil, "")
+		vmFromInfoRow(t, nil, "", nil)
 	case sheetVCPU:
 		t.cell(nil, "CPUs")
 		applyCPUAllocationRow(t, nil, scratchVM)
@@ -717,7 +721,9 @@ func vmKeys(t sheetTable, row []string) []string {
 	if uuid := t.cell(row, "VM UUID"); uuid != "" {
 		keys = append(keys, "uuid:"+uuid)
 	}
-	if bios := t.cell(row, "VM SMBIOS UUID"); bios != "" {
+	// A clone keeps its BIOS UUID, so it identifies a row only when nothing
+	// better does.
+	if bios := t.cell(row, "SMBIOS UUID"); bios != "" && len(keys) == 0 {
 		keys = append(keys, "bios:"+bios)
 	}
 	if len(keys) == 0 {
@@ -844,7 +850,7 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 			continue
 		}
 		ctx := contextFor(key, name, endpoint, vcenterID)
-		vm := vmFromInfoRow(vInfo, row, ctx.name)
+		vm := vmFromInfoRow(vInfo, row, ctx.name, opts.Timezone)
 		ctx.vms = append(ctx.vms, vm)
 		for _, k := range keys {
 			full := key + "|" + k
@@ -1436,12 +1442,12 @@ func parseMetadataTime(value string, timezone *time.Location, date1904 bool) (ti
 	return time.Time{}, false
 }
 
-func vmFromInfoRow(t sheetTable, row []string, contextName string) *vsphere.VM {
+func vmFromInfoRow(t sheetTable, row []string, contextName string, timezone *time.Location) *vsphere.VM {
 	vm := &vsphere.VM{
 		Location:     vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:           t.cell(row, "VM ID"),
 		InstanceUUID: t.cell(row, "VM UUID"),
-		BIOSUUID:     t.cell(row, "VM SMBIOS UUID"),
+		BIOSUUID:     t.cell(row, "SMBIOS UUID"),
 		Name:         t.cell(row, "VM"),
 		PowerState:   t.cell(row, "Powerstate"),
 		IsTemplate:   parseBool(t.cell(row, "Template")),
@@ -1469,6 +1475,7 @@ func vmFromInfoRow(t sheetTable, row []string, contextName string) *vsphere.VM {
 		vm.HardwareUpgrade = &upgrade
 	}
 	applyVMStorageCells(t, row, vm)
+	applyVMSettingsCells(t, row, vm, timezone)
 	return vm
 }
 

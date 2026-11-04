@@ -44,8 +44,9 @@ vsfleet capture diff nightly latest \
   --max-snapshot-age 30d --require-complete -o json > drift.json
 ```
 
-Use `--include-runtime` when volatile power, guest, IP, VMware Tools, or storage
-fields should participate in a diff.
+Use `--include-runtime` when volatile power, guest, IP, VMware Tools, storage,
+or VM state fields (configuration status, last power-on, change version)
+should participate in a diff.
 
 ### Imports and live captures
 

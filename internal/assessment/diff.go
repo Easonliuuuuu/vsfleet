@@ -423,6 +423,7 @@ func changedFields(a, b vsphere.VM, runtime bool) []FieldChange {
 		add("annotation", a.Annotation, b.Annotation)
 	}
 	out = append(out, vmFileChanges(a.Files, b.Files)...)
+	out = append(out, vmSettingsChanges(a.Settings, b.Settings)...)
 	out = append(out, migrationFieldChanges(a, b)...)
 	if before, err := json.Marshal(a); err == nil {
 		if after, err := json.Marshal(b); err == nil {
@@ -436,6 +437,7 @@ func changedFields(a, b vsphere.VM, runtime bool) []FieldChange {
 		add("ip_address", a.IPAddress, b.IPAddress)
 		add("storage_gb", fmt.Sprintf("%.3f", a.StorageGB), fmt.Sprintf("%.3f", b.StorageGB))
 		out = append(out, vmStorageChanges(a, b)...)
+		out = append(out, vmStateChanges(a.State, b.State)...)
 	}
 	return out
 }

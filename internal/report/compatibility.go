@@ -181,6 +181,9 @@ const hostCertificateEmpty = hostDetailsEmpty + ", or when vSphere reports no ho
 // vmConfigEmpty is when a column read from a VM's configuration is empty.
 const vmConfigEmpty = "for a capture predating inventory schema 13, or when vSphere returned no VM configuration"
 
+// vmSettingsEmpty is when vInfo's settings and state columns are empty.
+const vmSettingsEmpty = "for a capture predating inventory schema 29, or when vSphere did not report the value"
+
 // vmFilesEmpty is when vInfo's storage and file columns are empty.
 const vmFilesEmpty = "for a capture predating inventory schema 28, or when vSphere did not return the value"
 
@@ -204,7 +207,7 @@ var sharedColumns = map[string]ColumnSpec{
 	"OS according to the configuration file": {Kind: KindText, Note: "The configured guest OS identifier, which is what the VM claims to be — not what the guest actually runs."},
 	"VM ID":                                  {Kind: KindText, Note: "vCenter managed object reference, e.g. vm-1042. Unique within one vCenter, not across an estate."},
 	"VM UUID":                                {Kind: KindText, Note: "Instance UUID: unique to this VM instance, and the identifier vsfleet tracks a VM by across captures."},
-	"VM SMBIOS UUID": {Kind: KindText, Empty: "when vCenter does not report one",
+	"SMBIOS UUID": {Kind: KindText, Empty: "when vCenter does not report one",
 		Note: "The BIOS UUID the guest sees. It is preserved by a clone, so it is not a reliable unique key."},
 	"VI SDK Server":   {Kind: KindText, Note: "The configured endpoint's host, and port when one is configured, without the URL scheme, as RVTools writes it (for example 192.168.150.10). It is not a value vCenter reported."},
 	"VI SDK UUID":     {Kind: KindText, Note: "The vCenter instance UUID, falling back to the endpoint string when vCenter omits it."},
@@ -236,6 +239,42 @@ var sharedColumns = map[string]ColumnSpec{
 	"Log directory":      {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore directory of the VM's log files, e.g. [datastore1] vm/."},
 	"Snapshot directory": {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore directory of the VM's snapshot files."},
 	"Suspend directory":  {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore directory of the VM's suspend files."},
+	"PowerOn": {Kind: KindDate, Empty: vmSettingsEmpty + ", which it does not for a powered-off VM",
+		Note: "When the VM was last powered on, in UTC. RVTools writes the collector's local time."},
+	"Suspend Interval": {Kind: KindInteger, Unit: "seconds", Empty: vmSettingsEmpty, Note: "How long the VM has been suspended."},
+	"Creation date":    {Kind: KindDate, Empty: vmSettingsEmpty, Note: "When the VM was created, in UTC. RVTools writes the collector's local time."},
+	"Change Version": {Kind: KindDate, Empty: vmSettingsEmpty,
+		Note: "vCenter's configuration change version, a timestamp it moves on every reconfiguration, in UTC."},
+	"Fixed Passthru HotPlug": {Kind: KindBoolean, Empty: vmSettingsEmpty + ", which vCenter before 8.0 Update 1 does not",
+		Note: "Whether hot plug is enabled for fixed passthrough devices."},
+	"min Required EVC Mode Key": {Kind: KindText, Empty: "for a capture predating inventory schema 29, or a VM that is powered off or needs no EVC mode",
+		Note: "The minimum EVC mode a host needs to run the VM, e.g. intel-cascadelake."},
+	"Latency Sensitivity": {Kind: KindText, Empty: vmSettingsEmpty, Note: "low, normal, medium, high or custom."},
+	"Op Notification Timeout": {Kind: KindInteger, Unit: "seconds", Empty: vmSettingsEmpty + ", which vCenter before 8.0 does not, or when the VM uses the host or cluster default",
+		Note: "How long a guest application may take to prepare once notified of a host operation."},
+	"EnableUUID": {Kind: KindBoolean, Empty: vmSettingsEmpty + ", which vCenter before 8.0 does not, or when the VM does not set disk.EnableUUID",
+		Note: "The disk.EnableUUID advanced setting, which lets the guest see stable disk serial numbers."},
+	"CBT": {Kind: KindBoolean, Empty: vmSettingsEmpty,
+		Note: "Changed block tracking, as vSphere's changeTrackingEnabled reports it. RVTools reads the ctkEnabled advanced setting and leaves the cell empty where the VM does not set it."},
+	"Num Monitors":  {Kind: KindInteger, Empty: vmSettingsEmpty + ", or when the VM has no video card", Note: "Displays the video card drives."},
+	"Video Ram KiB": {Kind: KindInteger, Unit: "KiB", Empty: vmSettingsEmpty + ", or when the VM has no video card", Note: "Video card memory."},
+	"Folder ID": {Kind: KindText, Empty: "for a VM inside a vApp, or a capture predating inventory schema 29",
+		Note: "Managed object ID of the VM's folder, e.g. group-v4."},
+	"Boot Required": {Kind: KindBoolean, Empty: vmSettingsEmpty,
+		Note: "Whether the VM's vApp options require an installation boot. False for a VM without vApp options, as RVTools writes it."},
+	"Boot delay":         {Kind: KindInteger, Unit: "ms", Empty: vmSettingsEmpty, Note: "Delay before the VM starts booting."},
+	"Boot retry delay":   {Kind: KindInteger, Unit: "ms", Empty: vmSettingsEmpty, Note: "Delay before retrying a failed boot."},
+	"Boot retry enabled": {Kind: KindBoolean, Empty: vmSettingsEmpty, Note: "Whether a failed boot is retried."},
+	"Boot BIOS setup":    {Kind: KindBoolean, Empty: vmSettingsEmpty, Note: "Whether the next boot enters the BIOS or EFI setup."},
+	"Reboot PowerOff": {Kind: KindBoolean, Empty: vmSettingsEmpty + ", which vCenter before 8.0 does not",
+		Note: "Whether the VM's next reboot powers it off instead."},
+	"Customization Info": {Kind: KindText, Empty: vmSettingsEmpty + ", which vCenter before 7.0 Update 2 does not, or when VMware Tools reports none",
+		Note: "Guest customization status without vSphere's TOOLSDEPLOYPKG_ prefix, as RVTools writes it: IDLE, PENDING, RUNNING, SUCCEEDED or FAILED."},
+	"Guest Detailed Data": {Kind: KindText, Empty: vmSettingsEmpty + ", which vCenter before 8.0 Update 2 does not, or when VMware Tools reports none",
+		Note: "The guest OS details VMware Tools reports, e.g. distroName='VMware Photon OS' kernelVersion='5.10.219-3.ph4'."},
+	"VI SDK Server type": {Kind: KindText, Empty: "when the run recorded no source for the context",
+		Note: "The vCenter's full product name, e.g. VMware vCenter Server 8.0.3 build-24322831."},
+	"VI SDK API Version": {Kind: KindText, Empty: "when the run recorded no source for the context", Note: "The vCenter's API version, e.g. 8.0.3.0."},
 	"HW version": {Kind: KindInteger, Empty: "for a capture predating inventory schema 23",
 		Note: "Virtual hardware version: the number from vSphere's vmx-<n> key, as RVTools writes it."},
 	"HW upgrade status": {Kind: KindText, Empty: "for a capture predating inventory schema 23, or when vSphere reports no scheduled upgrade",
@@ -453,7 +492,8 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Limit":       {Kind: KindInteger, Unit: "MiB", Empty: vmConfigEmpty, Note: "-1 means unlimited, as vSphere and RVTools write it."},
 	},
 	"vInfo": {
-		"Path": {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore path of the VM's configuration file, e.g. [datastore1] vm/vm.vmx, or .vmtx for a template."},
+		"Config status": {Kind: KindText, Empty: vmSettingsEmpty, Note: "vSphere configuration status colour: green, yellow, red or gray."},
+		"Path":          {Kind: KindText, Empty: vmFilesEmpty, Note: "Datastore path of the VM's configuration file, e.g. [datastore1] vm/vm.vmx, or .vmtx for a template."},
 		"Resource pool": {Kind: KindText, Empty: "for a template, a capture that did not collect resource pools, or a vApp whose parent pool is ambiguous",
 			Note: "The VM's resource pool or vApp path without the datacenter's host folder, as RVTools writes it, for example /DC-Lab/Cluster-DR/Resources."},
 	},

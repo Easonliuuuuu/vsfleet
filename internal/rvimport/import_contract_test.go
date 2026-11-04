@@ -834,7 +834,7 @@ func TestColumnReportDoesNotDependOnRowCount(t *testing.T) {
 			t.Errorf("rowless %s reports no recognized columns: %+v", sh.Name, sh)
 		}
 		for _, col := range sh.MissingColumns {
-			if strings.EqualFold(col, "vsfleet Context") || strings.EqualFold(col, "VM SMBIOS UUID") {
+			if strings.EqualFold(col, "vsfleet Context") || strings.EqualFold(col, "SMBIOS UUID") {
 				t.Errorf("%s reports optional column %q as missing", sh.Name, col)
 			}
 		}

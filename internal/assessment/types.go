@@ -62,8 +62,10 @@ type RunStatus string
 // VM's provisioned and unshared storage, file locations and whether its disks
 // need consolidation (VM.ProvisionedBytes, UnsharedBytes, Files,
 // ConsolidationNeeded); older runs have none, which readers must treat as
-// "not read".
-const CurrentInventorySchemaVersion = "28"
+// "not read". Schema 29 records each VM's folder ID, boot, hardware and
+// identity settings and its power and guest state (VM.FolderID, Settings,
+// State); older runs have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "29"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

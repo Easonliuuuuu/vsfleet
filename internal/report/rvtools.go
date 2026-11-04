@@ -42,7 +42,7 @@ var (
 	// omits Folder), but vDisk, vNetwork, vSnapshot, vCPU, vMemory, and vTools
 	// all end in exactly these columns.
 	vmTailHeaders    = []string{"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	vmHeaders        = []string{"VM", "Powerstate", "Template", "DNS Name", "Connection state", "Guest state", "Consolidation Needed", "CPUs", "Memory", "NICs", "Disks", "Total disk capacity MiB", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4", "Network #5", "Network #6", "Network #7", "Network #8", "Resource pool", "Folder", "vApp", "Provisioned MiB", "In Use MiB", "Unshared MiB", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Path", "Log directory", "Snapshot directory", "Suspend directory", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "VM ID", "VM SMBIOS UUID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	vmHeaders        = []string{"VM", "Powerstate", "Template", "Config status", "DNS Name", "Connection state", "Guest state", "Consolidation Needed", "PowerOn", "Suspend Interval", "Creation date", "Change Version", "CPUs", "Memory", "NICs", "Disks", "Total disk capacity MiB", "Fixed Passthru HotPlug", "min Required EVC Mode Key", "Latency Sensitivity", "Op Notification Timeout", "EnableUUID", "CBT", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4", "Network #5", "Network #6", "Network #7", "Network #8", "Num Monitors", "Video Ram KiB", "Resource pool", "Folder ID", "Folder", "vApp", "Provisioned MiB", "In Use MiB", "Unshared MiB", "Boot Required", "Boot delay", "Boot retry delay", "Boot retry enabled", "Boot BIOS setup", "Reboot PowerOff", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Path", "Log directory", "Snapshot directory", "Suspend directory", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", "Customization Info", "Guest Detailed Data", "VM ID", "SMBIOS UUID", "VM UUID", "VI SDK Server type", "VI SDK API Version", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "CPUs", "Sockets", "Cores p/s", "Reservation", "Limit"}, vmTailHeaders...)
 	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit"}, vmTailHeaders...)
 	diskHeaders      = []string{"VM", "Powerstate", "Template", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -126,7 +126,7 @@ func rvtoolsSheetsFor(data assessment.ExportData, healthReport health.Report, op
 		return nil, err
 	}
 	all := []sheet{
-		{name: "vInfo", headers: vmHeaders, rows: vmRows(data)},
+		{name: "vInfo", headers: vmHeaders, rows: vmRows(data), dateCols: headerPositions(vmHeaders, vInfoDateHeaders...)},
 		{name: "vCPU", headers: cpuHeaders, rows: cpuRows(data)},
 		{name: "vMemory", headers: memoryHeaders, rows: memoryRows(data)},
 		{name: "vDisk", headers: diskHeaders, rows: diskRows(data)},
@@ -430,13 +430,20 @@ func vmRows(data assessment.ExportData) [][]any {
 			upgrade = *vm.HardwareUpgrade
 		}
 		place := places[placementKey{obs.Context, vm.ID}]
-		row := []any{vm.Name, vm.PowerState, vm.IsTemplate, optionalString(vm.GuestHostName), optionalString(vm.ConnectionState), vm.GuestState, optionalBool(vm.ConsolidationNeeded), vm.CPU, vm.MemoryMB,
-			deviceCount(data, vm, len(vm.NICs)), deviceCount(data, vm, len(vm.Disks)), totalDiskCapacityMiB(data, vm), vm.IPAddress}
+		c := vmInfoCells(vm)
+		serverType, apiVersion := sdkSource(data, obs.Context)
+		row := []any{vm.Name, vm.PowerState, vm.IsTemplate, c.configStatus, optionalString(vm.GuestHostName), optionalString(vm.ConnectionState), vm.GuestState, optionalBool(vm.ConsolidationNeeded),
+			c.powerOn, c.suspendInterval, c.created, c.changeVersion, vm.CPU, vm.MemoryMB,
+			deviceCount(data, vm, len(vm.NICs)), deviceCount(data, vm, len(vm.Disks)), totalDiskCapacityMiB(data, vm),
+			c.fixedPassthru, c.minEVC, c.latency, c.opNotification, c.enableUUID, c.cbt, vm.IPAddress}
 		row = append(row, networkSlots(data, vm)...)
-		row = append(row, optionalString(place.resourcePool), rvtoolsFolder(places, obs), optionalString(place.vApp),
-			bytesMiB(vm.ProvisionedBytes), storageMiB(vm.StorageGB), bytesMiB(vm.UnsharedBytes), optionalBool(vm.SecureBootEnabled), optionalString(vm.Firmware), hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion))
+		row = append(row, c.monitors, c.videoRAM, optionalString(place.resourcePool), rvtoolsFolderID(places, obs), rvtoolsFolder(places, obs), optionalString(place.vApp),
+			bytesMiB(vm.ProvisionedBytes), storageMiB(vm.StorageGB), bytesMiB(vm.UnsharedBytes),
+			c.bootRequired, c.bootDelay, c.bootRetryDelay, c.bootRetry, c.bootBIOS, c.rpo,
+			optionalBool(vm.SecureBootEnabled), optionalString(vm.Firmware), hardwareVersionCell(vm.HardwareVersion), optionalString(upgrade.Status), optionalString(upgrade.Policy), hardwareVersionCell(upgrade.TargetVersion))
 		row = append(row, vmFileCells(vm.Files)...)
-		row = append(row, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, vm.ID, vm.BIOSUUID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context)
+		row = append(row, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, vm.GuestOS, c.customization, c.guestData, vm.ID, vm.BIOSUUID, vm.InstanceUUID,
+			serverType, apiVersion, sdkServer(data, obs.Context), obs.VCenterID, obs.Context)
 		rows = append(rows, row)
 	}
 	return rows

@@ -2,7 +2,6 @@ package assessment
 
 import (
 	"regexp"
-	"sort"
 	"strings"
 )
 
@@ -15,12 +14,17 @@ import (
 type importGaps struct {
 	base, target bool
 	// leftOut holds each dropped field, with device keys removed, so the diff
-	// can say what it did not compare.
-	leftOut map[string]bool
+	// can say what it did not compare. inexact holds the fields dropped
+	// because the workbook records them less precisely.
+	leftOut, inexact map[string]bool
 }
 
+// importInexactFields are VM fields RVTools records in the collector's local
+// time and to the second, so an import never equals a live capture on them.
+var importInexactFields = map[string]bool{"settings.create_date": true}
+
 func newImportGaps(base, target Run) *importGaps {
-	return &importGaps{base: base.Imported(), target: target.Imported(), leftOut: map[string]bool{}}
+	return &importGaps{base: base.Imported(), target: target.Imported(), leftOut: map[string]bool{}, inexact: map[string]bool{}}
 }
 
 func (g *importGaps) active() bool { return g.base != g.target }
@@ -82,6 +86,10 @@ func (g *importGaps) fields(fields []FieldChange, carried func(string) bool) []F
 		// An import never records whether the VM's configuration was
 		// readable; it records what the workbook held.
 		unread := f.Field == migrationFieldPrefix+".configuration_available"
+		if importInexactFields[f.Field] {
+			g.inexact[f.Field] = true
+			continue
+		}
 		if unread || (!carried(f.Field) && emptyValue(imported)) {
 			g.leftOut[deviceKey.ReplaceAllString(f.Field, "[]")] = true
 			continue
@@ -93,15 +101,14 @@ func (g *importGaps) fields(fields []FieldChange, carried func(string) bool) []F
 
 // warning names the fields the diff did not compare.
 func (g *importGaps) warning() string {
-	if len(g.leftOut) == 0 {
-		return ""
+	var parts []string
+	if len(g.leftOut) > 0 {
+		parts = append(parts, "fields the RVTools workbook does not carry were not compared: "+strings.Join(sortedKeys(g.leftOut), ", "))
 	}
-	fields := make([]string, 0, len(g.leftOut))
-	for f := range g.leftOut {
-		fields = append(fields, f)
+	if len(g.inexact) > 0 {
+		parts = append(parts, "fields the RVTools workbook records in local time to the second were not compared: "+strings.Join(sortedKeys(g.inexact), ", "))
 	}
-	sort.Strings(fields)
-	return "fields the RVTools workbook does not carry were not compared: " + strings.Join(fields, ", ")
+	return strings.Join(parts, "; ")
 }
 
 // vmFieldCarried reports the VM fields vInfo always carries; every other

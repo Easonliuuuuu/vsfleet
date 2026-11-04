@@ -67,7 +67,7 @@ var (
 var columnRules = map[string]colRule{
 	// Identity, location and provenance.
 	"VM": name(kindVM), "Host": name(kindHost), "Cluster": name(kindCluster), "Datacenter": name(kindDatacenter),
-	"Folder": pathRule, "VM ID": id(kindID), "VM UUID": id(kindUUID), "VM SMBIOS UUID": id(kindUUID),
+	"Folder": pathRule, "VM ID": id(kindID), "VM UUID": id(kindUUID), "SMBIOS UUID": id(kindUUID), "Folder ID": id(kindID),
 	"VI SDK Server": name(kindEndpoint), "VI SDK UUID": id(kindUUID), "vsfleet Context": name(kindContext),
 	"Context": name(kindContext), "Endpoint": name(kindEndpoint), "vCenter ID": id(kindUUID),
 	"Object ID": id(kindID), "Annotation": text(), "Description": text(),
@@ -76,7 +76,11 @@ var columnRules = map[string]colRule{
 	"Powerstate": keep(), "Template": keep(), "Guest state": keep(), "CPUs": keep(), "Memory": keep(),
 	"Primary IP Address": ipRule, "In Use MiB": keep(), "DNS Name": name(kindName), "Connection state": keep(),
 	"NICs": keep(), "Disks": keep(), "Total disk capacity MiB": keep(), "Provisioned MiB": keep(), "Unshared MiB": keep(),
-	"Consolidation Needed": keep(), "Log directory": pathRule, "Snapshot directory": pathRule, "Suspend directory": pathRule,
+	"Consolidation Needed": keep(), "PowerOn": keep(), "Suspend Interval": keep(), "Creation date": keep(),
+	"Change Version": keep(), "Fixed Passthru HotPlug": keep(), "min Required EVC Mode Key": keep(), "Latency Sensitivity": keep(),
+	"Op Notification Timeout": keep(), "EnableUUID": keep(), "CBT": keep(), "Num Monitors": keep(), "Video Ram KiB": keep(),
+	"Boot Required": keep(), "Boot delay": keep(), "Boot retry delay": keep(), "Boot retry enabled": keep(), "Boot BIOS setup": keep(),
+	"Reboot PowerOff": keep(), "Customization Info": keep(), "Guest Detailed Data": keep(), "VI SDK Server type": keep(), "VI SDK API Version": keep(), "Log directory": pathRule, "Snapshot directory": pathRule, "Suspend directory": pathRule,
 	"Network #1": name(kindNetwork), "Network #2": name(kindNetwork), "Network #3": name(kindNetwork), "Network #4": name(kindNetwork),
 	"Network #5": name(kindNetwork), "Network #6": name(kindNetwork), "Network #7": name(kindNetwork), "Network #8": name(kindNetwork),
 	"Sockets": keep(), "Cores p/s": keep(), "Memory Reservation Locked To Max": keep(), "vApp": name(kindName), "EFI Secure boot": keep(), "Firmware": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),

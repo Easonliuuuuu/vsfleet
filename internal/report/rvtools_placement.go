@@ -120,6 +120,15 @@ func rvtoolsFolder(places map[placementKey]vmPlacement, obs assessment.Observati
 	return "/" + vm.Datacenter + strings.TrimSuffix(vm.Folder, "/")
 }
 
+// rvtoolsFolderID is vInfo's Folder ID: the folder's managed object ID,
+// empty wherever Folder is.
+func rvtoolsFolderID(places map[placementKey]vmPlacement, obs assessment.Observation) any {
+	if rvtoolsFolder(places, obs) == nil {
+		return nil
+	}
+	return optionalString(obs.VM.FolderID)
+}
+
 // sdkServer is the VI SDK Server value RVTools writes: the vCenter host
 // (and port, when one is configured) without the URL scheme.
 func sdkServer(data assessment.ExportData, context string) string {

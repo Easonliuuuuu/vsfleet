@@ -1,47 +1,35 @@
 # Datastore browser
 
 Use a datastore's [detail actions](tui-actions.md#detail-pane-actions) to
-inspect files or search by name. Browsing requires
+browse its files or search by name. Browsing needs
 [`Datastore.Browse`](configuration.md#vsphere-permissions).
 
 ## Datastore file browser
 
-“Browse files” opens a read-only browser. It cannot delete, rename, move,
-upload, create directories, or download. Opening it reads only the root;
-entering a folder reads that folder. Ordinary inventory makes no filesystem
-queries.
+"Browse files" opens a read-only browser: nothing can be deleted, renamed,
+moved, uploaded or downloaded. Each folder is read when you open it.
 
 | Key | Action |
 |---|---|
 | `Enter` | Open folder or inspect file |
 | `Esc` | Go up; close at root; cancel a running request |
 | `/` | Filter this directory by name |
-| `f` | Search recursively |
-| `y` | Copy selected entry's `[datastore] path` |
+| `f` | Search recursively for a name or glob such as `*.iso` |
+| `y` | Copy the entry's `[datastore] path` |
 
-`f`, or “Find in datastore,” accepts a name or glob such as `*.iso`. It shows
-progress and marks capped results as incomplete. `Esc` cancels; `Enter` on a
-result opens its containing directory.
+A search shows progress, marks capped results incomplete, and `Enter` on a
+result opens its folder.
 
-A VMDK inspector checks attached VMs/templates on demand and lists matching
-backing paths and disk labels. `Enter` on a reference jumps to the exact VM
-or template in its context. Missing contexts/objects show the reason. The
-lookup cache lasts only for the open datastore workspace.
+Inspecting a VMDK shows which VMs or templates use it; `Enter` jumps to one.
+It also shows what the latest capture recorded about the file. When that
+evidence is missing, old, denied or truncated, the file reads
+`unknown-incomplete-coverage`. Neither that nor a search with no match proves
+a file is orphaned.
 
-When available, the inspector also shows the current vCenter's newest finished
-assessment, with run number and timestamp. Its point-in-time evidence can be
-referenced, verified-unreferenced, suspected, or referenced-other-context.
-Missing, stale, denied, or truncated evidence remains
-`unknown-incomplete-coverage`. Neither that evidence nor a partial live scan
-with no match proves a current file is orphaned.
+An unreachable datastore cannot be browsed, and an unreadable folder shows
+vCenter's error instead of an empty list.
 
-An unreachable datastore disables browsing with a reason. Unreadable
-directories show vCenter's error, rather than an empty listing. Browsing and
-`vsfleet capture run --browse-datastores` use the same read-only privilege
-but run independently.
+This view has not yet been checked against a real vSphere datastore; see
+[datastore browser acceptance](testing.md#datastore-browser-acceptance).
 
-## Real-vSphere validation gate
-
-Relationship-aware browsing still needs [manual acceptance against real
-read-only vSphere](testing.md#datastore-browser-acceptance). Treat unknown or
-partial coverage as incomplete evidence, never as an orphan verdict.
+<span id="real-vsphere-validation-gate"></span>

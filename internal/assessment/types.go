@@ -74,7 +74,12 @@ type RunStatus string
 // (VMState.GuestOSReported) and each CD/DVD and USB device's summary
 // (VMCDROM.Summary, VMUSB.Summary); older runs have none, which readers must
 // treat as "not read".
-const CurrentInventorySchemaVersion = "31"
+// Schema 32 adds each VM's CPU and memory hot-plug and shares, vNUMA on CPU
+// hot-add, Tools upgrade policy and time sync (VMSettings), the guest
+// operation states and the host's required Tools version (VMState), each USB
+// device's controller settings, and each snapshot's state file and sizes;
+// older runs have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "32"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

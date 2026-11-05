@@ -87,6 +87,9 @@ var columnRules = map[string]colRule{
 	"HW target": keep(), "OS according to the configuration file": keep(), "SRM Placeholder": keep(),
 	osToolsHeader: keep(), usbOSToolsHeader: keep(),
 	"Size MiB": keep(), "Tools": keep(), "Tools Version": keep(), "Tools Version Status": keep(), "Tools Running Status": keep(),
+	"Hot Add": keep(), "Hot Remove": keep(), "Numa Hotadd Exposed": keep(), "VM Version": keep(), "Required Version": keep(),
+	"Upgrade Policy": keep(), "Sync time": keep(), "Kernel Crash state": keep(), "Operation Ready": keep(),
+	"State change support": keep(), "Interactive Guest": keep(),
 
 	// vDisk / vPartition.
 	"Disk": keep(), "Disk Key": keep(), "Disk UUID": id(kindUUID), "Capacity MiB": keep(), "Raw": keep(),
@@ -95,19 +98,22 @@ var columnRules = map[string]colRule{
 	"Controller": keep(), "Label": keep(), "SCSI Unit #": keep(), "Unit number": keep(), "Unit #": keep(), "Shared Bus": keep(), "Path": pathRule,
 	"Raw LUN ID": id(kindID), "Raw Comp. Mode": keep(), "Consumed MiB": keep(), "Free MiB": keep(),
 	"Free %": keep(), "Filesystem": keep(),
+	// Disk Path lists the guest filesystems on a disk, the same paths
+	// vPartition's Disk column names.
+	"Disk Path": colRule{class: ClassPath, kind: kindPath, list: true},
 
 	// vNetwork / vCD / vUSB.
 	"NIC label": keep(), "Adapter": keep(), "Network": name(kindNetwork), "Connected": keep(), "Starts Connected": keep(),
-	"Mac Address": id(kindMAC), "Mac Address type": keep(), "IPv4 Address": ipRule, "IPv6 Address": ipRule,
+	"Mac Address": id(kindMAC), "IPv4 Address": ipRule, "IPv6 Address": ipRule,
 	"Direct Path IO": keep(), "Device": keep(), "Device Node": keep(), "Device Key": keep(),
 	// Device Type names an ISO's datastore path or a host's device.
 	"Device Type": text(), "Backing type": keep(), "Backing path": pathRule,
 	"Backing device": name(kindDevice), "Backing host": name(kindHost), "Backing datastore ID": id(kindID),
 	"Backing object ID": id(kindID), "Use auto detect": keep(), "Controller label": keep(), "Vendor ID": keep(),
-	"Product ID": keep(), "Family": keep(), "Speed": keep(),
+	"Product ID": keep(), "Family": keep(), "Speed": keep(), "EHCI enabled": keep(), "Auto connect": keep(), "Bus number": keep(),
 
 	// vSnapshot.
-	"Date / time": keep(), "Quiesced": keep(), "State": keep(),
+	"Date / time": keep(), "Quiesced": keep(), "State": keep(), "Filename": pathRule, "Size MiB (vmsn)": keep(), "Size MiB (total)": keep(),
 
 	// vSource.
 	"OS type": keep(), "API type": keep(), "API version": keep(), "Version": keep(), "Patch level": keep(),

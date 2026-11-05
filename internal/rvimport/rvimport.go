@@ -108,6 +108,10 @@ var headerAliases = map[string]map[string]string{
 		"link speed mb": "Speed",
 		"wake on lan":   "WakeOn",
 	},
+	// vsfleet wrote "Mac Address type" before inventory schema 32.
+	sheetVNetwork: {
+		"mac address type": "Type",
+	},
 	// vsfleet wrote "Device" before inventory schema 31.
 	sheetVCD: {
 		"device": "Device Node",
@@ -1557,7 +1561,7 @@ func applyNetworkRow(t sheetTable, row []string, vm *vsphere.VM) {
 		Connected:       parseOptBool(t.cell(row, "Connected")),
 		StartsConnected: parseOptBool(t.cell(row, "Starts Connected")),
 		MACAddress:      t.cell(row, "Mac Address"),
-		MACAddressType:  t.cell(row, "Mac Address type"),
+		MACAddressType:  t.cell(row, "Type"),
 		IPv4:            splitList(t.cell(row, "IPv4 Address")),
 		IPv6:            splitList(t.cell(row, "IPv6 Address")),
 		UPTCompatible:   parseOptBool(t.cell(row, "Direct Path IO")),
@@ -1604,6 +1608,9 @@ func applyUSBRow(t sheetTable, row []string, vm *vsphere.VM) {
 		Controller:       t.cell(row, "Controller"),
 		ControllerLabel:  t.cell(row, "Controller label"),
 		UnitNumber:       parseOptInt32(t.cell(row, "Unit number")),
+		EHCIEnabled:      parseOptBool(t.cell(row, "EHCI enabled")),
+		AutoConnect:      parseOptBool(t.cell(row, "Auto connect")),
+		BusNumber:        parseOptInt32(t.cell(row, "Bus number")),
 	})
 }
 
@@ -1613,6 +1620,7 @@ func applySnapshotRow(t sheetTable, row []string, vm *vsphere.VM, timezone *time
 	createTime, ok := parseSnapshotTime(t.cell(row, "Date / time"), timezone)
 	name := t.cell(row, "Name")
 	description, state, quiesced := t.cell(row, "Description"), t.cell(row, "State"), parseBool(t.cell(row, "Quiesced"))
+	filename, dataBytes, totalBytes := t.cell(row, "Filename"), mibBytes(t.cell(row, "Size MiB (vmsn)")), mibBytes(t.cell(row, "Size MiB (total)"))
 	if !ok {
 		return false
 	}
@@ -1628,6 +1636,9 @@ func applySnapshotRow(t sheetTable, row []string, vm *vsphere.VM, timezone *time
 		CreateTime:  createTime,
 		PowerState:  state,
 		Quiesced:    quiesced,
+		Filename:    filename,
+		DataBytes:   dataBytes,
+		TotalBytes:  totalBytes,
 	})
 	return true
 }
@@ -1637,6 +1648,7 @@ func applyToolsRow(t sheetTable, row []string, vm *vsphere.VM) {
 	vm.ToolsVersion = t.cell(row, "Tools Version")
 	vm.ToolsVersionStatus = t.cell(row, "Tools Version Status")
 	deriveToolsDetail(vm)
+	applyToolsSettingsCells(t, row, vm)
 }
 
 func applyPartitionRow(t sheetTable, row []string, vm *vsphere.VM) {

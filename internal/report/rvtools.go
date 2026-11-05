@@ -43,13 +43,13 @@ var (
 	// all end in exactly these columns.
 	vmTailHeaders    = vmTailHeadersWith(osToolsHeader)
 	vmHeaders        = []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Config status", "DNS Name", "Connection state", "Guest state", "Consolidation Needed", "PowerOn", "Suspend Interval", "Creation date", "Change Version", "CPUs", "Memory", "NICs", "Disks", "Total disk capacity MiB", "Fixed Passthru HotPlug", "min Required EVC Mode Key", "Latency Sensitivity", "Op Notification Timeout", "EnableUUID", "CBT", "Primary IP Address", "Network #1", "Network #2", "Network #3", "Network #4", "Network #5", "Network #6", "Network #7", "Network #8", "Num Monitors", "Video Ram KiB", "Resource pool", "Folder ID", "Folder", "vApp", "Provisioned MiB", "In Use MiB", "Unshared MiB", "Boot Required", "Boot delay", "Boot retry delay", "Boot retry enabled", "Boot BIOS setup", "Reboot PowerOff", "EFI Secure boot", "Firmware", "HW version", "HW upgrade status", "HW upgrade policy", "HW target", "Path", "Log directory", "Snapshot directory", "Suspend directory", "Annotation", "Datacenter", "Cluster", "Host", "OS according to the configuration file", osToolsHeader, "Customization Info", "Guest Detailed Data", "VM ID", "SMBIOS UUID", "VM UUID", "VI SDK Server type", "VI SDK API Version", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "CPUs", "Sockets", "Cores p/s", "Reservation", "Limit"}, vmTailHeaders...)
-	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit"}, vmTailHeaders...)
-	diskHeaders      = []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Disk", "Disk Key", "Disk UUID", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	networkHeaders   = []string{"VM", "Powerstate", "Template", "SRM Placeholder", "NIC label", "Adapter", "Network", "Connected", "Starts Connected", "Mac Address", "Mac Address type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	toolsHeaders     = append(append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "Tools", "Tools Version", "Tools Version Status"}, vmTailHeaders...), "Tools Running Status")
+	cpuHeaders       = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "CPUs", "Sockets", "Cores p/s", "Level", "Shares", "Reservation", "Limit", "Hot Add", "Hot Remove", "Numa Hotadd Exposed"}, vmTailHeaders...)
+	memoryHeaders    = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "Size MiB", "Memory Reservation Locked To Max", "Level", "Shares", "Reservation", "Limit", "Hot Add"}, vmTailHeaders...)
+	diskHeaders      = []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Disk", "Disk Key", "Disk UUID", "Disk Path", "Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation", "Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	networkHeaders   = []string{"VM", "Powerstate", "Template", "SRM Placeholder", "NIC label", "Adapter", "Network", "Switch", "Connected", "Starts Connected", "Mac Address", "Type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	toolsHeaders     = append(append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "VM Version", "Tools", "Tools Version", "Tools Version Status", "Required Version", "Upgrade Policy", "Sync time", "Kernel Crash state", "Operation Ready", "State change support", "Interactive Guest"}, vmTailHeaders...), "Tools Running Status")
 	cdHeaders        = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "Device Node", "Device Key", "Connected", "Starts Connected", "Device Type", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeaders...)
-	usbHeaders       = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "Device Node", "Device Type", "Device Key", "Connected", "Vendor ID", "Product ID", "Family", "Speed", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeadersWith(usbOSToolsHeader)...)
+	usbHeaders       = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "Device Node", "Device Type", "Device Key", "Connected", "Vendor ID", "Product ID", "Family", "Speed", "EHCI enabled", "Auto connect", "Bus number", "Backing type", "Backing path", "Backing device", "Backing host", "Backing datastore ID", "Backing object ID", "Use auto detect", "Controller", "Controller label", "Unit number"}, vmTailHeadersWith(usbOSToolsHeader)...)
 	partitionHeaders = append([]string{"VM", "Powerstate", "Template", "SRM Placeholder", "Disk Key", "Disk", "Capacity MiB", "Consumed MiB", "Free MiB", "Free %", "Filesystem"}, vmTailHeaders...)
 	// sourceHeaders are the RVTools 4.8.2 vSource columns, in RVTools order,
 	// followed by vsfleet's own context column. The two VI SDK columns are the
@@ -72,7 +72,7 @@ var (
 	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "Effective Cpu", "TotalMemory", "Effective Memory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS default VM behavior", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "URL", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Filename", "Size MiB (vmsn)", "Size MiB (total)", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	// fileInfoHeaders opens with the eight vFileInfo columns of an RVTools 4.8
 	// export, in RVTools' order and spelling (Friendly Path Name through VI SDK
 	// UUID); Datastore, Datastore ID, Datacenter and vsfleet Context are
@@ -466,7 +466,10 @@ func cpuRows(data assessment.ExportData) [][]any {
 	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), vm.CPU, optionalInt32NonZero(vm.CPUSockets), optionalInt32NonZero(vm.CoresPerSocket)}, allocationCells(vm.CPUAllocation)...)
+		set := vmSettingsOf(vm)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), vm.CPU, optionalInt32NonZero(vm.CPUSockets), optionalInt32NonZero(vm.CoresPerSocket),
+			optionalString(set.CPUSharesLevel), optionalInt32(set.CPUShares)}, allocationCells(vm.CPUAllocation)...)
+		row = append(row, optionalBool(set.CPUHotAdd), optionalBool(set.CPUHotRemove), optionalBool(set.VNUMAOnCPUHotAdd))
 		row = append(row, vmTail(data, places, obs)...)
 		rows = append(rows, row)
 	}
@@ -478,7 +481,10 @@ func memoryRows(data assessment.ExportData) [][]any {
 	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), vm.MemoryMB, optionalBool(vm.MemoryReservationLockedToMax)}, allocationCells(vm.MemoryAllocation)...)
+		set := vmSettingsOf(vm)
+		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), vm.MemoryMB, optionalBool(vm.MemoryReservationLockedToMax),
+			optionalString(set.MemorySharesLevel), optionalInt32(set.MemoryShares)}, allocationCells(vm.MemoryAllocation)...)
+		row = append(row, optionalBool(set.MemoryHotAdd))
 		row = append(row, vmTail(data, places, obs)...)
 		rows = append(rows, row)
 	}
@@ -490,7 +496,12 @@ func toolsRows(data assessment.ExportData) [][]any {
 	places := vmPlacements(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
-		row := append([]any{vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), optionalString(vm.ToolsStatus), optionalString(vm.ToolsVersion), optionalString(vm.ToolsVersionStatus)}, vmTail(data, places, obs)...)
+		set, state := vmSettingsOf(vm), vmStateOf(vm)
+		row := []any{vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), hardwareVersionCell(vm.HardwareVersion),
+			optionalString(vm.ToolsStatus), optionalString(vm.ToolsVersion), optionalString(vm.ToolsVersionStatus), optionalString(state.ToolsRequiredVersion),
+			optionalString(set.ToolsUpgradePolicy), optionalBool(set.ToolsSyncTime), optionalBool(state.GuestKernelCrashed), optionalBool(state.GuestOperationsReady),
+			optionalBool(state.GuestStateChangeSupported), optionalBool(state.InteractiveGuestOperationsReady)}
+		row = append(row, vmTail(data, places, obs)...)
 		row = append(row, optionalString(vm.ToolsState))
 		rows = append(rows, row)
 	}
@@ -521,7 +532,7 @@ func diskRows(data assessment.ExportData) [][]any {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, disk := range vm.Disks {
 			rows = append(rows, []any{
-				vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), disk.Label, disk.Key, disk.UUID,
+				vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), disk.Label, disk.Key, disk.UUID, diskPathCell(vm, disk.Key),
 				float64(disk.CapacityBytes) / miB, disk.Raw, disk.DiskMode, disk.Sharing,
 				optionalBool(disk.ThinProvisioned), optionalBool(disk.EagerlyScrub), optionalBool(disk.Split), optionalBool(disk.WriteThrough),
 				disk.SharesLevel, optionalInt32(disk.Shares), optionalInt32(disk.Reservation), optionalInt64(disk.Limit),
@@ -593,11 +604,12 @@ func freePercent(p vsphere.VMPartition) float64 {
 func networkRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	places := vmPlacements(data)
+	switches := vmNICSwitches(data)
 	for _, item := range data.VMs {
 		obs, vm := item.Observation, item.Observation.VM
 		for _, nic := range vm.NICs {
 			rows = append(rows, []any{
-				vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), nic.Label, nic.Adapter, nic.Network,
+				vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), nic.Label, nic.Adapter, nic.Network, nicSwitchCell(switches, obs.Context, vm, nic),
 				optionalBool(nic.Connected), optionalBool(nic.StartsConnected), nic.MACAddress, nic.MACAddressType,
 				strings.Join(nic.IPv4, ", "), strings.Join(nic.IPv6, ", "), optionalBool(nic.UPTCompatible), vm.Annotation,
 				vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs), vm.GuestOS, guestOSReportedCell(vm), vm.ID, vm.InstanceUUID,
@@ -636,7 +648,7 @@ func usbRows(data assessment.ExportData) [][]any {
 			row := []any{
 				vm.Name, vm.PowerState, vm.IsTemplate, srmPlaceholderCell(vm), usb.Label, optionalString(usb.Summary), usb.Key,
 				optionalBool(usb.Connected), optionalInt32NonZero(usb.Vendor), optionalInt32NonZero(usb.Product),
-				strings.Join(usb.Family, ", "), strings.Join(usb.Speed, ", "), usb.BackingType,
+				strings.Join(usb.Family, ", "), strings.Join(usb.Speed, ", "), optionalBool(usb.EHCIEnabled), optionalBool(usb.AutoConnect), optionalInt32(usb.BusNumber), usb.BackingType,
 				usb.BackingPath, usb.BackingDevice, usb.BackingHost, usb.BackingDatastore,
 				usb.BackingObjectID, optionalBool(usb.UseAutoDetect), usb.Controller,
 				usb.ControllerLabel, optionalInt32(usb.UnitNumber),
@@ -1083,7 +1095,7 @@ func snapshotRows(data assessment.ExportData) [][]any {
 			if !snapshot.CreateTime.IsZero() {
 				created = snapshot.CreateTime.UTC()
 			}
-			rows = append(rows, []any{vm.Name, vm.PowerState, snapshot.Name, snapshot.Description, created, snapshot.Quiesced, snapshot.PowerState, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs), vm.GuestOS, guestOSReportedCell(vm), vm.ID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context})
+			rows = append(rows, []any{vm.Name, vm.PowerState, snapshot.Name, snapshot.Description, created, optionalString(snapshot.Filename), bytesMiB(snapshot.DataBytes), bytesMiB(snapshot.TotalBytes), snapshot.Quiesced, snapshot.PowerState, vm.Annotation, vm.Datacenter, vm.Cluster, vm.Host, rvtoolsFolder(places, obs), vm.GuestOS, guestOSReportedCell(vm), vm.ID, vm.InstanceUUID, sdkServer(data, obs.Context), obs.VCenterID, obs.Context})
 		}
 	}
 	return rows

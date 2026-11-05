@@ -87,7 +87,9 @@ func TestWalkDevicesNormalizesCDROMAndUSBAndExcludesControllers(t *testing.T) {
 		Backing: &types.VirtualUSBRemoteHostBackingInfo{VirtualDeviceDeviceBackingInfo: types.VirtualDeviceDeviceBackingInfo{DeviceName: "vid:1234 pid:5678", UseAutoDetect: &autodetect}, Hostname: "esx-1"},
 	}, Connected: true, Vendor: 0x1234, Product: 0x5678, Family: []string{"storage", "hid"}, Speed: []string{"high", "full"}}
 	cdController := &types.VirtualIDEController{VirtualController: types.VirtualController{VirtualDevice: types.VirtualDevice{Key: 100, DeviceInfo: &types.Description{Label: "IDE controller 0"}}}}
-	usbController := &types.VirtualUSBController{VirtualController: types.VirtualController{VirtualDevice: types.VirtualDevice{Key: 300, DeviceInfo: &types.Description{Label: "USB controller 0"}}}}
+	ehci := true
+	usbController := &types.VirtualUSBController{VirtualController: types.VirtualController{VirtualDevice: types.VirtualDevice{Key: 300, DeviceInfo: &types.Description{Label: "USB controller 0"}}, BusNumber: 1},
+		AutoConnectDevices: &autodetect, EhciEnabled: &ehci}
 
 	disks, nics, cdroms, usbs := walkDevices([]types.BaseVirtualDevice{usb, usbController, cdrom, cdController}, nil, nil)
 	if len(disks) != 0 || len(nics) != 0 || len(cdroms) != 1 || len(usbs) != 1 {
@@ -106,6 +108,9 @@ func TestWalkDevicesNormalizesCDROMAndUSBAndExcludesControllers(t *testing.T) {
 	}
 	if gotUSB.Connected == nil || !*gotUSB.Connected || gotUSB.UseAutoDetect == nil || *gotUSB.UseAutoDetect || !reflect.DeepEqual(gotUSB.Family, []string{"hid", "storage"}) || !reflect.DeepEqual(gotUSB.Speed, []string{"full", "high"}) {
 		t.Errorf("USB state/identity = %+v", gotUSB)
+	}
+	if gotUSB.AutoConnect == nil || *gotUSB.AutoConnect || gotUSB.EHCIEnabled == nil || !*gotUSB.EHCIEnabled || gotUSB.BusNumber == nil || *gotUSB.BusNumber != 1 {
+		t.Errorf("USB controller settings = %v, %v, %v, want false, true, 1", gotUSB.AutoConnect, gotUSB.EHCIEnabled, gotUSB.BusNumber)
 	}
 }
 

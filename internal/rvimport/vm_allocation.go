@@ -13,12 +13,14 @@ func applyCPUAllocationRow(t sheetTable, row []string, vm *vsphere.VM) {
 		vm.CoresPerSocket = cores
 	}
 	vm.CPUAllocation = allocationFromRow(t, row)
+	applyCPUSettingsCells(t, row, vm)
 }
 
 // applyMemoryAllocationRow reads vMemory's reservation columns.
 func applyMemoryAllocationRow(t sheetTable, row []string, vm *vsphere.VM) {
 	vm.MemoryReservationLockedToMax = parseOptBool(t.cell(row, "Memory Reservation Locked To Max"))
 	vm.MemoryAllocation = allocationFromRow(t, row)
+	applyMemorySettingsCells(t, row, vm)
 }
 
 func allocationFromRow(t sheetTable, row []string) *vsphere.VMResourceAllocation {

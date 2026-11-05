@@ -396,6 +396,13 @@ type VMUSB struct {
 	Controller       string   `json:"controller,omitempty"`
 	ControllerLabel  string   `json:"controller_label,omitempty"`
 	UnitNumber       *int32   `json:"unit_number,omitempty"`
+	// The settings of the device's USB controller: whether it connects new
+	// devices automatically, whether a USB 2.0 controller has EHCI enabled
+	// (nil for a USB 3 controller, which has no such setting), and its bus.
+	// All are nil before inventory schema 32.
+	AutoConnect *bool  `json:"auto_connect,omitempty"`
+	EHCIEnabled *bool  `json:"ehci_enabled,omitempty"`
+	BusNumber   *int32 `json:"bus_number,omitempty"`
 }
 
 // VMSnapshot is one read-only entry in a VM snapshot tree.
@@ -412,6 +419,13 @@ type VMSnapshot struct {
 	PowerState  string    `json:"power_state"`
 	Quiesced    bool      `json:"quiesced"`
 	Current     bool      `json:"current"`
+	// Filename is the snapshot's state file (.vmsn) and DataBytes its size.
+	// TotalBytes is the size of the disk files the snapshot froze: the
+	// newest link of each disk chain when it was taken, as RVTools counts
+	// it. All three are unset before inventory schema 32.
+	Filename   string `json:"filename,omitempty"`
+	DataBytes  *int64 `json:"data_bytes,omitempty"`
+	TotalBytes *int64 `json:"total_bytes,omitempty"`
 }
 
 // ImportedSnapshotIDPrefix starts the ID of a snapshot read from an RVTools

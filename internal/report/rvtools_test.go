@@ -110,7 +110,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 		t.Fatalf("dvPort name=%q", got)
 	}
 	for sheet, cells := range map[string]map[string]string{
-		"vDisk":    {"U1": "Label", "V1": "SCSI Unit #", "W1": "Unit #", "X1": "Shared Bus", "AA1": "Raw Comp. Mode"},
+		"vDisk":    {"H1": "Disk Path", "V1": "Label", "W1": "SCSI Unit #", "X1": "Unit #", "Y1": "Shared Bus", "AB1": "Raw Comp. Mode"},
 		"vHBA":     {"H1": "Pci", "L1": "WWN"},
 		"vSwitch":  {"C1": "Free Ports", "F1": "Promiscuous Mode", "G1": "Mac Changes", "H1": "Forged Transmits", "I1": "Traffic Shaping"},
 		"vPort":    {"A1": "Port Group", "D1": "Promiscuous Mode", "E1": "Mac Changes", "F1": "Forged Transmits"},
@@ -126,7 +126,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 			}
 		}
 	}
-	if got, _ := f.GetCellValue("vDisk", "X2"); got != "noSharing" {
+	if got, _ := f.GetCellValue("vDisk", "Y2"); got != "noSharing" {
 		t.Fatalf("vDisk shared bus=%q, want noSharing", got)
 	}
 	if got, _ := f.GetCellValue("dvPort", "N2"); got != "TRUE" {
@@ -135,16 +135,16 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	if got, _ := f.GetCellValue("vDisk", "A2"); got != "app" {
 		t.Fatalf("vDisk A2=%q", got)
 	}
-	if got, _ := f.GetCellValue("vDisk", "H2"); got != "8192" {
+	if got, _ := f.GetCellValue("vDisk", "I2"); got != "8192" {
 		t.Fatalf("vDisk capacity=%q", got)
 	}
 	if got, _ := f.GetCellValue("vNetwork", "G2"); got != "VM Network" {
 		t.Fatalf("vNetwork network=%q", got)
 	}
-	if got, _ := f.GetCellValue("vNetwork", "L2"); got != "192.0.2.20" {
+	if got, _ := f.GetCellValue("vNetwork", "M2"); got != "192.0.2.20" {
 		t.Fatalf("vNetwork ipv4=%q", got)
 	}
-	if got, _ := f.GetCellValue("vNetwork", "N2"); got != "TRUE" {
+	if got, _ := f.GetCellValue("vNetwork", "O2"); got != "TRUE" {
 		t.Fatalf("vNetwork UPT compatibility=%q", got)
 	}
 	if got, _ := f.GetCellValue("vCD", "E2"); got != "CD/DVD drive 1" {
@@ -165,13 +165,13 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	if got, _ := f.GetCellValue("vUSB", "L2"); got != "full, high" {
 		t.Fatalf("vUSB speed=%q", got)
 	}
-	if got, _ := f.GetCellValue("vTools", "E2"); got != "toolsOk" {
+	if got, _ := f.GetCellValue("vTools", "F2"); got != "toolsOk" {
 		t.Fatalf("vTools installation status=%q", got)
 	}
-	if got, _ := f.GetCellValue("vTools", "F2"); got != "12352" {
+	if got, _ := f.GetCellValue("vTools", "G2"); got != "12352" {
 		t.Fatalf("vTools version=%q", got)
 	}
-	if got, _ := f.GetCellValue("vTools", "G2"); got != "guestToolsCurrent" {
+	if got, _ := f.GetCellValue("vTools", "H2"); got != "guestToolsCurrent" {
 		t.Fatalf("vTools version status=%q", got)
 	}
 	for sheet, cells := range map[string][2]string{
@@ -359,7 +359,7 @@ func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 	}
 
 	vTools := readCSV(t, byName["vTools.csv"])
-	if got := vTools[1]; got[0] != "app" || got[4] != "toolsOk" || got[5] != "12352" || got[6] != "guestToolsCurrent" {
+	if got := vTools[1]; got[0] != "app" || got[5] != "toolsOk" || got[6] != "12352" || got[7] != "guestToolsCurrent" {
 		t.Fatalf("vTools.csv row=%v", got)
 	}
 	vCD := readCSV(t, byName["vCD.csv"])
@@ -380,12 +380,12 @@ func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 	if got := vSnapshot[1][4]; got != "2026-01-02T03:04:05Z" {
 		t.Fatalf("vSnapshot.csv timestamp=%q, want RFC3339", got)
 	}
-	if got := vSnapshot[1][5]; got != "true" {
+	if got := vSnapshot[1][8]; got != "true" {
 		t.Fatalf("vSnapshot.csv quiesced=%q, want lowercase true", got)
 	}
 
 	vDisk := readCSV(t, byName["vDisk.csv"])
-	if got := vDisk[1][7]; got != "8192" {
+	if got := vDisk[1][8]; got != "8192" {
 		t.Fatalf("vDisk.csv capacity=%q", got)
 	}
 	vRP := readCSV(t, byName["vRP.csv"])
@@ -565,8 +565,8 @@ func TestRVToolsDeviceWorksheetsAreCanonicalAndContextAware(t *testing.T) {
 	if usb[1][8] != "" || usb[1][9] != "" {
 		t.Fatalf("vUSB unknown IDs=%q/%q, want empty", usb[1][8], usb[1][9])
 	}
-	if usb[1][33] != "a" || usb[2][33] != "b" {
-		t.Fatalf("vUSB context provenance=%q/%q", usb[1][33], usb[2][33])
+	if usb[1][36] != "a" || usb[2][36] != "b" {
+		t.Fatalf("vUSB context provenance=%q/%q", usb[1][36], usb[2][36])
 	}
 }
 

@@ -14,14 +14,14 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	github.com/vmware/govmomi v0.56.1
+	github.com/vmware/govmomi v0.56.2
 	github.com/xuri/excelize/v2 v2.11.1
 	github.com/zalando/go-keyring v0.2.8
 	golang.org/x/net v0.62.0
 	golang.org/x/sync v0.24.0
 	golang.org/x/term v0.47.0
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.61.0
+	modernc.org/sqlite v1.61.1
 )
 
 require (

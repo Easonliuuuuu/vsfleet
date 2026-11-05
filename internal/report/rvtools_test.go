@@ -112,11 +112,11 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	for sheet, cells := range map[string]map[string]string{
 		"vDisk":    {"H1": "Disk Path", "V1": "Label", "W1": "SCSI Unit #", "X1": "Unit #", "Y1": "Shared Bus", "AB1": "Raw Comp. Mode"},
 		"vHBA":     {"H1": "Pci", "L1": "WWN"},
-		"vSwitch":  {"C1": "Free Ports", "F1": "Promiscuous Mode", "G1": "Mac Changes", "H1": "Forged Transmits", "I1": "Traffic Shaping"},
-		"vPort":    {"A1": "Port Group", "D1": "Promiscuous Mode", "E1": "Mac Changes", "F1": "Forged Transmits"},
+		"vSwitch":  {"A1": "Host", "D1": "Switch", "F1": "Free Ports", "G1": "Promiscuous Mode", "J1": "Traffic Shaping"},
+		"vPort":    {"A1": "Host", "D1": "Port Group", "G1": "Promiscuous Mode", "J1": "Traffic Shaping"},
 		"vSC_VMK":  {"D1": "Port Group", "E1": "Device", "K1": "Gateway"},
-		"dvSwitch": {"A1": "Switch", "C1": "Max Ports"},
-		"dvPort":   {"A1": "Port", "B1": "Switch", "I1": "Allow Promiscuous", "J1": "Mac Changes", "K1": "Forged Transmits", "L1": "Policy", "M1": "Notify Switch", "N1": "Rolling Order", "O1": "In Traffic Shaping", "P1": "Out Traffic Shaping", "S1": "Active Uplink", "T1": "Standby Uplink"},
+		"dvSwitch": {"A1": "Switch", "C1": "Name", "J1": "Max Ports"},
+		"dvPort":   {"A1": "Port", "B1": "Switch", "M1": "Allow Promiscuous", "O1": "Active Uplink", "Q1": "Policy", "AC1": "Rolling Order"},
 		"vCluster": {"E1": "numEffectiveHosts"},
 		"vRP":      {"G1": "CPU overheadLimit", "K1": "CPU expandableReservation", "L1": "Mem Configured", "N1": "Mem overheadLimit", "R1": "Mem expandableReservation"},
 	} {
@@ -129,7 +129,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	if got, _ := f.GetCellValue("vDisk", "Y2"); got != "noSharing" {
 		t.Fatalf("vDisk shared bus=%q, want noSharing", got)
 	}
-	if got, _ := f.GetCellValue("dvPort", "N2"); got != "TRUE" {
+	if got, _ := f.GetCellValue("dvPort", "AC2"); got != "TRUE" {
 		t.Fatalf("dvPort rolling order=%q, want raw value TRUE", got)
 	}
 	if got, _ := f.GetCellValue("vDisk", "A2"); got != "app" {
@@ -177,8 +177,8 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	for sheet, cells := range map[string][2]string{
 		"vHBA":       {"D2", "vmhba0"},
 		"vNIC":       {"D2", "vmnic0"},
-		"vSwitch":    {"A2", "vSwitch0"},
-		"vPort":      {"A2", "Management Network"},
+		"vSwitch":    {"D2", "vSwitch0"},
+		"vPort":      {"D2", "Management Network"},
 		"vSC_VMK":    {"E2", "vmk0"},
 		"vMultiPath": {"E2", "naa.123"},
 	} {

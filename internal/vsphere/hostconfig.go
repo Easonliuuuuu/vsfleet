@@ -169,6 +169,7 @@ func mapHostNetwork(network *types.HostNetworkInfo) ([]HostNIC, []HostVSwitch, [
 			if policy.ShapingPolicy != nil {
 				mapped.TrafficShaping = boolPtrValue(policy.ShapingPolicy.Enabled)
 			}
+			mapped.HostNICPolicy = hostNICPolicy(policy)
 		}
 		switches = append(switches, mapped)
 	}
@@ -191,6 +192,10 @@ func mapHostNetwork(network *types.HostNetworkInfo) ([]HostNIC, []HostVSwitch, [
 			mapped.Switch = switchNames[port.Vswitch]
 		}
 		mapped.Promiscuous, mapped.MACChanges, mapped.ForgedTransmits = securityPolicy(port.ComputedPolicy.Security)
+		if shaping := port.ComputedPolicy.ShapingPolicy; shaping != nil {
+			mapped.TrafficShaping = boolPtrValue(shaping.Enabled)
+		}
+		mapped.HostNICPolicy = hostNICPolicy(&port.ComputedPolicy)
 		ports = append(ports, mapped)
 	}
 	sort.SliceStable(ports, func(i, j int) bool {

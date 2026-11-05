@@ -608,6 +608,7 @@ type HostVSwitch struct {
 	MACChanges      *bool    `json:"mac_changes,omitempty"`
 	ForgedTransmits *bool    `json:"forged_transmits,omitempty"`
 	TrafficShaping  *bool    `json:"traffic_shaping,omitempty"`
+	HostNICPolicy
 }
 
 // HostPortGroup is one standard-switch port group and its effective policy.
@@ -619,6 +620,73 @@ type HostPortGroup struct {
 	Promiscuous     *bool  `json:"promiscuous,omitempty"`
 	MACChanges      *bool  `json:"mac_changes,omitempty"`
 	ForgedTransmits *bool  `json:"forged_transmits,omitempty"`
+	TrafficShaping  *bool  `json:"traffic_shaping,omitempty"`
+	HostNICPolicy
+}
+
+// HostNICPolicy is a standard switch's or port group's NIC teaming, offload
+// and traffic shaping settings; a port group's are the computed ones, after
+// its switch's are inherited. Bandwidths are in Kbit/s and the burst size in
+// KB, as the vSphere Client shows them; vSphere reports none until shaping
+// is configured, which is recorded as 0. Every field is nil for a capture
+// predating inventory schema 36.
+type HostNICPolicy struct {
+	TeamingPolicy      string `json:"teaming_policy,omitempty"`
+	ReversePolicy      *bool  `json:"reverse_policy,omitempty"`
+	NotifySwitches     *bool  `json:"notify_switches,omitempty"`
+	Failback           *bool  `json:"failback,omitempty"`
+	ShapingAverageKbps *int64 `json:"shaping_average_kbps,omitempty"`
+	ShapingPeakKbps    *int64 `json:"shaping_peak_kbps,omitempty"`
+	ShapingBurstKB     *int64 `json:"shaping_burst_kb,omitempty"`
+	ChecksumOffload    *bool  `json:"checksum_offload,omitempty"`
+	TCPSegmentation    *bool  `json:"tcp_segmentation,omitempty"`
+	ZeroCopyTransmit   *bool  `json:"zero_copy_transmit,omitempty"`
+}
+
+// DVSTrafficShaping is a distributed port policy's ingress and egress
+// traffic shaping, in the units HostNICPolicy uses. The bandwidths and burst
+// sizes are nil for a capture predating inventory schema 36.
+type DVSTrafficShaping struct {
+	IngressShaping     *bool  `json:"ingress_shaping,omitempty"`
+	IngressAverageKbps *int64 `json:"ingress_average_kbps,omitempty"`
+	IngressPeakKbps    *int64 `json:"ingress_peak_kbps,omitempty"`
+	IngressBurstKB     *int64 `json:"ingress_burst_kb,omitempty"`
+	EgressShaping      *bool  `json:"egress_shaping,omitempty"`
+	EgressAverageKbps  *int64 `json:"egress_average_kbps,omitempty"`
+	EgressPeakKbps     *int64 `json:"egress_peak_kbps,omitempty"`
+	EgressBurstKB      *int64 `json:"egress_burst_kb,omitempty"`
+}
+
+// DVSLACPGroup is one link aggregation group of a distributed switch.
+type DVSLACPGroup struct {
+	Name                 string `json:"name"`
+	Mode                 string `json:"mode,omitempty"`
+	LoadBalanceAlgorithm string `json:"load_balance_algorithm,omitempty"`
+}
+
+// DVSFailureCriteria is how a distributed port group's teaming detects a
+// failed uplink. SpeedMbps and ErrorPercent are 0 when vSphere reports none.
+type DVSFailureCriteria struct {
+	CheckSpeed        string `json:"check_speed,omitempty"`
+	SpeedMbps         int32  `json:"speed_mbps"`
+	CheckDuplex       bool   `json:"check_duplex"`
+	FullDuplex        bool   `json:"full_duplex"`
+	CheckErrorPercent bool   `json:"check_error_percent"`
+	ErrorPercent      int32  `json:"error_percent"`
+	CheckBeacon       bool   `json:"check_beacon"`
+}
+
+// DVPortGroupOverrides are the per-port overrides a distributed port group
+// allows, and whether a port's settings reset when it disconnects.
+type DVPortGroupOverrides struct {
+	Blocked                     bool `json:"blocked"`
+	Shaping                     bool `json:"shaping"`
+	VendorConfig                bool `json:"vendor_config"`
+	SecurityPolicy              bool `json:"security_policy"`
+	UplinkTeaming               bool `json:"uplink_teaming"`
+	VLAN                        bool `json:"vlan"`
+	LivePortMoving              bool `json:"live_port_moving"`
+	PortConfigResetAtDisconnect bool `json:"port_config_reset_at_disconnect"`
 }
 
 // DVSwitch is a distributed virtual switch and its configuration-derived
@@ -645,6 +713,15 @@ type DVSwitch struct {
 	LinkDiscoveryOperation string        `json:"link_discovery_operation,omitempty"`
 	LACPVersion            string        `json:"lacp_version,omitempty"`
 	PortGroups             []DVPortGroup `json:"port_groups,omitempty"`
+	// ProductName is the switch's product name, "DVS" for a vSphere
+	// Distributed Switch. VMCount counts the VMs connected to the switch, and
+	// DVSTrafficShaping is the shaping its ports default to. These fields are
+	// empty for a capture predating inventory schema 36.
+	ProductName string         `json:"product_name,omitempty"`
+	Created     *time.Time     `json:"created,omitempty"`
+	VMCount     *int           `json:"vm_count,omitempty"`
+	LACPGroups  []DVSLACPGroup `json:"lacp_groups,omitempty"`
+	DVSTrafficShaping
 }
 
 // DVPortGroup is one distributed port group and its effective default port
@@ -665,14 +742,19 @@ type DVPortGroup struct {
 	TeamingPolicy     string   `json:"teaming_policy,omitempty"`
 	NotifySwitches    *bool    `json:"notify_switches,omitempty"`
 	Failback          *bool    `json:"failback,omitempty"`
-	IngressShaping    *bool    `json:"ingress_shaping,omitempty"`
-	EgressShaping     *bool    `json:"egress_shaping,omitempty"`
 	Blocked           *bool    `json:"blocked,omitempty"`
 	AutoExpand        *bool    `json:"auto_expand,omitempty"`
 	ActiveUplinks     []string `json:"active_uplinks,omitempty"`
 	StandbyUplinks    []string `json:"standby_uplinks,omitempty"`
 	LogicalSwitchUUID string   `json:"logical_switch_uuid,omitempty"`
 	SegmentID         string   `json:"segment_id,omitempty"`
+	DVSTrafficShaping
+	// ReversePolicy, FailureCriteria and Overrides are nil for a capture
+	// predating inventory schema 36. FailureCriteria is also nil when the
+	// port group reports no teaming policy.
+	ReversePolicy   *bool                 `json:"reverse_policy,omitempty"`
+	FailureCriteria *DVSFailureCriteria   `json:"failure_criteria,omitempty"`
+	Overrides       *DVPortGroupOverrides `json:"overrides,omitempty"`
 }
 
 // HostProxySwitch is one host's membership in a distributed switch. Uplinks

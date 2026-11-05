@@ -59,6 +59,11 @@ Notes on specific sheets:
 - **`vSC_VMK`**: `Gateway` and `IP 6 Gateway` are the host's default
   gateways, repeated on every adapter.
 - **`dvPort`**: one row per distributed port group, not per runtime port.
+- **`vSwitch`, `vPort`, `dvSwitch`, `dvPort`**: shaping bandwidths are in
+  Kbit/s and burst sizes in KB, as in the vSphere Client. `dvSwitch`
+  `Contact` is the administrator's contact details and `Admin Name` their
+  name, as in RVTools; older vsfleet workbooks, which wrote the name as
+  `Contact`, still import correctly.
 - **`vMultiPath`**: one row per host and LUN a datastore is on, as in
   RVTools, so an ESXi boot disk has no row. `Object ID` is the datastore.
   The first eight paths fill the `Path` columns; the path counts after them
@@ -160,7 +165,7 @@ Known value differences:
 
 | Sheet / column | vsfleet | RVTools |
 | --- | --- | --- |
-| `vHost`, `Boot time`, `BIOS Date`, certificate dates; `vSnapshot`, `Date / time` | UTC | Collector-local time without a zone |
+| `vHost`, `Boot time`, `BIOS Date`, certificate dates; `vSnapshot`, `Date / time`; `dvSwitch`, `Created` | UTC | Collector-local time without a zone |
 | `vHost`, `# VMs total` | Includes templates | Excludes templates |
 | `vHost`, certificate issuer, subject and dates | Filled | Empty |
 | `vHBA`, `Type` | vSphere type, such as `HostBlockHba` | Label, such as `Block SCSI` |

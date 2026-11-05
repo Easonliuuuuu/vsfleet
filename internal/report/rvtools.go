@@ -60,13 +60,8 @@ var (
 	// columns after the last RVTools column they extend.
 	hbaHeaders = hostLeadHeaders("Device", "Type", "Status", "Bus", "Pci", "Driver", "Model", "Storage protocol", "WWN", "WWNN", "WWPN",
 		"iSCSI name", "iSCSI alias")
-	nicHeaders      = hostLeadHeaders("Network Device", "Driver", "Speed", "Duplex", "MAC", "Switch", "Uplink port", "PCI", "WakeOn")
-	switchHeaders   = append([]string{"Switch", "# Ports", "Free Ports", "MTU", "Uplinks", "Promiscuous Mode", "Mac Changes", "Forged Transmits", "Traffic Shaping"}, hostTailHeaders...)
-	portHeaders     = append([]string{"Port Group", "Switch", "VLAN", "Promiscuous Mode", "Mac Changes", "Forged Transmits"}, hostTailHeaders...)
-	dvsTailHeaders  = []string{"Datacenter", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	dvSwitchHeaders = append([]string{"Switch", "# Ports", "Max Ports", "MTU", "Vendor", "Version", "UUID", "Description", "Contact", "Contact detail", "Hosts", "Uplink ports", "Link discovery protocol", "Link discovery operation", "LACP version"}, dvsTailHeaders...)
-	dvPortHeaders   = append([]string{"Port", "Switch", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Allow Promiscuous", "Mac Changes", "Forged Transmits", "Policy", "Notify Switch", "Rolling Order", "In Traffic Shaping", "Out Traffic Shaping", "Blocked", "Auto expand", "Active Uplink", "Standby Uplink", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
-	vmkHeaders      = hostLeadHeaders("Port Group", "Device", "Mac Address", "DHCP", "IP Address", "IP 6 Address", "Subnet mask", "Gateway",
+	nicHeaders = hostLeadHeaders("Network Device", "Driver", "Speed", "Duplex", "MAC", "Switch", "Uplink port", "PCI", "WakeOn")
+	vmkHeaders = hostLeadHeaders("Port Group", "Device", "Mac Address", "DHCP", "IP Address", "IP 6 Address", "Subnet mask", "Gateway",
 		"IP 6 Gateway", "MTU", "TSO", "Netstack", "Service console")
 	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "Effective Cpu", "TotalMemory", "Effective Memory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS default VM behavior", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
@@ -147,7 +142,7 @@ func rvtoolsSheetsFor(data assessment.ExportData, healthReport health.Report, op
 		{name: "vNIC", headers: nicHeaders, rows: nicRows(data)},
 		{name: "vSwitch", headers: switchHeaders, rows: switchRows(data)},
 		{name: "vPort", headers: portHeaders, rows: portRows(data)},
-		{name: "dvSwitch", headers: dvSwitchHeaders, rows: dvSwitchRows(data)},
+		{name: "dvSwitch", headers: dvSwitchHeaders, rows: dvSwitchRows(data), dateCols: headerPositions(dvSwitchHeaders, dvSwitchDateHeaders...)},
 		{name: "dvPort", headers: dvPortHeaders, rows: dvPortRows(data)},
 		{name: vmkSheetName, headers: vmkHeaders, rows: vmkRows(data)},
 		{name: "vDatastore", headers: datastoreHeaders, rows: datastoreRows(data)},
@@ -796,82 +791,6 @@ func nicRows(data assessment.ExportData) [][]any {
 			row := []any{nic.Device, nic.Driver, optionalInt32(nic.LinkSpeedMB), optionalBool(nic.Duplex), optionalString(nic.MAC),
 				optionalString(nic.Switch), optionalString(nic.Uplink), nic.PCI, nic.WakeOnLAN}
 			rows = append(rows, hostLeadRow(hostTail(data, item.resource, item.host), row))
-		}
-	}
-	return rows
-}
-
-func switchRows(data assessment.ExportData) [][]any {
-	rows := make([][]any, 0)
-	for _, item := range hostConfigResources(data) {
-		for _, sw := range item.host.VSwitches {
-			row := []any{sw.Name, sw.NumPorts, sw.FreePorts, sw.MTU, strings.Join(sw.Uplinks, ", "), optionalBool(sw.Promiscuous), optionalBool(sw.MACChanges), optionalBool(sw.ForgedTransmits), optionalBool(sw.TrafficShaping)}
-			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
-		}
-	}
-	return rows
-}
-
-func portRows(data assessment.ExportData) [][]any {
-	rows := make([][]any, 0)
-	for _, item := range hostConfigResources(data) {
-		for _, port := range item.host.PortGroups {
-			row := []any{port.Name, port.Switch, port.VLAN, optionalBool(port.Promiscuous), optionalBool(port.MACChanges), optionalBool(port.ForgedTransmits)}
-			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
-		}
-	}
-	return rows
-}
-
-func dvsTail(data assessment.ExportData, resource assessment.ResourceObservation, sw vsphere.DVSwitch) []any {
-	return []any{sw.Datacenter, nonempty(sw.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context}
-}
-
-func dvPortTail(data assessment.ExportData, resource assessment.ResourceObservation, sw vsphere.DVSwitch, port vsphere.DVPortGroup) []any {
-	return []any{sw.Datacenter, nonempty(port.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context}
-}
-
-func dvSwitchRows(data assessment.ExportData) [][]any {
-	rows := make([][]any, 0)
-	for _, resource := range data.Resources {
-		if resource.Kind != "dvswitch" {
-			continue
-		}
-		var sw vsphere.DVSwitch
-		if err := json.Unmarshal(resource.Payload, &sw); err != nil {
-			continue
-		}
-		row := []any{
-			nonempty(sw.Name, resource.Name), sw.NumPorts, sw.MaxPorts, sw.MaxMTU, sw.Vendor, sw.Version, sw.UUID,
-			optionalString(sw.Description), optionalString(sw.Contact), optionalString(sw.ContactDetail),
-			strings.Join(sw.Hosts, ", "), strings.Join(sw.UplinkPorts, ", "), optionalString(sw.LinkDiscoveryProtocol),
-			optionalString(sw.LinkDiscoveryOperation), optionalString(sw.LACPVersion),
-		}
-		rows = append(rows, append(row, dvsTail(data, resource, sw)...))
-	}
-	return rows
-}
-
-func dvPortRows(data assessment.ExportData) [][]any {
-	rows := make([][]any, 0)
-	for _, resource := range data.Resources {
-		if resource.Kind != "dvswitch" {
-			continue
-		}
-		var sw vsphere.DVSwitch
-		if err := json.Unmarshal(resource.Payload, &sw); err != nil {
-			continue
-		}
-		for _, port := range sw.PortGroups {
-			row := []any{
-				port.Name, nonempty(sw.Name, resource.Name), port.Key, port.Type, port.BackingType, port.NumPorts,
-				optionalString(port.VLAN), port.Uplink, optionalBool(port.Promiscuous), optionalBool(port.MACChanges),
-				optionalBool(port.ForgedTransmits), optionalString(port.TeamingPolicy), optionalBool(port.NotifySwitches),
-				invertedOptionalBool(port.Failback), optionalBool(port.IngressShaping), optionalBool(port.EgressShaping),
-				optionalBool(port.Blocked), optionalBool(port.AutoExpand), strings.Join(port.ActiveUplinks, ", "),
-				strings.Join(port.StandbyUplinks, ", "), optionalString(port.LogicalSwitchUUID), optionalString(port.SegmentID),
-			}
-			rows = append(rows, append(row, dvPortTail(data, resource, sw, port)...))
 		}
 	}
 	return rows

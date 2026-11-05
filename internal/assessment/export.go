@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/perf"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -301,21 +300,17 @@ func loadExportVMs(ctx context.Context, tx *sql.Tx, contextIDs map[int64]Context
 }
 
 func loadExportSnapshots(ctx context.Context, tx *sql.Tx, vmID int64) ([]vsphere.VMSnapshot, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT moref,numeric_id,parent_moref,name,description,create_time,power_state,quiesced,current_snapshot FROM snapshot_observations WHERE vm_observation_id=? ORDER BY create_time,moref,numeric_id`, vmID)
+	rows, err := tx.QueryContext(ctx, `SELECT `+snapshotColumns+` FROM snapshot_observations WHERE vm_observation_id=? ORDER BY create_time,moref,numeric_id`, vmID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []vsphere.VMSnapshot
 	for rows.Next() {
-		var snapshot vsphere.VMSnapshot
-		var createTime int64
-		var quiesced, current int
-		if err := rows.Scan(&snapshot.ID, &snapshot.NumericID, &snapshot.ParentID, &snapshot.Name, &snapshot.Description, &createTime, &snapshot.PowerState, &quiesced, &current); err != nil {
+		snapshot, err := scanSnapshot(rows)
+		if err != nil {
 			return nil, err
 		}
-		snapshot.CreateTime = time.UnixMilli(createTime).UTC()
-		snapshot.Quiesced, snapshot.Current = quiesced != 0, current != 0
 		out = append(out, snapshot)
 	}
 	return out, rows.Err()

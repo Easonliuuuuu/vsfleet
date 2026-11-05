@@ -353,8 +353,11 @@ type VMNIC struct {
 // devices where it cannot report a current state (for example, a powered-off
 // VM); nil is therefore different from a known disconnected device.
 type VMCDROM struct {
-	Key              int32  `json:"key"`
-	Label            string `json:"label"`
+	Key   int32  `json:"key"`
+	Label string `json:"label"`
+	// Summary is vSphere's description of the drive and its backing, e.g.
+	// ISO [datastore1] iso/x.iso; empty before inventory schema 31.
+	Summary          string `json:"summary,omitempty"`
 	Connected        *bool  `json:"connected,omitempty"`
 	StartsConnected  *bool  `json:"starts_connected,omitempty"`
 	BackingType      string `json:"backing_type,omitempty"`
@@ -373,8 +376,11 @@ type VMCDROM struct {
 // not represented here: they are infrastructure for USB attachments, not
 // devices an operator can accidentally leave connected to a guest.
 type VMUSB struct {
-	Key              int32    `json:"key"`
-	Label            string   `json:"label"`
+	Key   int32  `json:"key"`
+	Label string `json:"label"`
+	// Summary is vSphere's description of the device and its backing;
+	// empty before inventory schema 31.
+	Summary          string   `json:"summary,omitempty"`
 	Connected        *bool    `json:"connected,omitempty"`
 	Vendor           int32    `json:"vendor,omitempty"`
 	Product          int32    `json:"product,omitempty"`
@@ -390,6 +396,13 @@ type VMUSB struct {
 	Controller       string   `json:"controller,omitempty"`
 	ControllerLabel  string   `json:"controller_label,omitempty"`
 	UnitNumber       *int32   `json:"unit_number,omitempty"`
+	// The settings of the device's USB controller: whether it connects new
+	// devices automatically, whether a USB 2.0 controller has EHCI enabled
+	// (nil for a USB 3 controller, which has no such setting), and its bus.
+	// All are nil before inventory schema 32.
+	AutoConnect *bool  `json:"auto_connect,omitempty"`
+	EHCIEnabled *bool  `json:"ehci_enabled,omitempty"`
+	BusNumber   *int32 `json:"bus_number,omitempty"`
 }
 
 // VMSnapshot is one read-only entry in a VM snapshot tree.
@@ -406,6 +419,13 @@ type VMSnapshot struct {
 	PowerState  string    `json:"power_state"`
 	Quiesced    bool      `json:"quiesced"`
 	Current     bool      `json:"current"`
+	// Filename is the snapshot's state file (.vmsn) and DataBytes its size.
+	// TotalBytes is the size of the disk files the snapshot froze: the
+	// newest link of each disk chain when it was taken, as RVTools counts
+	// it. All three are unset before inventory schema 32.
+	Filename   string `json:"filename,omitempty"`
+	DataBytes  *int64 `json:"data_bytes,omitempty"`
+	TotalBytes *int64 `json:"total_bytes,omitempty"`
 }
 
 // ImportedSnapshotIDPrefix starts the ID of a snapshot read from an RVTools

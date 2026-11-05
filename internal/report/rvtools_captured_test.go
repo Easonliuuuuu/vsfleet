@@ -159,8 +159,9 @@ func TestWriteRVToolsVDatastoreProvisioned(t *testing.T) {
 }
 
 // The columns vsfleet writes keep RVTools' relative order, so a pipeline
-// reading by position between shared columns sees the same layout. vInfo is
-// the full header of the RVTools 4.8.2.1 export of the nested lab.
+// reading by position between shared columns sees the same layout. vInfo
+// and the other VM sheets are the full headers of the RVTools 4.8.2.1 export
+// of the nested lab.
 func TestCapturedColumnsFollowRVToolsOrder(t *testing.T) {
 	for _, tc := range []struct {
 		sheet   string
@@ -181,10 +182,39 @@ func TestCapturedColumnsFollowRVToolsOrder(t *testing.T) {
 			"Datacenter", "Cluster", "Host", "OS according to the configuration file", "OS according to the VMware Tools",
 			"Customization Info", "Guest Detailed Data", "VM ID", "SMBIOS UUID", "VM UUID", "VI SDK Server type", "VI SDK API Version",
 			"VI SDK Server", "VI SDK UUID"}},
-		{"vCPU", cpuHeaders, []string{"VM", "Powerstate", "Template", "CPUs", "Sockets", "Cores p/s", "Reservation", "Limit", "Annotation",
-			"Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
-		{"vMemory", memoryHeaders, []string{"VM", "Powerstate", "Template", "Size MiB", "Memory Reservation Locked To Max", "Reservation", "Limit",
-			"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vCPU", cpuHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "CPUs", "Sockets", "Cores p/s", "Max", "Overall", "Level",
+			"Shares", "Reservation", "Entitlement", "DRS Entitlement", "Limit", "Hot Add", "Hot Remove", "Numa Hotadd Exposed", "Annotation",
+			"Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "OS according to the VMware Tools", "VM ID",
+			"VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vMemory", memoryHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Size MiB", "Memory Reservation Locked To Max",
+			"Overhead", "Max", "Consumed", "Consumed Overhead", "Private", "Shared", "Swapped", "Ballooned", "Active", "Entitlement",
+			"DRS Entitlement", "Level", "Shares", "Reservation", "Limit", "Hot Add", "Annotation", "Datacenter", "Cluster", "Host", "Folder",
+			"OS according to the configuration file", "OS according to the VMware Tools", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vTools", toolsHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "VM Version", "Tools", "Tools Version",
+			"Required Version", "Upgradeable", "Upgrade Policy", "Sync time", "App status", "Heartbeat status", "Kernel Crash state",
+			"Operation Ready", "State change support", "Interactive Guest", "Annotation", "Datacenter", "Cluster", "Host", "Folder",
+			"OS according to the configuration file", "OS according to the VMware Tools", "VMRef", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vUSB", usbHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Device Node", "Device Type", "Connected", "Family",
+			"Speed", "EHCI enabled", "Auto connect", "Bus number", "Unit number", "Annotation", "Datacenter", "Cluster", "Host", "Folder",
+			"OS according to the configuration file", "OS according to the VMware tools", "VMRef", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vCD", cdHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Device Node", "Connected", "Starts Connected", "Device Type",
+			"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "OS according to the VMware Tools",
+			"VMRef", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vNetwork", networkHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "NIC label", "Adapter", "Network", "Switch",
+			"Connected", "Starts Connected", "Mac Address", "Type", "IPv4 Address", "IPv6 Address", "Direct Path IO", "Internal Sort Column",
+			"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "OS according to the VMware Tools",
+			"VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vDisk", diskHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Disk", "Disk Key", "Disk UUID", "Disk Path",
+			"Capacity MiB", "Raw", "Disk Mode", "Sharing mode", "Thin", "Eagerly Scrub", "Split", "Write Through", "Level", "Shares", "Reservation",
+			"Limit", "Controller", "Label", "SCSI Unit #", "Unit #", "Shared Bus", "Path", "Raw LUN ID", "Raw Comp. Mode", "Internal Sort Column",
+			"Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", "OS according to the VMware Tools",
+			"VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vSnapshot", snapshotHeaders, []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Filename", "Size MiB (vmsn)",
+			"Size MiB (total)", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file",
+			"OS according to the VMware Tools", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
+		{"vPartition", partitionHeaders, []string{"VM", "Powerstate", "Template", "SRM Placeholder", "Disk Key", "Disk", "Capacity MiB",
+			"Consumed MiB", "Free MiB", "Free %", "Internal Sort Column", "Annotation", "Datacenter", "Cluster", "Host", "Folder",
+			"OS according to the configuration file", "OS according to the VMware Tools", "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID"}},
 		{"vHost", hostHeaders, []string{"Host", "Datacenter", "Cluster", "Config status", "Compliance Check State", "in Maintenance Mode",
 			"in Quarantine Mode", "vSAN Fault Domain Name", "CPU Model", "Speed", "HT Available", "HT Active", "# CPU", "Cores per CPU", "# Cores",
 			"CPU usage %", "# Memory", "Memory Tiering Type", "Memory usage %", "Console", "# NICs", "# HBAs", "# VMs total", "# VMs",

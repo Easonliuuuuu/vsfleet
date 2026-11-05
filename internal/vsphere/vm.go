@@ -263,6 +263,7 @@ func newVM(c *Client, idx *index, m *mo.VirtualMachine) VM {
 	vm.ConsolidationNeeded = &consolidationNeeded
 	if snap := m.Snapshot; snap != nil {
 		vm.Snapshots = flattenSnapshots(snap.RootSnapshotList, "", snap.CurrentSnapshot)
+		applySnapshotFiles(vm.Snapshots, m.LayoutEx)
 	}
 	if g := m.Guest; g != nil {
 		vm.IPAddress = g.IpAddress
@@ -453,6 +454,13 @@ func newVMFloppy(device *types.VirtualFloppy) VMFloppy {
 type deviceController struct {
 	typeName, label, sharedBus string
 	unitNumber                 *int32
+	// usb is set for a USB controller.
+	usb *usbController
+}
+
+type usbController struct {
+	autoConnect, ehciEnabled *bool
+	busNumber                int32
 }
 
 func deviceControllerFor(device types.BaseVirtualDevice) (deviceController, bool) {
@@ -463,25 +471,25 @@ func deviceControllerFor(device types.BaseVirtualDevice) (deviceController, bool
 	}
 	switch c := device.(type) {
 	case *types.VirtualSCSIController:
-		return deviceController{"SCSI", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber)}, true
+		return deviceController{"SCSI", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber), nil}, true
 	case *types.VirtualBusLogicController:
-		return deviceController{"BusLogic", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber)}, true
+		return deviceController{"BusLogic", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber), nil}, true
 	case *types.VirtualLsiLogicController:
-		return deviceController{"LSI Logic", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber)}, true
+		return deviceController{"LSI Logic", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber), nil}, true
 	case *types.VirtualLsiLogicSASController:
-		return deviceController{"LSI Logic SAS", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber)}, true
+		return deviceController{"LSI Logic SAS", label, string(c.SharedBus), cloneInt32(c.ScsiCtlrUnitNumber), nil}, true
 	case *types.VirtualIDEController:
-		return deviceController{"IDE", label, "", nil}, true
+		return deviceController{"IDE", label, "", nil, nil}, true
 	case *types.VirtualSATAController:
-		return deviceController{"SATA", label, "", nil}, true
+		return deviceController{"SATA", label, "", nil, nil}, true
 	case *types.VirtualAHCIController:
-		return deviceController{"AHCI", label, "", nil}, true
+		return deviceController{"AHCI", label, "", nil, nil}, true
 	case *types.VirtualNVMEController:
-		return deviceController{"NVMe", label, c.SharedBus, nil}, true
+		return deviceController{"NVMe", label, c.SharedBus, nil, nil}, true
 	case *types.VirtualUSBController:
-		return deviceController{"USB", label, "", nil}, true
+		return deviceController{"USB", label, "", nil, &usbController{clonePtr(c.AutoConnectDevices), clonePtr(c.EhciEnabled), c.BusNumber}}, true
 	case *types.VirtualUSBXHCIController:
-		return deviceController{"USB 3", label, "", nil}, true
+		return deviceController{"USB 3", label, "", nil, &usbController{clonePtr(c.AutoConnectDevices), nil, c.BusNumber}}, true
 	default:
 		return deviceController{}, false
 	}
@@ -548,7 +556,7 @@ func (b *normalizedBacking) file(info types.VirtualDeviceFileBackingInfo) {
 
 func newVMCDROM(device *types.VirtualCdrom, controller deviceController) VMCDROM {
 	out := VMCDROM{
-		Key: device.Key, Label: deviceLabel(device.DeviceInfo),
+		Key: device.Key, Label: deviceLabel(device.DeviceInfo), Summary: deviceSummary(device.DeviceInfo),
 		Controller: controller.typeName, ControllerLabel: controller.label,
 		UnitNumber: clonePtr(device.UnitNumber),
 	}
@@ -564,7 +572,7 @@ func newVMCDROM(device *types.VirtualCdrom, controller deviceController) VMCDROM
 func newVMUSB(device *types.VirtualUSB, controller deviceController) VMUSB {
 	connected := device.Connected
 	out := VMUSB{
-		Key: device.Key, Label: deviceLabel(device.DeviceInfo), Connected: &connected,
+		Key: device.Key, Label: deviceLabel(device.DeviceInfo), Summary: deviceSummary(device.DeviceInfo), Connected: &connected,
 		Vendor: device.Vendor, Product: device.Product,
 		Family: append([]string(nil), device.Family...), Speed: append([]string(nil), device.Speed...),
 		Controller: controller.typeName, ControllerLabel: controller.label,
@@ -573,6 +581,9 @@ func newVMUSB(device *types.VirtualUSB, controller deviceController) VMUSB {
 	b := normalizeBacking(device.Backing)
 	out.BackingType, out.BackingPath, out.BackingDevice = b.typeName, b.path, b.device
 	out.BackingHost, out.BackingDatastore, out.BackingObjectID, out.UseAutoDetect = b.host, b.datastore, b.objectID, b.useAutoDetect
+	if u := controller.usb; u != nil {
+		out.AutoConnect, out.EHCIEnabled, out.BusNumber = clonePtr(u.autoConnect), clonePtr(u.ehciEnabled), cloneInt32(u.busNumber)
+	}
 	sort.Strings(out.Family)
 	sort.Strings(out.Speed)
 	return out
@@ -729,6 +740,16 @@ func deviceLabel(info types.BaseDescription) string {
 		return ""
 	}
 	return info.GetDescription().Label
+}
+
+// deviceSummary is vSphere's one-line description of a device and its
+// backing, e.g. ISO [datastore1] iso/x.iso, which RVTools writes as Device
+// Type.
+func deviceSummary(info types.BaseDescription) string {
+	if info == nil {
+		return ""
+	}
+	return strings.TrimSpace(info.GetDescription().Summary)
 }
 
 func classifyAddress(out *VMNIC, address string) {

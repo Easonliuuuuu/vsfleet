@@ -344,7 +344,7 @@ func TestEvaluateExpandedMigrationReadiness(t *testing.T) {
 	peer := vsphere.VM{Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"}, ID: "vm-peer", Name: "peer", ConfigurationAvailable: true, Firmware: "efi", SecureBootEnabled: &peerSecure, CPU: 1, CoresPerSocket: 1,
 		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited},
 		Disks: []vsphere.VMDisk{{Key: 2, Label: "shared", UUID: "shared-uuid", Sharing: "sharingMultiWriter"}}}
-	data := assessment.ExportData{Run: assessment.Run{ID: 60, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, VMs: []assessment.ExportVM{
+	data := assessment.ExportData{Run: assessment.Run{ID: 60, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, VMs: []assessment.ExportVM{
 		{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: problem}},
 		{Observation: assessment.Observation{Context: "prod", VCenterID: "vc-1", VM: peer}},
 	}}
@@ -494,7 +494,7 @@ func TestMigrationReadinessKeepsAdvisoriesReady(t *testing.T) {
 	advisoryVM := vsphere.VM{Location: vsphere.Location{Context: "prod"}, ID: "vm-1", Name: "legacy", ConfigurationAvailable: true, Firmware: "bios", CPU: 1, CoresPerSocket: 1,
 		ToolsState: "guestToolsRunning", ToolsVersionStatus: "guestToolsCurrent",
 		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}}
-	base := assessment.ExportData{Run: assessment.Run{ID: 61, InventorySchemaVersion: "13"}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}, {Kind: "cluster", Status: "empty"}, {Kind: "snapshot", Status: "empty"}}}}, VMs: []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: advisoryVM}}}}
+	base := assessment.ExportData{Run: assessment.Run{ID: 61, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}, {Kind: "cluster", Status: "empty"}, {Kind: "network", Status: "empty"}, {Kind: "snapshot", Status: "empty"}}}}, VMs: []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: advisoryVM}}}}
 	if got := Readiness(Evaluate(base, Options{})); got.Verdict != "ready" || len(got.Advisories) != 1 {
 		t.Fatalf("advisory-only readiness = %+v", got)
 	}
@@ -504,7 +504,7 @@ func TestRulesUseStableAlphabeticalOrder(t *testing.T) {
 	want := []string{
 		"bios-firmware", "cdrom-connected", "cluster-network-inconsistent", "custom-cpu-topology", "custom-resource-allocation", "datastore-host-coverage", "datastore-inaccessible", "datastore-overcommitted", "datastore-space-low", "datastore-zombie-vmdk",
 		"dvportgroup-promiscuous", "dvswitch-host-coverage", "extension-managed-vm", "floppy-present", "guest-disk-space-low", "ha-failover-capacity-low", "host-device-passthrough", "host-disconnected", "host-in-maintenance", "host-path-redundancy", "manual-mac-address", "portgroup-promiscuous",
-		"rdm-present", "secure-boot-enabled", "shared-disk", "snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected", "vm-inaccessible", "vm-network-missing", "vm-orphaned", "vtpm-present",
+		"rdm-present", "secure-boot-enabled", "shared-disk", "snapshot-age", "tools-not-installed", "tools-not-running", "tools-outdated", "usb-connected", "vm-cluster-rule", "vm-inaccessible", "vm-network-missing", "vm-orphaned", "vtpm-present",
 	}
 	rules := Rules()
 	if len(rules) != len(want) {

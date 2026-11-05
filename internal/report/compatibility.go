@@ -195,6 +195,10 @@ const vmRepeatedEmpty = "for a capture predating inventory schema 31"
 // added in inventory schema 32 is empty.
 const vmSheetsEmpty = "for a capture predating inventory schema 32"
 
+// vmClusterEmpty is when a vInfo column read from the VM's cluster
+// configuration is empty.
+const vmClusterEmpty = "for a capture predating inventory schema 34, a VM on a standalone host, or a cluster whose configuration the account cannot read"
+
 // vmFilesEmpty is when vInfo's storage and file columns are empty.
 const vmFilesEmpty = "for a capture predating inventory schema 28, or when vSphere did not return the value"
 
@@ -275,6 +279,18 @@ var sharedColumns = map[string]ColumnSpec{
 	"Video Ram KiB": {Kind: KindInteger, Unit: "KiB", Empty: vmSettingsEmpty + ", or when the VM has no video card", Note: "Video card memory."},
 	"Folder ID": {Kind: KindText, Empty: "for a VM inside a vApp, or a capture predating inventory schema 29",
 		Note: "Managed object ID of the VM's folder, e.g. group-v4."},
+	"DAS protection": {Kind: KindBoolean, Empty: "for a capture predating inventory schema 34, or when vSphere HA is off",
+		Note: "Whether vSphere HA protects the VM, so that it is restarted if its host fails."},
+	"HA Restart Priority": {Kind: KindText, Empty: vmClusterEmpty,
+		Note: "The order HA restarts the VM in: the VM's own override, or the cluster default. vSphere keeps it while HA is off, and RVTools reports it then too."},
+	"HA Isolation Response": {Kind: KindText, Empty: vmClusterEmpty,
+		Note: "What an isolated host does with the VM, e.g. none or powerOff: the VM's own override, or the cluster default."},
+	"HA VM Monitoring": {Kind: KindText, Empty: vmClusterEmpty,
+		Note: "vmMonitoringDisabled, vmMonitoringOnly or vmAndAppMonitoring: the VM's own override, or the cluster default."},
+	"Cluster rule(s)": {Kind: KindText, Empty: vmClusterEmpty + ", or when no rule between VMs names the VM",
+		Note: "The kind of each DRS rule between VMs that names the VM, Affinity or Anti Affinity, in the cluster's order. VM-host and dependency rules are not listed, as in RVTools; capture diff and the analyses still see them."},
+	"Cluster rule name(s)": {Kind: KindText, Empty: "wherever Cluster rule(s) is empty",
+		Note: "The names of the rules in Cluster rule(s), in the same order."},
 	"Boot Required": {Kind: KindBoolean, Empty: vmSettingsEmpty,
 		Note: "Whether the VM's vApp options require an installation boot. False for a VM without vApp options, as RVTools writes it."},
 	"Boot delay":         {Kind: KindInteger, Unit: "ms", Empty: vmSettingsEmpty, Note: "Delay before the VM starts booting."},

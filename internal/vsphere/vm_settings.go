@@ -80,6 +80,10 @@ type VMState struct {
 	// bundles, so it changes when the host is upgraded or the VM moves. It is
 	// read on vCenter 8.0 and later.
 	ToolsRequiredVersion string `json:"tools_required_version,omitempty"`
+	// DASProtected reports whether vSphere HA protects the VM, so that it
+	// is restarted if its host fails; nil when HA is off or before inventory
+	// schema 34.
+	DASProtected *bool `json:"das_protected,omitempty"`
 }
 
 // The vCenter extension and managed-entity type Site Recovery Manager marks
@@ -99,6 +103,7 @@ var vmSettingsProps = []string{
 	"runtime.bootTime",
 	"runtime.suspendInterval",
 	"runtime.minRequiredEVCModeKey",
+	"runtime.dasVmProtection",
 	"configStatus",
 	"guest.guestFullName",
 }
@@ -221,6 +226,10 @@ func vmState(m *mo.VirtualMachine) *VMState {
 		BootTime:              clonePtr(m.Runtime.BootTime),
 		SuspendInterval:       &interval,
 		MinRequiredEVCModeKey: m.Runtime.MinRequiredEVCModeKey,
+	}
+	if p := m.Runtime.DasVmProtection; p != nil {
+		protected := p.DasProtected
+		s.DASProtected = &protected
 	}
 	if cfg := m.Config; cfg != nil {
 		s.ChangeVersion = strings.TrimSpace(cfg.ChangeVersion)

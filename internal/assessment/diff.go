@@ -424,6 +424,7 @@ func changedFields(a, b vsphere.VM, runtime bool) []FieldChange {
 	}
 	out = append(out, vmFileChanges(a.Files, b.Files)...)
 	out = append(out, vmSettingsChanges(a.Settings, b.Settings)...)
+	out = append(out, vmClusterConfigChanges(a.ClusterConfig, b.ClusterConfig)...)
 	out = append(out, migrationFieldChanges(a, b)...)
 	if before, err := json.Marshal(a); err == nil {
 		if after, err := json.Marshal(b); err == nil {

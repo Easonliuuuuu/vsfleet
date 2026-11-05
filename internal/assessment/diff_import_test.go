@@ -26,6 +26,14 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 	}
 	created := time.Date(2026, 9, 27, 16, 29, 23, 229018000, time.UTC)
 	live.Settings = &vsphere.VMSettings{CreateDate: &created}
+	// The lab's vm-normal rules, with keep-apart made mandatory and a
+	// VM-host rule added: vInfo carries neither.
+	together := vsphere.VMClusterRule{Name: "keep-together", Kind: vsphere.RuleAffinity, Enabled: true}
+	apart := vsphere.VMClusterRule{Name: "keep-apart", Kind: vsphere.RuleAntiAffinity, Enabled: true}
+	mandatoryApart := apart
+	mandatoryApart.Mandatory = true
+	live.ClusterConfig = &vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{together, mandatoryApart, {Name: "on-dr-hosts", Kind: vsphere.RuleVMHost, Enabled: true, HostGroup: "dr-hosts"}},
+		HARestartPriority: "medium", HAIsolationResponse: "none", HAVMMonitoring: "vmMonitoringDisabled"}
 	booted := time.Date(2026, 11, 2, 12, 24, 40, 840856000, time.UTC)
 	liveHost := vsphere.Host{Location: vsphere.Location{Datacenter: "dc1", Path: "/dc1/host/esx-1"}, ID: "host-1", Name: "esx-1", Version: "8.0.3",
 		Details: &vsphere.HostDetails{BootTime: &booted}}
@@ -36,6 +44,7 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 	// RVTools writes the collector's local time, to the second.
 	createdLocal := time.Date(2026, 9, 27, 9, 29, 23, 0, time.UTC)
 	imported.Settings = &vsphere.VMSettings{CreateDate: &createdLocal}
+	imported.ClusterConfig = &vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{together, apart}, HARestartPriority: "medium", HAIsolationResponse: "none", HAVMMonitoring: "vmMonitoringDisabled"}
 	imported.NICs = []vsphere.VMNIC{
 		{Label: "Network adapter 2", Adapter: "Vmxnet3", MACAddress: "00:50:56:B9:7A:0B"},
 		{Label: "Network adapter 1", Adapter: "Vmxnet3", MACAddress: "00:50:56:b9:7a:0a"},
@@ -51,6 +60,8 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 	resized.MemoryMB = 8192
 	remac := imported
 	remac.NICs = []vsphere.VMNIC{{Label: "Network adapter 1", Adapter: "Vmxnet3", MACAddress: "00:50:56:b9:00:01"}, imported.NICs[0]}
+	ruleRemoved := imported
+	ruleRemoved.ClusterConfig = &vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{together}, HARestartPriority: "medium", HAIsolationResponse: "none", HAVMMonitoring: "vmMonitoringDisabled"}
 	firmwareLost := live
 	firmwareLost.Firmware = ""
 	recreated := live
@@ -72,6 +83,7 @@ func TestDiffComparesAnImportOnlyOnFieldsItRecorded(t *testing.T) {
 		{"live then import", side{"cli", live, liveHost}, side{SourceRVToolsImport, imported, importedHost}, nil, true, false},
 		{"import then live", side{SourceRVToolsImport, imported, importedHost}, side{"cli", live, liveHost}, nil, true, false},
 		{"a real change across the import", side{"cli", live, liveHost}, side{SourceRVToolsImport, resized, importedHost}, []string{"memory"}, true, false},
+		{"a rule between VMs removed across the import", side{"cli", live, liveHost}, side{SourceRVToolsImport, ruleRemoved, importedHost}, []string{"cluster_config.rules"}, true, false},
 		{"a NIC's MAC changed, matched by label", side{"cli", live, liveHost}, side{SourceRVToolsImport, remac, importedHost}, []string{"migration_configuration.nics[4000].mac_address"}, true, false},
 		{"two live captures still compare every field", side{"cli", live, liveHost}, side{"cli", firmwareLost, liveHost}, []string{"migration_configuration.firmware"}, false, false},
 		{"two live captures compare the creation date", side{"cli", live, liveHost}, side{"cli", recreated, liveHost}, []string{"settings.create_date"}, false, false},

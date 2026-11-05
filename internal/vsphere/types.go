@@ -717,8 +717,10 @@ type HostVMKernel struct {
 	ServiceConsole bool     `json:"service_console"`
 }
 
-// HostMultipath is one host/LUN aggregate. Individual paths are counted but
-// deliberately not expanded into rows, keeping exports bounded on large SANs.
+// HostMultipath is one host/LUN aggregate: the path counts, and since
+// inventory schema 35 the LUN's identity and each path (see
+// HostMultipathLUN). A path is a column pair on the LUN's row, never a row
+// of its own, keeping exports bounded on large SANs.
 type HostMultipath struct {
 	Key          string `json:"key,omitempty"`
 	LUN          string `json:"lun"`
@@ -731,6 +733,8 @@ type HostMultipath struct {
 	Dead         int    `json:"dead"`
 	Disabled     int    `json:"disabled"`
 	WorkingPaths int    `json:"working_paths"`
+	// Device is nil for a capture predating inventory schema 35.
+	Device *HostMultipathLUN `json:"device,omitempty"`
 }
 
 // Cluster is a compute cluster. Standalone hosts appear as a ComputeResource
@@ -995,6 +999,9 @@ type Datastore struct {
 	// export. nil means the capture never requested it, which must never be
 	// read as "no files". Orphan analysis does not consume it.
 	FileInventory *DatastoreFileInventory `json:"file_inventory,omitempty"`
+	// Details is the datastore's vDatastore configuration; see
+	// DatastoreDetails.
+	Details *DatastoreDetails `json:"details,omitempty"`
 }
 
 // DatastoreBacking identifies the storage a datastore is presented from, so

@@ -24,10 +24,11 @@ type importGaps struct {
 // capture on them.
 var importInexactFields = map[string]bool{"settings.create_date": true, "details.boot_time": true}
 
-// importUncarriedFields are the VM fields an RVTools workbook never records:
-// vInfo lists only the rules between VMs, and not whether a rule is enabled
-// or mandatory.
-var importUncarriedFields = map[string]bool{clusterHostRulesField: true, clusterRuleStateField: true}
+// importUncarriedFields are the fields an RVTools workbook never records in
+// full: vInfo lists only the rules between VMs, and not whether a rule is
+// enabled or mandatory, and vMultiPath lists only the LUNs a datastore is
+// on, so a host's whole set of LUNs is unknown.
+var importUncarriedFields = map[string]bool{clusterHostRulesField: true, clusterRuleStateField: true, "multipaths": true}
 
 func newImportGaps(base, target Run) *importGaps {
 	return &importGaps{base: base.Imported(), target: target.Imported(), leftOut: map[string]bool{}, inexact: map[string]bool{}}

@@ -87,7 +87,11 @@ type RunStatus string
 // priority, isolation response and VM monitoring that apply to it
 // (VM.ClusterConfig), and whether HA protects it (VMState.DASProtected);
 // older runs have none, which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "34"
+// Schema 35 records each datastore's vDatastore configuration
+// (Datastore.Details) and each multipathed LUN's identity and paths
+// (HostMultipath.Device); older runs have none, which readers must treat as
+// "not read".
+const CurrentInventorySchemaVersion = "35"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

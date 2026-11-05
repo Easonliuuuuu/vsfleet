@@ -966,3 +966,25 @@ func TestRVToolsToolsStatusDrivesToolsVerdicts(t *testing.T) {
 		})
 	}
 }
+
+func editDatastore(t *testing.T, data *assessment.ExportData, id string, edit func(*vsphere.Datastore)) {
+	t.Helper()
+	for i := range data.Resources {
+		r := &data.Resources[i]
+		if r.Kind != "datastore" || r.ID != id {
+			continue
+		}
+		var d vsphere.Datastore
+		if err := json.Unmarshal(r.Payload, &d); err != nil {
+			t.Fatal(err)
+		}
+		edit(&d)
+		payload, err := json.Marshal(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Payload = payload
+		return
+	}
+	t.Fatalf("no datastore %q in fixture", id)
+}

@@ -47,8 +47,10 @@ vsfleet capture diff nightly latest \
 Use `--include-runtime` when volatile power, guest, IP, VMware Tools, storage,
 VM state (configuration status, last power-on, change version, the guest OS
 VMware Tools reports, the guest operation states, the Tools version the host
-bundles, whether HA protects the VM) or host state (configuration status, quarantine, boot
-time) fields should participate in a diff.
+bundles, whether HA protects the VM), host state (configuration status, quarantine, boot
+time) or datastore state (configuration status, the VMs on it, its datastore
+cluster's free space) fields should participate in a diff. A storage path
+that is lost or goes dead is reported on every diff.
 
 ### Imports and live captures
 

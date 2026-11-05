@@ -154,8 +154,17 @@ var columnRules = map[string]colRule{
 	"IP 6 Address": ipRule, "Gateway": ipRule, "IP 6 Gateway": ipRule,
 	"Service console": keep(), "LUN": id(kindID), "Device path": pathRule, "Local disk": keep(), "Path count": keep(),
 	"Active paths": keep(), "Standby paths": keep(), "Dead paths": keep(), "Disabled paths": keep(), "Working paths": keep(),
+	// A LUN's canonical name, serial and display name identify the array
+	// behind it; Disk, Address and Display name share the kindID namespace,
+	// so a datastore still joins to its LUN.
+	"Display name": id(kindID), "Serial #": id(kindID), "Oper. State": keep(), "vStorage": keep(), "Queue depth": keep(), "Revision": keep(),
+	"Path 1": keep(), "Path 1 state": keep(), "Path 2": keep(), "Path 2 state": keep(), "Path 3": keep(), "Path 3 state": keep(), "Path 4": keep(), "Path 4 state": keep(),
+	"Path 5": keep(), "Path 5 state": keep(), "Path 6": keep(), "Path 6 state": keep(), "Path 7": keep(), "Path 7 state": keep(), "Path 8": keep(), "Path 8 state": keep(),
 
 	// vCluster / vRP / vDatastore.
+	"Address": id(kindID), "SIOC enabled": keep(), "SIOC Threshold": keep(), "# Hosts": keep(),
+	"Cluster name": name(kindName), "Cluster capacity MiB": keep(), "Cluster free space MiB": keep(), "Block size": keep(), "Max Blocks": keep(),
+	"# Extents": keep(), "Major Version": keep(), "VMFS Upgradeable": keep(), "MHA": keep(),
 	"NumHosts": keep(), "numEffectiveHosts": keep(), "TotalCpu": keep(), "NumCpuCores": keep(), "TotalMemory": keep(),
 	"HA enabled": keep(), "DRS enabled": keep(), "OverallStatus": keep(), "NumCpuThreads": keep(), "Num VMotions": keep(),
 	"Effective Cpu": keep(), "Effective Memory": keep(), "DRS default VM behavior": keep(),
@@ -203,6 +212,7 @@ var sheetRules = map[string]colRule{
 	"vHealth/Name":          name(kindName),
 	"vLicense/Name":         name(kindName),
 	"vPartition/Disk":       pathRule,
+	"vMultiPath/Disk":       id(kindID),
 	"vLicense/Key":          keep(),
 
 	// vsfleetMetadata. Category, attribute and tag names are operator free

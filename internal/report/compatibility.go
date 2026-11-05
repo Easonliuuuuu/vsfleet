@@ -143,7 +143,7 @@ var sheetMeta = map[string]sheetInfo{
 	"dvSwitch":   {derivesFrom: "the distributed switch collection", note: "One row per distributed virtual switch. Configuration and membership are collected from read-only vSphere properties; per-port runtime state is outside this profile."},
 	"dvPort":     {derivesFrom: "the distributed switch collection", note: "One row per distributed port group and its default port policy, not one distributed port. Per-port runtime state is outside this read-only profile."},
 	"vSC_VMK":    {derivesFrom: "the host collection", note: "One row per VMkernel or legacy service-console adapter. IP fields are empty when the host does not report them; distributed-switch-only connections are not expanded."},
-	"vMultiPath": {derivesFrom: "the host collection", note: "One row per host and SCSI LUN with aggregate path states. Individual paths are counted rather than expanded, and this profile does not collect a separate target inventory."},
+	"vMultiPath": {derivesFrom: "the host and datastore collections", note: "One row per host and SCSI LUN that a datastore has an extent on, as RVTools lists them, with the first eight paths as Path and Path state column pairs and the path counts across all of them. A LUN no datastore is on, such as an ESXi boot disk, has no row; it stays in the host's capture and in host-path-redundancy. This profile does not collect a separate target inventory."},
 	"vCluster":   {derivesFrom: "the cluster collection", note: "One row per cluster. Standalone hosts appear as their own compute resource."},
 	"vRP": {derivesFrom: "the resource pool and vApp collections",
 		note: "One row per resource pool, including each cluster or standalone host's root Resources pool, then one per vApp, as RVTools lists them: a vApp is a resource pool subtype with the same allocation, and its VMs are its direct members. Identity and CPU/memory allocation configuration only: this read-only capture does not request volatile runtime fields rather than guess at them. Captures before inventory schema 8 mark the tab not recorded; captures before schema 20 list resource pools only, and vsfleetCoverage says vApps are not listed."},
@@ -198,6 +198,22 @@ const vmSheetsEmpty = "for a capture predating inventory schema 32"
 // vmClusterEmpty is when a vInfo column read from the VM's cluster
 // configuration is empty.
 const vmClusterEmpty = "for a capture predating inventory schema 34, a VM on a standalone host, or a cluster whose configuration the account cannot read"
+
+// datastoreDetailsEmpty is when a vDatastore column read with the
+// datastore's details is empty.
+const datastoreDetailsEmpty = "for a capture predating inventory schema 35"
+
+// multipathDeviceEmpty is when a vMultiPath column read from the LUN's
+// identity is empty.
+const multipathDeviceEmpty = "for a capture predating inventory schema 35, or when the host did not return the LUN"
+
+// multipathPathSpec and multipathPathStateSpec describe each of vMultiPath's
+// eight Path N and Path N state columns.
+var (
+	multipathPathSpec = ColumnSpec{Kind: KindText, Empty: multipathDeviceEmpty + ", or when the LUN has fewer paths",
+		Note: "The host bus adapter a path runs through, e.g. vmhba2, in the order the host lists the paths, as RVTools writes it."}
+	multipathPathStateSpec = ColumnSpec{Kind: KindText, Empty: "wherever the matching Path is empty", Note: "The path's state: active, standby, disabled, dead or unknown."}
+)
 
 // vmFilesEmpty is when vInfo's storage and file columns are empty.
 const vmFilesEmpty = "for a capture predating inventory schema 28, or when vSphere did not return the value"
@@ -670,10 +686,31 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Capacity MiB": {Kind: KindDecimal, Unit: "MiB", Note: "Total datastore capacity. Fractional MiB are retained; RVTools writes integers."},
 		"Provisioned MiB": {Kind: KindDecimal, Unit: "MiB", Empty: "for a capture predating inventory schema 33, and for an inaccessible datastore, which reports no uncommitted space",
 			Note: "In Use MiB plus the space thin disks may still grow into (vSphere's uncommitted space). Above Capacity MiB the datastore is overcommitted. Fractional MiB are retained; RVTools writes integers."},
-		"In Use MiB": {Kind: KindDecimal, Unit: "MiB", Note: "Used datastore capacity. Fractional MiB are retained; RVTools writes integers."},
-		"Free MiB":   {Kind: KindDecimal, Unit: "MiB", Note: "Fractional MiB are retained; RVTools writes integers."},
-		"Free %":     {Kind: KindDecimal, Unit: "percent", Empty: "when the datastore reports no capacity, rather than dividing by zero", Note: "Fractional percentages are retained; RVTools writes integers."},
-		"Object ID":  {Kind: KindText, Note: "vCenter managed object reference of the datastore."},
+		"In Use MiB":    {Kind: KindDecimal, Unit: "MiB", Note: "Used datastore capacity. Fractional MiB are retained; RVTools writes integers."},
+		"Free MiB":      {Kind: KindDecimal, Unit: "MiB", Note: "Fractional MiB are retained; RVTools writes integers."},
+		"Free %":        {Kind: KindDecimal, Unit: "percent", Empty: "when the datastore reports no capacity, rather than dividing by zero", Note: "Fractional percentages are retained; RVTools writes integers."},
+		"Object ID":     {Kind: KindText, Note: "vCenter managed object reference of the datastore."},
+		"Config status": {Kind: KindText, Empty: datastoreDetailsEmpty, Note: "vSphere's configuration status colour: green, yellow, red or gray."},
+		"Address": {Kind: KindText, Empty: datastoreDetailsEmpty + ", or for a datastore that is neither VMFS nor NFS",
+			Note: "Where the storage lives: a VMFS datastore's extent devices, comma-separated, or an NFS datastore's server and export separated by a space, as RVTools writes them."},
+		"# VMs total": {Kind: KindInteger, Empty: datastoreDetailsEmpty, Note: "VMs with files on the datastore. Templates are not counted, as in RVTools."},
+		"# VMs": {Kind: KindInteger, Empty: datastoreDetailsEmpty,
+			Note: "The powered-on VMs among # VMs total, from the power states the capture recorded; a VM the capture did not record counts as off."},
+		"SIOC enabled":   {Kind: KindBoolean, Empty: datastoreDetailsEmpty + ", or when vSphere reports no Storage I/O Control configuration", Note: "Whether Storage I/O Control is on."},
+		"SIOC Threshold": {Kind: KindInteger, Unit: "ms", Empty: "wherever SIOC enabled is empty", Note: "Storage I/O Control's congestion threshold."},
+		"# Hosts":        {Kind: KindInteger, Empty: datastoreDetailsEmpty, Note: "Hosts that mount the datastore."},
+		"Hosts":          {Kind: KindText, Empty: datastoreDetailsEmpty, Note: "Names of the hosts that mount the datastore, sorted and comma-separated."},
+		"Cluster name":   {Kind: KindText, Empty: datastoreDetailsEmpty + ", or for a datastore in no datastore cluster", Note: "The datastore cluster (storage pod) it belongs to."},
+		"Cluster capacity MiB": {Kind: KindDecimal, Unit: "MiB", Empty: "wherever Cluster name is empty, or when the datastore cluster's summary could not be read",
+			Note: "Capacity of the whole datastore cluster. Fractional MiB are retained."},
+		"Cluster free space MiB": {Kind: KindDecimal, Unit: "MiB", Empty: "wherever Cluster capacity MiB is empty", Note: "Free space across the whole datastore cluster. Fractional MiB are retained."},
+		"Block size":             {Kind: KindInteger, Unit: "MiB", Empty: datastoreDetailsEmpty, Note: "VMFS block size; 0 for a datastore that is not VMFS, as RVTools writes it."},
+		"Max Blocks":             {Kind: KindInteger, Empty: datastoreDetailsEmpty, Note: "Most blocks the VMFS volume can hold; 0 for a datastore that is not VMFS."},
+		"# Extents":              {Kind: KindInteger, Empty: datastoreDetailsEmpty, Note: "VMFS extents; 0 for a datastore that is not VMFS."},
+		"Major Version":          {Kind: KindInteger, Empty: datastoreDetailsEmpty, Note: "VMFS major version, e.g. 6; 0 for a datastore that is not VMFS."},
+		"Version":                {Kind: KindText, Empty: datastoreDetailsEmpty + ", or for a datastore that is not VMFS", Note: "VMFS version, e.g. 6.82."},
+		"VMFS Upgradeable":       {Kind: KindBoolean, Empty: "wherever Version is empty", Note: "Whether the VMFS volume can be upgraded in place."},
+		"MHA":                    {Kind: KindBoolean, Empty: datastoreDetailsEmpty, Note: "Multiple host access: whether more than one host can reach the datastore."},
 	},
 	fileInfoSheetName: {
 		"Friendly Path Name":   {Kind: KindText, Empty: "never; on the single explanatory row of a run without a file inventory it holds the explanation instead", Note: "The file's folder as \"[datastore] folder/subfolder/\": the bracketed datastore, a space, the folder and a trailing slash. Identical to Path, as in RVTools."},
@@ -832,20 +869,48 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Object ID":       {Kind: KindText, Note: "vCenter managed object reference of the host."},
 	},
 	"vMultiPath": {
-		"LUN":            {Kind: KindText, Note: "SCSI LUN display name, falling back to its canonical name or device name."},
-		"Device path":    {Kind: KindText, Empty: "when the resolved ScsiLun has no device name"},
-		"Policy":         {Kind: KindText, Empty: "when vSphere reports no multipath policy"},
+		"Host":           {Kind: KindText, Note: "ESXi host that owns the LUN paths."},
+		"Cluster":        {Kind: KindText, Empty: "for a standalone host"},
+		"Datastore":      {Kind: KindText, Note: "The datastore with an extent on the LUN; a LUN that backs two datastores has a row for each."},
+		"Disk":           {Kind: KindText, Note: "The LUN's canonical name, which the datastore's extents name it by, e.g. naa.600508b1001c4d41."},
+		"Display name":   {Kind: KindText, Note: "The LUN's display name, falling back to its canonical name or device name."},
+		"Policy":         {Kind: KindText, Empty: "when vSphere reports no multipath policy", Note: "Path selection policy, e.g. FIXED or VMW_PSP_RR."},
+		"Oper. State":    {Kind: KindText, Empty: multipathDeviceEmpty, Note: "The LUN's operational state, e.g. ok."},
+		"Path 1":         multipathPathSpec,
+		"Path 1 state":   multipathPathStateSpec,
+		"Path 2":         multipathPathSpec,
+		"Path 2 state":   multipathPathStateSpec,
+		"Path 3":         multipathPathSpec,
+		"Path 3 state":   multipathPathStateSpec,
+		"Path 4":         multipathPathSpec,
+		"Path 4 state":   multipathPathStateSpec,
+		"Path 5":         multipathPathSpec,
+		"Path 5 state":   multipathPathStateSpec,
+		"Path 6":         multipathPathSpec,
+		"Path 6 state":   multipathPathStateSpec,
+		"Path 7":         multipathPathSpec,
+		"Path 7 state":   multipathPathStateSpec,
+		"Path 8":         multipathPathSpec,
+		"Path 8 state":   multipathPathStateSpec,
+		"vStorage":       {Kind: KindText, Empty: multipathDeviceEmpty, Note: "Hardware acceleration (VAAI) status, e.g. vStorageSupported or vStorageUnsupported."},
+		"Queue depth":    {Kind: KindInteger, Empty: multipathDeviceEmpty + ", or when the host reports none"},
+		"Vendor":         {Kind: KindText, Empty: multipathDeviceEmpty, Note: "SCSI vendor, with the inquiry's space padding, as RVTools writes it."},
+		"Model":          {Kind: KindText, Empty: multipathDeviceEmpty, Note: "SCSI model, with the inquiry's space padding."},
+		"Revision":       {Kind: KindText, Empty: multipathDeviceEmpty, Note: "SCSI firmware revision."},
+		"Level":          {Kind: KindInteger, Empty: multipathDeviceEmpty + ", or when the host reports none", Note: "SCSI level."},
+		"Serial #":       {Kind: KindText, Empty: multipathDeviceEmpty, Note: "SCSI serial number, with the inquiry's space padding."},
+		"UUID":           {Kind: KindText, Empty: multipathDeviceEmpty, Note: "The LUN's vSphere UUID."},
+		"Device path":    {Kind: KindText, Empty: "when the resolved ScsiLun has no device name", Note: "The LUN's /vmfs/devices/disks path."},
 		"Local disk":     {Kind: KindBoolean, Empty: "when vSphere does not report storage locality"},
-		"Path count":     {Kind: KindInteger, Note: "Total paths to this LUN; paths are aggregated into one row."},
+		"Path count":     {Kind: KindInteger, Note: "Every path to the LUN, including any beyond the eight Path columns."},
 		"Active paths":   {Kind: KindInteger},
 		"Standby paths":  {Kind: KindInteger},
 		"Dead paths":     {Kind: KindInteger},
 		"Disabled paths": {Kind: KindInteger},
 		"Working paths":  {Kind: KindInteger, Note: "Paths marked as working by the path-selection policy."},
-		"Host":           {Kind: KindText, Note: "ESXi host that owns the LUN paths."},
-		"Cluster":        {Kind: KindText, Empty: "for a standalone host"},
-		"Object ID":      {Kind: KindText, Note: "vCenter managed object reference of the host."},
+		"Object ID":      {Kind: KindText, Note: "vCenter managed object reference of the datastore, as RVTools writes it. vsfleet wrote the host's before inventory schema 35."},
 	},
+
 	licenseSheetName: {
 		"Name":            {Kind: KindText, Note: "License display name, e.g. a product edition or Evaluation Mode."},
 		"Key":             {Kind: KindText, Note: "Always the marker [redacted]. The license key is deliberately never stored or exported; the column exists only so positions match RVTools. A key-bearing export would need a separate, deliberately designed and validated gate, and none exists."},

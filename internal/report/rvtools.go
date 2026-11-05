@@ -68,10 +68,8 @@ var (
 	dvPortHeaders   = append([]string{"Port", "Switch", "Key", "Type", "Backing type", "# Ports", "VLAN", "Uplink", "Allow Promiscuous", "Mac Changes", "Forged Transmits", "Policy", "Notify Switch", "Rolling Order", "In Traffic Shaping", "Out Traffic Shaping", "Blocked", "Auto expand", "Active Uplink", "Standby Uplink", "Logical switch UUID", "Segment ID"}, dvsTailHeaders...)
 	vmkHeaders      = hostLeadHeaders("Port Group", "Device", "Mac Address", "DHCP", "IP Address", "IP 6 Address", "Subnet mask", "Gateway",
 		"IP 6 Gateway", "MTU", "TSO", "Netstack", "Service console")
-	multipathHeaders    = append([]string{"LUN", "Device path", "Policy", "Local disk", "Path count", "Active paths", "Standby paths", "Dead paths", "Disabled paths", "Working paths"}, hostTailHeaders...)
 	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "Effective Cpu", "TotalMemory", "Effective Memory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS default VM behavior", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	datastoreHeaders    = []string{"Name", "Datacenter", "Type", "Capacity MiB", "Provisioned MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "URL", "Object ID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Filename", "Size MiB (vmsn)", "Size MiB (total)", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	// fileInfoHeaders opens with the eight vFileInfo columns of an RVTools 4.8
 	// export, in RVTools' order and spelling (Friendly Path Name through VI SDK
@@ -892,17 +890,6 @@ func vmkRows(data assessment.ExportData) [][]any {
 	return rows
 }
 
-func multipathRows(data assessment.ExportData) [][]any {
-	rows := make([][]any, 0)
-	for _, item := range hostConfigResources(data) {
-		for _, multipath := range item.host.Multipaths {
-			row := []any{multipath.LUN, multipath.DevicePath, multipath.Policy, optionalBool(multipath.LocalDisk), multipath.PathCount, multipath.Active, multipath.Standby, multipath.Dead, multipath.Disabled, multipath.WorkingPaths}
-			rows = append(rows, append(row, hostTail(data, item.resource, item.host)...))
-		}
-	}
-	return rows
-}
-
 func clusterRows(data assessment.ExportData) [][]any {
 	rows := make([][]any, 0)
 	for _, r := range data.Resources {
@@ -996,26 +983,6 @@ func resourcePoolRow(data assessment.ExportData, r assessment.ResourceObservatio
 		a.MemLevel, a.MemShares, a.MemExpandable, configStatus,
 		id, datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context,
 	}
-}
-
-func datastoreRows(data assessment.ExportData) [][]any {
-	rows := make([][]any, 0)
-	for _, r := range data.Resources {
-		if r.Kind != "datastore" {
-			continue
-		}
-		var datastore vsphere.Datastore
-		if err := json.Unmarshal(r.Payload, &datastore); err != nil {
-			continue
-		}
-		capacity, free := float64(datastore.CapacityBytes)/miB, float64(datastore.FreeBytes)/miB
-		var freePercent any
-		if datastore.CapacityBytes > 0 {
-			freePercent = float64(datastore.FreeBytes) / float64(datastore.CapacityBytes) * 100
-		}
-		rows = append(rows, []any{nonempty(datastore.Name, r.Name), datastore.Datacenter, datastore.Type, capacity, datastoreProvisionedMiB(datastore), float64(datastore.UsedBytes()) / miB, free, freePercent, datastore.Accessible, datastore.Maintenance, optionalString(datastore.Backing.URL), nonempty(datastore.ID, r.ID), sdkServer(data, r.Context), r.VCenterID, r.Context})
-	}
-	return rows
 }
 
 // fileInfoRows writes one row per stored datastore file, datastores in

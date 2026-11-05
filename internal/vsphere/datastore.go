@@ -29,9 +29,10 @@ func (c *Client) listDatastores(ctx context.Context, idx *index) ([]Datastore, e
 // and independent of each other.
 func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool, inventory *FileInventoryOptions) ([]Datastore, error) {
 	var raw []mo.Datastore
-	if err := retrieve(ctx, c, idx.root, []string{"Datastore"}, []string{"Datastore"}, datastoreProps, &raw); err != nil {
+	if err := retrieve(ctx, c, idx.root, []string{"Datastore"}, []string{"Datastore"}, append(datastoreProps, datastoreDetailProps...), &raw); err != nil {
 		return nil, err
 	}
+	pods := c.storagePodSummaries(ctx, idx)
 	out := make([]Datastore, 0, len(raw))
 	refs := make([]types.ManagedObjectReference, 0, len(raw))
 	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
@@ -53,6 +54,7 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 			FreeBytes:     s.FreeSpace,
 			Maintenance:   s.MaintenanceMode,
 			Backing:       datastoreBacking(m),
+			Details:       datastoreDetails(idx, m, pods),
 		}
 		if s.Accessible {
 			// vSphere reports uncommitted space only for an accessible

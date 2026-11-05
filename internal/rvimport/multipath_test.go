@@ -113,7 +113,13 @@ func TestSyntheticRVTools48Multipath(t *testing.T) {
 				if lun == "" {
 					lun = "naa.synthetic"
 				}
-				want := []vsphere.HostMultipath{{LUN: lun, DevicePath: "naa.synthetic", Policy: "FIXED", PathCount: 5, Active: 2, Standby: 1, Dead: 1, Disabled: 1}}
+				var paths []vsphere.HostMultipathPath
+				for _, i := range []int{1, 2, 3, 4, 8} {
+					name := fmt.Sprintf("vmhba0:C0:T0:L%d", i)
+					paths = append(paths, vsphere.HostMultipathPath{Name: name, Adapter: name, State: map[int]string{1: "active", 2: "standby", 3: "dead", 4: "disabled", 8: "ACTIVE"}[i]})
+				}
+				want := []vsphere.HostMultipath{{LUN: lun, DevicePath: "naa.synthetic", Policy: "FIXED", PathCount: 5, Active: 2, Standby: 1, Dead: 1, Disabled: 1,
+					Device: &vsphere.HostMultipathLUN{CanonicalName: "naa.synthetic", OperationalState: "ok", Paths: paths}}}
 				if !reflect.DeepEqual(host.Multipaths, want) {
 					t.Errorf("host %s multipaths = %+v, want %+v", host.ID, host.Multipaths, want)
 				}
@@ -144,11 +150,26 @@ func TestSyntheticRVTools48Multipath(t *testing.T) {
 	}
 }
 
-func TestMultipathAggregateExportRoundTrip(t *testing.T) {
+// vsfleet's own vMultiPath export imports back with the LUN's identity, the
+// paths as the workbook names them (by adapter) and the counts across every
+// path, beyond the eight path columns. The LUN is the nested lab's
+// local-esxi01 disk.
+func TestMultipathExportRoundTrip(t *testing.T) {
 	local := true
-	want := []vsphere.HostMultipath{{LUN: "Synthetic LUN", DevicePath: "/vmfs/devices/disks/naa.synthetic", Policy: "VMW_PSP_RR", LocalDisk: &local, PathCount: 12, Active: 8, Standby: 2, Dead: 1, Disabled: 1, WorkingPaths: 7}}
+	depth, level := int32(31), int32(5)
+	const disk = "t10.ATA_____QEMU_HARDDISK___________________________esxi01local_________"
+	live := vsphere.HostMultipath{LUN: "Local ATA Disk (" + disk + ")", DevicePath: "/vmfs/devices/disks/" + disk, Policy: "VMW_PSP_RR", LocalDisk: &local,
+		PathCount: 12, Active: 8, Standby: 2, Dead: 1, Disabled: 1, WorkingPaths: 7,
+		Device: &vsphere.HostMultipathLUN{CanonicalName: disk, OperationalState: "ok", VStorageSupport: "vStorageUnsupported", QueueDepth: &depth, Vendor: "ATA     ", Model: "QEMU HARDDISK   ",
+			Revision: "2.5+", SCSILevel: &level, Serial: "esxi01local         ", UUID: "01000000006573786930316c6f63616c20202020202020202051454d552048",
+			Paths: []vsphere.HostMultipathPath{{Name: "vmhba0:C0:T2:L0", Adapter: "vmhba0", State: "active"}, {Name: "vmhba1:C0:T2:L0", Adapter: "vmhba1", State: "dead"}}}}
+	want := live
+	device := *live.Device
+	device.Paths = []vsphere.HostMultipathPath{{Name: "vmhba0", Adapter: "vmhba0", State: "active"}, {Name: "vmhba1", Adapter: "vmhba1", State: "dead"}}
+	want.Device = &device
 	path := writeFixtureWorkbook(t, func(data *assessment.ExportData) {
-		editHost(t, data, "host-a1", func(host *vsphere.Host) { host.Multipaths = want })
+		editHost(t, data, "host-a1", func(host *vsphere.Host) { host.Multipaths = []vsphere.HostMultipath{live} })
+		editDatastore(t, data, "ds-a1", func(d *vsphere.Datastore) { d.Backing.Extents = []string{disk} })
 	})
 	_, run, store := importFixture(t, openFixture(t, path), Options{})
 	resources, err := store.Resources(context.Background(), run.ID, kindHost)
@@ -163,12 +184,12 @@ func TestMultipathAggregateExportRoundTrip(t *testing.T) {
 		}
 		if host.ID == "host-a1" {
 			found = true
-			if !reflect.DeepEqual(host.Multipaths, want) {
-				t.Errorf("aggregate multipaths = %+v, want %+v", host.Multipaths, want)
+			if len(host.Multipaths) != 1 || !reflect.DeepEqual(host.Multipaths[0], want) || !reflect.DeepEqual(*host.Multipaths[0].Device, device) {
+				t.Errorf("multipaths = %+v (device %+v), want %+v (device %+v)", host.Multipaths, host.Multipaths[0].Device, want, device)
 			}
 		}
 	}
 	if !found {
-		t.Fatal("aggregate host was not persisted")
+		t.Fatal("host was not persisted")
 	}
 }

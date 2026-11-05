@@ -328,6 +328,7 @@ func mapHostMultipaths(storage *types.HostStorageDeviceInfo, info *types.HostMul
 			luns[lun.CanonicalName] = evidence
 		}
 	}
+	adapters := hbaDevices(storage)
 	out := make([]HostMultipath, 0, len(info.Lun))
 	for _, value := range info.Lun {
 		resolved := luns[value.Lun]
@@ -346,6 +347,7 @@ func mapHostMultipaths(storage *types.HostStorageDeviceInfo, info *types.HostMul
 			Policy:     multipathPolicy(value.Policy),
 			LocalDisk:  resolved.localDisk,
 			PathCount:  len(value.Path),
+			Device:     multipathLUN(lun, value.Path, adapters),
 		}
 		for _, path := range value.Path {
 			state := path.State

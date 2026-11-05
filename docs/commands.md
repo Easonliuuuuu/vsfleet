@@ -244,7 +244,7 @@ is given; a workbook is never written to a terminal.
 <span id="compatibility-report"></span>
 
 `vsfleet explain rvtools[.<sheet>]` describes every worksheet and column the
-export writes, offline. See [interoperability](exports.md#rvtools-file-interoperability).
+export writes, and the RVTools columns it leaves out with the reason, offline. See [interoperability](exports.md#rvtools-file-interoperability).
 
 The database is `--db`, else `VSFLEET_DB`, else
 `<user-config-dir>/vsfleet/history.db`.

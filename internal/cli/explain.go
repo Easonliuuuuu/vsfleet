@@ -76,8 +76,9 @@ space: 'vm.In Use MiB'.
 
 "rvtools" documents the whole export profile, and "rvtools.SHEET" one
 worksheet. That includes observed differences from RVTools in shared
-columns; it does not describe the complete RVTools schema. Reads no
-configuration, opens no keyring, and contacts no vCenter.`),
+columns, and the RVTools columns and worksheets vsfleet leaves out on
+purpose, each with the reason. Reads no configuration, opens no keyring,
+and contacts no vCenter.`),
 		Example: `  # What vsfleet reports for VMs
   vsfleet explain vm
 
@@ -97,6 +98,7 @@ configuration, opens no keyring, and contacts no vCenter.`),
 				return err
 			}
 			if strings.EqualFold(resource, rvtoolsResource) {
+				profile = append(profile, report.OmittedSheets()...)
 				if field != "" {
 					if profile, err = filterProfile(profile, field); err != nil {
 						return err

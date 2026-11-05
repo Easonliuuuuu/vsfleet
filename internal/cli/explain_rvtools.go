@@ -33,7 +33,11 @@ func printCompatibilityProfile(a *App, profile []report.SheetSpec) {
 		if spec.Compatible {
 			origin = "RVTools-named layout"
 		}
-		fmt.Fprintf(out, "%s  (%d columns, %s, from %s)\n", spec.Name, len(spec.Columns), origin, spec.DerivesFrom)
+		if spec.NotWritten {
+			fmt.Fprintf(out, "%s  (RVTools worksheet, not written)\n", spec.Name)
+		} else {
+			fmt.Fprintf(out, "%s  (%d columns, %s, from %s)\n", spec.Name, len(spec.Columns), origin, spec.DerivesFrom)
+		}
 		if spec.Note != "" {
 			for _, line := range wrapText(spec.Note, 76) {
 				fmt.Fprintf(out, "  %s\n", line)
@@ -48,6 +52,34 @@ func printCompatibilityProfile(a *App, profile []report.SheetSpec) {
 		for _, col := range spec.Columns {
 			printColumnSpec(out, col)
 		}
+		if len(spec.Columns) > 0 && len(spec.Omitted) > 0 {
+			fmt.Fprintln(out)
+		}
+		printOmitted(out, spec.Omitted)
+	}
+}
+
+// printOmitted writes the RVTools columns a worksheet leaves out, grouping
+// consecutive columns that share a reason so the usage figures read as one
+// list rather than thirty repeated paragraphs.
+func printOmitted(out io.Writer, omitted []report.OmittedColumn) {
+	if len(omitted) == 0 {
+		return
+	}
+	fmt.Fprintln(out, "  Left out:")
+	for i := 0; i < len(omitted); {
+		j := i
+		var names []string
+		for ; j < len(omitted) && omitted[j].Reason == omitted[i].Reason; j++ {
+			names = append(names, omitted[j].Name)
+		}
+		for _, line := range wrapNames(names, 74) {
+			fmt.Fprintf(out, "  %s\n", line)
+		}
+		for _, line := range wrapText(omitted[i].Reason, 72) {
+			fmt.Fprintf(out, "      %s\n", line)
+		}
+		i = j
 	}
 }
 
@@ -88,6 +120,29 @@ func wrapText(s string, width int) []string {
 			continue
 		}
 		line += " " + word
+	}
+	return append(lines, line)
+}
+
+// wrapNames joins column names with ", " into lines of at most width
+// characters, breaking only between names, since a column name such as
+// "CPU reservationUsedForVm" holds a space of its own.
+func wrapNames(names []string, width int) []string {
+	var lines []string
+	line := ""
+	for i, name := range names {
+		item := name
+		if i < len(names)-1 {
+			item += ","
+		}
+		if line != "" && len(line)+1+len(item) > width {
+			lines = append(lines, line)
+			line = ""
+		}
+		if line != "" {
+			line += " "
+		}
+		line += item
 	}
 	return append(lines, line)
 }

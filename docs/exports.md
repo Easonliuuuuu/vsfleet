@@ -30,7 +30,10 @@ vsfleet adds `vsfleetCoverage` and [`vsfleetPerformance`](performance.md#in-repo
 Opt-in sheets are `vLicense` ([licenses](licensing.md), keys redacted),
 `vsfleetMetadata` ([metadata](metadata.md#workbook-sheet-and-sharing-profiles))
 and the [sharing profiles](sharing.md). `vsfleet explain rvtools` lists every
-column's type, unit, and when it is left empty.
+column's type, unit, and when it is left empty, and every RVTools column vsfleet
+leaves out on purpose, with the reason: mostly live usage figures, which
+change on every capture, and RVTools' own bookkeeping. RVTools' `vMetaData`
+sheet is not written.
 
 `vsfleetCoverage` records, for every sheet and context, whether collection
 succeeded, how many rows it has, and why it is incomplete. An empty sheet
@@ -51,7 +54,8 @@ Notes on specific sheets:
   VMs and VMs without running Tools have no rows. `Disk Key` joins them to
   `vDisk` on vSphere 7.0 and later.
 - **`vRP`**: resource pools, then vApps, with their configured CPU and memory
-  allocation. Volatile usage figures are not included.
+  allocation. `# VMs` and `# vCPUs` count powered-on VMs, as RVTools does.
+  Volatile usage figures are not included.
 - **`vHost`**: density columns (`# VMs`, `# vCPUs`, `vRAM`, per-core ratios)
   count powered-on VMs only, as RVTools does. `Certificate Status` is not
   written, and neither is `Console`, the service console memory of ESX

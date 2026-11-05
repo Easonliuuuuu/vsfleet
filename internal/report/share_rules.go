@@ -178,11 +178,12 @@ var columnRules = map[string]colRule{
 	"Failover Level": keep(), "AdmissionControlEnabled": keep(), "Host monitoring": keep(), "HB Datastore Candidate Policy": keep(),
 	"Isolation Response": keep(), "Restart Priority": keep(), "Cluster Settings": keep(), "Max Failures": keep(),
 	"Max Failure Window": keep(), "Failure Interval": keep(), "Min Up Time": keep(), "VM Monitoring": keep(),
-	"DRS vmotion rate": keep(), "DPM enabled": keep(), "DPM default behavior": keep(), "DPM Host Power Action Rate": keep(), "Resource pool": pathRule, "VMs": keep(), "vCPUs": keep(),
+	"DRS vmotion rate": keep(), "DPM enabled": keep(), "DPM default behavior": keep(), "DPM Host Power Action Rate": keep(), "Resource pool": pathRule, "vCPUs": keep(),
 	"CPU limit": keep(), "CPU overheadLimit": keep(), "CPU reservation": keep(), "CPU level": keep(), "CPU shares": keep(),
 	"CPU expandableReservation": keep(), "Mem Configured": keep(), "Mem limit": keep(), "Mem overheadLimit": keep(),
 	"Mem reservation": keep(), "Mem level": keep(), "Mem shares": keep(), "Mem expandableReservation": keep(),
 	"Config status": keep(), "Accessible": keep(), "Maintenance mode": keep(), "URL": id(kindID),
+	"Resource Pool name": name(kindName), "Resource Pool path": pathRule,
 
 	// vFileInfo.
 	"Friendly Path Name": pathRule, "File Name": pathRule, "File Type": keep(), "File Size in bytes": keep(),

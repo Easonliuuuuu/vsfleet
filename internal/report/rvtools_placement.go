@@ -21,74 +21,89 @@ type vmPlacement struct {
 
 type placementKey struct{ context, vm string }
 
-// vmPlacements indexes the resource pool and vApp collections by member VM.
-// A VM missing from the index has no recorded placement: a template, a run
-// that did not collect pools or vApps, or a vApp whose parent pool cannot be
-// identified unambiguously.
-func vmPlacements(data assessment.ExportData) map[placementKey]vmPlacement {
-	type ctxPool struct {
-		context string
-		pool    vsphere.ResourcePool
-	}
-	type ctxVApp struct {
-		context string
-		vapp    vsphere.VApp
-	}
-	var pools []ctxPool
-	var vapps []ctxVApp
+// poolHierarchy is the resource pools and vApps of a run, each with its
+// context.
+type poolHierarchy struct {
+	pools []ctxPool
+	vapps []ctxVApp
+}
+
+type ctxPool struct {
+	context string
+	pool    vsphere.ResourcePool
+}
+
+type ctxVApp struct {
+	context string
+	vapp    vsphere.VApp
+}
+
+func newPoolHierarchy(data assessment.ExportData) poolHierarchy {
+	var h poolHierarchy
 	for _, r := range data.Resources {
 		switch r.Kind {
 		case "resourcepool":
 			var pool vsphere.ResourcePool
 			if json.Unmarshal(r.Payload, &pool) == nil {
-				pools = append(pools, ctxPool{r.Context, pool})
+				h.pools = append(h.pools, ctxPool{r.Context, pool})
 			}
 		case "vapp":
 			var vapp vsphere.VApp
 			if json.Unmarshal(r.Payload, &vapp) == nil {
-				vapps = append(vapps, ctxVApp{r.Context, vapp})
+				h.vapps = append(h.vapps, ctxVApp{r.Context, vapp})
 			}
 		}
 	}
+	return h
+}
 
-	// vappPath resolves a vApp below its parent pool or parent vApp. Parents
-	// are recorded by name, so a parent matches only when exactly one
-	// candidate in the same context, datacenter and compute resource has
-	// that name; anything else is left unknown rather than guessed.
-	var vappPath func(context string, v vsphere.VApp, depth int) string
-	vappPath = func(context string, v vsphere.VApp, depth int) string {
-		if depth > 8 {
-			return ""
-		}
-		parent, matches := "", 0
-		if v.ParentVApp != "" {
-			for _, c := range vapps {
-				if c.context == context && c.vapp.Name == v.ParentVApp && c.vapp.Datacenter == v.Datacenter && c.vapp.ComputeResource == v.ComputeResource {
-					parent, matches = vappPath(context, c.vapp, depth+1), matches+1
-				}
-			}
-		} else {
-			for _, c := range pools {
-				if c.context == context && c.pool.Name == v.ParentContainer && c.pool.Datacenter == v.Datacenter && strings.Contains(c.pool.Path+"/", "/"+v.ComputeResource+"/") {
-					parent, matches = rvtoolsPoolPath(c.pool), matches+1
-				}
-			}
-		}
-		if matches != 1 || parent == "" {
-			return ""
-		}
-		return parent + "/" + v.Name
+// vappPath resolves a vApp's RVTools path below its parent pool or parent
+// vApp. Parents are recorded by name, so a parent matches only when exactly
+// one candidate in the same context, datacenter and compute resource has
+// that name; anything else is left unknown rather than guessed.
+func (h poolHierarchy) vappPath(context string, v vsphere.VApp) string {
+	return h.vappPathAt(context, v, 0)
+}
+
+func (h poolHierarchy) vappPathAt(context string, v vsphere.VApp, depth int) string {
+	if depth > 8 {
+		return ""
 	}
+	parent, matches := "", 0
+	if v.ParentVApp != "" {
+		for _, c := range h.vapps {
+			if c.context == context && c.vapp.Name == v.ParentVApp && c.vapp.Datacenter == v.Datacenter && c.vapp.ComputeResource == v.ComputeResource {
+				parent, matches = h.vappPathAt(context, c.vapp, depth+1), matches+1
+			}
+		}
+	} else {
+		for _, c := range h.pools {
+			if c.context == context && c.pool.Name == v.ParentContainer && c.pool.Datacenter == v.Datacenter && strings.Contains(c.pool.Path+"/", "/"+v.ComputeResource+"/") {
+				parent, matches = rvtoolsPoolPath(c.pool), matches+1
+			}
+		}
+	}
+	if matches != 1 || parent == "" {
+		return ""
+	}
+	return parent + "/" + v.Name
+}
 
+// vmPlacements indexes the resource pool and vApp collections by member VM.
+// A VM missing from the index has no recorded placement: a template, a run
+// that did not collect pools or vApps, or a vApp whose parent pool cannot be
+// identified unambiguously.
+func vmPlacements(data assessment.ExportData) map[placementKey]vmPlacement {
+	h := newPoolHierarchy(data)
 	out := make(map[placementKey]vmPlacement)
-	for _, c := range pools {
+	for _, c := range h.pools {
 		path := rvtoolsPoolPath(c.pool)
 		for _, ref := range c.pool.VMRefs {
 			out[placementKey{c.context, ref}] = vmPlacement{resourcePool: path}
 		}
 	}
-	for _, c := range vapps {
-		path := vappPath(c.context, c.vapp, 0)
+	for _, c := range h.vapps {
+		path := h.vappPath(c.context, c.vapp)
 		for _, ref := range c.vapp.DirectVMRefs {
 			out[placementKey{c.context, strings.TrimPrefix(ref, "VirtualMachine:")}] = vmPlacement{resourcePool: path, vApp: c.vapp.Name}
 		}

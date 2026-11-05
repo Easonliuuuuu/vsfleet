@@ -94,7 +94,7 @@ const InventoryHostMountSchema = 21
 
 // InventoryDatastoreProvisionedSchema is the first inventory schema that
 // records datastore uncommitted space.
-const InventoryDatastoreProvisionedSchema = 31
+const InventoryDatastoreProvisionedSchema = 33
 
 // InventoryNetworkMissingSchema is the first inventory schema that marks VM
 // NICs backed by a deleted network.

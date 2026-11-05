@@ -33,6 +33,8 @@ func TestDatastoreOvercommitted(t *testing.T) {
 		{"exactly full", assessment.CurrentInventorySchemaVersion, datastore(bytes(40)), false, "pass"},
 		{"uncommitted not read", assessment.CurrentInventorySchemaVersion, datastore(nil), false, "pass"},
 		{"capture predates the field", "30", datastore(bytes(80)), false, "unknown"},
+		// Schemas 31 and 32 record VM columns, not datastore uncommitted space.
+		{"capture of schema 32", "32", datastore(nil), false, "unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			report := Evaluate(data(tc.schema, tc.datastore), Options{})

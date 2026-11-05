@@ -90,32 +90,53 @@ func lacpGroupsFromRow(t sheetTable, row []string) []vsphere.DVSLACPGroup {
 }
 
 // applyDVPortPolicyCells reads the dvPort columns inventory schema 36 added.
-// The failure criteria and overrides are each left nil when the workbook
-// has none of their columns.
+// The failure criteria and the overrides are each left nil when all their
+// cells are blank, as they are for a port group captured before schema 36
+// or a workbook without the columns: a blank is not FALSE or 0.
 func applyDVPortPolicyCells(t sheetTable, row []string, p *vsphere.DVPortGroup) {
 	p.ReversePolicy = parseOptBool(t.cell(row, "Reverse Policy"))
 	p.DVSTrafficShaping = dvsTrafficShapingFromRow(t, row)
-	if t.has("Check Speed") {
+	failure := cells(t, row, "Check Speed", "Speed", "Check Duplex", "Full Duplex", "Check Error %", "Percentage", "Check Beacon")
+	if anyFilled(failure) {
 		p.FailureCriteria = &vsphere.DVSFailureCriteria{
-			CheckSpeed:        t.cell(row, "Check Speed"),
-			SpeedMbps:         int32(parseInt(t.cell(row, "Speed"))),
-			CheckDuplex:       parseBool(t.cell(row, "Check Duplex")),
-			FullDuplex:        parseBool(t.cell(row, "Full Duplex")),
-			CheckErrorPercent: parseBool(t.cell(row, "Check Error %")),
-			ErrorPercent:      int32(parseInt(t.cell(row, "Percentage"))),
-			CheckBeacon:       parseBool(t.cell(row, "Check Beacon")),
+			CheckSpeed:        failure[0],
+			SpeedMbps:         int32(parseInt(failure[1])),
+			CheckDuplex:       parseBool(failure[2]),
+			FullDuplex:        parseBool(failure[3]),
+			CheckErrorPercent: parseBool(failure[4]),
+			ErrorPercent:      int32(parseInt(failure[5])),
+			CheckBeacon:       parseBool(failure[6]),
 		}
 	}
-	if t.has("Block Override") {
+	overrides := cells(t, row, "Block Override", "Shaping Override", "Vendor Config Override", "Sec. Policy Override", "Teaming Override",
+		"Vlan Override", "Live Port Moving", "Config Reset")
+	if anyFilled(overrides) {
 		p.Overrides = &vsphere.DVPortGroupOverrides{
-			Blocked:                     parseBool(t.cell(row, "Block Override")),
-			Shaping:                     parseBool(t.cell(row, "Shaping Override")),
-			VendorConfig:                parseBool(t.cell(row, "Vendor Config Override")),
-			SecurityPolicy:              parseBool(t.cell(row, "Sec. Policy Override")),
-			UplinkTeaming:               parseBool(t.cell(row, "Teaming Override")),
-			VLAN:                        parseBool(t.cell(row, "Vlan Override")),
-			LivePortMoving:              parseBool(t.cell(row, "Live Port Moving")),
-			PortConfigResetAtDisconnect: parseBool(t.cell(row, "Config Reset")),
+			Blocked:                     parseBool(overrides[0]),
+			Shaping:                     parseBool(overrides[1]),
+			VendorConfig:                parseBool(overrides[2]),
+			SecurityPolicy:              parseBool(overrides[3]),
+			UplinkTeaming:               parseBool(overrides[4]),
+			VLAN:                        parseBool(overrides[5]),
+			LivePortMoving:              parseBool(overrides[6]),
+			PortConfigResetAtDisconnect: parseBool(overrides[7]),
 		}
 	}
+}
+
+func cells(t sheetTable, row []string, headers ...string) []string {
+	out := make([]string, len(headers))
+	for i, h := range headers {
+		out[i] = t.cell(row, h)
+	}
+	return out
+}
+
+func anyFilled(values []string) bool {
+	for _, v := range values {
+		if v != "" {
+			return true
+		}
+	}
+	return false
 }

@@ -48,6 +48,7 @@ func TestHostNetworkChanges(t *testing.T) {
 			h.VSwitches[0].TeamingPolicy, h.VSwitches[0].Uplinks = "failover_explicit", []string{"vmnic0", "vmnic2"}
 			h.PortGroups[0].Failback = &no
 		}), false, []string{"vswitches[vSwitch0].teaming_policy", "vswitches[vSwitch0].uplinks", "port_groups[VM Network].failback"}},
+		{"last uplink removed", edit(func(h *vsphere.Host) { h.VSwitches[0].Uplinks = nil }), false, []string{"vswitches[vSwitch0].uplinks"}},
 		{"free ports without runtime fields", edit(func(h *vsphere.Host) { h.VSwitches[0].FreePorts = 1600 }), false, nil},
 		{"free ports with runtime fields", edit(func(h *vsphere.Host) { h.VSwitches[0].FreePorts = 1600 }), true, []string{"vswitches[vSwitch0].free_ports"}},
 		// A capture predating inventory schema 36 recorded no policy.
@@ -67,7 +68,8 @@ func TestDVSwitchChanges(t *testing.T) {
 	yes, no, avg := true, false, int64(100000)
 	vms := 12
 	shaping := vsphere.DVSTrafficShaping{IngressShaping: &no, IngressAverageKbps: &avg}
-	port := vsphere.DVPortGroup{ID: "dvportgroup-1007", Key: "dvportgroup-1007", Name: "dvpg-mgmt", VLAN: "10", ReversePolicy: &yes, DVSTrafficShaping: shaping,
+	port := vsphere.DVPortGroup{ID: "dvportgroup-1007", Key: "dvportgroup-1007", Name: "dvpg-mgmt", VLAN: "10", StandbyUplinks: []string{"Uplink 2"},
+		ReversePolicy: &yes, DVSTrafficShaping: shaping,
 		FailureCriteria: &vsphere.DVSFailureCriteria{CheckSpeed: "minimum", SpeedMbps: 10}, Overrides: &vsphere.DVPortGroupOverrides{Blocked: true}}
 	lab := vsphere.DVSwitch{ID: "dvs-1002", Name: "dvSwitch-Lab", ProductName: "DVS", VMCount: &vms, DVSTrafficShaping: shaping,
 		PortGroups: []vsphere.DVPortGroup{port}}
@@ -91,6 +93,11 @@ func TestDVSwitchChanges(t *testing.T) {
 			sw.PortGroups[0].FailureCriteria = &vsphere.DVSFailureCriteria{CheckSpeed: "minimum", SpeedMbps: 100}
 			sw.PortGroups[0].Overrides = &vsphere.DVPortGroupOverrides{Blocked: false}
 		}), false, []string{"settings.lacp_groups", "port_groups[dvpg-mgmt].failure_criteria.speed_mbps", "port_groups[dvpg-mgmt].overrides.blocked", "port_groups[dvpg-mgmt].vlan"}},
+		// An empty VLAN or uplink list is omitted from the capture, like a
+		// field that was never read, but it is a change all the same.
+		{"VLAN and standby uplinks removed", edit(func(sw *vsphere.DVSwitch) {
+			sw.PortGroups[0].VLAN, sw.PortGroups[0].StandbyUplinks = "", nil
+		}), false, []string{"port_groups[dvpg-mgmt].standby_uplinks", "port_groups[dvpg-mgmt].vlan"}},
 		{"port group added", edit(func(sw *vsphere.DVSwitch) {
 			sw.PortGroups = append(sw.PortGroups, vsphere.DVPortGroup{Key: "dvportgroup-1005", Name: "dvpg-vlan100"})
 		}), false, []string{"port_groups"}},

@@ -108,3 +108,25 @@ func TestOlderDVSwitchContactColumnsAreRead(t *testing.T) {
 		t.Errorf("contact = %q, detail = %q", sw.Contact, sw.ContactDetail)
 	}
 }
+
+// A port group captured before inventory schema 36 is exported with blank
+// failure-detection and override cells, which read back as not recorded.
+func TestBlankDVPortPolicyCellsStayUnrecorded(t *testing.T) {
+	path := writeFixtureWorkbook(t, func(data *assessment.ExportData) {
+		data.Resources = append(data.Resources, dvsResource(t, "alpha", "vc-alpha-uuid", vsphere.DVSwitch{
+			Location: vsphere.Location{Context: "alpha", Datacenter: "dc-a"}, ID: "dvs-1002", Name: "dvSwitch-Lab",
+			PortGroups: []vsphere.DVPortGroup{{ID: "dvportgroup-1007", Key: "dvportgroup-1007", Name: "dvpg-mgmt", TeamingPolicy: "loadbalance_srcid"}},
+		}))
+	})
+	result, err := Parse(openFixture(t, path), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sw := importedDVSwitch(t, result)
+	if len(sw.PortGroups) != 1 {
+		t.Fatalf("dvPort rows = %+v", sw.PortGroups)
+	}
+	if p := sw.PortGroups[0]; p.FailureCriteria != nil || p.Overrides != nil || p.ReversePolicy != nil {
+		t.Errorf("failure criteria %+v, overrides %+v, reverse policy %v; want all unrecorded", p.FailureCriteria, p.Overrides, p.ReversePolicy)
+	}
+}

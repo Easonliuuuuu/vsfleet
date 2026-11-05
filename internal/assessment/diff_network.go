@@ -30,7 +30,7 @@ func hostNetworkChanges(before, after json.RawMessage, includeRuntime bool) []Fi
 				sw.FreePorts = 0
 			}
 			return sw
-		})
+		}, "uplinks")
 	return append(out, namedChanges("port_groups", byName(a.PortGroups, hostPortGroupName), byName(b.PortGroups, hostPortGroupName),
 		func(p vsphere.HostPortGroup) any {
 			p.Key = ""
@@ -65,8 +65,14 @@ func dvSwitchChanges(before, after json.RawMessage, includeRuntime bool) []Field
 	if before, after := sortedKeyList(groupsA), sortedKeyList(groupsB); before != after {
 		out = append(out, FieldChange{Field: "port_groups", Before: before, After: after})
 	}
-	return append(out, namedChanges("port_groups", groupsA, groupsB, func(p vsphere.DVPortGroup) any { return p })...)
+	return append(out, namedChanges("port_groups", groupsA, groupsB, func(p vsphere.DVPortGroup) any { return p }, dvPortGroupAlwaysRecorded...)...)
 }
+
+// dvPortGroupAlwaysRecorded are the port group fields every capture has
+// recorded, so an empty one is a value, such as an untagged VLAN or no
+// standby uplinks, not a field the capture did not read.
+var dvPortGroupAlwaysRecorded = []string{"type", "backing_type", "vlan", "teaming_policy", "active_uplinks", "standby_uplinks",
+	"logical_switch_uuid", "segment_id"}
 
 // dvSwitchSettings are the distributed switch settings dvSwitchChanges
 // compares beyond the fields every resource diff compares.
@@ -108,8 +114,19 @@ func sortedKeyList[T any](m map[string]T) string {
 }
 
 // namedChanges compares the items both sides have under the same name,
-// field by field, as "<prefix>[<name>].<field>".
-func namedChanges[T any](prefix string, a, b map[string]T, comparable func(T) any) []FieldChange {
+// field by field, as "<prefix>[<name>].<field>". A field is compared only
+// when both sides recorded it, except the always fields, whose omitted empty
+// value is compared as empty.
+func namedChanges[T any](prefix string, a, b map[string]T, comparable func(T) any, always ...string) []FieldChange {
+	fields := func(item T) map[string]any {
+		m := joinedLists(comparable(item))
+		for _, k := range always {
+			if _, ok := m[k]; !ok {
+				m[k] = ""
+			}
+		}
+		return m
+	}
 	names := make([]string, 0, len(a))
 	for name := range a {
 		if _, ok := b[name]; ok {
@@ -119,7 +136,7 @@ func namedChanges[T any](prefix string, a, b map[string]T, comparable func(T) an
 	sort.Strings(names)
 	var out []FieldChange
 	for _, name := range names {
-		out = append(out, recordedFieldChanges(prefix+"["+name+"]", joinedLists(comparable(a[name])), joinedLists(comparable(b[name])))...)
+		out = append(out, recordedFieldChanges(prefix+"["+name+"]", fields(a[name]), fields(b[name]))...)
 	}
 	return out
 }

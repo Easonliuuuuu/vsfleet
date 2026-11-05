@@ -179,7 +179,7 @@ func openDB(path string) (*sql.DB, error) {
 }
 
 // currentSchemaVersion is the ledger schema this build writes.
-const currentSchemaVersion = 8
+const currentSchemaVersion = 9
 
 func (s *Store) migrate(ctx context.Context) error {
 	var version int
@@ -205,7 +205,44 @@ func (s *Store) migrate(ctx context.Context) error {
 			return err
 		}
 	}
-	return s.migrateV8(ctx)
+	if version < 8 {
+		if err := s.migrateV8(ctx); err != nil {
+			return err
+		}
+	}
+	return s.migrateV9(ctx)
+}
+
+// migrateV9 adds each snapshot's state file and sizes. The columns are
+// nullable: snapshots written before it have no sizes, which readers treat as
+// not recorded rather than as zero. It is safe to repeat.
+func (s *Store) migrateV9(ctx context.Context) error {
+	var present int
+	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM pragma_table_info('snapshot_observations') WHERE name='data_bytes'`).Scan(&present); err != nil {
+		return fmt.Errorf("inspect history database for v9: %w", err)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin history v9 migration: %w", err)
+	}
+	stmts := []string{`PRAGMA user_version = 9`}
+	if present == 0 {
+		stmts = append([]string{
+			`ALTER TABLE snapshot_observations ADD COLUMN filename TEXT NOT NULL DEFAULT ''`,
+			`ALTER TABLE snapshot_observations ADD COLUMN data_bytes INTEGER`,
+			`ALTER TABLE snapshot_observations ADD COLUMN total_bytes INTEGER`,
+		}, stmts...)
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("migrate history database to v9: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit history v9 migration: %w", err)
+	}
+	return nil
 }
 
 // migrateV8 adds the vCenter clock offset measured when a context was
@@ -958,7 +995,7 @@ func (s *Store) saveContext(ctx context.Context, runID int64, result ContextResu
 			return err
 		}
 		for _, snap := range vm.VM.Snapshots {
-			_, err = tx.ExecContext(ctx, `INSERT INTO snapshot_observations(vm_observation_id,moref,numeric_id,parent_moref,name,description,create_time,power_state,quiesced,current_snapshot) VALUES(?,?,?,?,?,?,?,?,?,?)`, vmID, snap.ID, snap.NumericID, snap.ParentID, snap.Name, snap.Description, snap.CreateTime.UnixMilli(), snap.PowerState, boolInt(snap.Quiesced), boolInt(snap.Current))
+			_, err = tx.ExecContext(ctx, `INSERT INTO snapshot_observations(vm_observation_id,moref,numeric_id,parent_moref,name,description,create_time,power_state,quiesced,current_snapshot,filename,data_bytes,total_bytes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, vmID, snap.ID, snap.NumericID, snap.ParentID, snap.Name, snap.Description, snap.CreateTime.UnixMilli(), snap.PowerState, boolInt(snap.Quiesced), boolInt(snap.Current), snap.Filename, snap.DataBytes, snap.TotalBytes)
 			if err != nil {
 				_ = tx.Rollback()
 				return err
@@ -1747,21 +1784,18 @@ func (s *Store) Resources(ctx context.Context, runID int64, kind string) ([]Reso
 }
 
 func (s *Store) loadSnapshots(ctx context.Context, vmID int64) ([]vsphere.VMSnapshot, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT moref,numeric_id,parent_moref,name,description,create_time,power_state,quiesced,current_snapshot FROM snapshot_observations WHERE vm_observation_id=?`, vmID)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+snapshotColumns+` FROM snapshot_observations WHERE vm_observation_id=?`, vmID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []vsphere.VMSnapshot
 	for rows.Next() {
-		var n int32
-		var moref, parent, name, desc, power string
-		var ct int64
-		var q, cur int
-		if err := rows.Scan(&moref, &n, &parent, &name, &desc, &ct, &power, &q, &cur); err != nil {
+		snap, err := scanSnapshot(rows)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, vsphere.VMSnapshot{ID: moref, NumericID: n, ParentID: parent, Name: name, Description: desc, CreateTime: time.UnixMilli(ct).UTC(), PowerState: power, Quiesced: q != 0, Current: cur != 0})
+		out = append(out, snap)
 	}
 	return out, rows.Err()
 }

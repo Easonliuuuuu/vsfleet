@@ -37,6 +37,20 @@ type VMSettings struct {
 	// SRMPlaceholder reports a placeholder VM Site Recovery Manager keeps at
 	// the recovery site for a protected VM; nil before inventory schema 31.
 	SRMPlaceholder *bool `json:"srm_placeholder,omitempty"`
+	// The hot-plug, shares and Tools settings below are nil or empty before
+	// inventory schema 32. VNUMAOnCPUHotAdd is read on vCenter 8.0 Update 1
+	// and later.
+	CPUHotAdd         *bool  `json:"cpu_hot_add,omitempty"`
+	CPUHotRemove      *bool  `json:"cpu_hot_remove,omitempty"`
+	VNUMAOnCPUHotAdd  *bool  `json:"vnuma_on_cpu_hot_add,omitempty"`
+	MemoryHotAdd      *bool  `json:"memory_hot_add,omitempty"`
+	CPUShares         *int32 `json:"cpu_shares,omitempty"`
+	CPUSharesLevel    string `json:"cpu_shares_level,omitempty"`
+	MemoryShares      *int32 `json:"memory_shares,omitempty"`
+	MemorySharesLevel string `json:"memory_shares_level,omitempty"`
+	// ToolsUpgradePolicy is manual or upgradeAtPowerCycle.
+	ToolsUpgradePolicy string `json:"tools_upgrade_policy,omitempty"`
+	ToolsSyncTime      *bool  `json:"tools_sync_time,omitempty"`
 }
 
 // VMState is what changes with the VM's life rather than its configuration:
@@ -56,6 +70,16 @@ type VMState struct {
 	// GuestOSReported is the guest OS VMware Tools reports, which can differ
 	// from the one the configuration names (VM.GuestOS).
 	GuestOSReported string `json:"guest_os_reported,omitempty"`
+	// The guest operation states VMware Tools reports; nil before inventory
+	// schema 32 and for a template, which has no guest.
+	GuestKernelCrashed              *bool `json:"guest_kernel_crashed,omitempty"`
+	GuestOperationsReady            *bool `json:"guest_operations_ready,omitempty"`
+	InteractiveGuestOperationsReady *bool `json:"interactive_guest_operations_ready,omitempty"`
+	GuestStateChangeSupported       *bool `json:"guest_state_change_supported,omitempty"`
+	// ToolsRequiredVersion is the VMware Tools version the VM's host
+	// bundles, so it changes when the host is upgraded or the VM moves. It is
+	// read on vCenter 8.0 and later.
+	ToolsRequiredVersion string `json:"tools_required_version,omitempty"`
 }
 
 // The vCenter extension and managed-entity type Site Recovery Manager marks
@@ -90,6 +114,8 @@ var versionedVMProps = []struct {
 }{
 	{"7.0.2.0", "guest.customizationInfo"},
 	{"8.0.0.0", `config.extraConfig["disk.EnableUUID"]`},
+	{"8.0.0.0", `config.extraConfig["` + toolsRequiredVersionKey + `"]`},
+	{"8.0.0.1", "config.numaInfo"},
 	{"8.0.0.1", "config.rebootPowerOff"},
 	{"8.0.0.1", "config.vmOpNotificationTimeout"},
 	{"8.0.1.0", "config.fixedPassthruHotPlugEnabled"},
@@ -103,7 +129,7 @@ func propsForAPI(detail Detail, apiVersion string) []string {
 	if detail == DetailSummary {
 		return props
 	}
-	out := append(append([]string{}, props...), vmSettingsProps...)
+	out := append(append(append([]string{}, props...), vmSettingsProps...), vmSheetSettingsProps...)
 	for _, p := range versionedVMProps {
 		if apiAtLeast(apiVersion, p.since) {
 			out = append(out, p.path)
@@ -183,6 +209,7 @@ func vmSettings(m *mo.VirtualMachine, apiVersion string) *VMSettings {
 			break
 		}
 	}
+	applySheetSettings(s, cfg, apiVersion)
 	return s
 }
 
@@ -198,6 +225,7 @@ func vmState(m *mo.VirtualMachine) *VMState {
 	if cfg := m.Config; cfg != nil {
 		s.ChangeVersion = strings.TrimSpace(cfg.ChangeVersion)
 		s.RebootPowerOff = clonePtr(cfg.RebootPowerOff)
+		s.ToolsRequiredVersion = extraConfigString(cfg.ExtraConfig, toolsRequiredVersionKey)
 	}
 	if g := m.Guest; g != nil {
 		s.GuestDetailedData = strings.TrimSpace(g.GuestDetailedData)
@@ -205,6 +233,7 @@ func vmState(m *mo.VirtualMachine) *VMState {
 		if c := g.CustomizationInfo; c != nil {
 			s.CustomizationStatus = c.CustomizationStatus
 		}
+		applySheetState(s, g)
 	}
 	return s
 }

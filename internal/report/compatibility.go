@@ -191,6 +191,10 @@ const vmSettingsEmpty = "for a capture predating inventory schema 29, or when vS
 // vmRepeatedEmpty is when a column RVTools repeats on the VM sheets is empty.
 const vmRepeatedEmpty = "for a capture predating inventory schema 31"
 
+// vmSheetsEmpty is when a vCPU, vMemory, vTools, vUSB or vSnapshot column
+// added in inventory schema 32 is empty.
+const vmSheetsEmpty = "for a capture predating inventory schema 32"
+
 // vmFilesEmpty is when vInfo's storage and file columns are empty.
 const vmFilesEmpty = "for a capture predating inventory schema 28, or when vSphere did not return the value"
 
@@ -309,9 +313,20 @@ var sharedColumns = map[string]ColumnSpec{
 	"Tools Running Status": {Kind: KindText, Empty: "when running status was not reported or imported", Note: "vsfleet extension: GuestInfo.toolsRunningStatus, for example guestToolsRunning or guestToolsNotRunning. Installation status is never substituted for running status."},
 	"Tools Version":        {Kind: KindText, Empty: "for a capture predating inventory schema 3, or when vCenter reports no version"},
 	"Tools Version Status": {Kind: KindText, Empty: "for a capture predating inventory schema 3", Note: "e.g. guestToolsCurrent, guestToolsNeedUpgrade."},
+	"VM Version":           {Kind: KindInteger, Empty: "for a capture predating inventory schema 23", Note: "Virtual hardware version, the number HW version on vInfo carries."},
+	"Required Version": {Kind: KindText, Empty: vmSheetsEmpty + ", on vCenter before 8.0, or when the host records none",
+		Note: "The VMware Tools version the VM's host bundles (the vmware.tools.requiredversion advanced setting). It changes when the host is upgraded, so capture diff compares it only with --include-runtime."},
+	"Upgrade Policy":       {Kind: KindText, Empty: vmSheetsEmpty, Note: "manual or upgradeAtPowerCycle."},
+	"Sync time":            {Kind: KindBoolean, Empty: vmSheetsEmpty, Note: "Whether VMware Tools synchronises the guest clock with the host."},
+	"Kernel Crash state":   {Kind: KindBoolean, Empty: vmSheetsEmpty + ", or for a template", Note: "Whether VMware Tools reports that the guest kernel crashed."},
+	"Operation Ready":      {Kind: KindBoolean, Empty: vmSheetsEmpty + ", or for a template", Note: "Whether guest operations, such as running a program in the guest, are available now."},
+	"State change support": {Kind: KindBoolean, Empty: vmSheetsEmpty + ", or for a template", Note: "Whether the guest can be shut down or restarted through VMware Tools."},
+	"Interactive Guest":    {Kind: KindBoolean, Empty: vmSheetsEmpty + ", or for a template", Note: "Whether interactive guest operations, which need a logged-in user, are available now."},
 
 	// vDisk.
-	"Disk UUID":     {Kind: KindText, Empty: "when vSphere does not expose one"},
+	"Disk UUID": {Kind: KindText, Empty: "when vSphere does not expose one"},
+	"Disk Path": {Kind: KindText, Empty: "when VMware Tools maps no guest filesystem to the disk, which it does only on vSphere 7.0 and later",
+		Note: "The guest filesystems on the disk, as vPartition names them, joined with \", \"."},
 	"Disk Mode":     {Kind: KindText, Note: "e.g. persistent, independent_persistent."},
 	"Sharing mode":  {Kind: KindText, Empty: "when vSphere does not expose one"},
 	"Raw":           {Kind: KindBoolean, Note: "True for a raw device mapping."},
@@ -339,7 +354,6 @@ var sharedColumns = map[string]ColumnSpec{
 	"Connected":        {Kind: KindBoolean, Note: "Whether the NIC is connected now."},
 	"Starts Connected": {Kind: KindBoolean, Note: "Whether the NIC connects at power on."},
 	"Mac Address":      {Kind: KindText},
-	"Mac Address type": {Kind: KindText, Note: "e.g. assigned, manual."},
 	"IPv4 Address":     {Kind: KindText, Empty: "when VMware Tools reports none", Note: "Several addresses are joined with \", \" in one cell."},
 	"IPv6 Address":     {Kind: KindText, Empty: "when VMware Tools reports none", Note: "Several addresses are joined with \", \" in one cell."},
 	"Direct Path IO":   {Kind: KindBoolean},
@@ -515,10 +529,24 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 	"vCPU": {
 		"Reservation": {Kind: KindInteger, Unit: "MHz", Empty: vmConfigEmpty, Note: "CPU guaranteed to the VM."},
 		"Limit":       {Kind: KindInteger, Unit: "MHz", Empty: vmConfigEmpty, Note: "-1 means unlimited, as vSphere and RVTools write it."},
+		"Level":       {Kind: KindText, Empty: vmSheetsEmpty, Note: "CPU shares level: low, normal, high or custom."},
+		"Shares":      {Kind: KindInteger, Empty: vmSheetsEmpty, Note: "CPU shares value."},
+		"Hot Add":     {Kind: KindBoolean, Empty: vmSheetsEmpty, Note: "Whether vCPUs can be added while the VM runs."},
+		"Hot Remove":  {Kind: KindBoolean, Empty: vmSheetsEmpty, Note: "Whether vCPUs can be removed while the VM runs."},
+		"Numa Hotadd Exposed": {Kind: KindBoolean, Empty: vmSheetsEmpty + ", or on vCenter before 8.0 Update 1",
+			Note: "Whether the guest still sees a virtual NUMA topology with CPU hot add enabled."},
 	},
 	"vMemory": {
 		"Reservation": {Kind: KindInteger, Unit: "MiB", Empty: vmConfigEmpty, Note: "Memory guaranteed to the VM."},
 		"Limit":       {Kind: KindInteger, Unit: "MiB", Empty: vmConfigEmpty, Note: "-1 means unlimited, as vSphere and RVTools write it."},
+		"Level":       {Kind: KindText, Empty: vmSheetsEmpty, Note: "Memory shares level: low, normal, high or custom."},
+		"Shares":      {Kind: KindInteger, Empty: vmSheetsEmpty, Note: "Memory shares value."},
+		"Hot Add":     {Kind: KindBoolean, Empty: vmSheetsEmpty, Note: "Whether memory can be added while the VM runs."},
+	},
+	"vNetwork": {
+		"Switch": {Kind: KindText, Empty: "when the capture recorded no switch with the NIC's port group, such as an opaque network or one the account cannot see",
+			Note: "The standard or distributed switch of the NIC's port group."},
+		"Type": {Kind: KindText, Note: "MAC address type: assigned, generated or manual. vsfleet wrote it as Mac Address type before inventory schema 32."},
 	},
 	"vInfo": {
 		"Config status": {Kind: KindText, Empty: vmSettingsEmpty, Note: "vSphere configuration status colour: green, yellow, red or gray."},
@@ -606,6 +634,9 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Product ID":           {Kind: KindInteger, Empty: "when vSphere reports no product identifier"},
 		"Family":               {Kind: KindText, Empty: "when vSphere reports no device families", Note: "Multiple families are joined with comma-space."},
 		"Speed":                {Kind: KindText, Empty: "when vSphere reports no device speeds", Note: "Multiple speeds are joined with comma-space."},
+		"EHCI enabled":         {Kind: KindBoolean, Empty: vmSheetsEmpty + ", or for a USB 3 controller, which has no such setting", Note: "Whether the device's USB 2.0 controller has EHCI enabled."},
+		"Auto connect":         {Kind: KindBoolean, Empty: vmSheetsEmpty, Note: "Whether the device's USB controller connects new devices automatically."},
+		"Bus number":           {Kind: KindInteger, Empty: vmSheetsEmpty, Note: "Bus number of the device's USB controller."},
 		"Backing type":         {Kind: KindText, Empty: "when vSphere omits backing information"},
 		"Backing path":         {Kind: KindText, Empty: "when the backing has no file path"},
 		"Backing device":       {Kind: KindText, Empty: "when the backing has no host-device identity"},
@@ -820,7 +851,11 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Object ID": {Kind: KindText, Empty: "when the finding is not about a single managed object"},
 	},
 	"vSnapshot": {
-		"Name": {Kind: KindText, Note: "Snapshot name."},
+		"Name":            {Kind: KindText, Note: "Snapshot name."},
+		"Filename":        {Kind: KindText, Empty: vmSheetsEmpty, Note: "Datastore path of the snapshot's state file (.vmsn)."},
+		"Size MiB (vmsn)": {Kind: KindDecimal, Unit: "MiB", Empty: vmSheetsEmpty, Note: "Size of the state file, which holds memory only for a snapshot taken with memory."},
+		"Size MiB (total)": {Kind: KindDecimal, Unit: "MiB", Empty: vmSheetsEmpty,
+			Note: "Size of the disk files the snapshot froze: the newest link of each disk chain when it was taken, as RVTools counts it. It leaves out the state file and the changes written since."},
 	},
 	performanceSheetName: {
 		"Context":            {Kind: KindText, Note: "The vsfleet context the collection ran against."},

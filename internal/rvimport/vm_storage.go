@@ -1,6 +1,10 @@
 package rvimport
 
-import "github.com/easonliuuuuu/vsfleet/internal/vsphere"
+import (
+	"math"
+
+	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
+)
 
 // applyVMStorageCells reads vInfo's Provisioned MiB, Unshared MiB,
 // Consolidation Needed and file location columns. An empty cell or a missing
@@ -21,11 +25,14 @@ func applyVMStorageCells(t sheetTable, row []string, vm *vsphere.VM) {
 	}
 }
 
+// mibBytes converts a MiB cell to bytes, nil when it holds no number.
+// RVTools writes fractional MiB, such as a snapshot's 0.0092 MiB, so the
+// bytes are rounded rather than truncated.
 func mibBytes(cell string) *int64 {
 	f, ok := parseNumber(cell)
 	if !ok {
 		return nil
 	}
-	v := int64(f * mib)
+	v := int64(math.Round(f * mib))
 	return &v
 }

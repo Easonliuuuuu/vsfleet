@@ -60,7 +60,8 @@ Notes on specific sheets:
   gateways, repeated on every adapter.
 - **`dvPort`**: one row per distributed port group, not per runtime port.
 - **`vTools`, `vCD`, `vUSB`**: `VMRef` is not written. It is RVTools' own
-  row number, not a vSphere value.
+  row number, not a vSphere value. `vTools` does not write `Upgradeable`
+  either; `Tools Version Status` says whether an upgrade is available.
 
 ## Datastore file inventory (vFileInfo)
 

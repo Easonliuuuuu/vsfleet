@@ -85,6 +85,8 @@ var columnRules = map[string]colRule{
 	"Network #5": name(kindNetwork), "Network #6": name(kindNetwork), "Network #7": name(kindNetwork), "Network #8": name(kindNetwork),
 	"Sockets": keep(), "Cores p/s": keep(), "Memory Reservation Locked To Max": keep(), "vApp": name(kindName), "EFI Secure boot": keep(), "Firmware": keep(), "HW version": keep(), "HW upgrade status": keep(), "HW upgrade policy": keep(),
 	"HW target": keep(), "OS according to the configuration file": keep(), "SRM Placeholder": keep(),
+	"DAS protection": keep(), "HA Restart Priority": keep(), "HA Isolation Response": keep(), "HA VM Monitoring": keep(),
+	"Cluster rule(s)": keep(), "Cluster rule name(s)": nameList(kindName),
 	osToolsHeader: keep(), usbOSToolsHeader: keep(),
 	"Size MiB": keep(), "Tools": keep(), "Tools Version": keep(), "Tools Version Status": keep(), "Tools Running Status": keep(),
 	"Hot Add": keep(), "Hot Remove": keep(), "Numa Hotadd Exposed": keep(), "VM Version": keep(), "Required Version": keep(),

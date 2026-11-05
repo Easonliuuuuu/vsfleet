@@ -337,6 +337,12 @@ var rules = []Rule{
 		},
 	},
 	{
+		ID: "vm-cluster-rule", Category: CategoryMigration, Severity: SeverityInfo, MinSchema: assessment.InventoryVMClusterConfigSchema,
+		Recommendation: "Migrate the rule's VMs together and recreate the rule on the destination cluster; a rule stays with its cluster, not with the VM.", NeedsCollections: []string{"vm"},
+		Summary: "VM is named in an enabled DRS affinity, anti-affinity, VM-host or dependency rule", Needs: "the VM's cluster rules",
+		Eval: evaluateVMClusterRules, MissingEvidence: noClusterConfig,
+	},
+	{
 		ID: "vm-inaccessible", Category: CategoryAvailability, Severity: SeverityCritical, MinSchema: 7,
 		Recommendation: "Restore VM accessibility before migration.", NeedsCollections: []string{"vm"},
 		Summary: "VM connection state is inaccessible", Needs: "VM connection state inventory",

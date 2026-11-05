@@ -114,6 +114,10 @@ func (c *Client) listVMs(ctx context.Context, idx *index) ([]VM, error) {
 // returned, since sorted pages do not make a sorted whole.
 func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions, onPage func([]VM)) ([]VM, error) {
 	props := propsForAPI(opts.Detail, c.About.APIVersion)
+	var clusters clusterVMConfigs
+	if opts.Detail != DetailSummary {
+		clusters = c.clusterVMConfigs(ctx, idx)
+	}
 	pageSize := opts.pageSize()
 	if pageSize == 0 {
 		// Nobody asked for pages, so nobody is waiting to see one. Take the
@@ -122,7 +126,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 		if err := retrieve(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, &raw); err != nil {
 			return nil, err
 		}
-		return newVMs(ctx, c, idx, raw, opts.Detail), nil
+		return newVMs(ctx, c, idx, raw, opts.Detail, clusters), nil
 	}
 	var out []VM
 	err := retrievePages(ctx, c, idx.root, []string{"VirtualMachine"}, []string{"VirtualMachine"}, props, pageSize, func(page []types.ObjectContent) error {
@@ -130,7 +134,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 		if err := mo.LoadObjectContent(page, &raw); err != nil {
 			return err
 		}
-		vms := newVMs(ctx, c, idx, raw, opts.Detail)
+		vms := newVMs(ctx, c, idx, raw, opts.Detail, clusters)
 		out = append(out, vms...)
 		if onPage != nil {
 			onPage(vms)
@@ -144,7 +148,7 @@ func (c *Client) listVMsWith(ctx context.Context, idx *index, opts FetchOptions,
 	return out, nil
 }
 
-func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine, detail Detail) []VM {
+func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine, detail Detail, clusters clusterVMConfigs) []VM {
 	out := make([]VM, 0, len(raw))
 	refs := make([]types.ManagedObjectReference, 0, len(raw))
 	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
@@ -158,6 +162,7 @@ func newVMs(ctx context.Context, c *Client, idx *index, raw []mo.VirtualMachine,
 		vm.Metadata = metadata[raw[i].Self]
 		if detail != DetailSummary {
 			vm.Settings, vm.State = vmSettings(&raw[i], c.About.APIVersion), vmState(&raw[i])
+			vm.ClusterConfig = clusters.forVM(idx, raw[i].Self, raw[i].Runtime.Host)
 		}
 		out = append(out, vm)
 	}

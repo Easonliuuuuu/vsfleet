@@ -83,7 +83,11 @@ type RunStatus string
 // (Datastore.UncommittedBytes), from which its provisioned space follows;
 // older runs have none, which readers must treat as "not read", never as
 // "nothing provisioned".
-const CurrentInventorySchemaVersion = "33"
+// Schema 34 records the DRS rules that name each VM and the HA restart
+// priority, isolation response and VM monitoring that apply to it
+// (VM.ClusterConfig), and whether HA protects it (VMState.DASProtected);
+// older runs have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "34"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20
@@ -91,6 +95,10 @@ const InventoryVAppSchema = 20
 // InventoryHostMountSchema is the first inventory schema that records the
 // datastores each host mounts.
 const InventoryHostMountSchema = 21
+
+// InventoryVMClusterConfigSchema is the first inventory schema that records
+// each VM's cluster rules and HA settings.
+const InventoryVMClusterConfigSchema = 34
 
 // InventoryDatastoreProvisionedSchema is the first inventory schema that
 // records datastore uncommitted space.

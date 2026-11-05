@@ -1494,6 +1494,7 @@ func vmFromInfoRow(t sheetTable, row []string, contextName string, timezone *tim
 	}
 	applyVMStorageCells(t, row, vm)
 	applyVMSettingsCells(t, row, vm, timezone)
+	applyVMClusterCells(t, row, vm)
 	return vm
 }
 

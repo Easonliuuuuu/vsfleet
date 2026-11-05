@@ -15,7 +15,7 @@ What each kind of VM configuration means for readiness:
 | Evidence | Finding severity |
 | --- | --- |
 | RDM, shared disks, vTPM, PCI/SR-IOV/vGPU passthrough | Blocking warning |
-| Firmware/Secure Boot, CPU socket/core topology, CPU/memory reservations and limits, manual MACs, floppies, extension ownership | Informational advisory |
+| Firmware/Secure Boot, CPU socket/core topology, CPU/memory reservations and limits, manual MACs, floppies, extension ownership, enabled DRS rules naming the VM | Informational advisory |
 
 Ordinary VMXNET3 adapters do not count as passthrough. VMs whose
 configuration vCenter did not return, such as orphaned VMs, are counted under
@@ -36,6 +36,9 @@ and stored topology. It reports only and performs no decommissioning action.
   datastore maps to does not count.
 - `no-blockers`: every collected check passed. This does not authorize
   deletion.
+
+An enabled DRS rule that names the VM is an advisory: removing the VM
+changes what the rule enforces for its other VMs. It never blocks.
 
 Ownership, backup policy, and application dependencies are not assessed;
 check them yourself. `--fail-on-blockers` exits 2 only for `blocked`.

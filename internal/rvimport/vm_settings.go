@@ -39,6 +39,7 @@ func applyVMSettingsCells(t sheetTable, row []string, vm *vsphere.VM, timezone *
 		MinRequiredEVCModeKey: t.cell(row, "min Required EVC Mode Key"),
 		GuestDetailedData:     t.cell(row, "Guest Detailed Data"),
 		GuestOSReported:       t.cell(row, "OS according to the VMware Tools"),
+		DASProtected:          parseOptBool(t.cell(row, "DAS protection")),
 	}
 	if c := t.cell(row, "Customization Info"); c != "" {
 		st.CustomizationStatus = "TOOLSDEPLOYPKG_" + strings.TrimPrefix(c, "TOOLSDEPLOYPKG_")

@@ -76,8 +76,8 @@ func TestMissingVMConfigurationIsScopedToTheVM(t *testing.T) {
 					t.Errorf("floppy-present result = %q, want %q", status.Result, tc.wantResult)
 				}
 			}
-			if checked != 13 {
-				t.Fatalf("checked %d VM evidence rules, want the 11 from issue #404 and the 2 Tools rules from #490", checked)
+			if checked != 14 {
+				t.Fatalf("checked %d VM evidence rules, want the 11 from issue #404, the 2 Tools rules from #490 and vm-cluster-rule", checked)
 			}
 			// A VM left out is still missing evidence: readiness must not
 			// call the estate ready.

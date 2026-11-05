@@ -24,6 +24,11 @@ type importGaps struct {
 // capture on them.
 var importInexactFields = map[string]bool{"settings.create_date": true, "details.boot_time": true}
 
+// importUncarriedFields are the VM fields an RVTools workbook never records:
+// vInfo lists only the rules between VMs, and not whether a rule is enabled
+// or mandatory.
+var importUncarriedFields = map[string]bool{clusterHostRulesField: true, clusterRuleStateField: true}
+
 func newImportGaps(base, target Run) *importGaps {
 	return &importGaps{base: base.Imported(), target: target.Imported(), leftOut: map[string]bool{}, inexact: map[string]bool{}}
 }
@@ -91,7 +96,7 @@ func (g *importGaps) fields(fields []FieldChange, carried func(string) bool) []F
 			g.inexact[f.Field] = true
 			continue
 		}
-		if unread || (!carried(f.Field) && emptyValue(imported)) {
+		if unread || importUncarriedFields[f.Field] || (!carried(f.Field) && emptyValue(imported)) {
 			g.leftOut[deviceKey.ReplaceAllString(f.Field, "[]")] = true
 			continue
 		}

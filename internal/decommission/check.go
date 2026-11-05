@@ -165,6 +165,7 @@ func evaluateSubject(data assessment.ExportData, subject topology.Subject, depen
 		diskReferenceCheck(observations),
 		dependencyCheck("datastore-dependencies", topology.KindDatastore, observations, dependencies, unresolved[topology.KindDatastore]),
 		dependencyCheck("network-relationships", topology.KindNetwork, observations, dependencies, unresolved[topology.KindNetwork]),
+		clusterRuleCheck(observations),
 		Check{ID: "ownership", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "ownership metadata is not collected by this capture"},
 		Check{ID: "backup-policy", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "backup-policy metadata is not collected by this capture"},
 		Check{ID: "application-dependencies", Status: StatusNotAssessed, Impact: ImpactAdvisory, Message: "application and business dependencies are not observable from inventory and are not assessed"},

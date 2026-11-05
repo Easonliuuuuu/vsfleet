@@ -91,7 +91,11 @@ type RunStatus string
 // (Datastore.Details) and each multipathed LUN's identity and paths
 // (HostMultipath.Device); older runs have none, which readers must treat as
 // "not read".
-const CurrentInventorySchemaVersion = "35"
+// Schema 36 records each standard switch's and port group's teaming,
+// shaping and offload policy (HostNICPolicy), and each distributed switch's
+// and port group's shaping, LACP groups, failure detection and overrides;
+// older runs have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "36"
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

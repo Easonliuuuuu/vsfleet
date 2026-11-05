@@ -79,7 +79,23 @@ func (c *Client) listDVSwitches(ctx context.Context, idx *index) ([]DVSwitch, er
 					mapped.LinkDiscoveryOperation = vmware.LinkDiscoveryProtocolConfig.Operation
 				}
 				mapped.LACPVersion = vmware.LacpApiVersion
+				mapped.LACPGroups = dvsLACPGroups(vmware.LacpGroupConfig)
 			}
+			if !cfg.CreateTime.IsZero() {
+				created := cfg.CreateTime.UTC()
+				mapped.Created = &created
+			}
+			if setting, ok := cfg.DefaultPortConfig.(*types.VMwareDVSPortSetting); ok {
+				mapped.DVSTrafficShaping = dvsTrafficShaping(setting)
+			}
+		}
+		vms := len(m.Summary.Vm)
+		mapped.VMCount = &vms
+		if m.Summary.ProductInfo != nil {
+			mapped.ProductName = m.Summary.ProductInfo.Name
+		}
+		if mapped.ProductName == "" && cfg != nil {
+			mapped.ProductName = cfg.ProductInfo.Name
 		}
 		if mapped.UUID == "" {
 			mapped.UUID = m.Summary.Uuid
@@ -161,14 +177,16 @@ func mapDVPortGroup(m *mo.DistributedVirtualPortgroup, switchName string) DVPort
 	if p.Name == "" {
 		p.Name = m.Name
 	}
+	p.Overrides = dvPortGroupOverrides(cfg.Policy)
 	if cfg.DefaultPortConfig != nil {
 		if setting, ok := cfg.DefaultPortConfig.(*types.VMwareDVSPortSetting); ok {
 			p.VLAN = dvsVLAN(setting.Vlan)
 			p.Blocked = boolPolicy(setting.Blocked)
-			p.IngressShaping = shapingPolicy(setting.InShapingPolicy)
-			p.EgressShaping = shapingPolicy(setting.OutShapingPolicy)
+			p.DVSTrafficShaping = dvsTrafficShaping(setting)
+			p.FailureCriteria = dvsFailureCriteria(setting.UplinkTeamingPolicy)
 			if setting.UplinkTeamingPolicy != nil {
 				p.TeamingPolicy = stringPolicy(setting.UplinkTeamingPolicy.Policy)
+				p.ReversePolicy = boolPolicy(setting.UplinkTeamingPolicy.ReversePolicy)
 				p.NotifySwitches = boolPolicy(setting.UplinkTeamingPolicy.NotifySwitches)
 				p.Failback = invertedBoolPolicy(setting.UplinkTeamingPolicy.RollingOrder)
 				if order := setting.UplinkTeamingPolicy.UplinkPortOrder; order != nil {
@@ -189,13 +207,6 @@ func mapDVPortGroup(m *mo.DistributedVirtualPortgroup, switchName string) DVPort
 		}
 	}
 	return p
-}
-
-func shapingPolicy(policy *types.DVSTrafficShapingPolicy) *bool {
-	if policy == nil {
-		return nil
-	}
-	return boolPolicy(policy.Enabled)
 }
 
 func boolPolicy(policy *types.BoolPolicy) *bool {

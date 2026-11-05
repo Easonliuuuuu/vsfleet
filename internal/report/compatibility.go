@@ -203,6 +203,53 @@ const vmClusterEmpty = "for a capture predating inventory schema 34, a VM on a s
 // datastore's details is empty.
 const datastoreDetailsEmpty = "for a capture predating inventory schema 35"
 
+// networkPolicyEmpty is when a vSwitch, vPort, dvSwitch or dvPort column
+// added in inventory schema 36 is empty.
+const networkPolicyEmpty = "for a capture predating inventory schema 36"
+
+// dvPortFailureEmpty is when a dvPort failure-detection column is empty.
+const dvPortFailureEmpty = "when no default teaming policy is reported, or " + networkPolicyEmpty
+
+// nicPolicySpecs describe the teaming, shaping and offload columns vSwitch
+// and vPort share. A port group's values are its computed policy, after its
+// switch's settings are inherited.
+var nicPolicySpecs = map[string]ColumnSpec{
+	"Width": {Kind: KindInteger, Unit: "Kbit/s", Empty: networkPolicyEmpty,
+		Note: "Average bandwidth traffic shaping allows; 0 until shaping has been configured, as RVTools writes it."},
+	"Peak":           {Kind: KindInteger, Unit: "Kbit/s", Empty: networkPolicyEmpty, Note: "Peak bandwidth traffic shaping allows; 0 until shaping has been configured."},
+	"Burst":          {Kind: KindInteger, Unit: "KB", Empty: networkPolicyEmpty, Note: "Burst size traffic shaping allows; 0 until shaping has been configured."},
+	"Policy":         {Kind: KindText, Empty: networkPolicyEmpty, Note: "NIC teaming load-balancing policy, e.g. loadbalance_srcid or failover_explicit."},
+	"Reverse Policy": {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether the teaming policy applies to inbound traffic as well."},
+	"Notify Switch":  {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether physical switches are notified when a NIC fails over."},
+	"Rolling Order":  {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Raw vSphere rolling-order value; opposite of the failback setting."},
+	"Offload":        {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether checksum offload is on."},
+	"TSO":            {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether TCP segmentation offload is on."},
+	"Zero Copy Xmit": {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether zero-copy transmit is on."},
+}
+
+// shapingSpecs describe the In and Out shaping columns dvSwitch and dvPort
+// share: on dvSwitch, the shaping the switch's ports default to.
+var shapingSpecs = map[string]ColumnSpec{
+	"In Traffic Shaping":  {Kind: KindBoolean, Empty: "when no ingress shaping policy is reported"},
+	"In Avg":              {Kind: KindInteger, Unit: "Kbit/s", Empty: "when no ingress shaping policy is reported, or " + networkPolicyEmpty, Note: "Average bandwidth ingress shaping allows."},
+	"In Peak":             {Kind: KindInteger, Unit: "Kbit/s", Empty: "wherever In Avg is empty", Note: "Peak bandwidth ingress shaping allows."},
+	"In Burst":            {Kind: KindInteger, Unit: "KB", Empty: "wherever In Avg is empty", Note: "Burst size ingress shaping allows."},
+	"Out Traffic Shaping": {Kind: KindBoolean, Empty: "when no egress shaping policy is reported"},
+	"Out Avg":             {Kind: KindInteger, Unit: "Kbit/s", Empty: "when no egress shaping policy is reported, or " + networkPolicyEmpty, Note: "Average bandwidth egress shaping allows."},
+	"Out Peak":            {Kind: KindInteger, Unit: "Kbit/s", Empty: "wherever Out Avg is empty", Note: "Peak bandwidth egress shaping allows."},
+	"Out Burst":           {Kind: KindInteger, Unit: "KB", Empty: "wherever Out Avg is empty", Note: "Burst size egress shaping allows."},
+}
+
+// withSpecs is columns with every spec of each shared set added.
+func withSpecs(columns map[string]ColumnSpec, shared ...map[string]ColumnSpec) map[string]ColumnSpec {
+	for _, set := range shared {
+		for name, spec := range set {
+			columns[name] = spec
+		}
+	}
+	return columns
+}
+
 // multipathDeviceEmpty is when a vMultiPath column read from the LUN's
 // identity is empty.
 const multipathDeviceEmpty = "for a capture predating inventory schema 35, or when the host did not return the LUN"
@@ -773,12 +820,12 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Cluster":        {Kind: KindText, Empty: "for a standalone host"},
 		"Object ID":      {Kind: KindText, Note: "vCenter managed object reference of the host."},
 	},
-	"vSwitch": {
+	"vSwitch": withSpecs(map[string]ColumnSpec{
 		"Switch":           {Kind: KindText, Note: "Standard virtual switch name."},
 		"# Ports":          {Kind: KindInteger, Note: "Number of ports currently on the switch."},
 		"Free Ports":       {Kind: KindInteger, Note: "Ports available for new services."},
 		"MTU":              {Kind: KindInteger, Unit: "bytes", Note: "Maximum transmission unit."},
-		"Uplinks":          {Kind: KindText, Empty: "when the switch has no physical uplinks", Note: "Physical NIC keys joined with comma-space."},
+		"Uplinks":          {Kind: KindText, Empty: "when the switch has no physical uplinks", Note: "Physical NIC names joined with comma-space."},
 		"Promiscuous Mode": {Kind: KindBoolean, Empty: "when the switch does not report a security policy"},
 		"Mac Changes":      {Kind: KindBoolean, Empty: "when the switch does not report a security policy"},
 		"Forged Transmits": {Kind: KindBoolean, Empty: "when the switch does not report a security policy"},
@@ -786,8 +833,8 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Host":             {Kind: KindText, Note: "ESXi host that owns the switch."},
 		"Cluster":          {Kind: KindText, Empty: "for a standalone host"},
 		"Object ID":        {Kind: KindText, Note: "vCenter managed object reference of the host."},
-	},
-	"vPort": {
+	}, nicPolicySpecs),
+	"vPort": withSpecs(map[string]ColumnSpec{
 		"Port Group":       {Kind: KindText, Note: "Standard-switch port group name."},
 		"Switch":           {Kind: KindText, Empty: "when vSphere does not report the parent switch"},
 		"VLAN":             {Kind: KindInteger, Note: "VLAN ID; 0 means untagged and 4095 means trunk mode."},
@@ -797,56 +844,78 @@ var sheetColumns = map[string]map[string]ColumnSpec{
 		"Host":             {Kind: KindText, Note: "ESXi host that owns the port group."},
 		"Cluster":          {Kind: KindText, Empty: "for a standalone host"},
 		"Object ID":        {Kind: KindText, Note: "vCenter managed object reference of the host."},
-	},
-	"dvSwitch": {
-		"Switch":                   {Kind: KindText, Note: "Distributed virtual switch name."},
-		"# Ports":                  {Kind: KindInteger, Note: "Current distributed ports on the switch."},
-		"Max Ports":                {Kind: KindInteger, Note: "Configured maximum number of distributed ports."},
-		"MTU":                      {Kind: KindInteger, Unit: "bytes", Note: "Maximum transmission unit configured for the switch."},
-		"Vendor":                   {Kind: KindText, Empty: "when the switch does not report product information"},
-		"Version":                  {Kind: KindText, Empty: "when the switch does not report product information"},
-		"UUID":                     {Kind: KindText, Empty: "when vSphere does not report a switch UUID"},
-		"Description":              {Kind: KindText, Empty: "when the switch has no description"},
-		"Contact":                  {Kind: KindText, Empty: "when the switch has no contact name"},
-		"Contact detail":           {Kind: KindText, Empty: "when the switch has no contact detail"},
-		"Hosts":                    {Kind: KindText, Empty: "when no hosts are members", Note: "Host names joined with comma-space."},
-		"Uplink ports":             {Kind: KindText, Empty: "when no uplink port groups are reported", Note: "Uplink port-group names joined with comma-space."},
-		"Link discovery protocol":  {Kind: KindText, Empty: "when the switch has no link discovery configuration"},
-		"Link discovery operation": {Kind: KindText, Empty: "when the switch has no link discovery configuration"},
-		"LACP version":             {Kind: KindText, Empty: "when the switch has no LACP API version"},
-		"Datacenter":               {Kind: KindText, Note: "Datacenter containing the distributed switch."},
-		"Object ID":                {Kind: KindText, Note: "vCenter managed object reference of the distributed switch."},
-		"VI SDK UUID":              {Kind: KindText},
-		"vsfleet Context":          {Kind: KindText},
-	},
-	"dvPort": {
-		"Port":                {Kind: KindText, Note: "Distributed port-group name."},
-		"Switch":              {Kind: KindText, Note: "Parent distributed virtual switch name."},
-		"Key":                 {Kind: KindText, Note: "Distributed port-group key."},
-		"Type":                {Kind: KindText, Empty: "when vSphere does not report a port-group binding type"},
-		"Backing type":        {Kind: KindText, Empty: "when vSphere does not report a backing type"},
-		"# Ports":             {Kind: KindInteger, Note: "Configured number of ports in the group."},
-		"VLAN":                {Kind: KindText, Empty: "when no default VLAN specification is reported", Note: "A VLAN ID, trunk range, or pvlan value. For a switch's uplink port group, vsfleet writes the reported trunk range (for example trunk 0-4094); RVTools leaves this cell empty."},
-		"Uplink":              {Kind: KindBoolean},
-		"Allow Promiscuous":   {Kind: KindBoolean, Empty: "when the default security policy omits it"},
-		"Mac Changes":         {Kind: KindBoolean, Empty: "when the default security policy omits it"},
-		"Forged Transmits":    {Kind: KindBoolean, Empty: "when the default security policy omits it"},
-		"Policy":              {Kind: KindText, Empty: "when no default teaming policy is reported"},
-		"Notify Switch":       {Kind: KindBoolean, Empty: "when no default teaming policy is reported"},
-		"Rolling Order":       {Kind: KindBoolean, Empty: "when no default teaming policy is reported", Note: "Raw vSphere rolling-order value; opposite of the failback setting."},
-		"In Traffic Shaping":  {Kind: KindBoolean, Empty: "when no ingress shaping policy is reported"},
-		"Out Traffic Shaping": {Kind: KindBoolean, Empty: "when no egress shaping policy is reported"},
-		"Blocked":             {Kind: KindBoolean, Empty: "when the default port policy omits it"},
-		"Auto expand":         {Kind: KindBoolean, Empty: "when the port group does not report auto-expansion"},
-		"Active Uplink":       {Kind: KindText, Empty: "when no active uplinks are reported"},
-		"Standby Uplink":      {Kind: KindText, Empty: "when no standby uplinks are reported"},
-		"Logical switch UUID": {Kind: KindText, Empty: "for a port group without NSX backing"},
-		"Segment ID":          {Kind: KindText, Empty: "for a port group without NSX backing"},
-		"Datacenter":          {Kind: KindText, Note: "Datacenter containing the parent distributed switch."},
-		"Object ID":           {Kind: KindText, Note: "vCenter managed object reference of the parent distributed switch."},
-		"VI SDK UUID":         {Kind: KindText},
-		"vsfleet Context":     {Kind: KindText},
-	},
+	}, nicPolicySpecs, map[string]ColumnSpec{
+		"Traffic Shaping": {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether traffic shaping is on, after the switch's setting is inherited."},
+	}),
+	"dvSwitch": withSpecs(map[string]ColumnSpec{
+		"Switch":                 {Kind: KindText, Note: "Distributed virtual switch name."},
+		"Name":                   {Kind: KindText, Empty: networkPolicyEmpty, Note: "The switch's product name: DVS for a vSphere Distributed Switch."},
+		"Created":                {Kind: KindDate, Empty: networkPolicyEmpty, Note: "When the switch was created, in UTC. RVTools writes the collector's local time."},
+		"# Ports":                {Kind: KindInteger, Note: "Current distributed ports on the switch."},
+		"# VMs":                  {Kind: KindInteger, Empty: networkPolicyEmpty, Note: "VMs with a network adapter on the switch."},
+		"Max Ports":              {Kind: KindInteger, Note: "Configured maximum number of distributed ports."},
+		"Max MTU":                {Kind: KindInteger, Unit: "bytes", Note: "Maximum transmission unit configured for the switch."},
+		"Vendor":                 {Kind: KindText, Empty: "when the switch does not report product information"},
+		"Version":                {Kind: KindText, Empty: "when the switch does not report product information"},
+		"UUID":                   {Kind: KindText, Empty: "when vSphere does not report a switch UUID"},
+		"Description":            {Kind: KindText, Empty: "when the switch has no description"},
+		"Contact":                {Kind: KindText, Empty: "when the switch has no administrator contact details", Note: "The administrator's contact details. Before inventory schema 36 vsfleet wrote the administrator's name here."},
+		"Admin Name":             {Kind: KindText, Empty: "when the switch has no administrator name"},
+		"Host members":           {Kind: KindText, Empty: "when no hosts are members", Note: "Host names joined with comma-space."},
+		"Uplink ports":           {Kind: KindText, Empty: "when no uplink port groups are reported", Note: "Uplink port-group names joined with comma-space."},
+		"CDP Type":               {Kind: KindText, Empty: "when the switch has no link discovery configuration", Note: "Link discovery protocol: cdp or lldp."},
+		"CDP Operation":          {Kind: KindText, Empty: "when the switch has no link discovery configuration", Note: "listen, advertise, both or none."},
+		"LACP Name":              {Kind: KindText, Empty: "when the switch has no link aggregation groups, or " + networkPolicyEmpty, Note: "Link aggregation group names joined with comma-space."},
+		"LACP Mode":              {Kind: KindText, Empty: "wherever LACP Name is empty", Note: "Each group's mode, active or passive, in LACP Name's order."},
+		"LACP Load Balance Alg.": {Kind: KindText, Empty: "wherever LACP Name is empty", Note: "Each group's load-balancing algorithm, in LACP Name's order."},
+		"LACP version":           {Kind: KindText, Empty: "when the switch has no LACP API version"},
+		"Datacenter":             {Kind: KindText, Note: "Datacenter containing the distributed switch."},
+		"Object ID":              {Kind: KindText, Note: "vCenter managed object reference of the distributed switch."},
+		"VI SDK UUID":            {Kind: KindText},
+		"vsfleet Context":        {Kind: KindText},
+	}, shapingSpecs),
+	"dvPort": withSpecs(map[string]ColumnSpec{
+		"Port":                   {Kind: KindText, Note: "Distributed port-group name."},
+		"Switch":                 {Kind: KindText, Note: "Parent distributed virtual switch name."},
+		"Key":                    {Kind: KindText, Note: "Distributed port-group key."},
+		"Type":                   {Kind: KindText, Empty: "when vSphere does not report a port-group binding type"},
+		"Backing type":           {Kind: KindText, Empty: "when vSphere does not report a backing type"},
+		"# Ports":                {Kind: KindInteger, Note: "Configured number of ports in the group."},
+		"VLAN":                   {Kind: KindText, Empty: "when no default VLAN specification is reported", Note: "A VLAN ID, trunk range, or pvlan value. For a switch's uplink port group, vsfleet writes the reported trunk range (for example trunk 0-4094); RVTools leaves this cell empty."},
+		"Uplink":                 {Kind: KindBoolean},
+		"Allow Promiscuous":      {Kind: KindBoolean, Empty: "when the default security policy omits it"},
+		"Mac Changes":            {Kind: KindBoolean, Empty: "when the default security policy omits it"},
+		"Forged Transmits":       {Kind: KindBoolean, Empty: "when the default security policy omits it"},
+		"Policy":                 {Kind: KindText, Empty: "when no default teaming policy is reported"},
+		"Notify Switch":          {Kind: KindBoolean, Empty: "when no default teaming policy is reported"},
+		"Rolling Order":          {Kind: KindBoolean, Empty: "when no default teaming policy is reported", Note: "Raw vSphere rolling-order value; opposite of the failback setting."},
+		"Reverse Policy":         {Kind: KindBoolean, Empty: "when no default teaming policy is reported, or " + networkPolicyEmpty},
+		"Speed":                  {Kind: KindInteger, Unit: "Mb/s", Empty: dvPortFailureEmpty, Note: "Link speed the teaming's failure detection checks against Check Speed; 0 when vSphere reports none."},
+		"Full Duplex":            {Kind: KindBoolean, Empty: dvPortFailureEmpty, Note: "Whether failure detection expects full duplex, when Check Duplex is on."},
+		"Check Beacon":           {Kind: KindBoolean, Empty: dvPortFailureEmpty, Note: "Whether failure detection uses beacon probing."},
+		"Check Duplex":           {Kind: KindBoolean, Empty: dvPortFailureEmpty},
+		"Check Error %":          {Kind: KindBoolean, Empty: dvPortFailureEmpty},
+		"Check Speed":            {Kind: KindText, Empty: dvPortFailureEmpty, Note: "How the link speed is checked against Speed: exact or minimum."},
+		"Percentage":             {Kind: KindInteger, Empty: dvPortFailureEmpty, Note: "Error percentage that marks an uplink failed, when Check Error % is on; 0 when vSphere reports none."},
+		"Block Override":         {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether a port may override the group's blocked setting. The other Override columns, Live Port Moving and Config Reset are the group's other per-port policy flags."},
+		"Shaping Override":       {Kind: KindBoolean, Empty: networkPolicyEmpty},
+		"Vendor Config Override": {Kind: KindBoolean, Empty: networkPolicyEmpty},
+		"Sec. Policy Override":   {Kind: KindBoolean, Empty: networkPolicyEmpty},
+		"Teaming Override":       {Kind: KindBoolean, Empty: networkPolicyEmpty},
+		"Vlan Override":          {Kind: KindBoolean, Empty: networkPolicyEmpty},
+		"Live Port Moving":       {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether a port may move into the group while in use."},
+		"Config Reset":           {Kind: KindBoolean, Empty: networkPolicyEmpty, Note: "Whether a port's overrides are reset when it disconnects."},
+		"Blocked":                {Kind: KindBoolean, Empty: "when the default port policy omits it"},
+		"Auto expand":            {Kind: KindBoolean, Empty: "when the port group does not report auto-expansion"},
+		"Active Uplink":          {Kind: KindText, Empty: "when no active uplinks are reported"},
+		"Standby Uplink":         {Kind: KindText, Empty: "when no standby uplinks are reported"},
+		"Logical switch UUID":    {Kind: KindText, Empty: "for a port group without NSX backing"},
+		"Segment ID":             {Kind: KindText, Empty: "for a port group without NSX backing"},
+		"Datacenter":             {Kind: KindText, Note: "Datacenter containing the parent distributed switch."},
+		"Object ID":              {Kind: KindText, Note: "vCenter managed object reference of the distributed port group."},
+		"VI SDK UUID":            {Kind: KindText},
+		"vsfleet Context":        {Kind: KindText},
+	}, shapingSpecs),
 	"vSC_VMK": {
 		"Device":      {Kind: KindText, Note: "VMkernel or service-console device, for example vmk0."},
 		"Port Group":  {Kind: KindText, Empty: "when the adapter is connected to a distributed or opaque network"},

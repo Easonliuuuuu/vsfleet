@@ -255,7 +255,7 @@ var resourceStableFields = map[string][]string{
 	"cluster":      {"name", "datacenter", "path", "standalone", "cpu_cores", "total_cpu_mhz", "total_memory_mb", "drs_enabled", "ha_enabled"},
 	"resourcepool": {"name", "datacenter", "path", "owner", "root", "cpu_reservation_mhz", "cpu_limit_mhz", "cpu_overhead_limit_mhz", "cpu_expandable", "cpu_shares", "cpu_level", "mem_configured_mb", "mem_reservation_mb", "mem_limit_mb", "mem_overhead_limit_mb", "mem_expandable", "mem_shares", "mem_level"},
 	"datastore":    {"name", "datacenter", "path", "type"},
-	"dvswitch":     {"name", "datacenter", "path", "uuid", "version", "max_mtu", "num_ports", "max_ports", "link_discovery_protocol", "lacp_version", "hosts", "port_groups"},
+	"dvswitch":     {"name", "datacenter", "path", "uuid", "version", "max_mtu", "num_ports", "max_ports", "link_discovery_protocol", "lacp_version", "hosts"},
 	"vapp":         {"name", "datacenter", "path", "status", "parent_container", "parent_vapp", "direct_vm_count", "child_vapp_count", "child_resource_pool_count", "cluster", "compute_resource"},
 	"network":      {"name", "datacenter", "path", "type", "switch", "vlan"},
 }
@@ -295,6 +295,9 @@ func changedResourceFields(kind string, before, after json.RawMessage, includeRu
 	case "host":
 		out = append(out, hostDetailChanges(before, after, includeRuntime)...)
 		out = append(out, hostMultipathChanges(before, after)...)
+		out = append(out, hostNetworkChanges(before, after, includeRuntime)...)
+	case "dvswitch":
+		out = append(out, dvSwitchChanges(before, after, includeRuntime)...)
 	case "datastore":
 		out = append(out, datastoreDetailChanges(before, after, includeRuntime)...)
 	}

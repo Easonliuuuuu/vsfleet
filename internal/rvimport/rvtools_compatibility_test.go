@@ -208,7 +208,7 @@ func TestSyntheticRVTools48HeadersAndMetadata(t *testing.T) {
 		data.Resources = append(data.Resources, dvsResource(t, "alpha", "vc-alpha-uuid", vsphere.DVSwitch{
 			Location: vsphere.Location{Context: "alpha", Datacenter: "dc-a"},
 			ID:       "dvs-alpha", Name: "DVS-1", MaxPorts: 4096,
-			PortGroups: []vsphere.DVPortGroup{{ID: "dvpg-alpha", Key: "dvportgroup-1", Name: "frontend", Switch: "DVS-1", Promiscuous: &enabled, MACChanges: &disabled, ForgedTransmits: &enabled, TeamingPolicy: "loadbalance_srcid", NotifySwitches: &enabled, Failback: &failback, IngressShaping: &disabled, EgressShaping: &enabled, ActiveUplinks: []string{"vmnic0"}, StandbyUplinks: []string{"vmnic1"}}},
+			PortGroups: []vsphere.DVPortGroup{{ID: "dvpg-alpha", Key: "dvportgroup-1", Name: "frontend", Switch: "DVS-1", Promiscuous: &enabled, MACChanges: &disabled, ForgedTransmits: &enabled, TeamingPolicy: "loadbalance_srcid", NotifySwitches: &enabled, Failback: &failback, DVSTrafficShaping: vsphere.DVSTrafficShaping{IngressShaping: &disabled, EgressShaping: &enabled}, ActiveUplinks: []string{"vmnic0"}, StandbyUplinks: []string{"vmnic1"}}},
 		}))
 	})
 	f := openFixture(t, path)

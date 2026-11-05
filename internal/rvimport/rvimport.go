@@ -125,10 +125,17 @@ var headerAliases = map[string]map[string]string{
 		"unit number":            "Unit #",
 		"raw compatibility mode": "Raw Comp. Mode",
 	},
+	// vsfleet wrote its own names for these before inventory schema 36.
 	sheetDVSwitch: {
-		"switch":    "DVS",
-		"max ports": "# Max ports",
-		"max mtu":   "MTU",
+		"switch":        "DVS",
+		"max ports":     "# Max ports",
+		"max mtu":       "MTU",
+		"host members":  "Hosts",
+		"cdp type":      "Link discovery protocol",
+		"cdp operation": "Link discovery operation",
+		// RVTools' names; vsfleet has no older ones for these.
+		"in traffic shaping":  "Ingress shaping",
+		"out traffic shaping": "Egress shaping",
 	},
 	sheetDVPort: {
 		"port":                "Port group",
@@ -619,7 +626,7 @@ func (t sheetTable) probe() {
 	case sheetVDatastore:
 		datastoreFromRow(t, nil, "")
 	case sheetDVSwitch:
-		dvSwitchFromRow(t, nil, "")
+		dvSwitchFromRow(t, nil, "", nil)
 	}
 }
 
@@ -1111,7 +1118,7 @@ func Parse(f *excelize.File, opts Options) (*Result, error) {
 	// report is complete; they are simply never stored.
 	if _, present := tables[sheetDVSwitch]; present {
 		attachResourceRows(tables, sheetDVSwitch, kindDVSwitch, &warnings, &ambiguities, contextFor, func(c *importedContext, t sheetTable, row []string) string {
-			v := dvSwitchFromRow(t, row, c.name)
+			v := dvSwitchFromRow(t, row, c.name, opts.Timezone)
 			c.dvswitches = append(c.dvswitches, &v)
 			return v.ID
 		})
@@ -1706,6 +1713,7 @@ func applyVSwitchRow(t sheetTable, row []string, host *vsphere.Host) {
 		MACChanges:      parseOptBool(t.cell(row, "MAC changes")),
 		ForgedTransmits: parseOptBool(t.cell(row, "Forged transmits")),
 		TrafficShaping:  parseOptBool(t.cell(row, "Traffic shaping")),
+		HostNICPolicy:   hostNICPolicyFromRow(t, row),
 	})
 }
 
@@ -1717,6 +1725,8 @@ func applyVPortRow(t sheetTable, row []string, host *vsphere.Host) {
 		Promiscuous:     parseOptBool(t.cell(row, "Promiscuous mode")),
 		MACChanges:      parseOptBool(t.cell(row, "MAC changes")),
 		ForgedTransmits: parseOptBool(t.cell(row, "Forged transmits")),
+		TrafficShaping:  parseOptBool(t.cell(row, "Traffic shaping")),
+		HostNICPolicy:   hostNICPolicyFromRow(t, row),
 	})
 }
 
@@ -1909,8 +1919,8 @@ func datastoreFromRow(t sheetTable, row []string, contextName string) vsphere.Da
 	return d
 }
 
-func dvSwitchFromRow(t sheetTable, row []string, contextName string) vsphere.DVSwitch {
-	return vsphere.DVSwitch{
+func dvSwitchFromRow(t sheetTable, row []string, contextName string, timezone *time.Location) vsphere.DVSwitch {
+	sw := vsphere.DVSwitch{
 		Location:               vsphere.Location{Context: contextName, Datacenter: t.cell(row, "Datacenter")},
 		ID:                     t.cell(row, "Object ID"),
 		Name:                   t.cell(row, "DVS"),
@@ -1918,8 +1928,6 @@ func dvSwitchFromRow(t sheetTable, row []string, contextName string) vsphere.DVS
 		Vendor:                 t.cell(row, "Vendor"),
 		Version:                t.cell(row, "Version"),
 		Description:            t.cell(row, "Description"),
-		Contact:                t.cell(row, "Contact"),
-		ContactDetail:          t.cell(row, "Contact detail"),
 		NumPorts:               int32(parseInt(t.cell(row, "# Ports"))),
 		MaxPorts:               int32(parseInt(t.cell(row, "# Max ports"))),
 		MaxMTU:                 int32(parseInt(t.cell(row, "MTU"))),
@@ -1929,6 +1937,8 @@ func dvSwitchFromRow(t sheetTable, row []string, contextName string) vsphere.DVS
 		LinkDiscoveryOperation: t.cell(row, "Link discovery operation"),
 		LACPVersion:            t.cell(row, "LACP version"),
 	}
+	applyDVSwitchPolicyCells(t, row, &sw, timezone)
+	return sw
 }
 
 func dvPortFromRow(t sheetTable, row []string, switchName string) vsphere.DVPortGroup {
@@ -1943,7 +1953,7 @@ func dvPortFromRow(t sheetTable, row []string, switchName string) vsphere.DVPort
 		inverted := !*failback
 		failback = &inverted
 	}
-	return vsphere.DVPortGroup{
+	p := vsphere.DVPortGroup{
 		ID:                id,
 		Key:               key,
 		Name:              t.cell(row, "Port group"),
@@ -1959,8 +1969,6 @@ func dvPortFromRow(t sheetTable, row []string, switchName string) vsphere.DVPort
 		TeamingPolicy:     t.cell(row, "Teaming policy"),
 		NotifySwitches:    parseOptBool(t.cell(row, "Notify switches")),
 		Failback:          failback,
-		IngressShaping:    parseOptBool(t.cell(row, "Ingress shaping")),
-		EgressShaping:     parseOptBool(t.cell(row, "Egress shaping")),
 		Blocked:           parseOptBool(t.cell(row, "Blocked")),
 		AutoExpand:        parseOptBool(t.cell(row, "Auto expand")),
 		ActiveUplinks:     splitList(t.cell(row, "Active uplinks")),
@@ -1968,6 +1976,8 @@ func dvPortFromRow(t sheetTable, row []string, switchName string) vsphere.DVPort
 		LogicalSwitchUUID: t.cell(row, "Logical switch UUID"),
 		SegmentID:         t.cell(row, "Segment ID"),
 	}
+	applyDVPortPolicyCells(t, row, &p)
+	return p
 }
 
 // dvPortIsUplink reads vsfleet's Uplink column. RVTools has none, so for

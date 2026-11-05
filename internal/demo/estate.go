@@ -163,7 +163,7 @@ func buildEstate(s siteSpec) *estate {
 			// The nested-ESXi lab network is the one that needs promiscuous
 			// mode, and the switch views flag it.
 			NumPorts: 128, VLAN: vlan, Promiscuous: boolValue(p.name == "lab-vlan-900"), MACChanges: boolValue(true), ForgedTransmits: boolValue(p.name != "dmz-vlan-400" && p.name != "dmz-web-vlan-410"),
-			TeamingPolicy: "loadbalance_loadbased", NotifySwitches: boolValue(true), Failback: boolValue(true), IngressShaping: boolValue(false), EgressShaping: boolValue(false),
+			TeamingPolicy: "loadbalance_loadbased", NotifySwitches: boolValue(true), Failback: boolValue(true), DVSTrafficShaping: vsphere.DVSTrafficShaping{IngressShaping: boolValue(false), EgressShaping: boolValue(false)},
 			Blocked: boolValue(false), AutoExpand: boolValue(true), ActiveUplinks: []string{"dvUplink1", "dvUplink2"},
 		}
 		if sw == &storDVS {

@@ -130,6 +130,7 @@ var columnRules = map[string]colRule{
 	"Switch": name(kindSwitch), "# Ports": keep(), "Free Ports": keep(), "MTU": keep(),
 	"Uplinks": topo(), "Promiscuous Mode": keep(), "Mac Changes": keep(), "Forged Transmits": keep(),
 	"Traffic Shaping": keep(), "Port Group": name(kindNetwork), "VLAN": topo(),
+	"Width": keep(), "Burst": keep(), "Reverse Policy": keep(), "Offload": keep(), "Zero Copy Xmit": keep(),
 	"CPU Model": keep(), "HT Available": keep(), "HT Active": keep(), "# CPU": keep(), "Cores per CPU": keep(),
 	"# VMs": keep(), "VMs per Core": keep(), "# vCPUs": keep(), "vCPUs per Core": keep(), "vRAM": keep(),
 	"VMotion support": keep(), "Storage VMotion support": keep(), "Current EVC": keep(), "Max EVC": keep(), "Boot time": keep(),
@@ -144,8 +145,14 @@ var columnRules = map[string]colRule{
 	"Network Device": keep(), "MAC": id(kindMAC), "Uplink port": topo(), "WakeOn": keep(),
 
 	// dvSwitch / dvPort / vSC_VMK / vMultiPath.
-	"Max Ports": keep(), "UUID": id(kindUUID), "Contact": text(), "Contact detail": text(), "Hosts": nameList(kindHost),
-	"Uplink ports": topo(), "Link discovery protocol": keep(), "Link discovery operation": keep(), "LACP version": keep(),
+	"Max Ports": keep(), "UUID": id(kindUUID), "Contact": text(), "Admin Name": text(), "Hosts": nameList(kindHost),
+	"Host members": nameList(kindHost), "Created": keep(), "Max MTU": keep(),
+	"Uplink ports": topo(), "CDP Type": keep(), "CDP Operation": keep(), "LACP version": keep(),
+	"LACP Name": nameList(kindName), "LACP Mode": keep(), "LACP Load Balance Alg.": keep(),
+	"In Avg": keep(), "In Peak": keep(), "In Burst": keep(), "Out Avg": keep(), "Out Peak": keep(), "Out Burst": keep(),
+	"Full Duplex": keep(), "Check Beacon": keep(), "Live Port Moving": keep(), "Check Duplex": keep(), "Check Error %": keep(),
+	"Check Speed": keep(), "Percentage": keep(), "Block Override": keep(), "Config Reset": keep(), "Shaping Override": keep(),
+	"Vendor Config Override": keep(), "Sec. Policy Override": keep(), "Teaming Override": keep(), "Vlan Override": keep(),
 	"Port": name(kindNetwork), "Key": id(kindID), "Uplink": topo(), "Allow Promiscuous": keep(),
 	"Policy": keep(), "Notify Switch": keep(), "Rolling Order": keep(), "In Traffic Shaping": keep(),
 	"Out Traffic Shaping": keep(), "Blocked": keep(), "Auto expand": keep(), "Active Uplink": topo(),
@@ -204,6 +211,7 @@ var columnRules = map[string]colRule{
 // sheetRules override columnRules where the same header means something else.
 var sheetRules = map[string]colRule{
 	"vSource/Name":          keep(),
+	"dvSwitch/Name":         keep(),
 	"vCluster/Name":         name(kindCluster),
 	"vRP/Name":              name(kindName),
 	"vDatastore/Name":       name(kindDatastore),

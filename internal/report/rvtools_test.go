@@ -40,7 +40,7 @@ func sampleExportData(when time.Time) assessment.ExportData {
 		VMKs:       []vsphere.HostVMKernel{{Key: "vmk-1", Device: "vmk0", PortGroup: "Management Network", MAC: "00:50:56:00:00:02", MTU: 1500, TSO: &duplex, Netstack: "defaultTcpipStack", DHCP: &enabled, IP: "192.0.2.10", SubnetMask: "255.255.255.0"}},
 		Multipaths: []vsphere.HostMultipath{{Key: "lun-1", LUN: "naa.123", DevicePath: "/vmfs/devices/disks/naa.123", Policy: "VMW_PSP_RR", LocalDisk: &localDisk, PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 1}},
 	})
-	datastorePayload, _ := json.Marshal(vsphere.Datastore{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "ds-1", Name: "datastore-1", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, Accessible: true})
+	datastorePayload, _ := json.Marshal(vsphere.Datastore{Location: vsphere.Location{Datacenter: "dc-a"}, ID: "ds-1", Name: "datastore-1", CapacityBytes: 8 << 30, FreeBytes: 2 << 30, Accessible: true, Backing: vsphere.DatastoreBacking{Extents: []string{"naa.123"}}})
 	poolPayload, _ := json.Marshal(vsphere.ResourcePool{Location: vsphere.Location{Datacenter: "dc-a", Path: "/dc-a/host/cluster-1/Resources/app-pool"}, ID: "pool-1", Name: "app-pool", Status: "green", VMRefs: []string{"vm-1"}, ResourceAllocation: vsphere.ResourceAllocation{CPULimitMHz: int64Ptr(12000), CPUReservationMHz: int64Ptr(1000), MemConfiguredMB: 4096}})
 	dvSwitchPayload, _ := json.Marshal(vsphere.DVSwitch{Location: vsphere.Location{Datacenter: "dc-a", Path: "/dc-a/network/dvs-1"}, ID: "dvs-1", Name: "DVS-1", UUID: "dvs-uuid", Vendor: "VMware", Version: "8.0.3", NumPorts: 128, MaxPorts: 4096, MaxMTU: 9000, Hosts: []string{"esx-1"}, PortGroups: []vsphere.DVPortGroup{{ID: "dvpg-1", Key: "dvportgroup-1", Name: "frontend", Switch: "DVS-1", Type: "earlyBinding", NumPorts: 64, VLAN: "120", Promiscuous: &enabled, MACChanges: &duplex, ForgedTransmits: &duplex, NotifySwitches: &duplex, Failback: &enabled, ActiveUplinks: []string{"uplink-1"}, StandbyUplinks: []string{"uplink-2"}}}})
 	thin := true
@@ -180,13 +180,13 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 		"vSwitch":    {"A2", "vSwitch0"},
 		"vPort":      {"A2", "Management Network"},
 		"vSC_VMK":    {"E2", "vmk0"},
-		"vMultiPath": {"A2", "naa.123"},
+		"vMultiPath": {"E2", "naa.123"},
 	} {
 		if got, _ := f.GetCellValue(sheet, cells[0]); got != cells[1] {
 			t.Fatalf("%s %s=%q", sheet, cells[0], got)
 		}
 	}
-	if got, _ := f.GetCellValue("vMultiPath", "D2"); got != "FALSE" {
+	if got, _ := f.GetCellValue("vMultiPath", "AH2"); got != "FALSE" {
 		t.Fatalf("vMultiPath local disk=%q, want FALSE", got)
 	}
 	if got, _ := f.GetCellValue("vSnapshot", "E2"); got != "2026/01/02 03:04:05" {

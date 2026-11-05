@@ -199,8 +199,10 @@ func TestSyntheticRVTools48HeadersAndMetadata(t *testing.T) {
 			h.VSwitches = []vsphere.HostVSwitch{{Name: "vSwitch0", FreePorts: 12, MTU: 1500, Promiscuous: &enabled, MACChanges: &disabled, ForgedTransmits: &enabled, TrafficShaping: &disabled}}
 			h.PortGroups = []vsphere.HostPortGroup{{Name: "Management Network", Switch: "vSwitch0", VLAN: 20, Promiscuous: &enabled, MACChanges: &disabled, ForgedTransmits: &enabled}}
 			h.VMKs = []vsphere.HostVMKernel{{Device: "vmk0", PortGroup: "Management Network", IP: "192.0.2.10", MTU: 1500}}
-			h.Multipaths = []vsphere.HostMultipath{{LUN: "naa.synthetic", PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 2}}
+			h.Multipaths = []vsphere.HostMultipath{{LUN: "naa.synthetic", DevicePath: "/vmfs/devices/disks/naa.synthetic", PathCount: 2, Active: 1, Standby: 1, WorkingPaths: 2}}
 		})
+		// vMultiPath lists only the LUNs a datastore is on.
+		editDatastore(t, data, "ds-a1", func(d *vsphere.Datastore) { d.Backing.Extents = []string{"naa.synthetic"} })
 		editHost(t, data, "host-b1", func(h *vsphere.Host) { h.Name = "esx-shared" })
 		failback := true
 		data.Resources = append(data.Resources, dvsResource(t, "alpha", "vc-alpha-uuid", vsphere.DVSwitch{

@@ -1776,11 +1776,17 @@ func applyMultipathRow(t sheetTable, row []string, host *vsphere.Host) {
 	if !t.has("LUN") && t.has("Disk") {
 		mp := vsphere.HostMultipath{
 			LUN:        t.cell(row, "Display name"),
-			DevicePath: t.cell(row, "Disk"),
+			DevicePath: t.cell(row, "Device path"),
 			Policy:     t.cell(row, "Policy"),
+			LocalDisk:  parseOptBool(t.cell(row, "Local disk")),
+			Device:     multipathDeviceFromRow(t, row),
+		}
+		if mp.DevicePath == "" {
+			// RVTools has no device path; its Disk is the canonical name.
+			mp.DevicePath = t.cell(row, "Disk")
 		}
 		if mp.LUN == "" {
-			mp.LUN = mp.DevicePath
+			mp.LUN = t.cell(row, "Disk")
 		}
 		for i := 1; i <= 8; i++ {
 			pathHeader := fmt.Sprintf("Path %d", i)
@@ -1803,6 +1809,12 @@ func applyMultipathRow(t sheetTable, row []string, host *vsphere.Host) {
 			case "disabled":
 				mp.Disabled++
 			}
+		}
+		if t.has("Path count") {
+			// vsfleet's own export counts every path, beyond the eight
+			// columns, and which are working.
+			mp.PathCount, mp.Active, mp.Standby = int(parseInt(t.cell(row, "Path count"))), int(parseInt(t.cell(row, "Active paths"))), int(parseInt(t.cell(row, "Standby paths")))
+			mp.Dead, mp.Disabled, mp.WorkingPaths = int(parseInt(t.cell(row, "Dead paths"))), int(parseInt(t.cell(row, "Disabled paths"))), int(parseInt(t.cell(row, "Working paths")))
 		}
 		host.Multipaths = append(host.Multipaths, mp)
 		return
@@ -1893,6 +1905,7 @@ func datastoreFromRow(t sheetTable, row []string, contextName string) vsphere.Da
 		Backing:       vsphere.DatastoreBacking{URL: t.cell(row, "URL")},
 	}
 	d.UncommittedBytes = datastoreUncommitted(d, t.cell(row, "Provisioned MiB"))
+	applyDatastoreDetailCells(t, row, &d)
 	return d
 }
 

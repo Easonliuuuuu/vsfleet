@@ -231,7 +231,8 @@ func TestCapturedColumnsFollowRVToolsOrder(t *testing.T) {
 			"Uplink port", "PCI", "WakeOn", "VI SDK Server", "VI SDK UUID"}},
 		{"vSC_VMK", vmkHeaders, []string{"Host", "Datacenter", "Cluster", "Port Group", "Device", "Mac Address", "DHCP", "IP Address",
 			"IP 6 Address", "Subnet mask", "Gateway", "IP 6 Gateway", "MTU", "VI SDK Server", "VI SDK UUID"}},
-		{"vDatastore", datastoreHeaders, []string{"Name", "Capacity MiB", "Provisioned MiB", "In Use MiB", "Free MiB", "Free %", "URL", "Object ID", "VI SDK Server", "VI SDK UUID"}},
+		{"vDatastore", datastoreHeaders, []string{"Name", "Config status", "Address", "Accessible", "Type", "# VMs total", "# VMs", "Capacity MiB", "Provisioned MiB", "In Use MiB", "Free MiB", "Free %", "SIOC enabled", "SIOC Threshold", "# Hosts", "Hosts", "Cluster name", "Cluster capacity MiB", "Cluster free space MiB", "Block size", "Max Blocks", "# Extents", "Major Version", "Version", "VMFS Upgradeable", "MHA", "URL", "Object ID", "VI SDK Server", "VI SDK UUID"}},
+		{"vMultiPath", multipathHeaders, []string{"Host", "Cluster", "Datacenter", "Datastore", "Disk", "Display name", "Policy", "Oper. State", "Path 1", "Path 1 state", "Path 2", "Path 2 state", "Path 3", "Path 3 state", "Path 4", "Path 4 state", "Path 5", "Path 5 state", "Path 6", "Path 6 state", "Path 7", "Path 7 state", "Path 8", "Path 8 state", "vStorage", "Queue depth", "Vendor", "Model", "Revision", "Level", "Serial #", "UUID", "Object ID", "VI SDK Server", "VI SDK UUID"}},
 	} {
 		t.Run(tc.sheet, func(t *testing.T) {
 			position := map[string]int{}

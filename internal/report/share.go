@@ -65,7 +65,7 @@ var shareProfiles = map[string]shareProfile{
 			{"vSource", []string{"Name", "OS type", "API type", "API version", "Version", "Patch level", "Build", "Fullname", "Product name", "Product version", "Product line", "Vendor", "vsfleet Context"}},
 			{"vCluster", []string{"Name", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "TotalMemory", "HA enabled", "DRS enabled", "Datacenter", "vsfleet Context"}},
 			{"vHost", []string{"Host", "Datacenter", "Cluster", "in Maintenance Mode", "Speed", "# Cores", "CPU usage %", "# Memory", "Memory usage %", "# VMs total", "ESX Version", "Vendor", "Model", "vsfleet Context"}},
-			{"vDatastore", []string{"Name", "Datacenter", "Type", "Capacity MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "vsfleet Context"}},
+			{"vDatastore", []string{"Name", "Datacenter", "Type", "Capacity MiB", "Provisioned MiB", "In Use MiB", "Free MiB", "Free %", "Accessible", "Maintenance mode", "vsfleet Context"}},
 			{coverageSheetName, nil},
 		},
 	},

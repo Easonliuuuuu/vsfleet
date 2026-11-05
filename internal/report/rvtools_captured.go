@@ -77,3 +77,13 @@ func vmFileCells(files *vsphere.VMFiles) []any {
 	}
 	return []any{optionalString(files.VMPath), optionalString(files.LogDirectory), optionalString(files.SnapshotDirectory), optionalString(files.SuspendDirectory)}
 }
+
+// datastoreProvisionedMiB writes vDatastore's Provisioned MiB, empty when
+// the datastore's uncommitted space was not read.
+func datastoreProvisionedMiB(d vsphere.Datastore) any {
+	p, ok := d.ProvisionedBytes()
+	if !ok {
+		return nil
+	}
+	return float64(p) / miB
+}

@@ -72,6 +72,12 @@ var rules = []Rule{
 		},
 	},
 	{
+		ID: "datastore-overcommitted", Category: CategoryCapacity, Severity: SeverityWarning, MinSchema: assessment.InventoryDatastoreProvisionedSchema,
+		Recommendation: "Expand the datastore, move VMs off it, or confirm its thin disks will never grow into what they were promised.", NeedsCollections: []string{"datastore"},
+		Summary: "datastore has promised its thin disks more space than it holds", Needs: "datastore uncommitted space",
+		Eval: evaluateDatastoreOvercommitted,
+	},
+	{
 		ID: "datastore-space-low", Category: CategoryCapacity, Severity: SeverityWarning,
 		Recommendation: "Free space or expand the datastore before migration.", NeedsCollections: []string{"datastore"},
 		Summary: "datastore free space is below the configured floor", Needs: "datastore capacity and free-space inventory",

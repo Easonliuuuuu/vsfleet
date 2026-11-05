@@ -54,6 +54,12 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 			Maintenance:   s.MaintenanceMode,
 			Backing:       datastoreBacking(m),
 		}
+		if s.Accessible {
+			// vSphere reports uncommitted space only for an accessible
+			// datastore; zero is then a real "nothing left to grow".
+			uncommitted := s.Uncommitted
+			datastore.UncommittedBytes = &uncommitted
+		}
 		datastore.Metadata = metadata[m.Self]
 		if browse {
 			if !datastore.Accessible {

@@ -118,7 +118,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 		"dvSwitch": {"A1": "Switch", "C1": "Name", "J1": "Max Ports"},
 		"dvPort":   {"A1": "Port", "B1": "Switch", "M1": "Allow Promiscuous", "O1": "Active Uplink", "Q1": "Policy", "AC1": "Rolling Order"},
 		"vCluster": {"E1": "numEffectiveHosts"},
-		"vRP":      {"G1": "CPU overheadLimit", "K1": "CPU expandableReservation", "L1": "Mem Configured", "N1": "Mem overheadLimit", "R1": "Mem expandableReservation"},
+		"vRP":      {"A1": "Resource Pool name", "B1": "Resource Pool path", "D1": "# VMs total", "I1": "CPU overheadLimit", "M1": "CPU expandableReservation", "N1": "Mem Configured", "P1": "Mem overheadLimit", "T1": "Mem expandableReservation"},
 	} {
 		for cell, want := range cells {
 			if got, _ := f.GetCellValue(sheet, cell); got != want {
@@ -192,7 +192,7 @@ func TestWriteRVToolsIsDeterministicAndComplete(t *testing.T) {
 	if got, _ := f.GetCellValue("vSnapshot", "E2"); got != "2026/01/02 03:04:05" {
 		t.Fatalf("snapshot time=%q", got)
 	}
-	if got, _ := f.GetCellValue("vRP", "E2"); got != "2" {
+	if got, _ := f.GetCellValue("vRP", "G2"); got != "2" {
 		t.Fatalf("vRP vCPUs=%q", got)
 	}
 	if got, _ := f.GetCellValue("vsfleetCoverage", "J2"); got != "vInfo" {
@@ -389,8 +389,8 @@ func TestRVToolsCSVMatchesXLSXAndIsDeterministic(t *testing.T) {
 		t.Fatalf("vDisk.csv capacity=%q", got)
 	}
 	vRP := readCSV(t, byName["vRP.csv"])
-	if got := vRP[0][4]; got != "vCPUs" || vRP[1][4] != "2" {
-		t.Fatalf("vRP.csv vCPUs header/row=%q/%q", got, vRP[1][4])
+	if got := vRP[0][6]; got != "vCPUs" || vRP[1][6] != "2" {
+		t.Fatalf("vRP.csv vCPUs header/row=%q/%q", got, vRP[1][6])
 	}
 
 	coverage := readCSV(t, byName["vsfleetCoverage.csv"])

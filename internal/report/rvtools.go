@@ -63,9 +63,8 @@ var (
 	nicHeaders = hostLeadHeaders("Network Device", "Driver", "Speed", "Duplex", "MAC", "Switch", "Uplink port", "PCI", "WakeOn")
 	vmkHeaders = hostLeadHeaders("Port Group", "Device", "Mac Address", "DHCP", "IP Address", "IP 6 Address", "Subnet mask", "Gateway",
 		"IP 6 Gateway", "MTU", "TSO", "Netstack", "Service console")
-	clusterHeaders      = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "Effective Cpu", "TotalMemory", "Effective Memory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS default VM behavior", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	resourcePoolHeaders = []string{"Resource pool", "Name", "Status", "VMs", "vCPUs", "CPU limit", "CPU overheadLimit", "CPU reservation", "CPU level", "CPU shares", "CPU expandableReservation", "Mem Configured", "Mem limit", "Mem overheadLimit", "Mem reservation", "Mem level", "Mem shares", "Mem expandableReservation", "Config status", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
-	snapshotHeaders     = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Filename", "Size MiB (vmsn)", "Size MiB (total)", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	clusterHeaders  = []string{"Name", "Config status", "OverallStatus", "NumHosts", "numEffectiveHosts", "TotalCpu", "NumCpuCores", "NumCpuThreads", "Effective Cpu", "TotalMemory", "Effective Memory", "Num VMotions", "HA enabled", "Failover Level", "AdmissionControlEnabled", "Host monitoring", "HB Datastore Candidate Policy", "Isolation Response", "Restart Priority", "Cluster Settings", "Max Failures", "Max Failure Window", "Failure Interval", "Min Up Time", "VM Monitoring", "DRS enabled", "DRS default VM behavior", "DRS vmotion rate", "DPM enabled", "DPM default behavior", "DPM Host Power Action Rate", "Object ID", "Datacenter", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
+	snapshotHeaders = []string{"VM", "Powerstate", "Name", "Description", "Date / time", "Filename", "Size MiB (vmsn)", "Size MiB (total)", "Quiesced", "State", "Annotation", "Datacenter", "Cluster", "Host", "Folder", "OS according to the configuration file", osToolsHeader, "VM ID", "VM UUID", "VI SDK Server", "VI SDK UUID", "vsfleet Context"}
 	// fileInfoHeaders opens with the eight vFileInfo columns of an RVTools 4.8
 	// export, in RVTools' order and spelling (Friendly Path Name through VI SDK
 	// UUID); Datastore, Datastore ID, Datacenter and vsfleet Context are
@@ -853,55 +852,6 @@ func clusterDRSCells(st *vsphere.ClusterSettings) []any {
 	}
 	cells[0], cells[1], cells[2], cells[3] = optionalInt32NonZero(st.DRSVMotionRate), st.DPMEnabled, optionalString(st.DPMBehavior), optionalInt32NonZero(st.DPMHostPowerActionRate)
 	return cells
-}
-
-func resourcePoolRows(data assessment.ExportData) [][]any {
-	vmCPUs := make(map[string]int32, len(data.VMs))
-	for _, item := range data.VMs {
-		vmCPUs[item.Observation.VM.ID] = item.Observation.VM.CPU
-	}
-
-	rows := make([][]any, 0)
-	for _, r := range data.Resources {
-		switch r.Kind {
-		case "resourcepool":
-			var pool vsphere.ResourcePool
-			if err := json.Unmarshal(r.Payload, &pool); err != nil {
-				continue
-			}
-			vCPUs := int32(0)
-			for _, vmRef := range pool.VMRefs {
-				vCPUs += vmCPUs[vmRef]
-			}
-			rows = append(rows, resourcePoolRow(data, r, pool.Path, nonempty(pool.Name, r.Name), pool.Status, len(pool.VMRefs), vCPUs,
-				pool.ResourceAllocation, pool.ConfigStatus, nonempty(pool.ID, r.ID), pool.Datacenter))
-		case "vapp":
-			// RVTools lists vApps on vRP: a vApp is a resource pool subtype
-			// with the same allocation. Its VMs are its direct members.
-			var vapp vsphere.VApp
-			if err := json.Unmarshal(r.Payload, &vapp); err != nil || vapp.Allocation == nil {
-				continue
-			}
-			vCPUs := int32(0)
-			for _, ref := range vapp.DirectVMRefs {
-				vCPUs += vmCPUs[strings.TrimPrefix(ref, "VirtualMachine:")]
-			}
-			rows = append(rows, resourcePoolRow(data, r, vapp.Path, nonempty(vapp.Name, r.Name), vapp.OverallStatus, vapp.DirectVMCount, vCPUs,
-				*vapp.Allocation, vapp.ConfigStatus, nonempty(vapp.ID, r.ID), vapp.Datacenter))
-		}
-	}
-	return rows
-}
-
-func resourcePoolRow(data assessment.ExportData, r assessment.ResourceObservation, path, name, status string, vms int, vCPUs int32, a vsphere.ResourceAllocation, configStatus, id, datacenter string) []any {
-	return []any{
-		path, name, status, vms, vCPUs,
-		optionalInt64(a.CPULimitMHz), optionalInt64(a.CPUOverheadLimitMHz), optionalInt64(a.CPUReservationMHz),
-		a.CPULevel, a.CPUShares, a.CPUExpandable, a.MemConfiguredMB,
-		optionalInt64(a.MemLimitMB), optionalInt64(a.MemOverheadLimitMB), optionalInt64(a.MemReservationMB),
-		a.MemLevel, a.MemShares, a.MemExpandable, configStatus,
-		id, datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context,
-	}
 }
 
 // fileInfoRows writes one row per stored datastore file, datastores in

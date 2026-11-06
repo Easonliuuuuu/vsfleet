@@ -33,6 +33,7 @@ func vappExport(t *testing.T, schema string, collection *assessment.CollectionRu
 	payload, _ := json.Marshal(vsphere.VApp{
 		Location: vsphere.Location{Datacenter: "dc-a", Path: "/dc-a/host/cluster-1/Resources/shop"},
 		ID:       "resgroup-v1", Name: "shop", Status: "started", OverallStatus: "green", ConfigStatus: "green",
+		ParentContainer: "app-pool", ComputeResource: "cluster-1",
 		DirectVMCount: 1, DirectVMs: []string{"app"}, DirectVMRefs: []string{"VirtualMachine:vm-1"},
 		Allocation: &vsphere.ResourceAllocation{CPULimitMHz: int64Ptr(1000), CPUReservationMHz: int64Ptr(0), CPUExpandable: true, CPULevel: "normal", CPUShares: 4000,
 			MemConfiguredMB: 512, MemLimitMB: int64Ptr(-1), MemReservationMB: int64Ptr(128), MemExpandable: true, MemLevel: "normal", MemShares: 163840},
@@ -91,7 +92,7 @@ func TestVRPListsVAppsAfterResourcePools(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"Resource pool": "/dc-a/host/cluster-1/Resources/shop", "Name": "shop", "Status": "green", "VMs": "1", "vCPUs": "2",
+		"Resource Pool path": "/dc-a/cluster-1/Resources/app-pool/shop", "Resource Pool name": "shop", "Status": "green", "# VMs total": "1", "vCPUs": "2",
 		"CPU limit": "1000", "CPU reservation": "0", "CPU level": "normal", "CPU shares": "4000", "CPU expandableReservation": "TRUE",
 		"Mem Configured": "512", "Mem limit": "-1", "Mem reservation": "128", "Mem shares": "163840", "Config status": "green", "Object ID": "resgroup-v1",
 	}

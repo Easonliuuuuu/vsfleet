@@ -123,12 +123,12 @@ func TestExplainRVToolsMarksTheVsfleetExtension(t *testing.T) {
 }
 
 func TestExplainRVToolsRejectsAnUnknownWorksheet(t *testing.T) {
-	_, _, _, err := runExplain(t, "rvtools.vMetaData")
+	_, _, _, err := runExplain(t, "rvtools.vNoSuchSheet")
 	if err == nil {
 		t.Fatal("expected an error for a worksheet this profile does not write")
 	}
-	// The message must name what is available, so the answer to "is vMetaData
-	// in here?" is settled by the error itself.
+	// The message must name what is available, so the answer to "is this
+	// worksheet in here?" is settled by the error itself.
 	if !strings.Contains(err.Error(), "vInfo") {
 		t.Errorf("the error does not list the worksheets that exist: %v", err)
 	}
@@ -185,5 +185,28 @@ func TestExplainKind(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// An RVTools worksheet vsfleet does not write is explained, not rejected:
+// the answer to "where is vMetaData?" is the reason it is left out.
+func TestExplainRVToolsNamesAWorksheetItDoesNotWrite(t *testing.T) {
+	_, out, _, err := runExplain(t, "rvtools.vMetaData", "-o", "json")
+	if err != nil {
+		t.Fatalf("explain rvtools.vMetaData: %v", err)
+	}
+	var sheets []struct {
+		Sheet      string `json:"sheet"`
+		NotWritten bool   `json:"not_written"`
+		Omitted    []struct {
+			Column string `json:"column"`
+			Reason string `json:"reason"`
+		} `json:"omitted"`
+	}
+	if err := json.Unmarshal([]byte(out), &sheets); err != nil {
+		t.Fatalf("decode: %v\n%s", err, out)
+	}
+	if len(sheets) != 1 || sheets[0].Sheet != "vMetaData" || !sheets[0].NotWritten || len(sheets[0].Omitted) == 0 {
+		t.Fatalf("vMetaData = %+v, want it marked not written with its columns", sheets)
 	}
 }

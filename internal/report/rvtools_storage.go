@@ -3,7 +3,6 @@ package report
 import (
 	"encoding/json"
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
@@ -160,7 +159,7 @@ func multipathRows(data assessment.ExportData) [][]any {
 	for _, item := range hostConfigResources(data) {
 		host, resource := item.host, item.resource
 		for _, mp := range host.Multipaths {
-			disk := multipathDisk(mp)
+			disk := mp.CanonicalName()
 			for _, ds := range byLUN[[2]string{resource.Context, disk}] {
 				row := []any{nonempty(host.Name, resource.Name), host.Cluster, host.Datacenter, ds.name, optionalString(disk), optionalString(mp.LUN), optionalString(mp.Policy)}
 				row = append(row, multipathDeviceCells(mp.Device)...)
@@ -170,19 +169,6 @@ func multipathRows(data assessment.ExportData) [][]any {
 		}
 	}
 	return rows
-}
-
-// multipathDisk is the LUN's canonical name, which datastore extents name
-// it by: recorded since inventory schema 35, and the last element of its
-// device path before that.
-func multipathDisk(mp vsphere.HostMultipath) string {
-	if mp.Device != nil && mp.Device.CanonicalName != "" {
-		return mp.Device.CanonicalName
-	}
-	if mp.DevicePath == "" {
-		return ""
-	}
-	return path.Base(mp.DevicePath)
 }
 
 // multipathDeviceCells writes Oper. State, the eight path pairs and vStorage

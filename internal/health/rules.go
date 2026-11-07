@@ -80,7 +80,7 @@ var rules = []Rule{
 	{
 		ID: "datastore-space-low", Category: CategoryCapacity, Severity: SeverityWarning,
 		Recommendation: "Free space or expand the datastore before migration.", NeedsCollections: []string{"datastore"},
-		Summary: "datastore free space is below the configured floor", Needs: "datastore capacity and free-space inventory",
+		Summary: "datastore free space is below the warning level or the critical floor", Needs: "datastore capacity and free-space inventory",
 		Eval: func(in Input, emit func(Finding)) {
 			evaluateRule("datastore-space-low", in, Options{Thresholds: in.Thresholds}, emit)
 		},
@@ -669,40 +669,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 	thresholds := opts.Thresholds
 	switch ruleID {
 	case "datastore-space-low":
-		if thresholds.DatastoreFreePct <= 0 && thresholds.DatastoreFreeBytes <= 0 {
-			return
-		}
-		for _, resource := range in.Data.Resources {
-			if resource.Kind != "datastore" {
-				continue
-			}
-			var datastore vsphere.Datastore
-			if !assessment.DecodeResource(resource, &datastore) {
-				continue
-			}
-			free, ok := freePct(datastore.CapacityBytes, datastore.FreeBytes)
-			percentBreached := thresholds.DatastoreFreePct > 0 && ok && free < thresholds.DatastoreFreePct
-			bytesBreached := thresholds.DatastoreFreeBytes > 0 && float64(datastore.FreeBytes) < thresholds.DatastoreFreeBytes
-			if (!percentBreached && !bytesBreached) || (!ok && !bytesBreached) {
-				continue
-			}
-			obj := resourceObject(in.Data, resource, "datastore", datastore.Name, datastore.ID, datastore.Datacenter)
-			evidence := make([]Evidence, 0, 2)
-			if percentBreached {
-				evidence = append(evidence, Evidence{Field: "free_percent", Observed: percent(free), Expected: percent(thresholds.DatastoreFreePct)})
-			}
-			if bytesBreached {
-				evidence = append(evidence, Evidence{Field: "free_bytes", Observed: humanize.Bytes(datastore.FreeBytes), Expected: humanize.Bytes(int64(thresholds.DatastoreFreeBytes))})
-			}
-			message := fmt.Sprintf("Datastore has %s%% free space (%s of %s)", percent(free), humanize.Bytes(datastore.FreeBytes), humanize.Bytes(datastore.CapacityBytes))
-			if bytesBreached && !percentBreached {
-				message = fmt.Sprintf("Datastore has %s free space, below the %s floor", humanize.Bytes(datastore.FreeBytes), humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
-			} else if bytesBreached {
-				message += fmt.Sprintf(" and below the %s floor", humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
-			}
-			emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: obj,
-				Message: message, Evidence: evidence})
-		}
+		evaluateDatastoreSpaceLow(in, thresholds, emit)
 	case "guest-disk-space-low":
 		if thresholds.GuestDiskFreePct <= 0 {
 			return

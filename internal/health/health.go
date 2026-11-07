@@ -94,19 +94,24 @@ type Rule struct {
 }
 
 type Thresholds struct {
-	SnapshotAge        time.Duration `json:"max_snapshot_age"`
-	DatastoreFreePct   float64       `json:"min_datastore_free_pct"`
-	DatastoreFreeBytes float64       `json:"min_datastore_free_bytes"`
-	GuestDiskFreePct   float64       `json:"min_guest_disk_free_pct"`
+	SnapshotAge time.Duration `json:"max_snapshot_age"`
+	// DatastoreWarnFreePct is the free-space percentage below which a
+	// datastore is a warning; DatastoreFreePct and DatastoreFreeBytes are
+	// the floors below which it is critical. Zero turns a level off.
+	DatastoreWarnFreePct float64 `json:"warn_datastore_free_pct,omitempty"`
+	DatastoreFreePct     float64 `json:"min_datastore_free_pct"`
+	DatastoreFreeBytes   float64 `json:"min_datastore_free_bytes"`
+	GuestDiskFreePct     float64 `json:"min_guest_disk_free_pct"`
 }
 
 // DefaultThresholds are the policy defaults used by the CLI, exports, and
 // the History health pane.
 func DefaultThresholds() Thresholds {
 	return Thresholds{
-		SnapshotAge:      30 * 24 * time.Hour,
-		DatastoreFreePct: 10,
-		GuestDiskFreePct: 10,
+		SnapshotAge:          30 * 24 * time.Hour,
+		DatastoreWarnFreePct: 15,
+		DatastoreFreePct:     10,
+		GuestDiskFreePct:     10,
 	}
 }
 

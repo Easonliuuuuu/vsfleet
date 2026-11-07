@@ -91,6 +91,7 @@ func TestPercentFlagsAreValidated(t *testing.T) {
 	healthDB, capacityDB := newHealthTestHistoryDB(t, false), newTopologyTestHistoryDB(t)
 	for _, args := range [][]string{
 		{healthDB, "analyze", "health", "--min-datastore-free"},
+		{healthDB, "analyze", "health", "--warn-datastore-free"},
 		{healthDB, "analyze", "health", "--min-guest-disk-free"},
 		{capacityDB, "analyze", "capacity", "--run", "latest", "--min-free"},
 	} {
@@ -98,6 +99,26 @@ func TestPercentFlagsAreValidated(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "must be between 0 and 100") {
 			t.Errorf("%v NaN: err = %v, want the percentage validation failure", args[1:], err)
 		}
+	}
+}
+
+func TestDatastoreWarningLevelIsNotBelowTheFloor(t *testing.T) {
+	healthDB := newHealthTestHistoryDB(t, false)
+	for _, tc := range []struct {
+		name string
+		args []string
+		ok   bool
+	}{
+		{"defaults", nil, true},
+		{"warning below the floor", []string{"--warn-datastore-free", "5"}, false},
+		{"warning off", []string{"--warn-datastore-free", "0", "--min-datastore-free", "20"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, _, err := runCLI(t, healthDB, append([]string{"analyze", "health"}, tc.args...)...)
+			if tc.ok != (err == nil) || (err != nil && !strings.Contains(err.Error(), "must not be below --min-datastore-free")) {
+				t.Fatalf("err = %v, want ok=%v", err, tc.ok)
+			}
+		})
 	}
 }
 

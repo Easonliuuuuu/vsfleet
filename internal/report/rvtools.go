@@ -1363,8 +1363,8 @@ func healthFindingsForContext(report health.Report, context string) int {
 }
 
 func healthThresholdMessage(thresholds health.Thresholds) string {
-	message := fmt.Sprintf("max-snapshot-age=%s, min-datastore-free=%s%%, min-guest-disk-free=%s%%",
-		healthDurationFlag(thresholds.SnapshotAge), formatPercent(thresholds.DatastoreFreePct), formatPercent(thresholds.GuestDiskFreePct))
+	message := fmt.Sprintf("max-snapshot-age=%s, warn-datastore-free=%s%%, min-datastore-free=%s%%, min-guest-disk-free=%s%%",
+		healthDurationFlag(thresholds.SnapshotAge), formatPercent(thresholds.DatastoreWarnFreePct), formatPercent(thresholds.DatastoreFreePct), formatPercent(thresholds.GuestDiskFreePct))
 	if thresholds.DatastoreFreeBytes > 0 {
 		message += fmt.Sprintf(", min-datastore-free-bytes=%s", humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
 	}

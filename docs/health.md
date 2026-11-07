@@ -9,9 +9,21 @@ recommendation. Categories are `migration`, `availability`, `security`,
 `capacity`, and `hygiene`.
 
 Defaults are 30 days for maximum snapshot age and 10% minimum free space for
-datastores and guest filesystems. Tune them with `--max-snapshot-age`,
-`--min-datastore-free`, `--min-datastore-free-bytes`,
+guest filesystems. Tune them with `--max-snapshot-age`,
+`--warn-datastore-free`, `--min-datastore-free`, `--min-datastore-free-bytes`,
 `--min-guest-disk-free`, `--disable-rule`, `--severity`, and `--category`.
+
+`datastore-space-low` has two levels:
+
+| Level | Default | Flag | Lines up with |
+| --- | --- | --- | --- |
+| Warning | below 15% free | `--warn-datastore-free` | vCenter's "Datastore usage on disk" alarm turning red at 85% used |
+| Critical | below 10% free | `--min-datastore-free` | |
+
+vCenter's alarm turns yellow at 75% used, and Storage DRS stops placing VMs
+on a datastore at 80% used by default; both come before the warning level.
+`--min-datastore-free-bytes` adds a critical floor in bytes.
+`--warn-datastore-free 0` turns the warning off.
 `-o wide` shows recommendations, evidence, tags and custom attributes; JSON
 always includes them. `--field-selector` and `-l` keep the findings whose
 object matches, in the language of [`vsfleet get`](commands.md#get-selectors).

@@ -2,6 +2,7 @@ package vsphere
 
 import (
 	"fmt"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -817,6 +818,19 @@ type HostMultipath struct {
 	WorkingPaths int    `json:"working_paths"`
 	// Device is nil for a capture predating inventory schema 35.
 	Device *HostMultipathLUN `json:"device,omitempty"`
+}
+
+// CanonicalName is the LUN's canonical name, which datastore extents name it
+// by: recorded since inventory schema 35, and the last element of its device
+// path before that. It is empty when neither was recorded.
+func (mp HostMultipath) CanonicalName() string {
+	if mp.Device != nil && mp.Device.CanonicalName != "" {
+		return mp.Device.CanonicalName
+	}
+	if mp.DevicePath == "" {
+		return ""
+	}
+	return path.Base(mp.DevicePath)
 }
 
 // Cluster is a compute cluster. Standalone hosts appear as a ComputeResource

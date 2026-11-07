@@ -93,13 +93,15 @@ func hostMultipathChanges(before, after json.RawMessage) []FieldChange {
 }
 
 // multipathsByLUN keys a host's multipath entries by the LUN's canonical
-// name, or its display name in a capture that recorded no device.
+// name, so a capture predating inventory schema 35, which recorded only the
+// device path, keys a LUN the same as a newer one. An entry with neither is
+// keyed by its display name.
 func multipathsByLUN(entries []vsphere.HostMultipath) map[string]vsphere.HostMultipath {
 	out := make(map[string]vsphere.HostMultipath, len(entries))
 	for _, e := range entries {
-		name := e.LUN
-		if e.Device != nil && e.Device.CanonicalName != "" {
-			name = e.Device.CanonicalName
+		name := e.CanonicalName()
+		if name == "" {
+			name = e.LUN
 		}
 		out[name] = e
 	}

@@ -79,6 +79,9 @@ func TestHostMultipathChanges(t *testing.T) {
 		{"policy changed", []vsphere.HostMultipath{lun(a)}, func() []vsphere.HostMultipath { m := lun(a); m.Policy = "RR"; return []vsphere.HostMultipath{m} }(),
 			[]FieldChange{{Field: "multipaths[" + disk + "].policy", Before: "FIXED", After: "RR"}}},
 		{"host configuration not collected", nil, []vsphere.HostMultipath{lun(a)}, nil},
+		{"a capture predating the device keys the LUN by its device path",
+			[]vsphere.HostMultipath{{LUN: "Local ATA Disk (" + disk + ")", DevicePath: "/vmfs/devices/disks/" + disk, Policy: "FIXED"}},
+			[]vsphere.HostMultipath{lun(a)}, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			before, _ := json.Marshal(vsphere.Host{ID: "host-12", Name: "192.168.150.11", Multipaths: tc.before})

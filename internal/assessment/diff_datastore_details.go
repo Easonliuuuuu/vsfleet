@@ -50,7 +50,9 @@ func splitDatastoreDetails(d vsphere.DatastoreDetails) (vsphere.DatastoreDetails
 	}
 	if c := d.StorageCluster; c != nil {
 		state.ClusterCapacityBytes, state.ClusterFreeBytes = c.CapacityBytes, c.FreeBytes
-		d.StorageCluster = &vsphere.DatastoreCluster{Name: c.Name}
+		config := *c
+		config.CapacityBytes, config.FreeBytes = nil, nil
+		d.StorageCluster = &config
 	}
 	return d, state
 }

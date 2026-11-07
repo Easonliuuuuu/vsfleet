@@ -30,7 +30,7 @@ func TestDatastoreDetailsReadsTheLabsDatastores(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		ds   mo.Datastore
-		pods map[types.ManagedObjectReference]*types.StoragePodSummary
+		pods map[types.ManagedObjectReference]*mo.StoragePod
 		want *DatastoreDetails
 	}{
 		{"local-esxi01", mo.Datastore{
@@ -52,10 +52,16 @@ func TestDatastoreDetailsReadsTheLabsDatastores(t *testing.T) {
 		}, nil, &DatastoreDetails{ConfigStatus: "gray", Address: "192.168.150.1 /srv/vsphere", Hosts: []string{"192.168.150.11", "192.168.150.12"},
 			VMIDs: []string{}, MultipleHostAccess: &yes, SIOCEnabled: &no, SIOCThreshold: &threshold}},
 		{"in a datastore cluster", mo.Datastore{ManagedEntity: mo.ManagedEntity{Parent: &pod}},
-			map[types.ManagedObjectReference]*types.StoragePodSummary{pod: {Name: "pod-a", Capacity: 2 << 30, FreeSpace: 1 << 30}},
-			&DatastoreDetails{VMIDs: []string{}, StorageCluster: &DatastoreCluster{Name: "pod-a", CapacityBytes: ptr(int64(2 << 30)), FreeBytes: ptr(int64(1 << 30))}}},
+			map[types.ManagedObjectReference]*mo.StoragePod{pod: {Summary: &types.StoragePodSummary{Name: "pod-a", Capacity: 2 << 30, FreeSpace: 1 << 30}}},
+			&DatastoreDetails{VMIDs: []string{}, StorageCluster: &DatastoreCluster{ID: "group-p1", Name: "pod-a", CapacityBytes: ptr(int64(2 << 30)), FreeBytes: ptr(int64(1 << 30))}}},
+		{"in a datastore cluster with Storage DRS", mo.Datastore{ManagedEntity: mo.ManagedEntity{Parent: &pod}},
+			map[types.ManagedObjectReference]*mo.StoragePod{pod: {PodStorageDrsEntry: &types.PodStorageDrsEntry{StorageDrsConfig: types.StorageDrsConfigInfo{PodConfig: types.StorageDrsPodConfigInfo{
+				Enabled: true, SpaceLoadBalanceConfig: &types.StorageDrsSpaceLoadBalanceConfig{SpaceThresholdMode: "freeSpace", SpaceUtilizationThreshold: 80, FreeSpaceThresholdGB: 50},
+			}}}}},
+			&DatastoreDetails{VMIDs: []string{}, StorageCluster: &DatastoreCluster{ID: "group-p1", Name: "pod-a",
+				StorageDRS: &StorageDRS{Enabled: true, SpaceThresholdMode: "freeSpace", SpaceUtilizationPct: 80, FreeSpaceGB: 50}}}},
 		{"in a datastore cluster whose summary was not read", mo.Datastore{ManagedEntity: mo.ManagedEntity{Parent: &pod}}, nil,
-			&DatastoreDetails{VMIDs: []string{}, StorageCluster: &DatastoreCluster{Name: "pod-a"}}},
+			&DatastoreDetails{VMIDs: []string{}, StorageCluster: &DatastoreCluster{ID: "group-p1", Name: "pod-a"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := datastoreDetails(idx, &tc.ds, tc.pods); !reflect.DeepEqual(got, tc.want) {
@@ -66,3 +72,28 @@ func TestDatastoreDetailsReadsTheLabsDatastores(t *testing.T) {
 }
 
 func ptr[T any](v T) *T { return &v }
+
+func TestStorageDRSAboveThreshold(t *testing.T) {
+	const gib = int64(1) << 30
+	for _, tc := range []struct {
+		name           string
+		sdrs           StorageDRS
+		capacity, free int64
+		above          bool
+		threshold      string
+	}{
+		{"defaults to 80% used", StorageDRS{Enabled: true}, 100 * gib, 19 * gib, true, "80% used"},
+		{"at the threshold", StorageDRS{Enabled: true}, 100 * gib, 20 * gib, false, "80% used"},
+		{"utilization threshold set", StorageDRS{SpaceThresholdMode: "utilization", SpaceUtilizationPct: 90}, 100 * gib, 15 * gib, false, "90% used"},
+		{"free-space mode defaults to 50 GB", StorageDRS{SpaceThresholdMode: "freeSpace"}, 1000 * gib, 49 * gib, true, "50 GB free"},
+		{"free-space threshold set", StorageDRS{SpaceThresholdMode: "freeSpace", FreeSpaceGB: 10}, 1000 * gib, 49 * gib, false, "10 GB free"},
+		{"no capacity", StorageDRS{}, 0, 0, false, "80% used"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			above, threshold := tc.sdrs.AboveThreshold(tc.capacity, tc.free)
+			if above != tc.above || threshold != tc.threshold {
+				t.Errorf("AboveThreshold = %v, %q, want %v, %q", above, threshold, tc.above, tc.threshold)
+			}
+		})
+	}
+}

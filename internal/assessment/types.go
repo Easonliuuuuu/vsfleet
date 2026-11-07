@@ -98,7 +98,14 @@ type RunStatus string
 // Schema 37 records the alarms triggered on each datastore
 // (Datastore.Alarms, with Datastore.AlarmsRead set); older runs have none,
 // which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "37"
+// Schema 38 records each datastore cluster's managed object ID and Storage
+// DRS space configuration (DatastoreCluster.ID and StorageDRS); older runs
+// have none, which readers must treat as "not read".
+const CurrentInventorySchemaVersion = "38"
+
+// InventoryStorageDRSSchema is the first inventory schema that records a
+// datastore cluster's Storage DRS space configuration.
+const InventoryStorageDRSSchema = 38
 
 // InventoryVAppSchema is the first inventory schema that records vApps.
 const InventoryVAppSchema = 20

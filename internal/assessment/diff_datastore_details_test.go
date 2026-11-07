@@ -22,6 +22,12 @@ func TestDatastoreDetailChanges(t *testing.T) {
 		}
 		return d
 	}
+	inPod := func(pct int32) *vsphere.DatastoreDetails {
+		return lab(func(d *vsphere.DatastoreDetails) {
+			d.StorageCluster = &vsphere.DatastoreCluster{ID: "group-p1", Name: "pod-a", CapacityBytes: ptrTo(int64(100)), FreeBytes: ptrTo(int64(50)),
+				StorageDRS: &vsphere.StorageDRS{Enabled: true, SpaceThresholdMode: "utilization", SpaceUtilizationPct: pct}}
+		})
+	}
 	for _, tc := range []struct {
 		name          string
 		before, after *vsphere.DatastoreDetails
@@ -37,6 +43,14 @@ func TestDatastoreDetailChanges(t *testing.T) {
 			[]FieldChange{{Field: "details.vm_ids", Before: `"vm-1007, vm-1009"`, After: `"vm-1007"`}}},
 		{"moved into a datastore cluster", lab(nil), lab(func(d *vsphere.DatastoreDetails) { d.StorageCluster = &vsphere.DatastoreCluster{Name: "pod-a"} }), false,
 			nil}, // the cluster is recorded on one side only, so it is unknown rather than changed
+		{"Storage DRS threshold raised", inPod(80), inPod(90), false,
+			[]FieldChange{{Field: "details.storage_cluster.storage_drs.space_utilization_threshold_pct", Before: "80", After: "90"}}},
+		{"the datastore cluster filled, without runtime fields", inPod(80), func() *vsphere.DatastoreDetails {
+			d := inPod(80)
+			d.StorageCluster.FreeBytes = ptrTo(int64(1))
+			return d
+		}(), false, nil},
+		{"captured before schema 38", lab(func(d *vsphere.DatastoreDetails) { d.StorageCluster = &vsphere.DatastoreCluster{Name: "pod-a"} }), inPod(80), false, nil},
 		{"captured before schema 35", nil, lab(nil), true, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,3 +106,5 @@ func TestHostMultipathChanges(t *testing.T) {
 		})
 	}
 }
+
+func ptrTo[T any](v T) *T { return &v }

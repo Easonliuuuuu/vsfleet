@@ -292,6 +292,12 @@ var rules = []Rule{
 		},
 	},
 	{
+		ID: "storage-drs-space-threshold", Category: CategoryCapacity, Severity: SeverityWarning, MinSchema: assessment.InventoryStorageDRSSchema,
+		Recommendation: "Free space on the cluster's datastores, add a datastore to the cluster, or raise its Storage DRS space threshold.", NeedsCollections: []string{"datastore"},
+		Summary: "every datastore in a Storage DRS cluster is past its space threshold", Needs: "datastore cluster Storage DRS configuration",
+		Eval: evaluateStorageDRSFull,
+	},
+	{
 		ID: "tools-not-installed", Category: CategoryHygiene, Severity: SeverityWarning, MinSchema: 3,
 		Recommendation: "Install VMware Tools before migration so guest state and quiescing are available.", NeedsCollections: []string{"vm"},
 		Summary: "VMware Tools are not installed", Needs: "VMware Tools version inventory",

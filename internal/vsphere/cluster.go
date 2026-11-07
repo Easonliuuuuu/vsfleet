@@ -42,7 +42,11 @@ func (c *Client) listClusters(ctx context.Context, idx *index) ([]Cluster, error
 		values[raw[i].Self] = raw[i].CustomValue
 	}
 	metadata := c.collectMetadata(ctx, refs, values)
-	alarmNames := c.alarmNames(ctx, raw)
+	states := make([][]types.AlarmState, len(raw))
+	for i := range raw {
+		states[i] = raw[i].TriggeredAlarmState
+	}
+	alarmNames := c.alarmNames(ctx, states)
 	for i := range raw {
 		m := &raw[i]
 		cl := Cluster{
@@ -153,14 +157,14 @@ func issueMessages(events []types.BaseEvent) []string {
 	return out
 }
 
-// alarmNames resolves the alarm definitions the clusters' triggered alarms
+// alarmNames resolves the alarm definitions a set of triggered alarm states
 // point at. It is best effort: an alarm whose definition cannot be read is
 // still counted, under its managed object ID.
-func (c *Client) alarmNames(ctx context.Context, raw []mo.ComputeResource) map[types.ManagedObjectReference]string {
+func (c *Client) alarmNames(ctx context.Context, states [][]types.AlarmState) map[types.ManagedObjectReference]string {
 	seen := map[types.ManagedObjectReference]bool{}
 	var refs []types.ManagedObjectReference
-	for i := range raw {
-		for _, st := range raw[i].TriggeredAlarmState {
+	for _, entity := range states {
+		for _, st := range entity {
 			if !seen[st.Alarm] {
 				seen[st.Alarm] = true
 				refs = append(refs, st.Alarm)

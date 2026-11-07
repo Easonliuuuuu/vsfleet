@@ -52,7 +52,8 @@ time, a standard switch's free ports), datastore state (configuration status,
 the VMs on it, its datastore cluster's free space) or the number of VMs on a
 distributed switch should participate in a diff. A storage path that is lost
 or goes dead is reported on every diff, and so is a change to a switch's or
-port group's security, teaming, shaping or offload settings.
+port group's security, teaming, shaping or offload settings, and an alarm
+that fires, changes colour or clears on a datastore.
 
 ### Imports and live captures
 

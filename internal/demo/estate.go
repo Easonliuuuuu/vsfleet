@@ -834,6 +834,15 @@ func (e *estate) finishDatastores(s siteSpec) {
 			used = max(used, int64(float64(capBytes)*fill))
 		}
 		ds.CapacityBytes, ds.FreeBytes = capBytes, capBytes-used
+		ds.AlarmsRead = true
+		// vCenter's "Datastore usage on disk" alarm, at its default levels.
+		if usage := float64(used) / float64(capBytes); usage >= 0.75 {
+			status := "yellow"
+			if usage >= 0.85 {
+				status = "red"
+			}
+			ds.Alarms = []vsphere.Alarm{{Name: "Datastore usage on disk", Status: status, Entity: ds.Name, EntityType: "Datastore"}}
+		}
 		if ds.Accessible {
 			u := uncommitted[spec.name]
 			ds.UncommittedBytes = &u

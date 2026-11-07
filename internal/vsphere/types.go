@@ -1098,6 +1098,12 @@ type Datastore struct {
 	// Details is the datastore's vDatastore configuration; see
 	// DatastoreDetails.
 	Details *DatastoreDetails `json:"details,omitempty"`
+	// Alarms are the alarms triggered on the datastore, worst first, such as
+	// vCenter's "Datastore usage on disk". AlarmsRead is false for a capture
+	// predating inventory schema 37 and for an import, whose empty list is
+	// then missing evidence, not "none".
+	AlarmsRead bool    `json:"alarms_read,omitempty"`
+	Alarms     []Alarm `json:"alarms,omitempty"`
 }
 
 // DatastoreBacking identifies the storage a datastore is presented from, so

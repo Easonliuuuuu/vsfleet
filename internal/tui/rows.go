@@ -764,6 +764,17 @@ func datastoreRow(d vsphere.Datastore, inv *vsphere.Inventory, withContext bool)
 	if marked {
 		marks["Hosts"] = mark
 	}
+	alarms := "-"
+	switch {
+	case len(d.Alarms) > 0:
+		alarms = alarmSummary(d.Alarms, d.Name)
+		marks["Alarms"] = fieldMark{statusWarn, ""}
+		if d.Alarms[0].Status == "red" {
+			marks["Alarms"] = fieldMark{statusBad, ""}
+		}
+	case d.AlarmsRead:
+		alarms = "none"
+	}
 	provisioned := "-"
 	if p, ok := d.ProvisionedBytes(); ok {
 		pct, _ := d.ProvisionedPercent()
@@ -797,6 +808,7 @@ func datastoreRow(d vsphere.Datastore, inv *vsphere.Inventory, withContext bool)
 			{"Provisioned", provisioned},
 			{"Hosts", hostsValue},
 			{"Maintenance", humanize.Dash(d.Maintenance)},
+			{"Alarms", alarms},
 			{"Datacenter", humanize.Dash(d.Datacenter)},
 			{"Inventory path", humanize.Dash(d.Path)},
 			{"Managed object", d.ID},

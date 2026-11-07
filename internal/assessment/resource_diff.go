@@ -300,6 +300,7 @@ func changedResourceFields(kind string, before, after json.RawMessage, includeRu
 		out = append(out, dvSwitchChanges(before, after, includeRuntime)...)
 	case "datastore":
 		out = append(out, datastoreDetailChanges(before, after, includeRuntime)...)
+		out = append(out, datastoreAlarmChanges(before, after)...)
 	}
 	out = append(out, metadataFieldChanges(before, after)...)
 	return out

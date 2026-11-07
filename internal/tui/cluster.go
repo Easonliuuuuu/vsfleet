@@ -63,11 +63,12 @@ func membersOf(c vsphere.Cluster, inv *vsphere.Inventory) clusterMembers {
 	return out
 }
 
-// alarmSummary counts a cluster's triggered alarms by severity and names the
-// worst one, with where it fired when that is not the cluster itself.
-func alarmSummary(c vsphere.Cluster) string {
+// alarmSummary counts an object's triggered alarms, worst first, by severity
+// and names the worst one, with where it fired when that is not the object
+// itself.
+func alarmSummary(alarms []vsphere.Alarm, owner string) string {
 	var critical, warning int
-	for _, a := range c.Alarms {
+	for _, a := range alarms {
 		if a.Status == "red" {
 			critical++
 		} else {
@@ -81,9 +82,9 @@ func alarmSummary(c vsphere.Cluster) string {
 	if warning > 0 {
 		parts = append(parts, fmt.Sprintf("%d warning", warning))
 	}
-	worst := c.Alarms[0]
+	worst := alarms[0]
 	name := worst.Name
-	if worst.Entity != "" && worst.Entity != c.Name {
+	if worst.Entity != "" && worst.Entity != owner {
 		name += " on " + worst.Entity
 	}
 	return strings.Join(append(parts, name), " · ")
@@ -198,7 +199,7 @@ func clusterFields(c vsphere.Cluster, mem clusterMembers) ([]field, map[string]f
 	case len(c.Alarms) == 0:
 		add("Alarms", "none")
 	default:
-		v := alarmSummary(c)
+		v := alarmSummary(c.Alarms, c.Name)
 		if !c.AlarmsRead {
 			v += " · some hosts not visible"
 		}

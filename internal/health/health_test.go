@@ -58,7 +58,7 @@ func TestEvaluateInitialRules(t *testing.T) {
 			t.Errorf("%s findings=%d, want %d", id, got[id], count)
 		}
 	}
-	if report.Counts.Total != 9 || report.Counts.Info != 1 || report.Counts.Warning != 6 || report.Counts.Critical != 2 {
+	if report.Counts.Total != 9 || report.Counts.Info != 1 || report.Counts.Warning != 5 || report.Counts.Critical != 3 {
 		t.Fatalf("counts=%+v", report.Counts)
 	}
 }

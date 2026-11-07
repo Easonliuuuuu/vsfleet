@@ -32,6 +32,7 @@ type healthFlags struct {
 	run                                string
 	maxSnapshotAge                     string
 	minDatastoreFree, minGuestDiskFree float64
+	warnDatastoreFree                  float64
 	minDatastoreFreeBytes              string
 	disabled                           []string
 	minimumSeverity, category          string
@@ -42,8 +43,9 @@ type healthFlags struct {
 func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
 	addRunFlag(cmd, &f.run)
 	cmd.Flags().StringVar(&f.maxSnapshotAge, "max-snapshot-age", "30d", "report snapshots at least this old (e.g. 30d, 2w)")
-	cmd.Flags().Float64Var(&f.minDatastoreFree, "min-datastore-free", 10, "report datastores with less than this percent free space")
-	cmd.Flags().StringVar(&f.minDatastoreFreeBytes, "min-datastore-free-bytes", "", "report datastores with less than this many free bytes")
+	cmd.Flags().Float64Var(&f.warnDatastoreFree, "warn-datastore-free", 15, "warn on datastores with less than this percent free space (0 turns the warning off)")
+	cmd.Flags().Float64Var(&f.minDatastoreFree, "min-datastore-free", 10, "report datastores with less than this percent free space as critical")
+	cmd.Flags().StringVar(&f.minDatastoreFreeBytes, "min-datastore-free-bytes", "", "report datastores with less than this many free bytes as critical")
 	cmd.Flags().Float64Var(&f.minGuestDiskFree, "min-guest-disk-free", 10, "report guest filesystems with less than this percent free space")
 	cmd.Flags().StringSliceVar(&f.disabled, "disable-rule", nil, "disable a health rule (repeat or comma-separate)")
 	cmd.Flags().StringVar(&f.minimumSeverity, "severity", "info", "minimum severity to report: info, warning, or critical")
@@ -142,6 +144,13 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, flags healthFlags) (healt
 	if err := validatePercent("--min-datastore-free", flags.minDatastoreFree); err != nil {
 		return health.Report{}, err
 	}
+	if err := validatePercent("--warn-datastore-free", flags.warnDatastoreFree); err != nil {
+		return health.Report{}, err
+	}
+	if flags.warnDatastoreFree > 0 && flags.warnDatastoreFree < flags.minDatastoreFree {
+		return health.Report{}, fmt.Errorf("--warn-datastore-free (%s%%) must not be below --min-datastore-free (%s%%); pass 0 to turn the warning off",
+			strconv.FormatFloat(flags.warnDatastoreFree, 'f', -1, 64), strconv.FormatFloat(flags.minDatastoreFree, 'f', -1, 64))
+	}
 	if err := validatePercent("--min-guest-disk-free", flags.minGuestDiskFree); err != nil {
 		return health.Report{}, err
 	}
@@ -180,7 +189,7 @@ func evaluateHealthCommand(cmd *cobra.Command, a *App, flags healthFlags) (healt
 	if err != nil {
 		return health.Report{}, err
 	}
-	report := health.Evaluate(data, health.Options{Thresholds: health.Thresholds{SnapshotAge: age, DatastoreFreePct: flags.minDatastoreFree, DatastoreFreeBytes: minDatastoreFreeBytes, GuestDiskFreePct: flags.minGuestDiskFree}, Disabled: disabledIDs})
+	report := health.Evaluate(data, health.Options{Thresholds: health.Thresholds{SnapshotAge: age, DatastoreWarnFreePct: flags.warnDatastoreFree, DatastoreFreePct: flags.minDatastoreFree, DatastoreFreeBytes: minDatastoreFreeBytes, GuestDiskFreePct: flags.minGuestDiskFree}, Disabled: disabledIDs})
 	if !fields.Empty() || !labels.Empty() {
 		report = filterHealthByObject(report, data, func(s query.Subject) bool { return fields.Match(s) && labels.Match(s) })
 	}

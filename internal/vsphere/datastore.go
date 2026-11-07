@@ -9,7 +9,7 @@ import (
 	"github.com/vmware/govmomi/vim25/types"
 )
 
-var datastoreProps = []string{"name", "parent", "summary", "browser", "info", "customValue"}
+var datastoreProps = []string{"name", "parent", "summary", "browser", "info", "customValue", "triggeredAlarmState"}
 
 // ListDatastores returns the datastores in a vCenter.
 func (c *Client) ListDatastores(ctx context.Context) ([]Datastore, error) {
@@ -41,6 +41,11 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 		values[raw[i].Self] = raw[i].CustomValue
 	}
 	metadata := c.collectMetadata(ctx, refs, values)
+	states := make([][]types.AlarmState, len(raw))
+	for i := range raw {
+		states[i] = raw[i].TriggeredAlarmState
+	}
+	alarmNames := c.alarmNames(ctx, states)
 	for i := range raw {
 		m := &raw[i]
 		s := m.Summary
@@ -55,6 +60,8 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 			Maintenance:   s.MaintenanceMode,
 			Backing:       datastoreBacking(m),
 			Details:       datastoreDetails(idx, m, pods),
+			AlarmsRead:    true,
+			Alarms:        triggeredAlarms(idx, m.TriggeredAlarmState, alarmNames),
 		}
 		if s.Accessible {
 			// vSphere reports uncommitted space only for an accessible

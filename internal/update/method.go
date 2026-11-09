@@ -41,7 +41,7 @@ const (
 
 // Detect works out the install method from exe, the resolved path of the
 // running binary. The packaging layouts it recognises are the ones
-// .goreleaser.yaml produces: the Homebrew tap, the Scoop bucket, winget, the
+// .goreleaser.yaml produces: the Homebrew tap, the Scoop bucket, the
 // nfpm packages (which install /usr/bin/vsfleet), and "go install".
 func Detect(exe string, env Env) Method {
 	p := strings.ToLower(strings.ReplaceAll(exe, `\`, "/"))
@@ -70,8 +70,6 @@ func Detect(exe string, env Env) Method {
 		return runnable(Method{Name: "Homebrew", Command: []string{"brew", "upgrade", "vsfleet"}}, "brew")
 	case strings.Contains(p, "/scoop/apps/vsfleet/") || strings.Contains(p, "/scoop/shims/"):
 		return Method{Name: "Scoop", Command: []string{"scoop", "update", "vsfleet"}, Why: whyWindows}
-	case strings.Contains(p, "/winget/packages/") || strings.Contains(p, "/winget/links/"):
-		return Method{Name: "winget", Command: []string{"winget", "upgrade", "vsfleet"}, Why: whyWindows}
 	case inGoBin(p, env):
 		return runnable(Method{Name: "go install", Command: []string{"go", "install", "github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest"}}, "go")
 	case p == "/usr/bin/vsfleet":

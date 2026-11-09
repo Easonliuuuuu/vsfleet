@@ -10,7 +10,7 @@ vsfleet cluster-info
 
 ## vsfleet is not found
 
-After installing with WinGet or Scoop, open a new terminal so it picks up the
+After installing with Scoop, open a new terminal so it picks up the
 updated `PATH`, then run `vsfleet --version`.
 
 For `go install`, the binary goes to `go env GOBIN`, or to the `bin` directory

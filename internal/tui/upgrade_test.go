@@ -96,15 +96,15 @@ func TestUpgradePromptSkipHidesTheBadge(t *testing.T) {
 }
 
 func TestUpgradePromptOffersOnlyWhatTheInstallMethodAllows(t *testing.T) {
-	winget := brewOffer
-	winget.Command, winget.Runs, winget.Why = "winget upgrade vsfleet", false, "Windows can't replace a vsfleet.exe that is running."
-	p, chosen, h := newPromptFixture(t, winget)
+	scoop := brewOffer
+	scoop.Command, scoop.Runs, scoop.Why = "scoop update vsfleet", false, "Windows can't replace a vsfleet.exe that is running."
+	p, chosen, h := newPromptFixture(t, scoop)
 
 	if next, _ := answerPrompt(p, "y"); next != p {
 		t.Fatal("y must do nothing where vsfleet cannot run the upgrade itself")
 	}
 	view := ansi.Strip(p.View())
-	for _, want := range []string{"Run after quitting:  winget upgrade vsfleet", "Windows can't replace", "c copy command"} {
+	for _, want := range []string{"Run after quitting:  scoop update vsfleet", "Windows can't replace", "c copy command"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("prompt is missing %q:\n%s", want, view)
 		}
@@ -115,8 +115,8 @@ func TestUpgradePromptOffersOnlyWhatTheInstallMethodAllows(t *testing.T) {
 
 	_, cmd := answerPrompt(p, "c")
 	runCmd(cmd)
-	if len(h.copied) != 1 || h.copied[0] != "winget upgrade vsfleet" {
-		t.Errorf("copied %v, want the winget command", h.copied)
+	if len(h.copied) != 1 || h.copied[0] != "scoop update vsfleet" {
+		t.Errorf("copied %v, want the scoop command", h.copied)
 	}
 	if len(*chosen) != 1 || (*chosen)[0] != UpgradeLater {
 		t.Errorf("copying recorded %v, want not now", *chosen)

@@ -171,7 +171,7 @@ func TestDetect(t *testing.T) {
 		{"go install Windows GOPATH list", `D:\work\bin\vsfleet.exe`, env("windows", `C:\Users\op`, map[string]string{"GOPATH": `C:\go;D:\work`}, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", false},
 		{"go install on Windows", `C:\Users\op\go\bin\vsfleet.exe`, env("windows", `C:\Users\op`, nil, found), "go install", "go install github.com/easonliuuuuu/vsfleet/cmd/vsfleet@latest", false},
 		{"scoop", `C:\Users\op\scoop\apps\vsfleet\current\vsfleet.exe`, env("windows", `C:\Users\op`, nil, found), "Scoop", "scoop update vsfleet", false},
-		{"winget", `C:\Users\op\AppData\Local\Microsoft\WinGet\Packages\vsfleet_x\vsfleet.exe`, env("windows", `C:\Users\op`, nil, found), "winget", "winget upgrade vsfleet", false},
+		{"former winget package", `C:\Users\op\AppData\Local\Microsoft\WinGet\Packages\vsfleet_x\vsfleet.exe`, env("windows", `C:\Users\op`, nil, found), "release archive", "", false},
 		{"deb or rpm", "/usr/bin/vsfleet", env("linux", "/home/op", nil, found), "package", "", false},
 		{"archive", "/home/op/bin/vsfleet", env("linux", "/home/op", nil, found), "release archive", "", false},
 	}

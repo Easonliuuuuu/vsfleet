@@ -193,13 +193,9 @@ ownership, and Service DNS.
 ## Release snapshot and pins
 
 `release-snapshot` builds the full release without publishing or signing,
-checks every OS/architecture archive and WinGet manifest, runs the Linux
+checks every OS/architecture archive, runs the Linux
 binary and amd64 image, then scans them as described in
 [vulnerability scanning](security-scanning.md).
-
-`python scripts/test-winget-publication.py` checks the WinGet catalog
-comparison offline: an absent package, an older version, the released
-version, unrelated packages, and failed reads.
 
 `scripts/check-release-pins.sh` fails when:
 

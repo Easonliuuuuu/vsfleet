@@ -325,7 +325,7 @@ func TestEvaluateExpandedMigrationReadiness(t *testing.T) {
 	unlimited := int64(-1)
 	problem := vsphere.VM{
 		Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"},
-		ID:       "vm-problem", Name: "problem", ConfigurationAvailable: true, CPU: 4, Firmware: "bios", CoresPerSocket: 2,
+		ID:       "vm-problem", Name: "problem", Host: "esxi-01", ConfigurationAvailable: true, CPU: 4, Firmware: "bios", CoresPerSocket: 2,
 		AutoCoresPerSocket: &manualTopology, SecureBootEnabled: &secure,
 		CPUAllocation:                &vsphere.VMResourceAllocation{Reservation: &reservation, Limit: &limit},
 		MemoryAllocation:             &vsphere.VMResourceAllocation{Reservation: &reservation, Limit: &unlimited},
@@ -341,7 +341,7 @@ func TestEvaluateExpandedMigrationReadiness(t *testing.T) {
 		Floppies:   []vsphere.VMFloppy{{Key: 7, Label: "floppy", BackingType: "image", BackingPath: "[ds] problem/boot.img"}},
 	}
 	peerSecure := false
-	peer := vsphere.VM{Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"}, ID: "vm-peer", Name: "peer", ConfigurationAvailable: true, Firmware: "efi", SecureBootEnabled: &peerSecure, CPU: 1, CoresPerSocket: 1,
+	peer := vsphere.VM{Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"}, ID: "vm-peer", Name: "peer", Host: "esxi-01", ConfigurationAvailable: true, Firmware: "efi", SecureBootEnabled: &peerSecure, CPU: 1, CoresPerSocket: 1,
 		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited},
 		Disks: []vsphere.VMDisk{{Key: 2, Label: "shared", UUID: "shared-uuid", Sharing: "sharingMultiWriter"}}}
 	data := assessment.ExportData{Run: assessment.Run{ID: 60, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}}}}, VMs: []assessment.ExportVM{
@@ -491,7 +491,7 @@ func TestEvaluateHostDevicePassthroughUsesBindingEvidence(t *testing.T) {
 
 func TestMigrationReadinessKeepsAdvisoriesReady(t *testing.T) {
 	unlimited := int64(-1)
-	advisoryVM := vsphere.VM{Location: vsphere.Location{Context: "prod"}, ID: "vm-1", Name: "legacy", ConfigurationAvailable: true, Firmware: "bios", CPU: 1, CoresPerSocket: 1,
+	advisoryVM := vsphere.VM{Location: vsphere.Location{Context: "prod"}, ID: "vm-1", Name: "legacy", Host: "esxi-01", ConfigurationAvailable: true, Firmware: "bios", CPU: 1, CoresPerSocket: 1,
 		ToolsState: "guestToolsRunning", ToolsVersionStatus: "guestToolsCurrent",
 		CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}}
 	base := assessment.ExportData{Run: assessment.Run{ID: 61, InventorySchemaVersion: assessment.CurrentInventorySchemaVersion}, Contexts: []assessment.ContextRun{{Name: "prod", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}, {Kind: "host", Status: "success"}, {Kind: "datastore", Status: "success"}, {Kind: "dvswitch", Status: "success"}, {Kind: "cluster", Status: "empty"}, {Kind: "network", Status: "empty"}, {Kind: "snapshot", Status: "empty"}}}}, VMs: []assessment.ExportVM{{Observation: assessment.Observation{Context: "prod", VM: advisoryVM}}}}

@@ -15,7 +15,7 @@ import (
 func TestMissingVMConfigurationIsScopedToTheVM(t *testing.T) {
 	configured := func(id string, floppy bool) vsphere.VM {
 		secureBoot, unlimited := false, int64(-1)
-		vm := vsphere.VM{Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"}, ID: id, Name: id, ConfigurationAvailable: true,
+		vm := vsphere.VM{Location: vsphere.Location{Context: "prod", Datacenter: "dc-a"}, ID: id, Name: id, Host: "esxi-01", ConfigurationAvailable: true,
 			ToolsState: "guestToolsRunning", ToolsVersionStatus: "guestToolsCurrent",
 			Firmware: "efi", SecureBootEnabled: &secureBoot, CPU: 2, CoresPerSocket: 1,
 			CPUAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}, MemoryAllocation: &vsphere.VMResourceAllocation{Limit: &unlimited}}

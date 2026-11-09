@@ -49,8 +49,9 @@ func clusterRuleDescription(r vsphere.VMClusterRule) string {
 }
 
 // noClusterConfig reports a VM whose cluster rules were not read: one in a
-// cluster, or one without its configuration, whose placement is unknown. A
-// VM on a standalone host has no cluster rules to read.
+// cluster, one whose host the account cannot see, so its cluster is
+// unknown, or one without its configuration. A VM on a standalone host has
+// no cluster rules to read.
 func noClusterConfig(vm vsphere.VM) bool {
-	return vm.ClusterConfig == nil && (vm.Cluster != "" || noConfiguration(vm))
+	return vm.ClusterConfig == nil && (vm.Cluster != "" || vm.Host == "" || noConfiguration(vm))
 }

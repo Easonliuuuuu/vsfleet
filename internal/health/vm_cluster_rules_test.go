@@ -15,24 +15,29 @@ func TestVMClusterRuleIsAReadinessAdvisory(t *testing.T) {
 	together := vsphere.VMClusterRule{Name: "keep-together", Kind: vsphere.RuleAffinity, Enabled: true}
 	apart := vsphere.VMClusterRule{Name: "keep-apart", Kind: vsphere.RuleAntiAffinity, Enabled: true}
 	for _, tc := range []struct {
-		name         string
-		schema       string
-		config       *vsphere.VMClusterConfig
-		wantEvidence []string
-		wantResult   string
+		name          string
+		schema        string
+		host, cluster string
+		config        *vsphere.VMClusterConfig
+		wantEvidence  []string
+		wantResult    string
 	}{
-		{"two rules between VMs", assessment.CurrentInventorySchemaVersion, &vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{together, apart}},
+		{"two rules between VMs", assessment.CurrentInventorySchemaVersion, "esxi02", "Cluster-DR", &vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{together, apart}},
 			[]string{"keep-together (affinity)", "keep-apart (anti-affinity)"}, "fail"},
-		{"mandatory VM-host rule", assessment.CurrentInventorySchemaVersion,
+		{"mandatory VM-host rule", assessment.CurrentInventorySchemaVersion, "esxi02", "Cluster-DR",
 			&vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{{Name: "iso-on-dr-hosts", Kind: vsphere.RuleVMHost, Enabled: true, Mandatory: true, HostGroup: "dr-hosts"}}},
 			[]string{"iso-on-dr-hosts (mandatory vm-host, on dr-hosts)"}, "fail"},
-		{"disabled rule", assessment.CurrentInventorySchemaVersion, &vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{{Name: "keep-apart", Kind: vsphere.RuleAntiAffinity}}}, nil, "pass"},
-		{"no rules", assessment.CurrentInventorySchemaVersion, &vsphere.VMClusterConfig{HARestartPriority: "medium"}, nil, "pass"},
-		{"rules not read", assessment.CurrentInventorySchemaVersion, nil, nil, "unknown"},
-		{"capture predates the field", "33", nil, nil, "unknown"},
+		{"disabled rule", assessment.CurrentInventorySchemaVersion, "esxi02", "Cluster-DR", &vsphere.VMClusterConfig{Rules: []vsphere.VMClusterRule{{Name: "keep-apart", Kind: vsphere.RuleAntiAffinity}}}, nil, "pass"},
+		{"no rules", assessment.CurrentInventorySchemaVersion, "esxi02", "Cluster-DR", &vsphere.VMClusterConfig{HARestartPriority: "medium"}, nil, "pass"},
+		{"rules not read", assessment.CurrentInventorySchemaVersion, "esxi02", "Cluster-DR", nil, nil, "unknown"},
+		{"capture predates the field", "33", "esxi02", "Cluster-DR", nil, nil, "unknown"},
+		// A host the account cannot see leaves the VM with no host and no
+		// cluster: its rules are unknown, not absent.
+		{"host hidden by permissions", assessment.CurrentInventorySchemaVersion, "", "", nil, nil, "unknown"},
+		{"standalone host", assessment.CurrentInventorySchemaVersion, "esxi-solo", "", nil, nil, "pass"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			vm := vsphere.VM{ID: "vm-1009", Name: "vm-normal", Cluster: "Cluster-DR", PowerState: "poweredOff", ConfigurationAvailable: true, CPU: 1, MemoryMB: 256, ClusterConfig: tc.config}
+			vm := vsphere.VM{ID: "vm-1009", Name: "vm-normal", Host: tc.host, Cluster: tc.cluster, PowerState: "poweredOff", ConfigurationAvailable: true, CPU: 1, MemoryMB: 256, ClusterConfig: tc.config}
 			data := assessment.ExportData{
 				Run:      assessment.Run{ID: 9, InventorySchemaVersion: tc.schema},
 				Contexts: []assessment.ContextRun{{Name: "lab", VMStatus: "success", Collections: []assessment.CollectionRun{{Kind: "vm", Status: "success"}}}},

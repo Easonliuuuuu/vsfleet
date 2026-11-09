@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -798,7 +799,7 @@ func datastoreRow(d vsphere.Datastore, inv *vsphere.Inventory, withContext bool)
 			usageBar(d.UsedPercent(), datastoreBarWidth),
 			humanize.Dash(d.Datacenter),
 		),
-		detail: []field{
+		detail: slices.Concat([]field{
 			{"vCenter", d.Context},
 			{"Type", humanize.Dash(d.Type)},
 			{"Accessible", yesNo(d.Accessible)},
@@ -806,13 +807,14 @@ func datastoreRow(d vsphere.Datastore, inv *vsphere.Inventory, withContext bool)
 			{"Used", fmt.Sprintf("%s (%.0f%%)", humanize.Bytes(d.UsedBytes()), d.UsedPercent())},
 			{"Free", humanize.Bytes(d.FreeBytes)},
 			{"Provisioned", provisioned},
+		}, vsanReserveFields(d), []field{
 			{"Hosts", hostsValue},
 			{"Maintenance", humanize.Dash(d.Maintenance)},
 			{"Alarms", alarms},
 			{"Datacenter", humanize.Dash(d.Datacenter)},
 			{"Inventory path", humanize.Dash(d.Path)},
 			{"Managed object", d.ID},
-		},
+		}),
 		marks:     marks,
 		target:    actionTarget{moref: d.ID, morefKind: "Datastore", path: "[" + d.Name + "]", inaccessible: !d.Accessible},
 		datastore: &d,

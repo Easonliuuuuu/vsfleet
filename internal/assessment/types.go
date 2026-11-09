@@ -101,7 +101,10 @@ type RunStatus string
 // Schema 38 records each datastore cluster's managed object ID and Storage
 // DRS space configuration (DatastoreCluster.ID and StorageDRS); older runs
 // have none, which readers must treat as "not read".
-const CurrentInventorySchemaVersion = "38"
+// Schema 39 records a vSAN datastore's capacity reserves
+// (Datastore.VSANReserve); older runs have none, which readers must treat
+// as "not read".
+const CurrentInventorySchemaVersion = "39"
 
 // InventoryStorageDRSSchema is the first inventory schema that records a
 // datastore cluster's Storage DRS space configuration.

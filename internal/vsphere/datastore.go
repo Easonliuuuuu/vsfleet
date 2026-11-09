@@ -33,6 +33,7 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 		return nil, err
 	}
 	pods := c.storagePodSummaries(ctx, idx)
+	reserves := c.vsanReserves(ctx, idx, raw)
 	out := make([]Datastore, 0, len(raw))
 	refs := make([]types.ManagedObjectReference, 0, len(raw))
 	values := make(map[types.ManagedObjectReference][]types.BaseCustomFieldValue, len(raw))
@@ -62,6 +63,7 @@ func (c *Client) listDatastoresWith(ctx context.Context, idx *index, browse bool
 			Details:       datastoreDetails(idx, m, pods),
 			AlarmsRead:    true,
 			Alarms:        triggeredAlarms(idx, m.TriggeredAlarmState, alarmNames),
+			VSANReserve:   reserves[m.Self],
 		}
 		if s.Accessible {
 			// vSphere reports uncommitted space only for an accessible

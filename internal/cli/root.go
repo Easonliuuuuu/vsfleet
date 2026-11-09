@@ -276,17 +276,11 @@ at production.`,
 		Version:       version.String(),
 		// A bare "vsfleet" opens the terminal interface: that is the product,
 		// not the subcommand tree. Arguments stay rejected so a genuine typo
-		// like "vsfleet statas" still reports "unknown command" instead of
+		// like "vsfleet captur" still reports "unknown command" instead of
 		// quietly launching the interface with an argument it ignores — and
 		// rejectUnknownArgs, unlike cobra.NoArgs, offers the near miss.
 		Args: rejectUnknownArgs,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
-			if cmd.Flags().Changed("history-db") {
-				return fmt.Errorf(`--history-db was renamed: use --db`)
-			}
-			if warning := assessment.LegacyEnvWarning(); warning != "" {
-				fmt.Fprintf(a.errOut(), "warning: %s\n", warning)
-			}
 			if err := a.checkOutput(cmd); err != nil {
 				return err
 			}
@@ -319,8 +313,6 @@ at production.`,
 	f.StringVarP(&a.Format, "output", "o", FormatTable, "output format: table or json; get also takes wide, yaml, name, csv, jsonpath=TEMPLATE and custom-columns=SPEC, and analyze health and readiness network take wide")
 	f.DurationVar(&a.Timeout, "timeout", 30*time.Second, "per-vCenter timeout")
 	f.StringVar(&a.DBPath, "db", "", "path to the local capture database (default: $VSFLEET_DB, then the platform user config directory)")
-	f.String("history-db", "", `renamed to --db`)
-	_ = f.MarkHidden("history-db")
 	// A bare "vsfleet" opens the interface, so the interface's own flag
 	// belongs here too — on root's own flags, not the persistent set, so
 	// "vsfleet get vms --refresh" is still the error it should be.
@@ -348,33 +340,7 @@ at production.`,
 	for _, cmd := range newKindCommands(a) {
 		root.AddCommand(inGroup(groupInventory, cmd))
 	}
-	for _, g := range removedKindGroups {
-		root.AddCommand(renamedKindCommand(g.name, g.subs))
-	}
-	for _, r := range []struct {
-		name    string
-		aliases []string
-		hint    string
-	}{
-		{"health", nil, `use "vsfleet analyze health"`},
-		{"topology", nil, `use "vsfleet analyze topology KIND/NAME"`},
-		{"dependencies", []string{"deps"}, `use "vsfleet analyze deps KIND/NAME"`},
-		{"blast-radius", []string{"blast"}, `use "vsfleet analyze blast-radius KIND/NAME"`},
-	} {
-		root.AddCommand(renamedCommand(r.name, r.aliases, r.hint))
-	}
 	root.AddCommand(readOnlyVerbCommands()...)
-	root.AddCommand(renamedCommand("search", nil, `use "vsfleet get all '*TEXT*' -A", with -l for tags and --field-selector for fields`))
-	root.AddCommand(newContextRenamedCommand())
-	root.AddCommand(renamedCommand("portgroup", []string{"portgroups"},
-		`use "vsfleet get networks" for networks, or "vsfleet get portgroups" for standard-switch port groups`))
-	root.AddCommand(renamedCommand("status", nil, `use "vsfleet cluster-info"`))
-	root.AddCommand(newAssessmentRenamedCommand())
-	root.AddCommand(renamedGroupCommand("import", `use "vsfleet capture import rvtools FILE"`, map[string]string{
-		"rvtools": `use "vsfleet capture import rvtools FILE"`,
-	}))
-	root.AddCommand(renamedCommand("compatibility", []string{"compat"},
-		`use "vsfleet explain rvtools", or "vsfleet explain rvtools.SHEET" for one worksheet`))
 	return root
 }
 

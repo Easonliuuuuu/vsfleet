@@ -113,22 +113,3 @@ func TestConfigViewMinifySelectsOneContext(t *testing.T) {
 		})
 	}
 }
-
-// The removed "context" noun answers with the command that replaced the
-// subcommand typed, so a script gets a pointer instead of "unknown command".
-func TestRemovedContextCommandsNameTheirReplacement(t *testing.T) {
-	for _, tc := range []struct {
-		args []string
-		want string
-	}{
-		{args: []string{"context", "test", "prod"}, want: "vsfleet doctor NAME"},
-		{args: []string{"contexts"}, want: "vsfleet config get-contexts"},
-	} {
-		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
-			_, _, err := runArgs(t, tc.args...)
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("err = %v, want it to mention %q", err, tc.want)
-			}
-		})
-	}
-}

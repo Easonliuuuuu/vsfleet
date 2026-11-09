@@ -7,7 +7,7 @@
 | `docs.yml` | Changes to `docs/`, `README.md`, or `mkdocs.yml` | `mkdocs build --strict`; deploys GitHub Pages from `main`. |
 | `fuzz.yml` | Nightly 03:17 UTC; PRs that touch fuzz tests | 5 minutes per target nightly, 1 minute on PRs. |
 | `kubernetes.yml` | Weekly Monday 01:17 UTC; PRs that change backend, container, or deploy files | Runs the shipped CronJob in kind against two vcsim services. |
-| `release.yml` | Pushes to `main` | release-please opens the release PR; merging it tags and publishes binaries, images, Homebrew, and WinGet. |
+| `release.yml` | Pushes to `main` | release-please opens the release PR; merging it tags and publishes binaries, images, Homebrew, and WinGet, then puts the release's What's new notes at the top of the release. |
 | `winget-status.yml` | Hourly, and after each release | Checks whether the release reached the WinGet catalog and updates the README badge. |
 | `labeler.yml` | Issues and PRs opened or edited | Labels from the PR title or the issue form's Component field. |
 

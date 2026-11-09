@@ -249,7 +249,8 @@ vsfleet checks for updates in the background at most once a day. When an
 update is available, the next interface launch asks whether to upgrade.
 Homebrew and `go install` users can upgrade and restart from that prompt.
 Scoop, winget, `.deb`/`.rpm` and release archive users get a command or
-download link to copy. Other commands print a notice on stderr.
+download link to copy. Other commands print a notice on stderr. After the
+upgrade, the next launch shows what's new.
 
 Set `VSFLEET_NO_UPDATE_NOTIFIER=1` to disable the check. It never runs in CI
 or the container image. See

@@ -2,12 +2,15 @@ package tui
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/easonliuuuuu/vsfleet/internal/whatsnew"
 )
 
 // UpgradeOffer is a newer release to offer at launch. The caller decides
@@ -29,6 +32,10 @@ type UpgradeOffer struct {
 	Why  string
 	// AskAgain is when "not now" asks next, for the message line.
 	AskAgain time.Time
+	// Notes are the release's "What's new" notes, read from its release
+	// page and already cut to plain text; nil when it has none. The prompt
+	// shows the heads-up items and offers the rest on "w".
+	Notes *whatsnew.Release
 }
 
 // UpgradeChoice is what the operator answered.
@@ -44,12 +51,9 @@ const (
 	UpgradeSkip
 )
 
-// The prompt is a fixed-size box; a terminal it does not fit just keeps the
+// The prompt is a fixed-width box; a terminal it does not fit just keeps the
 // header badge, and the prompt waits for a larger one.
-const (
-	upgradeBoxWidth = 60
-	upgradeMinRows  = 14
-)
+const upgradeBoxWidth = 60
 
 // upgradePrompt asks about an UpgradeOffer in front of the interface, the
 // same way the welcome plays in front of it: everything but a key goes to the
@@ -62,6 +66,8 @@ type upgradePrompt struct {
 	width  int
 	height int
 	sized  bool
+	// list is the release's full notes, open over the prompt after "w".
+	list *whatsNewList
 }
 
 func newUpgradePrompt(inner *Model, offer UpgradeOffer, chosen func(UpgradeChoice)) *upgradePrompt {
@@ -77,11 +83,17 @@ func (p *upgradePrompt) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		p.width, p.height, p.sized = msg.Width, msg.Height, true
 		_, cmd := p.inner.Update(msg)
-		if msg.Width < upgradeBoxWidth || msg.Height < upgradeMinRows {
+		if msg.Width < upgradeBoxWidth || msg.Height < lipgloss.Height(p.box()) {
 			return p.inner, cmd
 		}
 		return p, cmd
 	case tea.KeyMsg:
+		if p.list != nil && msg.Type != tea.KeyCtrlC {
+			if p.list.key(msg) {
+				p.list = nil
+			}
+			return p, nil
+		}
 		return p.answer(msg)
 	case tea.MouseMsg:
 		return p, nil
@@ -103,6 +115,11 @@ func (p *upgradePrompt) answer(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.upgradeNow = true
 		m.quitting = true
 		return m, tea.Quit
+	case "w":
+		if n := p.offer.Notes; n != nil {
+			p.list = &whatsNewList{releases: []whatsnew.Release{*n}}
+		}
+		return p, nil
 	case "n", "esc":
 		m.setMessage("Not now · asks again "+again+" · the badge stays", false)
 		return m, p.record(UpgradeLater)
@@ -147,7 +164,11 @@ func (p *upgradePrompt) View() string {
 	if !p.sized {
 		return ""
 	}
-	return overlay(p.inner.View(), p.box(), p.width, p.height, p.inner.theme.faint)
+	box := p.box()
+	if p.list != nil {
+		box = p.list.render(p.inner.theme, p.width, p.height, "esc back to the prompt")
+	}
+	return overlay(p.inner.View(), box, p.width, p.height, p.inner.theme.faint)
 }
 
 func (p *upgradePrompt) box() string {
@@ -175,6 +196,21 @@ func (p *upgradePrompt) box() string {
 		lines = append(lines, fit(t.faint.Render(o.Why)))
 	}
 	lines = append(lines, "")
+	if n := o.Notes; n != nil {
+		// Before an upgrade, what might break comes first; the highlights
+		// are one key away.
+		for _, it := range n.HeadsUp {
+			lines = append(lines, fit(t.warn.Render("⚠ ")+t.text.Render(it.Title)))
+		}
+		if len(n.Highlights) > 0 {
+			label := strconv.Itoa(len(n.Highlights)) + " highlights"
+			if len(n.Highlights) == 1 {
+				label = "1 highlight"
+			}
+			lines = append(lines, fit(t.ok.Render("★ ")+t.text.Render(label)+t.dim.Render(" · ")+t.title.Render("w")+t.dim.Render(" what's new")))
+		}
+		lines = append(lines, "")
+	}
 
 	type key struct{ k, label string }
 	keys := []key{{"y", "upgrade now"}, {"n", "not now"}, {"s", "skip this version"}}

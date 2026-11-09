@@ -40,9 +40,9 @@ func newFakeUpdater(t *testing.T, st update.State) *fakeUpdater {
 		enabled: true,
 		method:  update.Method{Name: "Homebrew", Command: []string{"brew", "upgrade", "vsfleet"}, Runs: true},
 		now:     func() time.Time { return testNow },
-		latest: func(context.Context) (string, error) {
+		latest: func(context.Context) (update.Found, error) {
 			f.checks++
-			return "0.11.0", nil
+			return update.Found{Version: "0.11.0"}, nil
 		},
 		runCmd: func(_ context.Context, argv []string, _ io.Reader, _, _ io.Writer) error {
 			f.ran = append(f.ran, argv)
@@ -115,7 +115,7 @@ func TestUIOptionsChecksInTheBackgroundWhenStale(t *testing.T) {
 
 func TestUIOptionsRemembersAFailedCheckToo(t *testing.T) {
 	f := newFakeUpdater(t, update.State{})
-	f.latest = func(context.Context) (string, error) { return "", errors.New("blocked") }
+	f.latest = func(context.Context) (update.Found, error) { return update.Found{}, errors.New("blocked") }
 	var opts tui.Options
 	f.uiOptions(&opts)
 	opts.CheckUpdate(context.Background())

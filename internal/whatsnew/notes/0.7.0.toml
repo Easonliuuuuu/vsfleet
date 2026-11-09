@@ -1,0 +1,53 @@
+version = "0.7.0"
+
+[[highlight]]
+title = "Commands now work like kubectl"
+try = "vsfleet get vms -A"
+detail = "If you know kubectl, you know vsfleet: get, describe, events, top and explain, -n for one vCenter, -A for all of them, and -o wide, yaml or jsonpath."
+
+[[highlight]]
+title = "RVTools export: 49% → 90% of columns"
+try = "vsfleet explain rvtools"
+detail = "The export now writes 680 of RVTools 4.8's 755 columns: host hardware, NICs and HBAs, VM cluster rules and HA settings, switch policies, multipath and more. explain says why the rest are left out."
+
+[[highlight]]
+title = "Warns before a datastore fills up"
+try = "vsfleet analyze health"
+detail = "A warning below 15% free and critical below 10%, as vCenter's alarm turns red. Also: alarms firing on a datastore, thin disks promised more than it holds, Storage DRS clusters out of room, and vSAN's reserved space."
+
+[[highlight]]
+title = "Checks a cluster can survive a host failure"
+detail = "A new health check warns when a cluster lacks the spare capacity for HA to restart its VMs. It is one of 4 new checks, 36 in all."
+
+[[highlight]]
+title = "Sort any tab: press s, then a letter"
+detail = "s then m sorts VMs by memory; S reverses the order. Each tab remembers its order for next time."
+
+[[heads_up]]
+title = "assessment commands moved: capture, analyze…"
+detail = "The assessment group is gone: use capture, analyze, export and db. config use-context and config get-contexts replace the context commands."
+
+[[heads_up]]
+title = "--history-db is now --db"
+detail = "VSFLEET_DB replaces VSFLEET_HISTORY_DB, which still works for now."
+
+[[heads_up]]
+title = "SSH uses your ~/.ssh/config"
+detail = "vsfleet runs plain ssh: users, keys and jump hosts come from your own SSH configuration. Some export columns were also renamed to match RVTools exactly."
+
+[[fix]]
+title = "Comparing captures no longer flags every disk"
+detail = "A diff against a capture from an older vsfleet no longer reports every LUN as changed."
+
+[[fix]]
+title = "RVTools imports stay out of live VM history"
+
+[[fix]]
+title = "Hidden hosts and networks shown as hidden"
+detail = "Objects your account cannot see are reported as hidden by permissions, not as missing."
+
+[[fix]]
+title = "Numbers like 1,024 in RVTools imports read right"
+
+[[fix]]
+title = "New vCenters no longer suggest the admin account"

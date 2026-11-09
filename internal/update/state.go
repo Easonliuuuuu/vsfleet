@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/easonliuuuuu/vsfleet/internal/uistate"
+	"github.com/easonliuuuuu/vsfleet/internal/whatsnew"
 )
 
 // State is what the release check remembers between runs. It lives in
@@ -20,6 +21,8 @@ type State struct {
 	CheckedAt time.Time `json:"checked_at,omitzero"`
 	// Latest is the newest release the last successful check found.
 	Latest string `json:"latest,omitempty"`
+	// Notes are Latest's "What's new" notes, nil when it has none.
+	Notes *whatsnew.Release `json:"notes,omitempty"`
 	// Skipped is a release the operator chose never to be asked about again.
 	Skipped string `json:"skipped,omitempty"`
 	// SnoozedUntil keeps the launch prompt away after "not now".
@@ -52,6 +55,16 @@ func Load(path string) State {
 	}
 	if _, ok := parseRelease(s.Latest); !ok {
 		s.Latest = ""
+	}
+	// The file is ours, but the notes came from the network: clean them
+	// again, and drop notes left over from an earlier release.
+	if s.Notes != nil {
+		if s.Notes.Version != s.Latest {
+			s.Notes = nil
+		} else {
+			clean := s.Notes.Clean()
+			s.Notes = &clean
+		}
 	}
 	return s
 }

@@ -215,5 +215,6 @@ When a newer release is out, vsfleet asks at launch:
 | `c` | Copy the upgrade command or release link (other installs) |
 | `n` / `Esc` | Ask again in a week |
 | `s` | Skip this release |
+| `w` | Read the release's notes |
 
 `VSFLEET_NO_UPDATE_NOTIFIER=1` turns off checks, prompts and notices.

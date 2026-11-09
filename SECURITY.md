@@ -71,7 +71,9 @@ backup controls, and remove runs explicitly with `vsfleet capture delete
   `vsfleet/<version>` User-Agent and no inventory, context names or other
   identifiers. It uses the standard `HTTPS_PROXY`/`NO_PROXY` settings, never a
   context's vCenter route, and fails silently. The answer is only compared and
-  displayed, never executed. Upgrading from the launch prompt runs one of a
+  displayed, never executed; the release's "What's new" notes in it are cut
+  to short plain text, without control characters, before the prompt shows
+  them. Upgrading from the launch prompt runs one of a
   fixed set of package-manager commands chosen from where the binary is
   installed, never `sudo` and never on Windows. Set
   `VSFLEET_NO_UPDATE_NOTIFIER=1` to turn all of this off; CI and the container

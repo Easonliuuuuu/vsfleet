@@ -31,7 +31,7 @@ type updater struct {
 	method  update.Method
 
 	now     func() time.Time
-	latest  func(context.Context) (string, error)
+	latest  func(context.Context) (update.Found, error)
 	runCmd  func(ctx context.Context, argv []string, in io.Reader, out, errOut io.Writer) error
 	restart func() error
 	isTTY   func(io.Writer) bool
@@ -45,7 +45,7 @@ func (a *App) updates() *updater {
 	u := &updater{
 		current: current,
 		now:     time.Now,
-		latest: func(ctx context.Context) (string, error) {
+		latest: func(ctx context.Context) (update.Found, error) {
 			return update.Latest(ctx, nil, update.LatestURL, version.UserAgent())
 		},
 		runCmd:  runForeground,
@@ -70,12 +70,12 @@ func (a *App) updates() *updater {
 // check asks GitHub and records the answer. A failure is recorded too, so an
 // estate that cannot reach GitHub is tried again tomorrow, not every launch.
 func (u *updater) check(ctx context.Context) {
-	latest, err := u.latest(ctx)
+	found, err := u.latest(ctx)
 	now := u.now()
 	_ = update.Modify(u.path, func(s *update.State) {
 		s.CheckedAt = now
 		if err == nil {
-			s.Latest = latest
+			s.Latest, s.Notes = found.Version, found.Notes
 		}
 	})
 }
@@ -108,6 +108,7 @@ func (u *updater) uiOptions(opts *tui.Options) {
 		Runs:     u.method.Runs,
 		Why:      u.method.Why,
 		AskAgain: now.Add(update.SnoozeInterval),
+		Notes:    st.Notes,
 	}
 	opts.UpgradeChosen = func(c tui.UpgradeChoice) { u.record(c, latest) }
 }

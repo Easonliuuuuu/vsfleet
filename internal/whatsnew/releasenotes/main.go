@@ -2,12 +2,11 @@
 // GitHub release body. The release workflow pipes the body in and writes the
 // result back:
 //
-//	gh release view v0.7.0 --json body --jq .body |
-//		go run ./internal/whatsnew/releasenotes 0.7.0 > notes.md
+//	gh release view v0.7.0 --json body --jq .body | releasenotes 0.7.0 > notes.md
 //
 // It exits 3, writing nothing, when the release has no notes file, so the
-// workflow can warn instead of failing; CI uses the same exit code to warn on
-// a release pull request that has none yet.
+// workflow can warn instead of failing. Run it built, not with "go run",
+// which exits 1 whatever the program's exit status.
 package main
 
 import (

@@ -139,8 +139,11 @@ jobs:
           RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
         run: |
           gh release view "$RELEASE_TAG" --json body --jq .body > "$RUNNER_TEMP/release-body.md"
+          # Built, not "go run": go run exits 1 whatever the program's own
+          # exit status, which would hide the "no notes" status 3.
+          go build -o "$RUNNER_TEMP/releasenotes" ./internal/whatsnew/releasenotes
           status=0
-          go run ./internal/whatsnew/releasenotes "$RELEASE_TAG" \
+          "$RUNNER_TEMP/releasenotes" "$RELEASE_TAG" \
             < "$RUNNER_TEMP/release-body.md" > "$RUNNER_TEMP/release-notes.md" || status=$?
           if [ "$status" -eq 3 ]; then
             echo "::warning::No What's new notes for $RELEASE_TAG; the release keeps its generated notes."

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/easonliuuuuu/vsfleet/internal/tui"
+	"github.com/easonliuuuuu/vsfleet/internal/whatsnew"
 )
 
 // EnvNoWelcome turns the once-per-version welcome animation off when set to
@@ -29,4 +30,19 @@ func welcomeFor(welcomed, current string, configured bool, getenv func(string) s
 	default:
 		return tui.Welcome{Kind: tui.WelcomeUpdated, Version: current, Previous: welcomed}
 	}
+}
+
+// whatsNewFor is the notes to show with a welcome: those of every release
+// since the one last welcomed, after an upgrade only. A previous release from
+// before the welcome existed, or a development build, gives the current
+// release's notes alone.
+func whatsNewFor(w tui.Welcome) []whatsnew.Release {
+	if w.Kind != tui.WelcomeUpdated {
+		return nil
+	}
+	previous := w.Previous
+	if previous == "dev" {
+		previous = ""
+	}
+	return whatsnew.Since(previous, w.Version)
 }

@@ -45,6 +45,9 @@ func Run(ctx context.Context, b Backend, opts Options) (Snapshot, error) {
 	if opts.Upgrade != nil {
 		model = newUpgradePrompt(m, *opts.Upgrade, opts.UpgradeChosen)
 	}
+	if len(opts.WhatsNew) > 0 {
+		model = newWhatsNewPanel(m, model, opts.WhatsNew)
+	}
 	if opts.Welcome.Kind != WelcomeNone {
 		w := newWelcomeModel(m, opts.Welcome)
 		w.next = model

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -61,6 +62,7 @@ func TestLatest(t *testing.T) {
 		ok     bool
 	}{
 		{"release", 200, `{"tag_name":"v0.11.0"}`, "0.11.0", true},
+		{"release with notes", 200, `{"tag_name":"v0.11.0","body":"<!-- vsfleet-whats-new {\"version\":\"0.11.0\",\"highlights\":[{\"title\":\"Sorting\"}]} -->"}`, "0.11.0", true},
 		{"draft", 200, `{"tag_name":"v0.11.0","draft":true}`, "", false},
 		{"prerelease", 200, `{"tag_name":"v0.11.0","prerelease":true}`, "", false},
 		{"odd tag", 200, `{"tag_name":"nightly"}`, "", false},
@@ -77,8 +79,11 @@ func TestLatest(t *testing.T) {
 			}))
 			defer srv.Close()
 			got, err := Latest(context.Background(), srv.Client(), srv.URL, "vsfleet/0.10.0")
-			if (err == nil) != tc.ok || got != tc.want {
-				t.Errorf("Latest = %q, %v; want %q, ok=%v", got, err, tc.want, tc.ok)
+			if (err == nil) != tc.ok || got.Version != tc.want {
+				t.Errorf("Latest = %q, %v; want %q, ok=%v", got.Version, err, tc.want, tc.ok)
+			}
+			if wantNotes := strings.Contains(tc.body, "vsfleet-whats-new"); (got.Notes != nil) != wantNotes {
+				t.Errorf("Latest notes = %+v, want notes %v", got.Notes, wantNotes)
 			}
 			if ua != "vsfleet/0.10.0" {
 				t.Errorf("User-Agent = %q, want vsfleet/0.10.0 and nothing else identifying", ua)
@@ -126,6 +131,13 @@ func TestModifyKeepsOtherFieldsAndLoadDropsBadVersions(t *testing.T) {
 	got := Load(path)
 	if got.Latest != "0.11.0" || got.Skipped != "0.10.5" || got.SnoozedUntil.IsZero() {
 		t.Errorf("Modify lost a field: %+v", got)
+	}
+	stale := `{"latest":"0.11.0","notes":{"version":"0.10.5","highlights":[{"title":"old"}]}}`
+	if err := os.WriteFile(path, []byte(stale), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := Load(path).Notes; got != nil {
+		t.Errorf("Load kept notes for another release: %+v", got)
 	}
 	if err := os.WriteFile(path, []byte(`{"latest":"$(curl evil)"}`), 0o600); err != nil {
 		t.Fatal(err)

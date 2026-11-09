@@ -162,6 +162,7 @@ func runUIOnce(a *App, cmd *cobra.Command, notice string) (bool, error) {
 	if notice == "" {
 		notice = cfg.LegacySSHNotice()
 	}
+	welcome := welcomeFor(remembered.WelcomedVersion, release, len(cfg.Contexts) > 0, os.Getenv)
 	opts := tui.Options{
 		Current:     current,
 		AllContexts: a.AllContexts,
@@ -174,7 +175,8 @@ func runUIOnce(a *App, cmd *cobra.Command, notice string) (bool, error) {
 		In:              a.in(),
 		Out:             a.out(),
 		Assessment:      assessmentService,
-		Welcome:         welcomeFor(remembered.WelcomedVersion, release, len(cfg.Contexts) > 0, os.Getenv),
+		Welcome:         welcome,
+		WhatsNew:        whatsNewFor(welcome),
 		Notice:          notice,
 		NoticeBad:       noticeBad,
 	}

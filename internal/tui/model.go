@@ -22,6 +22,7 @@ import (
 	"github.com/easonliuuuuu/vsfleet/internal/limiter"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
+	"github.com/easonliuuuuu/vsfleet/internal/whatsnew"
 )
 
 // maxConcurrentLoads bounds how many fetch groups run at once, across every
@@ -515,6 +516,9 @@ type Options struct {
 	// interface. The zero value, which every caller but "vsfleet ui" passes,
 	// opens the interface straight away.
 	Welcome Welcome
+	// WhatsNew are the notes of the releases since the one last run, newest
+	// first, shown after the welcome; none shows nothing.
+	WhatsNew []whatsnew.Release
 	// Upgrade asks about a newer release at launch, after any welcome. Nil
 	// asks nothing. UpgradeChosen is told "not now" and "skip" so the caller
 	// can remember them; "upgrade now" comes back in Snapshot.Upgrade.

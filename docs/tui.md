@@ -215,5 +215,13 @@ When a newer release is out, vsfleet asks at launch:
 | `c` | Copy the upgrade command or release link (other installs) |
 | `n` / `Esc` | Ask again in a week |
 | `s` | Skip this release |
+| `w` | Read the release's notes |
+
+The prompt lists any change that needs your attention before upgrading, such
+as a renamed command.
+
+After an upgrade, vsfleet shows what's new since the version you last ran:
+the highlights, with a command to try for each, and what changed under you.
+`w` opens the full notes; any other key closes them.
 
 `VSFLEET_NO_UPDATE_NOTIFIER=1` turns off checks, prompts and notices.

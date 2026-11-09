@@ -7,7 +7,7 @@
 | `docs.yml` | Changes to `docs/`, `README.md`, or `mkdocs.yml` | `mkdocs build --strict`; deploys GitHub Pages from `main`. |
 | `fuzz.yml` | Nightly 03:17 UTC; PRs that touch fuzz tests | 5 minutes per target nightly, 1 minute on PRs. |
 | `kubernetes.yml` | Weekly Monday 01:17 UTC; PRs that change backend, container, or deploy files | Runs the shipped CronJob in kind against two vcsim services. |
-| `release.yml` | Pushes to `main` | release-please opens the release PR; merging it tags and publishes binaries, images, Homebrew, and WinGet. |
+| `release.yml` | Pushes to `main` | release-please opens the release PR; merging it tags and publishes binaries, images, Homebrew, and WinGet, then puts the [What's new notes](#whats-new-notes) at the top of the release. |
 | `winget-status.yml` | Hourly, and after each release | Checks whether the release reached the WinGet catalog and updates the README badge. |
 | `labeler.yml` | Issues and PRs opened or edited | Labels from the PR title or the issue form's Component field. |
 
@@ -58,3 +58,20 @@ version in docs and `deploy/` consistent.
 rotate one, create the replacement, update the Actions secret, and revoke
 the old token. CI uses placeholders, so the next release is its first real
 use.
+
+## What's new notes
+
+Each release has hand-written notes in `internal/whatsnew/notes/X.Y.Z.toml`.
+They are what the upgrade popup shows, and `release.yml` copies them to the
+top of the GitHub release. Write them for the people running vsfleet, not
+from commit titles: lead with what they get, give real numbers, and add a
+command to try ("RVTools export: 49% → 90% of columns", try
+`vsfleet explain rvtools`).
+
+- Up to 5 highlights, 3 heads-up items for changes to act on before
+  upgrading, and 8 fixes. Titles and `try` lines are at most 50 characters
+  so they fit the popup; `go test ./internal/whatsnew/` enforces the limits.
+- Merge the notes in their own PR before the release PR. CI does not run on
+  the release PR, so `release.yml` comments there when the notes are missing.
+- A release without notes still publishes; the popup then shows only the
+  version and its link.

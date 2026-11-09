@@ -13,8 +13,8 @@ covers known vulnerabilities in the code and image.
   cannot be rewritten.
 - **Immutable tags.** A published `v*` tag cannot be moved or deleted.
 - **Least-privilege tokens.** Workflows get a read-only token by default.
-  Two personal tokens publish to Homebrew and WinGet, each scoped to its
-  repository and expiring within a year.
+  A personal token publishes Homebrew and Scoop updates to `homebrew-tap`,
+  scoped to that repository and expiring within a year.
 - **Keyless signing.** Images are signed with the release workflow's
   identity; there is no signing key to leak.
 
@@ -27,11 +27,10 @@ Act in this order when a token, the maintainer account, an action, or a
 release looks compromised:
 
 1. **Stop publishing.** Disable Actions, or the `Release` workflow.
-2. **Revoke credentials.** Revoke `TAP_GITHUB_TOKEN` and
-   `WINGET_GITHUB_TOKEN`, sign out other sessions, and review the account's
-   tokens, SSH keys, and authorized apps.
+2. **Revoke credentials.** Revoke `TAP_GITHUB_TOKEN`, sign out other
+   sessions, and review the account's tokens, SSH keys, and authorized apps.
 3. **Find what changed.** Read the audit logs, `Release` runs, recent pushes
-   to `main` and tags, and the `homebrew-tap` and `winget-pkgs` histories.
+   to `main` and tags, and the `homebrew-tap` history.
 4. **Check released artifacts.** Compare archives against `checksums.txt`
    and [verify image signatures](containers.md). Delete tampered assets and
    tags, and revert tampered formula or manifest commits.

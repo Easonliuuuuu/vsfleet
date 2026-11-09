@@ -4,7 +4,6 @@
   <a href="https://github.com/Easonliuuuuu/vsfleet/releases"><img src="https://img.shields.io/github/v/release/Easonliuuuuu/vsfleet?include_prereleases&amp;color=blue&amp;style=flat-square" alt="Latest release"></a>
   <a href="https://easonliuuuuu.github.io/vsfleet/getting-started/#release-status"><img src="https://img.shields.io/badge/status-alpha-orange?style=flat-square" alt="Status: alpha"></a>
   <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/ci.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FEasonliuuuuu%2Fvsfleet%2Fpackage-status%2Fplatforms.json&amp;label=Linux%20%C2%B7%20macOS%20%C2%B7%20Windows&amp;style=flat-square" alt="Linux, macOS, and Windows builds and tests"></a>
-  <a href="https://github.com/Easonliuuuuu/vsfleet/actions/workflows/winget-status.yml"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FEasonliuuuuu%2Fvsfleet%2Fpackage-status%2Fwinget.json&amp;label=WinGet&amp;style=flat-square" alt="WinGet availability for the latest stable release"></a>
 </p>
 
 <p align="center">
@@ -67,11 +66,11 @@ Choose the installation method for your operating system:
 | Platform | Install |
 | --- | --- |
 | macOS or Linux with Homebrew | `brew install easonliuuuuu/tap/vsfleet` |
-| Windows 10/11 | `winget install --id Easonliuuuuu.vsfleet --exact` |
+| Windows with Scoop | [Add the bucket and install vsfleet](https://easonliuuuuu.github.io/vsfleet/getting-started/#windows-scoop) |
 | Debian or Ubuntu | [Download and install a `.deb` package](https://easonliuuuuu.github.io/vsfleet/getting-started/#linux-packages-debian-ubuntu-rhel-fedora) |
 | RHEL or Fedora | [Download and install an `.rpm` package](https://easonliuuuuu.github.io/vsfleet/getting-started/#linux-packages-debian-ubuntu-rhel-fedora) |
 
-Scoop, release archives, and `go install` are covered in [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/).
+Release archives and `go install` are covered in [Getting Started](https://easonliuuuuu.github.io/vsfleet/getting-started/).
 
 For unattended CLI commands and CI, use the container image (Linux amd64 and arm64):
 

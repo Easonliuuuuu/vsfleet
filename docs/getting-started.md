@@ -20,16 +20,24 @@ pin a version for automation.
 brew install easonliuuuuu/tap/vsfleet
 ```
 
-### Windows (WinGet & Scoop)
+<span id="windows-winget-scoop"></span>
+
+### Windows (Scoop)
+
+Install [Scoop](https://scoop.sh/), then add the maintained bucket:
 
 ```powershell
-# WinGet (Windows 10/11)
-winget install --id Easonliuuuuu.vsfleet --exact
-
-# Scoop
 scoop bucket add easonliuuuuu https://github.com/Easonliuuuuu/homebrew-tap
-scoop install vsfleet
+scoop install easonliuuuuu/vsfleet
 ```
+
+To upgrade, quit vsfleet and run `scoop update vsfleet`. The bucket is
+updated by the release workflow.
+
+For a direct download, get the Windows ZIP for your CPU (`amd64` or `arm64`)
+from [GitHub Releases](https://github.com/Easonliuuuuu/vsfleet/releases/latest),
+extract it to a directory on your `PATH`, and run `vsfleet --version`.
+Replace `vsfleet.exe` with the new release after quitting to upgrade.
 
 ### Linux packages (Debian, Ubuntu, RHEL, Fedora)
 
@@ -248,7 +256,7 @@ Run `vsfleet completion --help` for command details.
 vsfleet checks for updates in the background at most once a day. When an
 update is available, the next interface launch asks whether to upgrade.
 Homebrew and `go install` users can upgrade and restart from that prompt.
-Scoop, winget, `.deb`/`.rpm` and release archive users get a command or
+Scoop, `.deb`/`.rpm` and release archive users get a command or
 download link to copy. Other commands print a notice on stderr. After the
 upgrade, the next launch shows what's new.
 

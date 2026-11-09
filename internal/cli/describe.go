@@ -519,6 +519,10 @@ func printDatastoreDetail(out io.Writer, d vsphere.Datastore) {
 	if d.CapacityBytes > 0 {
 		f.add("Used", fmt.Sprintf("%.0f%%", d.UsedPercent()))
 	}
+	if r := d.VSANReserve; r != nil {
+		f.add("vSAN reserves", r.Summary())
+		f.add("Provisionable", humanBytes(d.ProvisionableFreeBytes()))
+	}
 	f.add("Backing URL", d.Backing.URL)
 	f.add("VMFS UUID", d.Backing.VMFSUUID)
 	f.add("NAS remote", d.Backing.NASRemote)

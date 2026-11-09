@@ -1104,6 +1104,10 @@ type Datastore struct {
 	// then missing evidence, not "none".
 	AlarmsRead bool    `json:"alarms_read,omitempty"`
 	Alarms     []Alarm `json:"alarms,omitempty"`
+	// VSANReserve is the capacity reserves of a vSAN datastore's cluster,
+	// nil when not read: any other datastore type, a capture predating
+	// inventory schema 39, or a vCenter whose vSAN service did not answer.
+	VSANReserve *VSANCapacityReserve `json:"vsan_reserve,omitempty"`
 }
 
 // DatastoreBacking identifies the storage a datastore is presented from, so

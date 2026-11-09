@@ -24,9 +24,13 @@ func evaluateDatastoreSpaceLow(in Input, thresholds Thresholds, emit func(Findin
 		if !assessment.DecodeResource(resource, &datastore) {
 			continue
 		}
-		free, ok := freePct(datastore.CapacityBytes, datastore.FreeBytes)
+		// A vSAN datastore's enforced capacity reserves are free space no
+		// new disk can use, so they count as used here.
+		freeBytes := datastore.ProvisionableFreeBytes()
+		reserved := datastore.FreeBytes - freeBytes
+		free, ok := freePct(datastore.CapacityBytes, freeBytes)
 		percentBreached := thresholds.DatastoreFreePct > 0 && ok && free < thresholds.DatastoreFreePct
-		bytesBreached := thresholds.DatastoreFreeBytes > 0 && float64(datastore.FreeBytes) < thresholds.DatastoreFreeBytes
+		bytesBreached := thresholds.DatastoreFreeBytes > 0 && float64(freeBytes) < thresholds.DatastoreFreeBytes
 		warned := thresholds.DatastoreWarnFreePct > 0 && ok && free < thresholds.DatastoreWarnFreePct
 		if !percentBreached && !bytesBreached && !warned {
 			continue
@@ -35,18 +39,22 @@ func evaluateDatastoreSpaceLow(in Input, thresholds Thresholds, emit func(Findin
 		if percentBreached || bytesBreached {
 			severity, floor = SeverityCritical, thresholds.DatastoreFreePct
 		}
-		evidence := make([]Evidence, 0, 2)
+		evidence := make([]Evidence, 0, 3)
 		if warned || percentBreached {
 			evidence = append(evidence, Evidence{Field: "free_percent", Observed: percent(free), Expected: percent(floor)})
 		}
 		if bytesBreached {
-			evidence = append(evidence, Evidence{Field: "free_bytes", Observed: humanize.Bytes(datastore.FreeBytes), Expected: humanize.Bytes(int64(thresholds.DatastoreFreeBytes))})
+			evidence = append(evidence, Evidence{Field: "free_bytes", Observed: humanize.Bytes(freeBytes), Expected: humanize.Bytes(int64(thresholds.DatastoreFreeBytes))})
 		}
-		message := fmt.Sprintf("Datastore has %s%% free space (%s of %s)", percent(free), humanize.Bytes(datastore.FreeBytes), humanize.Bytes(datastore.CapacityBytes))
+		message := fmt.Sprintf("Datastore has %s%% free space (%s of %s)", percent(free), humanize.Bytes(freeBytes), humanize.Bytes(datastore.CapacityBytes))
 		if bytesBreached && len(evidence) == 1 {
-			message = fmt.Sprintf("Datastore has %s free space, below the %s floor", humanize.Bytes(datastore.FreeBytes), humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
+			message = fmt.Sprintf("Datastore has %s free space, below the %s floor", humanize.Bytes(freeBytes), humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
 		} else if bytesBreached {
 			message += fmt.Sprintf(" and below the %s floor", humanize.Bytes(int64(thresholds.DatastoreFreeBytes)))
+		}
+		if reserved > 0 {
+			message += fmt.Sprintf(", after %s held by vSAN's enforced capacity reserves", humanize.Bytes(reserved))
+			evidence = append(evidence, Evidence{Field: "vsan_reserved_bytes", Observed: humanize.Bytes(reserved)})
 		}
 		obj := resourceObject(in.Data, resource, "datastore", datastore.Name, datastore.ID, datastore.Datacenter)
 		emit(Finding{Rule: "datastore-space-low", Severity: severity, Object: obj, Message: message, Evidence: evidence})

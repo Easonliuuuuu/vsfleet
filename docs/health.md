@@ -24,11 +24,15 @@ vCenter's alarm turns yellow at 75% used, and Storage DRS stops placing VMs
 on a datastore at 80% used by default; both come before the warning level.
 `--min-datastore-free-bytes` adds a critical floor in bytes.
 `--warn-datastore-free 0` turns the warning off.
+On a vSAN datastore, free space leaves out the operations and host rebuild
+reserves that vSAN enforces, since vSAN does not provision new disks into
+them. A reserve vSAN only reports still counts as free.
 
 `storage-drs-space-threshold` warns when every datastore in a datastore
 cluster with Storage DRS on is past the cluster's space threshold (80% used
 unless set otherwise) or inaccessible, since Storage DRS avoids such a
 datastore when it places a new disk.
+
 `-o wide` shows recommendations, evidence, tags and custom attributes; JSON
 always includes them. `--field-selector` and `-l` keep the findings whose
 object matches, in the language of [`vsfleet get`](commands.md#get-selectors).

@@ -107,11 +107,11 @@ func TestPerformanceLeavesInventoryRowsUntouched(t *testing.T) {
 	plain := sampleExportData(when)
 	withPerf := sampleExportData(when)
 	withPerf.Performance = []perf.Window{performanceWindow(when)}
-	a, err := rvtoolsSheets(plain, healthReport(plain))
+	a, err := rvtoolsSheetsFor(plain, healthReport(plain), sheetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := rvtoolsSheets(withPerf, healthReport(withPerf))
+	b, err := rvtoolsSheetsFor(withPerf, healthReport(withPerf), sheetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

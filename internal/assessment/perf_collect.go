@@ -3,8 +3,9 @@ package assessment
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/perf"
@@ -44,14 +45,10 @@ func (c *Collector) CapturePerf(ctx context.Context, opts PerfCaptureOptions) ([
 	opts.Perf.TimeoutSeconds = int(opts.MaxRuntime.Seconds())
 	windows := make([]perf.Window, len(opts.Contexts))
 	errs := make([]error, len(opts.Contexts))
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, session.DefaultConcurrency)
+	var group errgroup.Group
+	group.SetLimit(session.DefaultConcurrency)
 	for i, cc := range opts.Contexts {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+		group.Go(func() error {
 			w := c.capturePerfContext(ctx, cc, opts)
 			saved, err := c.Store.SavePerfWindow(context.WithoutCancel(ctx), w)
 			if err != nil {
@@ -63,9 +60,10 @@ func (c *Collector) CapturePerf(ctx context.Context, opts PerfCaptureOptions) ([
 			if opts.Progress != nil {
 				opts.Progress(saved)
 			}
-		}()
+			return nil
+		})
 	}
-	wg.Wait()
+	_ = group.Wait()
 	for _, err := range errs {
 		if err != nil {
 			return windows, err

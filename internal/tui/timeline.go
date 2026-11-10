@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
@@ -358,16 +358,15 @@ func (m *Model) loadTimelineEvents(explicit bool) tea.Cmd {
 		// Each vCenter is read at once, so a slow or unreachable one holds
 		// up only its own result.
 		results := make([]vmEventsResult, len(jobs))
-		var wg sync.WaitGroup
+		var group errgroup.Group
 		for i, j := range jobs {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
+			group.Go(func() error {
 				listing, err := b.VMEvents(ctx, j.cc, j.target.vmID, vsphere.DefaultVMEventLimit)
 				results[i] = vmEventsResult{target: j.target, listing: listing, err: err}
-			}()
+				return nil
+			})
 		}
-		wg.Wait()
+		_ = group.Wait()
 		return vmEventsMsg{generation: gen, results: results, at: now()}
 	}
 	return tea.Batch(load, m.spin.Tick)

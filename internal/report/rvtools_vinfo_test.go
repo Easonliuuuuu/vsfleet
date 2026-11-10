@@ -45,7 +45,7 @@ func TestWriteRVToolsVInfoSettingsAndState(t *testing.T) {
 			data := sampleExportData(time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
 			tc.vm(&data.VMs[0].Observation.VM)
 			var buf bytes.Buffer
-			if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+			if err := WriteRVToolsWith(&buf, data, healthReport(data), ExportOptions{}); err != nil {
 				t.Fatal(err)
 			}
 			f, err := excelize.OpenReader(&buf)

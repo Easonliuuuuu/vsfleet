@@ -52,7 +52,7 @@ func TestListDatastoresReadsStorageDRS(t *testing.T) {
 		SpaceLoadBalanceConfig: &types.StorageDrsSpaceLoadBalanceConfig{SpaceThresholdMode: "utilization", SpaceUtilizationThreshold: 85},
 	}
 
-	c := clientFor(gc, endpoint, "")
+	c := clientFor(t, endpoint, "")
 	datastores, err := c.ListDatastores(ctx)
 	if err != nil {
 		t.Fatalf("ListDatastores: %v", err)

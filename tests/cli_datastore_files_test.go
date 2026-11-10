@@ -2,18 +2,17 @@ package tests
 
 import (
 	"context"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/find"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/mo"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -24,20 +23,14 @@ import (
 // vsphere.Client the CLI itself uses, never a parallel implementation.
 func datastoreTestClient(t *testing.T, vc *vcenter) *vsphere.Client {
 	t.Helper()
-	u, err := url.Parse(vc.URL)
-	if err != nil {
-		t.Fatalf("parse simulator URL: %v", err)
-	}
-	u.Path = "/sdk"
-	u.User = url.UserPassword("prober", testPassword)
-	gc, err := govmomi.NewClient(context.Background(), u, true)
+	cc := &config.Context{Name: "probe", Endpoint: vc.URL, Username: "prober", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
+	cc.Normalize()
+	c, err := vsphere.Connect(context.Background(), cc, vsphere.ConnectOptions{Credential: &credentials.Credential{Username: "prober", Password: testPassword}})
 	if err != nil {
 		t.Fatalf("connect to simulator: %v", err)
 	}
-	t.Cleanup(func() { _ = gc.Logout(context.Background()) })
-	cc := &config.Context{Name: "probe", Endpoint: vc.URL, Username: "prober", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
-	cc.Normalize()
-	return vsphere.NewClientForTest(cc, gc)
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+	return c
 }
 
 // datastoreDirectory resolves the physical directory backing the simulator's

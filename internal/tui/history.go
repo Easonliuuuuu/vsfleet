@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"sort"
@@ -112,33 +113,6 @@ func (m *Model) historyDiffCommand() tea.Cmd {
 		return nil
 	}
 	return loadHistoryDiffCmd(m.ctx, m.assessment, m.baseRun, m.targetRun, m.historyScope())
-}
-
-func (m *Model) changeRows() []historyRow {
-	if m.changeDiff == nil {
-		return nil
-	}
-	var rows []historyRow
-	for _, v := range m.changeDiff.VMs {
-		rows = append(rows, historyRow{kind: "vm", label: v.Name, context: v.Context, change: strings.Join(v.Changes, ", "), detail: changeDetail(v)})
-	}
-	for _, s := range m.changeDiff.Snapshots {
-		rows = append(rows, historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: historyFieldValue("snapshot", nonempty(s.After, s.Before))})
-	}
-	for _, r := range m.changeDiff.Resources {
-		rows = append(rows, historyRow{kind: r.Kind, label: r.Name, context: r.Context, change: strings.Join(r.Changes, ", "), detail: resourceDetail(r)})
-	}
-	needle := strings.ToLower(strings.TrimSpace(m.filter.Value()))
-	if needle == "" {
-		return rows
-	}
-	out := rows[:0]
-	for _, r := range rows {
-		if strings.Contains(strings.ToLower(r.label), needle) || strings.Contains(strings.ToLower(r.context), needle) || strings.Contains(strings.ToLower(r.change), needle) || strings.Contains(strings.ToLower(r.kind), needle) {
-			out = append(out, r)
-		}
-	}
-	return out
 }
 
 // historyRow is one line of the Changes list. kind names what changed — vm,
@@ -1174,13 +1148,13 @@ func (m *Model) vmInspectorFields(v assessment.VMChange) []string {
 		t.header.Render("  State"),
 		fmt.Sprintf("  %-12s %s · %s", "as of", historyRunLabel(run.ID), run.StartedAt.Local().Format("2006-01-02 15:04")),
 		fmt.Sprintf("  %-12s %s", "power", historyFieldValue("power_state", vm.PowerState)),
-		fmt.Sprintf("  %-12s %s", "host", nonempty(vm.Host, "—")),
-		fmt.Sprintf("  %-12s %s", "cluster", nonempty(vm.Cluster, "—")),
+		fmt.Sprintf("  %-12s %s", "host", cmp.Or(vm.Host, "—")),
+		fmt.Sprintf("  %-12s %s", "cluster", cmp.Or(vm.Cluster, "—")),
 		fmt.Sprintf("  %-12s %d vCPU · %s", "size", vm.CPU, humanize.MB(vm.MemoryMB)),
-		fmt.Sprintf("  %-12s %s", "datastore", nonempty(strings.Join(vm.Datastores, ", "), "—")),
-		fmt.Sprintf("  %-12s %s", "ip address", nonempty(vm.IPAddress, "—")),
-		fmt.Sprintf("  %-12s %s", "guest os", nonempty(vm.GuestOS, "—")),
-		fmt.Sprintf("  %-12s %s", "uuid", nonempty(vm.InstanceUUID, "—")),
+		fmt.Sprintf("  %-12s %s", "datastore", cmp.Or(strings.Join(vm.Datastores, ", "), "—")),
+		fmt.Sprintf("  %-12s %s", "ip address", cmp.Or(vm.IPAddress, "—")),
+		fmt.Sprintf("  %-12s %s", "guest os", cmp.Or(vm.GuestOS, "—")),
+		fmt.Sprintf("  %-12s %s", "uuid", cmp.Or(vm.InstanceUUID, "—")),
 	}
 	if v.MatchBasis != "" {
 		lines = append(lines, fmt.Sprintf("  %-12s %s", "matched by", v.MatchBasis))
@@ -1204,13 +1178,6 @@ func resourceDetail(r assessment.ResourceChange) string {
 		return ""
 	}
 	return fieldChangeSummary(r.Fields)
-}
-
-func nonempty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 func changeDetail(v assessment.VMChange) string {

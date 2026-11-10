@@ -13,6 +13,7 @@ import (
 	"github.com/vmware/govmomi/simulator"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
 )
 
@@ -31,8 +32,8 @@ func newSimulator(t *testing.T, tune func(*simulator.Model)) (*vsphere.Client, *
 	}
 	t.Cleanup(model.Remove)
 
-	gc, endpoint := dialSimulator(t, model)
-	return clientFor(gc, endpoint, ""), model.Service.FaultInjector()
+	_, endpoint := dialSimulator(t, model)
+	return clientFor(t, endpoint, ""), model.Service.FaultInjector()
 }
 
 // dialSimulator starts model's server and connects to it, without wrapping
@@ -53,15 +54,22 @@ func dialSimulator(t *testing.T, model *simulator.Model) (*govmomi.Client, strin
 	return gc, server.URL.String()
 }
 
-// clientFor wraps an existing simulator connection in a vsphere.Client
+// clientFor connects a vsphere.Client to the running simulator
 // scoped to datacenter ("" for the whole vCenter).
-func clientFor(gc *govmomi.Client, endpoint, datacenter string) *vsphere.Client {
+func clientFor(t *testing.T, endpoint, datacenter string) *vsphere.Client {
+	t.Helper()
 	cc := &config.Context{
 		Name: "sim", Endpoint: endpoint, Username: "user", Datacenter: datacenter,
 		TLS: config.TLSConfig{Mode: config.TLSInsecure},
 	}
 	cc.Normalize()
-	return vsphere.NewClientForTest(cc, gc)
+	password, _ := simulator.DefaultLogin.Password()
+	c, err := vsphere.Connect(context.Background(), cc, vsphere.ConnectOptions{Credential: &credentials.Credential{Username: simulator.DefaultLogin.Username(), Password: password}})
+	if err != nil {
+		t.Fatalf("connect to simulator: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+	return c
 }
 
 func TestListInventory(t *testing.T) {
@@ -180,7 +188,7 @@ func TestListVMsOrdersNamesIgnoringCase(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	vms, err := clientFor(gc, endpoint, "").ListVMs(ctx)
+	vms, err := clientFor(t, endpoint, "").ListVMs(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -450,8 +458,8 @@ func twoDatacenterModel(t *testing.T) *simulator.Model {
 // nothing from the other one configured in the same vCenter.
 func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
 	model := twoDatacenterModel(t)
-	gc, endpoint := dialSimulator(t, model)
-	c := clientFor(gc, endpoint, "DC0")
+	_, endpoint := dialSimulator(t, model)
+	c := clientFor(t, endpoint, "DC0")
 
 	inv, err := c.ListInventory(context.Background())
 	if err != nil {
@@ -521,8 +529,8 @@ func TestListInventoryScopesToConfiguredDatacenter(t *testing.T) {
 // error, never a silent fall back to the vCenter-wide root.
 func TestListInventoryUnknownDatacenterFails(t *testing.T) {
 	model := twoDatacenterModel(t)
-	gc, endpoint := dialSimulator(t, model)
-	c := clientFor(gc, endpoint, "does-not-exist")
+	_, endpoint := dialSimulator(t, model)
+	c := clientFor(t, endpoint, "does-not-exist")
 
 	_, err := c.ListInventory(context.Background())
 	if err == nil {
@@ -552,7 +560,7 @@ func TestListInventoryAmbiguousDatacenterFails(t *testing.T) {
 		t.Fatalf("create duplicate datacenter: %v", err)
 	}
 
-	c := clientFor(gc, endpoint, "DC0")
+	c := clientFor(t, endpoint, "DC0")
 	if _, err := c.ListInventory(ctx); err == nil {
 		t.Fatal("ListInventory should have failed: two datacenters share the name DC0")
 	} else if !strings.Contains(err.Error(), "DC0") || !strings.Contains(err.Error(), "ambiguous") {

@@ -69,7 +69,7 @@ func fileInfoFixture(t *testing.T) assessment.ExportData {
 
 func csvByName(t *testing.T, data assessment.ExportData) map[string][][]string {
 	t.Helper()
-	files, err := RVToolsCSV(data, healthReport(data))
+	files, err := RVToolsCSVWith(data, healthReport(data), ExportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestVFileInfoRowsCarrySizesPathsAndStableOrder(t *testing.T) {
 func TestVFileInfoSizeIsAnIntegerCellInXLSX(t *testing.T) {
 	data := fileInfoFixture(t)
 	var out bytes.Buffer
-	if err := WriteRVTools(&out, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&out, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))
@@ -164,7 +164,7 @@ func TestVFileInfoReExportIsByteIdenticalRegardlessOfStoredOrder(t *testing.T) {
 	}
 	var a, b, c bytes.Buffer
 	for buf, d := range map[*bytes.Buffer]assessment.ExportData{&a: data, &b: data, &c: shuffled} {
-		if err := WriteRVTools(buf, d, healthReport(d)); err != nil {
+		if err := WriteRVToolsWith(buf, d, healthReport(d), ExportOptions{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -174,11 +174,11 @@ func TestVFileInfoReExportIsByteIdenticalRegardlessOfStoredOrder(t *testing.T) {
 	if !bytes.Equal(a.Bytes(), c.Bytes()) {
 		t.Fatal("stored resource order changed the workbook bytes")
 	}
-	first, err := RVToolsCSV(data, healthReport(data))
+	first, err := RVToolsCSVWith(data, healthReport(data), ExportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := RVToolsCSV(shuffled, healthReport(shuffled))
+	second, err := RVToolsCSVWith(shuffled, healthReport(shuffled), ExportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}

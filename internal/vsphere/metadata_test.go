@@ -134,12 +134,7 @@ func TestListVMsCollectsSimulatorTagsAndCustomAttributes(t *testing.T) {
 	t.Cleanup(func() { _ = rc.Logout(ctx) })
 	cc := &config.Context{Name: "sim", Endpoint: server.URL.String(), Username: "user", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
 	cc.Normalize()
-	client := NewClientForTest(cc, gc)
-	client.tagger = newTaggingClient(gc.Client)
-	if err := client.tagger.Login(ctx, simulator.DefaultLogin); err != nil {
-		t.Fatalf("login tagging client: %v", err)
-	}
-	t.Cleanup(func() { _ = client.tagger.Logout(ctx) })
+	client := connectSimulator(t, cc)
 	initial, err := client.ListVMs(ctx)
 	if err != nil || len(initial) == 0 {
 		t.Fatalf("list initial VMs: %v (%d VMs)", err, len(initial))

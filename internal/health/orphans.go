@@ -1,6 +1,7 @@
 package health
 
 import (
+	"cmp"
 	"fmt"
 	"path"
 	"sort"
@@ -220,7 +221,7 @@ func AssessDatastoreFile(data assessment.ExportData, current vsphere.Datastore, 
 	}
 	store := stores[0]
 	if store.ds.BrowseStatus != "success" {
-		result.Reasons = []string{nonempty(store.ds.BrowseError, "datastore browse evidence is unavailable")}
+		result.Reasons = []string{cmp.Or(store.ds.BrowseError, "datastore browse evidence is unavailable")}
 		return result
 	}
 	for _, file := range store.ds.Files {
@@ -541,7 +542,7 @@ func orphanCoverage(data assessment.ExportData, stores []orphanDatastore) Orphan
 				coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanTruncated, Reason: "datastore browse listing was truncated at the file cap"})
 			}
 		case "denied":
-			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanDenied, Reason: nonempty(store.ds.BrowseError, vsphere.DatastoreInaccessibleMessage)})
+			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanDenied, Reason: cmp.Or(store.ds.BrowseError, vsphere.DatastoreInaccessibleMessage)})
 		case "failed":
 			// Runs captured before a permission fault was classified recorded
 			// it as a plain failure; the server's text still says which it was.
@@ -549,7 +550,7 @@ func orphanCoverage(data assessment.ExportData, stores []orphanDatastore) Orphan
 				coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanDenied, Reason: store.ds.BrowseError})
 				continue
 			}
-			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanFailed, Reason: nonempty(store.ds.BrowseError, "datastore browse failed")})
+			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanFailed, Reason: cmp.Or(store.ds.BrowseError, "datastore browse failed")})
 		default:
 			coverage.Gaps = append(coverage.Gaps, OrphanScanGap{Object: object, Status: OrphanScanNotBrowsed, Reason: "capture was taken without --browse-datastores"})
 		}
@@ -742,16 +743,16 @@ func contextHasDatastoreName(data assessment.ExportData, context, name string) b
 
 func contextCoverageFailure(context assessment.ContextRun) (string, bool) {
 	if !assessment.Successful(context.VMStatus) {
-		return "vm collection: " + nonempty(context.Error, context.VMStatus), true
+		return "vm collection: " + cmp.Or(context.Error, context.VMStatus), true
 	}
 	for _, collection := range context.Collections {
 		if collection.Kind == "datastore" && !assessment.Successful(collection.Status) {
-			return "datastore collection: " + nonempty(collection.Error, collection.Status), true
+			return "datastore collection: " + cmp.Or(collection.Error, collection.Status), true
 		}
 	}
 	for _, collection := range context.Collections {
 		if collection.Kind == "vm" && !assessment.Successful(collection.Status) {
-			return "vm collection: " + nonempty(collection.Error, collection.Status), true
+			return "vm collection: " + cmp.Or(collection.Error, collection.Status), true
 		}
 	}
 	return "", false

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
 	"sort"
@@ -129,7 +130,7 @@ func classifyDiff(d *assessment.Diff) []classified {
 		out = append(out, classified{row: row, impact: vmImpact(v), signature: vmSignature(v)})
 	}
 	for _, s := range d.Snapshots {
-		row := historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: historyFieldValue("snapshot", nonempty(s.After, s.Before))}
+		row := historyRow{kind: "snapshot", label: s.VMName + " / " + s.Name, context: s.Context, change: "snapshot " + s.Kind, detail: historyFieldValue("snapshot", cmp.Or(s.After, s.Before))}
 		age, known := ages[s.VMName+"/"+s.Name]
 		class, signature := impactChurn, "snapshot "+s.Kind
 		if known && age >= staleSnapshotAge {
@@ -478,15 +479,11 @@ func scrubBars(counts map[int64]int, runs []assessment.Run) []string {
 	return out
 }
 
-// viewScrubber draws the run axis: IDs, capture size, and the two handles.
+// viewScrubberWith draws the run axis: IDs, capture size, and the two handles.
 // Runs read left to right oldest to newest, the direction time is drawn in
 // everywhere else, even though the run list itself is newest-first.
-func (m *Model) viewScrubber(width int, bars bool) []string {
-	return m.viewScrubberWith(width, bars, true)
-}
-
-// viewScrubberWith is viewScrubber with the move hint optional: a short
-// terminal drops it first, since the footer names the same keys.
+// A short terminal drops the optional move hint first, since the footer
+// names the same keys.
 func (m *Model) viewScrubberWith(width int, bars, moveHint bool) []string {
 	t := m.theme
 	if len(m.runs) == 0 {

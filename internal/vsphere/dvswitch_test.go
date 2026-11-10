@@ -4,12 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/vmware/govmomi"
 	"github.com/vmware/govmomi/simulator"
 	"github.com/vmware/govmomi/vim25/mo"
 	"github.com/vmware/govmomi/vim25/types"
 
 	"github.com/easonliuuuuu/vsfleet/internal/config"
+	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 )
 
 func simulatorClient(t *testing.T, tune func(*simulator.Model)) *Client {
@@ -24,15 +24,9 @@ func simulatorClient(t *testing.T, tune func(*simulator.Model)) *Client {
 	t.Cleanup(model.Remove)
 	server := model.Service.NewServer()
 	t.Cleanup(server.Close)
-	gc, err := govmomi.NewClient(context.Background(), server.URL, true)
-	if err != nil {
-		t.Fatalf("connect to simulator: %v", err)
-	}
-	t.Cleanup(func() { _ = gc.Logout(context.Background()) })
-	endpoint := server.URL.String()
-	cc := &config.Context{Name: "sim", Endpoint: endpoint, Username: "user", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
+	cc := &config.Context{Name: "sim", Endpoint: server.URL.String(), Username: "user", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
 	cc.Normalize()
-	return NewClientForTest(cc, gc)
+	return connectSimulator(t, cc)
 }
 
 func TestListDVSwitches(t *testing.T) {
@@ -145,4 +139,16 @@ func TestListNetworksEnrichesDistributedPortGroups(t *testing.T) {
 		return
 	}
 	t.Fatal("simulator returned no distributed port group")
+}
+
+// connectSimulator exercises the same connection setup as a live collection.
+func connectSimulator(t *testing.T, cc *config.Context) *Client {
+	t.Helper()
+	password, _ := simulator.DefaultLogin.Password()
+	c, err := Connect(context.Background(), cc, ConnectOptions{Credential: &credentials.Credential{Username: simulator.DefaultLogin.Username(), Password: password}})
+	if err != nil {
+		t.Fatalf("connect to simulator: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close(context.Background()) })
+	return c
 }

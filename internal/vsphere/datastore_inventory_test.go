@@ -40,7 +40,7 @@ func inventorySimulator(t *testing.T) (*Client, *simulator.Model, map[string]str
 	t.Cleanup(func() { _ = gc.Logout(context.Background()) })
 	cc := &config.Context{Name: "sim", Endpoint: server.URL.String(), Username: "user", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
 	cc.Normalize()
-	c := NewClientForTest(cc, gc)
+	c := connectSimulator(t, cc)
 
 	finder := find.NewFinder(c.VIM(), false)
 	dc, err := finder.DefaultDatacenter(context.Background())

@@ -52,8 +52,8 @@ func TestHostNetworkNamesWhatTheHostIsMissing(t *testing.T) {
 	if got := hostFindings(h1); !strings.Contains(got, "vmk1 MTU 9000 is above dvs-a's 1500") {
 		t.Errorf("h1 findings do not flag its jumbo vmk1:\n%s", got)
 	}
-	if h1.status() != statusBad {
-		t.Errorf("h1 status = %v, want bad", h1.status())
+	if len(h1.findings) == 0 || h1.findings[0].status != statusBad {
+		t.Errorf("h1 findings = %+v, want the MTU failure first", h1.findings)
 	}
 	if len(h1.vmks) != 1 || h1.vmks[0].portGroup != "pg-vmotion" || h1.vmks[0].sw != "dvs-a" {
 		t.Errorf("h1 VMkernel adapters = %+v, want vmk1 on dvs-a pg-vmotion", h1.vmks)

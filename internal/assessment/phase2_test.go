@@ -167,24 +167,32 @@ func TestResolveRunForContextsSkipsOtherContexts(t *testing.T) {
 }
 
 func TestCaptureLeaseFencesConcurrentWriters(t *testing.T) {
-	s, err := Open(filepath.Join(t.TempDir(), "history.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer s.Close()
-	now := time.Now().UTC()
-	lease, err := s.AcquireCaptureLease(context.Background(), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.AcquireCaptureLease(context.Background(), now); err == nil {
-		t.Fatal("second capture acquired the lease")
-	}
-	if err := s.ReleaseCaptureLease(context.Background(), lease); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.AcquireCaptureLease(context.Background(), now); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"database", "sidecar"} {
+		t.Run(name, func(t *testing.T) {
+			path := ":memory:"
+			if name == "sidecar" {
+				path = filepath.Join(t.TempDir(), "history.db")
+			}
+			s, err := Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer s.Close()
+			now := time.Now().UTC()
+			lease, err := s.AcquireCaptureLease(context.Background(), now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.AcquireCaptureLease(context.Background(), now); err == nil {
+				t.Fatal("second capture acquired the lease")
+			}
+			if err := s.ReleaseCaptureLease(context.Background(), lease); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := s.AcquireCaptureLease(context.Background(), now); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 

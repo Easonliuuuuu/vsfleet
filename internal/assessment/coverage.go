@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"cmp"
 	"encoding/json"
 	"sort"
 )
@@ -59,7 +60,7 @@ func CoverageReason(contexts []ContextRun, name string, needs []string) string {
 				if !ok {
 					return kind + " collection was not recorded"
 				}
-				return kind + " collection: " + nonempty(errorText, value)
+				return kind + " collection: " + cmp.Or(errorText, value)
 			}
 		}
 	}

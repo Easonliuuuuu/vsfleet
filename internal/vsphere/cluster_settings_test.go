@@ -39,8 +39,8 @@ func TestListClustersReadsSettingsWhileHAIsOff(t *testing.T) {
 	summary := cluster.Summary.(*types.ClusterComputeResourceSummary)
 	summary.NumCpuThreads, summary.NumVmotions = 8, 2
 
-	gc, endpoint := dialSimulator(t, model)
-	clusters, err := clientFor(gc, endpoint, "").ListClusters(context.Background())
+	_, endpoint := dialSimulator(t, model)
+	clusters, err := clientFor(t, endpoint, "").ListClusters(context.Background())
 	if err != nil {
 		t.Fatalf("ListClusters: %v", err)
 	}

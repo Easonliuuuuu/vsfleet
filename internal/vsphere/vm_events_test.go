@@ -199,8 +199,8 @@ func TestVMEventsReadsOneVMsLogFromTheSimulator(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(model.Remove)
-	gc, endpoint := dialSimulator(t, model)
-	client := clientFor(gc, endpoint, "")
+	_, endpoint := dialSimulator(t, model)
+	client := clientFor(t, endpoint, "")
 
 	vms, err := client.ListVMs(context.Background())
 	if err != nil || len(vms) < 2 {

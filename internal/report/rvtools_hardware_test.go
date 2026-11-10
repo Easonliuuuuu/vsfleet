@@ -31,7 +31,7 @@ func TestWriteRVToolsVInfoHardwareVersion(t *testing.T) {
 			data.VMs[0].Observation.VM.HardwareVersion = tc.version
 			data.VMs[0].Observation.VM.HardwareUpgrade = tc.upgrade
 			var buf bytes.Buffer
-			if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+			if err := WriteRVToolsWith(&buf, data, healthReport(data), ExportOptions{}); err != nil {
 				t.Fatal(err)
 			}
 			f, err := excelize.OpenReader(&buf)

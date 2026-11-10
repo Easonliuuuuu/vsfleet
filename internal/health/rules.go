@@ -1,6 +1,7 @@
 package health
 
 import (
+	"cmp"
 	"fmt"
 	"sort"
 	"strings"
@@ -101,7 +102,7 @@ var rules = []Rule{
 			}
 			// Nothing was browsed. Say why, so a capture that asked for the
 			// browse and was refused is not told to ask for it again.
-			return true, nonempty(Orphans(in.Data).Coverage.BrowseRemediation(), browseInstruction)
+			return true, cmp.Or(Orphans(in.Data).Coverage.BrowseRemediation(), browseInstruction)
 		},
 		Eval: func(in Input, emit func(Finding)) {
 			for _, orphan := range Orphans(in.Data).Entries {
@@ -224,7 +225,7 @@ var rules = []Rule{
 				}
 				obj := resourceObject(in.Data, resource, "host", host.Name, host.ID, host.Datacenter)
 				emit(Finding{Rule: "host-disconnected", Severity: SeverityCritical, Object: obj,
-					Message: "Host is " + stateWords(host.ConnectionState), Evidence: []Evidence{{Field: "connection_state", Observed: nonempty(host.ConnectionState, "unknown"), Expected: "connected"}}})
+					Message: "Host is " + stateWords(host.ConnectionState), Evidence: []Evidence{{Field: "connection_state", Observed: cmp.Or(host.ConnectionState, "unknown"), Expected: "connected"}}})
 			}
 		},
 	},
@@ -321,7 +322,7 @@ var rules = []Rule{
 					continue
 				}
 				emit(Finding{Rule: "tools-not-running", Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation),
-					Message: toolsNotRunningMessage(vm.ToolsState), Evidence: []Evidence{{Field: "tools_state", Observed: nonempty(vm.ToolsState, "unknown"), Expected: "guestToolsRunning"}}})
+					Message: toolsNotRunningMessage(vm.ToolsState), Evidence: []Evidence{{Field: "tools_state", Observed: cmp.Or(vm.ToolsState, "unknown"), Expected: "guestToolsRunning"}}})
 			}
 		},
 		MissingEvidence: noToolsRunningStatus,
@@ -359,7 +360,7 @@ var rules = []Rule{
 					continue
 				}
 				emit(Finding{Rule: "vm-inaccessible", Severity: SeverityCritical, Object: vmObject(in.Data, item.Observation),
-					Message: "VM is " + stateWords(vm.ConnectionState), Evidence: []Evidence{{Field: "connection_state", Observed: nonempty(vm.ConnectionState, "unknown"), Expected: "connected"}}})
+					Message: "VM is " + stateWords(vm.ConnectionState), Evidence: []Evidence{{Field: "connection_state", Observed: cmp.Or(vm.ConnectionState, "unknown"), Expected: "connected"}}})
 			}
 		},
 	},
@@ -374,7 +375,7 @@ var rules = []Rule{
 						continue
 					}
 					emit(Finding{Rule: "vm-network-missing", Severity: SeverityInfo, Object: vmObject(in.Data, item.Observation),
-						Message:  fmt.Sprintf("%s is backed by network %s, which no longer exists", nonempty(nic.Label, "network adapter"), networkLabel(nic)),
+						Message:  fmt.Sprintf("%s is backed by network %s, which no longer exists", cmp.Or(nic.Label, "network adapter"), networkLabel(nic)),
 						Evidence: []Evidence{{Field: "network_id", Observed: nic.NetworkID, Expected: "an existing network"}}})
 				}
 			}
@@ -391,7 +392,7 @@ var rules = []Rule{
 					continue
 				}
 				emit(Finding{Rule: "vm-orphaned", Severity: SeverityCritical, Object: vmObject(in.Data, item.Observation),
-					Message: fmt.Sprintf("VM is %s", nonempty(vm.ConnectionState, "orphaned")), Evidence: []Evidence{{Field: "connection_state", Observed: "orphaned", Expected: "connected"}}})
+					Message: fmt.Sprintf("VM is %s", cmp.Or(vm.ConnectionState, "orphaned")), Evidence: []Evidence{{Field: "connection_state", Observed: "orphaned", Expected: "connected"}}})
 			}
 		},
 	},
@@ -426,7 +427,7 @@ func evaluateSecureBoot(in Input, emit func(Finding)) {
 		if vm.IsTemplate || vm.SecureBootEnabled == nil || !*vm.SecureBootEnabled {
 			continue
 		}
-		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has Secure Boot enabled", Evidence: []Evidence{{Field: "firmware", Observed: nonempty(vm.Firmware, "unknown")}, {Field: "secure_boot_enabled", Observed: "true"}}})
+		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has Secure Boot enabled", Evidence: []Evidence{{Field: "firmware", Observed: cmp.Or(vm.Firmware, "unknown")}, {Field: "secure_boot_enabled", Observed: "true"}}})
 	}
 }
 
@@ -494,14 +495,14 @@ func evaluateRDMPresent(in Input, emit func(Finding)) {
 			if !disk.Raw && !strings.EqualFold(disk.BackingType, "rdm") && disk.RawLUNID == "" {
 				continue
 			}
-			evidence := []Evidence{{Field: "disk", Observed: nonempty(disk.Label, fmt.Sprintf("key %d", disk.Key))}, {Field: "backing_type", Observed: nonempty(disk.BackingType, "rdm")}}
+			evidence := []Evidence{{Field: "disk", Observed: cmp.Or(disk.Label, fmt.Sprintf("key %d", disk.Key))}, {Field: "backing_type", Observed: cmp.Or(disk.BackingType, "rdm")}}
 			if disk.RawCompatibilityMode != "" {
 				evidence = append(evidence, Evidence{Field: "compatibility_mode", Observed: disk.RawCompatibilityMode})
 			}
 			if disk.RawLUNID != "" {
 				evidence = append(evidence, Evidence{Field: "lun_id", Observed: disk.RawLUNID})
 			}
-			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM disk %q uses a raw device mapping", nonempty(disk.Label, "unnamed disk")), Evidence: evidence})
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM disk %q uses a raw device mapping", cmp.Or(disk.Label, "unnamed disk")), Evidence: evidence})
 		}
 	}
 }
@@ -530,7 +531,7 @@ func evaluateSharedDisk(in Input, emit func(Finding)) {
 			if !sharedBus && !multiWriter {
 				continue
 			}
-			evidence := []Evidence{{Field: "disk", Observed: nonempty(disk.Label, fmt.Sprintf("key %d", disk.Key))}}
+			evidence := []Evidence{{Field: "disk", Observed: cmp.Or(disk.Label, fmt.Sprintf("key %d", disk.Key))}}
 			if sharedBus {
 				evidence = append(evidence, Evidence{Field: "shared_bus", Observed: disk.SharedBus})
 			}
@@ -541,7 +542,7 @@ func evaluateSharedDisk(in Input, emit func(Finding)) {
 			if len(peers) > 1 {
 				evidence = append(evidence, Evidence{Field: "related_vms", Observed: strings.Join(peers, ", ")})
 			}
-			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM disk %q uses shared storage semantics", nonempty(disk.Label, "unnamed disk")), Evidence: evidence})
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM disk %q uses shared storage semantics", cmp.Or(disk.Label, "unnamed disk")), Evidence: evidence})
 		}
 	}
 }
@@ -565,7 +566,7 @@ func evaluateManualMACAddress(in Input, emit func(Finding)) {
 			if !strings.EqualFold(strings.TrimSpace(nic.MACAddressType), "manual") {
 				continue
 			}
-			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("NIC %q has a manually assigned MAC address", nonempty(nic.Label, "unnamed NIC")), Evidence: []Evidence{{Field: "mac_address", Observed: nic.MACAddress}, {Field: "mac_address_type", Observed: nic.MACAddressType, Expected: "generated"}}})
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("NIC %q has a manually assigned MAC address", cmp.Or(nic.Label, "unnamed NIC")), Evidence: []Evidence{{Field: "mac_address", Observed: nic.MACAddress}, {Field: "mac_address_type", Observed: nic.MACAddressType, Expected: "generated"}}})
 		}
 	}
 }
@@ -577,7 +578,7 @@ func evaluateHostDevicePassthrough(in Input, emit func(Finding)) {
 			continue
 		}
 		for _, device := range vm.PCIDevices {
-			evidence := []Evidence{{Field: "device", Observed: nonempty(device.Label, fmt.Sprintf("key %d", device.Key))}, {Field: "backing_type", Observed: nonempty(device.BackingType, "unknown")}}
+			evidence := []Evidence{{Field: "device", Observed: cmp.Or(device.Label, fmt.Sprintf("key %d", device.Key))}, {Field: "backing_type", Observed: cmp.Or(device.BackingType, "unknown")}}
 			if device.VGPU != "" {
 				evidence = append(evidence, Evidence{Field: "vgpu", Observed: device.VGPU})
 			}
@@ -587,7 +588,7 @@ func evaluateHostDevicePassthrough(in Input, emit func(Finding)) {
 			if !strings.EqualFold(nic.Adapter, "SR-IOV") {
 				continue
 			}
-			evidence := []Evidence{{Field: "adapter", Observed: nonempty(nic.Adapter, "network adapter")}}
+			evidence := []Evidence{{Field: "adapter", Observed: cmp.Or(nic.Adapter, "network adapter")}}
 			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM has a host-backed network adapter", Evidence: evidence})
 		}
 	}
@@ -604,7 +605,7 @@ func evaluateFloppyPresent(in Input, emit func(Finding)) {
 			if floppy.Connected != nil {
 				evidence = append(evidence, Evidence{Field: "connected", Observed: fmt.Sprintf("%t", *floppy.Connected)})
 			}
-			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM has a virtual floppy device %q", nonempty(floppy.Label, "unnamed floppy")), Evidence: evidence})
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM has a virtual floppy device %q", cmp.Or(floppy.Label, "unnamed floppy")), Evidence: evidence})
 		}
 	}
 }
@@ -615,7 +616,7 @@ func evaluateExtensionManagedVM(in Input, emit func(Finding)) {
 		if vm.IsTemplate || vm.ManagedBy == nil || (vm.ManagedBy.ExtensionKey == "" && vm.ManagedBy.Type == "") {
 			continue
 		}
-		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM lifecycle is managed by a vCenter extension", Evidence: []Evidence{{Field: "extension_key", Observed: nonempty(vm.ManagedBy.ExtensionKey, "unknown")}, {Field: "managed_type", Observed: nonempty(vm.ManagedBy.Type, "unknown")}}})
+		emit(Finding{Object: vmObject(in.Data, item.Observation), Message: "VM lifecycle is managed by a vCenter extension", Evidence: []Evidence{{Field: "extension_key", Observed: cmp.Or(vm.ManagedBy.ExtensionKey, "unknown")}, {Field: "managed_type", Observed: cmp.Or(vm.ManagedBy.Type, "unknown")}}})
 	}
 }
 
@@ -626,16 +627,9 @@ func evaluateVTPMPresent(in Input, emit func(Finding)) {
 			continue
 		}
 		for _, tpm := range vm.TPMs {
-			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM has a virtual TPM %q", nonempty(tpm.Label, "unnamed vTPM")), Evidence: []Evidence{{Field: "device", Observed: nonempty(tpm.Label, fmt.Sprintf("key %d", tpm.Key))}}})
+			emit(Finding{Object: vmObject(in.Data, item.Observation), Message: fmt.Sprintf("VM has a virtual TPM %q", cmp.Or(tpm.Label, "unnamed vTPM")), Evidence: []Evidence{{Field: "device", Observed: cmp.Or(tpm.Label, fmt.Sprintf("key %d", tpm.Key))}}})
 		}
 	}
-}
-
-func nonempty(value, fallback string) string {
-	if value != "" {
-		return value
-	}
-	return fallback
 }
 
 func allDigits(value string) bool {
@@ -708,7 +702,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 					continue
 				}
 				emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation),
-					Message: fmt.Sprintf("CD-ROM %q is connected (%s)", nonempty(cdrom.Label, "unnamed CD-ROM"), attachedDeviceDetails(cdrom.BackingType, cdrom.BackingPath, cdrom.BackingDevice, cdrom.BackingHost)), Evidence: []Evidence{{Field: "connected", Observed: "true", Expected: "false"}, {Field: "backing", Observed: attachedDeviceDetails(cdrom.BackingType, cdrom.BackingPath, cdrom.BackingDevice, cdrom.BackingHost)}}})
+					Message: fmt.Sprintf("CD-ROM %q is connected (%s)", cmp.Or(cdrom.Label, "unnamed CD-ROM"), attachedDeviceDetails(cdrom.BackingType, cdrom.BackingPath, cdrom.BackingDevice, cdrom.BackingHost)), Evidence: []Evidence{{Field: "connected", Observed: "true", Expected: "false"}, {Field: "backing", Observed: attachedDeviceDetails(cdrom.BackingType, cdrom.BackingPath, cdrom.BackingDevice, cdrom.BackingHost)}}})
 			}
 		}
 	case "usb-connected":
@@ -721,7 +715,7 @@ func evaluateRule(ruleID string, in Input, opts Options, emit func(Finding)) {
 					continue
 				}
 				emit(Finding{Rule: ruleID, Severity: SeverityWarning, Object: vmObject(in.Data, item.Observation),
-					Message: fmt.Sprintf("USB device %q is connected (%s)", nonempty(usb.Label, "unnamed USB device"), attachedDeviceDetails(usb.BackingType, usb.BackingPath, usb.BackingDevice, usb.BackingHost)), Evidence: []Evidence{{Field: "connected", Observed: "true", Expected: "false"}, {Field: "backing", Observed: attachedDeviceDetails(usb.BackingType, usb.BackingPath, usb.BackingDevice, usb.BackingHost)}}})
+					Message: fmt.Sprintf("USB device %q is connected (%s)", cmp.Or(usb.Label, "unnamed USB device"), attachedDeviceDetails(usb.BackingType, usb.BackingPath, usb.BackingDevice, usb.BackingHost)), Evidence: []Evidence{{Field: "connected", Observed: "true", Expected: "false"}, {Field: "backing", Observed: attachedDeviceDetails(usb.BackingType, usb.BackingPath, usb.BackingDevice, usb.BackingHost)}}})
 			}
 		}
 	case "snapshot-age":

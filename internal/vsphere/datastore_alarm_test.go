@@ -29,8 +29,8 @@ func TestListDatastoresReadsTriggeredAlarms(t *testing.T) {
 		{Key: "a3", Alarm: alarm, Entity: ds.Self, OverallStatus: types.ManagedEntityStatusGray},
 	}
 
-	gc, endpoint := dialSimulator(t, model)
-	c := clientFor(gc, endpoint, "")
+	_, endpoint := dialSimulator(t, model)
+	c := clientFor(t, endpoint, "")
 	datastores, err := c.ListDatastores(context.Background())
 	if err != nil {
 		t.Fatalf("ListDatastores: %v", err)

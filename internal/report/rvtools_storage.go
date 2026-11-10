@@ -1,6 +1,7 @@
 package report
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -51,13 +52,13 @@ func datastoreRows(data assessment.ExportData) [][]any {
 			freePercent = float64(datastore.FreeBytes) / float64(datastore.CapacityBytes) * 100
 		}
 		d := datastoreDetailsOf(datastore)
-		row := []any{nonempty(datastore.Name, r.Name), datastore.Datacenter, optionalString(d.ConfigStatus), optionalString(d.Address), datastore.Accessible, datastore.Type}
+		row := []any{cmp.Or(datastore.Name, r.Name), datastore.Datacenter, optionalString(d.ConfigStatus), optionalString(d.Address), datastore.Accessible, datastore.Type}
 		row = append(row, datastoreVMCounts(datastore.Details, powered, r.Context)...)
 		row = append(row, capacity, datastoreProvisionedMiB(datastore), float64(datastore.UsedBytes())/miB, free, freePercent, optionalBool(d.SIOCEnabled), optionalInt32(d.SIOCThreshold))
 		row = append(row, datastoreHostCells(datastore.Details)...)
 		row = append(row, datastoreClusterCells(d.StorageCluster)...)
 		row = append(row, datastoreVMFSCells(datastore.Details)...)
-		row = append(row, optionalBool(d.MultipleHostAccess), datastore.Maintenance, optionalString(datastore.Backing.URL), nonempty(datastore.ID, r.ID), sdkServer(data, r.Context), r.VCenterID, r.Context)
+		row = append(row, optionalBool(d.MultipleHostAccess), datastore.Maintenance, optionalString(datastore.Backing.URL), cmp.Or(datastore.ID, r.ID), sdkServer(data, r.Context), r.VCenterID, r.Context)
 		rows = append(rows, row)
 	}
 	return rows
@@ -152,7 +153,7 @@ func multipathRows(data assessment.ExportData) [][]any {
 		}
 		for _, extent := range d.Backing.Extents {
 			key := [2]string{r.Context, extent}
-			byLUN[key] = append(byLUN[key], datastoreLUN{nonempty(d.Name, r.Name), nonempty(d.ID, r.ID)})
+			byLUN[key] = append(byLUN[key], datastoreLUN{cmp.Or(d.Name, r.Name), cmp.Or(d.ID, r.ID)})
 		}
 	}
 	rows := make([][]any, 0)
@@ -161,7 +162,7 @@ func multipathRows(data assessment.ExportData) [][]any {
 		for _, mp := range host.Multipaths {
 			disk := mp.CanonicalName()
 			for _, ds := range byLUN[[2]string{resource.Context, disk}] {
-				row := []any{nonempty(host.Name, resource.Name), host.Cluster, host.Datacenter, ds.name, optionalString(disk), optionalString(mp.LUN), optionalString(mp.Policy)}
+				row := []any{cmp.Or(host.Name, resource.Name), host.Cluster, host.Datacenter, ds.name, optionalString(disk), optionalString(mp.LUN), optionalString(mp.Policy)}
 				row = append(row, multipathDeviceCells(mp.Device)...)
 				row = append(row, optionalString(mp.DevicePath), optionalBool(mp.LocalDisk), mp.PathCount, mp.Active, mp.Standby, mp.Dead, mp.Disabled, mp.WorkingPaths)
 				rows = append(rows, append(row, ds.id, sdkServer(data, resource.Context), resource.VCenterID, resource.Context))
@@ -183,7 +184,7 @@ func multipathDeviceCells(d *vsphere.HostMultipathLUN) []any {
 		if i == maxMultipathPaths {
 			break
 		}
-		cells[1+2*i], cells[2+2*i] = optionalString(nonempty(p.Adapter, p.Name)), optionalString(p.State)
+		cells[1+2*i], cells[2+2*i] = optionalString(cmp.Or(p.Adapter, p.Name)), optionalString(p.State)
 	}
 	tail := []any{optionalString(d.VStorageSupport), optionalInt32(d.QueueDepth), optionalString(d.Vendor), optionalString(d.Model), optionalString(d.Revision),
 		optionalInt32(d.SCSILevel), optionalString(d.Serial), optionalString(d.UUID)}

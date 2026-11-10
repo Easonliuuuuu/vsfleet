@@ -97,7 +97,7 @@ func TestVClusterHeadersFollowRVToolsOrder(t *testing.T) {
 func firstRowByHeader(t *testing.T, data assessment.ExportData, sheet string) map[string]string {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&buf, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(&buf)

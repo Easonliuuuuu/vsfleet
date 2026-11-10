@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
 	"github.com/easonliuuuuu/vsfleet/internal/vsphere"
@@ -173,15 +175,10 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 			}
 		}
 	}()
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, session.DefaultConcurrency)
+	var group errgroup.Group
+	group.SetLimit(session.DefaultConcurrency)
 	for _, cc := range opts.Contexts {
-		cc := cc
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+		group.Go(func() error {
 			if opts.Progress != nil {
 				opts.Progress(ContextProgress{Context: cc.Name, Status: "connecting"})
 			}
@@ -197,9 +194,10 @@ func (c *Collector) Capture(ctx context.Context, opts CaptureOptions) (Run, erro
 				}
 				opts.Progress(p)
 			}
-		}()
+			return nil
+		})
 	}
-	wg.Wait()
+	_ = group.Wait()
 	run, err = c.Store.FinishRunWithLease(ctx, run.ID, now(), lease)
 	stopLease()
 	leaseWG.Wait()

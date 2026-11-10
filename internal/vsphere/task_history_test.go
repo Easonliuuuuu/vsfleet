@@ -154,7 +154,7 @@ func TestVMTasksReadsOutcomesFromTheSimulator(t *testing.T) {
 	}
 	t.Cleanup(model.Remove)
 	gc, endpoint := dialSimulator(t, model)
-	client := clientFor(gc, endpoint, "")
+	client := clientFor(t, endpoint, "")
 
 	vms, err := client.ListVMs(context.Background())
 	if err != nil || len(vms) < 2 {
@@ -234,8 +234,8 @@ func TestVMTasksDestroysItsCollector(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(model.Remove)
-	gc, endpoint := dialSimulator(t, model)
-	client := clientFor(gc, endpoint, "")
+	_, endpoint := dialSimulator(t, model)
+	client := clientFor(t, endpoint, "")
 	vms, err := client.ListVMs(context.Background())
 	if err != nil || len(vms) == 0 {
 		t.Fatalf("list VMs: %v", err)
@@ -268,15 +268,15 @@ func TestVMEventsKeepsEventsWhenTaskHistoryCannotBeRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(model.Remove)
-	gc, endpoint := dialSimulator(t, model)
-	client := clientFor(gc, endpoint, "")
+	_, endpoint := dialSimulator(t, model)
+	client := clientFor(t, endpoint, "")
 	vms, err := client.ListVMs(context.Background())
 	if err != nil || len(vms) == 0 {
 		t.Fatalf("list VMs: %v", err)
 	}
 
 	// Pointing the task manager at nothing makes CreateCollectorForTasks fault.
-	gc.ServiceContent.TaskManager = &types.ManagedObjectReference{Type: "TaskManager", Value: "no-such-task-manager"}
+	client.VIM().ServiceContent.TaskManager = &types.ManagedObjectReference{Type: "TaskManager", Value: "no-such-task-manager"}
 	listing, err := client.VMEvents(context.Background(), vms[0].ID, 0)
 	if err != nil {
 		t.Fatalf("VMEvents failed outright instead of degrading: %v", err)
@@ -291,7 +291,7 @@ func TestVMEventsKeepsEventsWhenTaskHistoryCannotBeRead(t *testing.T) {
 		t.Fatalf("TaskHistoryError is not one line: %q", listing.TaskHistoryError)
 	}
 
-	gc.ServiceContent.TaskManager = nil
+	client.VIM().ServiceContent.TaskManager = nil
 	listing, err = client.VMEvents(context.Background(), vms[0].ID, 0)
 	if err != nil || len(listing.Events) == 0 || listing.TaskHistoryError == "" {
 		t.Fatalf("a server with no TaskManager: err=%v events=%d note=%q", err, len(listing.Events), listing.TaskHistoryError)

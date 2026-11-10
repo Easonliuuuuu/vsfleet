@@ -1,6 +1,7 @@
 package report
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 
@@ -36,8 +37,8 @@ func resourcePoolRows(data assessment.ExportData) [][]any {
 			if err := json.Unmarshal(r.Payload, &pool); err != nil {
 				continue
 			}
-			rows = append(rows, resourcePoolRow(data, r, members, nonempty(pool.Name, r.Name), rvtoolsPoolPath(pool), pool.Status, pool.VMRefs,
-				pool.ResourceAllocation, pool.ConfigStatus, nonempty(pool.ID, r.ID), pool.Datacenter))
+			rows = append(rows, resourcePoolRow(data, r, members, cmp.Or(pool.Name, r.Name), rvtoolsPoolPath(pool), pool.Status, pool.VMRefs,
+				pool.ResourceAllocation, pool.ConfigStatus, cmp.Or(pool.ID, r.ID), pool.Datacenter))
 		case "vapp":
 			// RVTools lists vApps on vRP: a vApp is a resource pool subtype
 			// with the same allocation. Its VMs are its direct members.
@@ -49,8 +50,8 @@ func resourcePoolRows(data assessment.ExportData) [][]any {
 			for i, ref := range vapp.DirectVMRefs {
 				refs[i] = strings.TrimPrefix(ref, "VirtualMachine:")
 			}
-			rows = append(rows, resourcePoolRow(data, r, members, nonempty(vapp.Name, r.Name), h.vappPath(r.Context, vapp), vapp.OverallStatus, refs,
-				*vapp.Allocation, vapp.ConfigStatus, nonempty(vapp.ID, r.ID), vapp.Datacenter))
+			rows = append(rows, resourcePoolRow(data, r, members, cmp.Or(vapp.Name, r.Name), h.vappPath(r.Context, vapp), vapp.OverallStatus, refs,
+				*vapp.Allocation, vapp.ConfigStatus, cmp.Or(vapp.ID, r.ID), vapp.Datacenter))
 		}
 	}
 	return rows

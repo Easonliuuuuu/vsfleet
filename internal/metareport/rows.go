@@ -2,6 +2,7 @@ package metareport
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/csv"
 	"fmt"
 	"sort"
@@ -168,7 +169,7 @@ func (c Coverage) Warning() string {
 	where := c.Context + " " + c.Kind
 	switch c.Status {
 	case CollectionFailed:
-		return fmt.Sprintf("%s: collection failed, membership and metadata unknown: %s", where, nonempty(c.Error, "no error recorded"))
+		return fmt.Sprintf("%s: collection failed, membership and metadata unknown: %s", where, cmp.Or(c.Error, "no error recorded"))
 	case CollectionNotRecorded:
 		return fmt.Sprintf("%s: capture holds no %s collection", where, c.Kind)
 	}
@@ -198,13 +199,6 @@ func statusLabel(status string) string {
 		}
 	}
 	return string(b)
-}
-
-func nonempty(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
 }
 
 // CoverageOf reports source coverage per context, kind and source for the

@@ -22,7 +22,6 @@ import (
 
 	"github.com/vmware/govmomi/simulator"
 
-	"github.com/easonliuuuuu/vsfleet/internal/assessment"
 	"github.com/easonliuuuuu/vsfleet/internal/config"
 	"github.com/easonliuuuuu/vsfleet/internal/credentials"
 	"github.com/easonliuuuuu/vsfleet/internal/session"
@@ -287,25 +286,6 @@ func (l *Lab) Close(_ context.Context) error {
 		m.Remove()
 	}
 	return nil
-}
-
-// Contexts returns the built-in contexts in display order.
-func (l *Lab) Contexts() []*config.Context { return l.contexts }
-
-// Paths returns the isolated files used by the lab.
-func (l *Lab) Paths() (configPath, historyPath, manifestPath string) {
-	return l.ConfigPath, l.HistoryPath, l.ManifestPath
-}
-
-// SeededHistory reports whether the lab has an assessment database with data.
-func (l *Lab) SeededHistory(ctx context.Context) (bool, error) {
-	s, err := assessment.Open(l.HistoryPath)
-	if err != nil {
-		return false, err
-	}
-	defer s.Close()
-	runs, err := s.Runs(ctx)
-	return len(runs) > 0, err
 }
 
 // NewSeedManager returns a manager that can authenticate to the fixture

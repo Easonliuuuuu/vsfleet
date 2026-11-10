@@ -115,7 +115,7 @@ func TestSelectedRunsStayMarkedWhenPartial(t *testing.T) {
 	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
 	m := partialEstateModel(t, Options{AllContexts: true}, 140, 40)
 	m.theme = newTheme()
-	ids := m.viewScrubber(m.width, false)[0]
+	ids := m.viewScrubberWith(m.width, false, true)[0]
 	// style is the escape sequence that opens a run's cell on the axis.
 	style := func(id int64) string {
 		label := historyRunLabel(id)

@@ -78,7 +78,7 @@ func TestListDatastoresReadsVSANReserves(t *testing.T) {
 	}
 	model.Map().Get(ds.Reference()).(*simulator.Datastore).Summary.Type = "vsan"
 
-	datastores, err := clientFor(gc, endpoint, "").ListDatastores(ctx)
+	datastores, err := clientFor(t, endpoint, "").ListDatastores(ctx)
 	if err != nil {
 		t.Fatalf("ListDatastores: %v", err)
 	}

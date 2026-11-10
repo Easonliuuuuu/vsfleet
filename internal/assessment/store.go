@@ -729,11 +729,16 @@ func (s *Store) AcquireOperationLease(ctx context.Context, now time.Time, operat
 	if _, err := tx.ExecContext(ctx, `DELETE FROM capture_lease WHERE id=1 AND expires_at<=?`, nowMS); err != nil {
 		return CaptureLease{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO capture_lease(id,token,run_id,operation,acquired_at,expires_at) VALUES(1,?,0,?,?,?)`, token, operation, nowMS, now.Add(leaseDuration).UTC().UnixMilli()); err != nil {
-		if strings.Contains(strings.ToLower(err.Error()), "constraint") {
-			return CaptureLease{}, fmt.Errorf("another capture is already running")
-		}
+	res, err := tx.ExecContext(ctx, `INSERT INTO capture_lease(id,token,run_id,operation,acquired_at,expires_at) VALUES(1,?,0,?,?,?) ON CONFLICT(id) DO NOTHING`, token, operation, nowMS, now.Add(leaseDuration).UTC().UnixMilli())
+	if err != nil {
 		return CaptureLease{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return CaptureLease{}, fmt.Errorf("check capture lease acquisition: %w", err)
+	}
+	if n != 1 {
+		return CaptureLease{}, fmt.Errorf("another capture is already running")
 	}
 	if err := tx.Commit(); err != nil {
 		return CaptureLease{}, err

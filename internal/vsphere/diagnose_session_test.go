@@ -47,7 +47,7 @@ func TestDiagnoseSessionReusesLiveLoginForPromptPassword(t *testing.T) {
 				t.Fatalf("create simulator model: %v", err)
 			}
 			t.Cleanup(model.Remove)
-			gc, endpoint := dialSimulator(t, model)
+			_, endpoint := dialSimulator(t, model)
 
 			cc := &config.Context{
 				Name: "sim", Endpoint: endpoint, Username: "user",
@@ -57,10 +57,11 @@ func TestDiagnoseSessionReusesLiveLoginForPromptPassword(t *testing.T) {
 			cc.Normalize()
 			var live *vsphere.Client
 			if tt.live {
-				live = vsphere.NewClientForTest(cc, gc)
+				live = clientFor(t, endpoint, "")
+				live.Context = cc
 			}
 			if tt.loggedOut {
-				if err := gc.Logout(context.Background()); err != nil {
+				if err := live.Close(context.Background()); err != nil {
 					t.Fatalf("logout: %v", err)
 				}
 			}

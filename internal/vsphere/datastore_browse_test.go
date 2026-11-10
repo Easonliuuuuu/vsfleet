@@ -37,7 +37,7 @@ func browseSimulator(t *testing.T) (*Client, *simulator.Model) {
 	t.Cleanup(func() { _ = gc.Logout(context.Background()) })
 	cc := &config.Context{Name: "sim", Endpoint: server.URL.String(), Username: "user", TLS: config.TLSConfig{Mode: config.TLSInsecure}}
 	cc.Normalize()
-	return NewClientForTest(cc, gc), model
+	return connectSimulator(t, cc), model
 }
 
 func seedSimulatorVMDK(t *testing.T, c *Client) {

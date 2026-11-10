@@ -278,14 +278,3 @@ func (c *Client) Close(ctx context.Context) error {
 	}
 	return errors.Join(errs...)
 }
-
-// NewClientForTest wraps an existing govmomi client so tests can exercise the
-// inventory API against vcsim without going through Connect.
-func NewClientForTest(cc *config.Context, gc *govmomi.Client) *Client {
-	return &Client{
-		Context: cc,
-		About:   aboutFrom(gc.Client),
-		vim:     gc,
-		dialer:  transport.NewDirect(0),
-	}
-}

@@ -275,11 +275,11 @@ func TestChangeDetailShowsFieldsForVanishedVM(t *testing.T) {
 	store := oneVMDiffStore(t)
 	m := newTestModel(t, twoHealthy(), Options{Current: "prod", Assessment: &assessment.Service{Store: store}})
 	press(t, m, "H")
-	rows := m.changeRows()
-	if len(rows) != 1 || rows[0].change != "vanished" || rows[0].kind != "vm" {
+	rows := classifyDiff(m.changeDiff)
+	if len(rows) != 1 || rows[0].row.change != "vanished" || rows[0].row.kind != "vm" {
 		t.Fatalf("rows=%+v", rows)
 	}
-	detail := strings.Join(m.historyInspector(rows[0]), "\n")
+	detail := strings.Join(m.historyInspector(rows[0].row), "\n")
 	for _, want := range []string{"esx-01", "on", "uuid-1", "4 vCPU", "8G"} {
 		if !strings.Contains(detail, want) {
 			t.Fatalf("inspector missing %q — the old screen would have shown nothing here:\n%s", want, detail)

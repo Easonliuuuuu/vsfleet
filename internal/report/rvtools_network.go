@@ -1,6 +1,7 @@
 package report
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 
@@ -122,13 +123,13 @@ func dvSwitchRows(data assessment.ExportData) [][]any {
 		if sw.VMCount != nil {
 			vms = *sw.VMCount
 		}
-		row := []any{nonempty(sw.Name, resource.Name), sw.Datacenter, optionalString(sw.ProductName), sw.Vendor, sw.Version, sw.UUID,
+		row := []any{cmp.Or(sw.Name, resource.Name), sw.Datacenter, optionalString(sw.ProductName), sw.Vendor, sw.Version, sw.UUID,
 			optionalString(sw.Description), optionalTime(sw.Created), optionalString(strings.Join(sw.Hosts, ", ")), sw.MaxPorts, sw.NumPorts, vms}
 		row = append(row, shapingCells(sw.DVSTrafficShaping)...)
 		row = append(row, optionalString(sw.LinkDiscoveryProtocol), optionalString(sw.LinkDiscoveryOperation))
 		row = append(row, lacpCells(sw.LACPGroups)...)
 		rows = append(rows, append(row, optionalString(sw.LACPVersion), sw.MaxMTU, optionalString(sw.ContactDetail), optionalString(sw.Contact),
-			optionalString(strings.Join(sw.UplinkPorts, ", ")), nonempty(sw.ID, resource.ID), sdkServer(data, resource.Context),
+			optionalString(strings.Join(sw.UplinkPorts, ", ")), cmp.Or(sw.ID, resource.ID), sdkServer(data, resource.Context),
 			resource.VCenterID, resource.Context))
 	}
 	return rows
@@ -141,7 +142,7 @@ func dvPortRows(data assessment.ExportData) [][]any {
 		for _, port := range sw.PortGroups {
 			c := port.FailureCriteria
 			o := port.Overrides
-			row := []any{port.Name, nonempty(sw.Name, resource.Name), port.Key, port.Type, port.BackingType, port.NumPorts,
+			row := []any{port.Name, cmp.Or(sw.Name, resource.Name), port.Key, port.Type, port.BackingType, port.NumPorts,
 				optionalString(port.VLAN), port.Uplink, failureCell(c, func(c vsphere.DVSFailureCriteria) any { return c.SpeedMbps }),
 				failureCell(c, func(c vsphere.DVSFailureCriteria) any { return c.FullDuplex }), optionalBool(port.Blocked),
 				optionalBool(port.AutoExpand), optionalBool(port.Promiscuous), optionalBool(port.MACChanges),
@@ -163,7 +164,7 @@ func dvPortRows(data assessment.ExportData) [][]any {
 				overrideCell(o, func(o vsphere.DVPortGroupOverrides) bool { return o.UplinkTeaming }),
 				overrideCell(o, func(o vsphere.DVPortGroupOverrides) bool { return o.VLAN }),
 				optionalString(port.LogicalSwitchUUID), optionalString(port.SegmentID),
-				sw.Datacenter, nonempty(port.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context)
+				sw.Datacenter, cmp.Or(port.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context)
 			rows = append(rows, row)
 		}
 	}

@@ -47,8 +47,8 @@ func TestListVMsReadsEachVMsClusterRulesAndHASettings(t *testing.T) {
 			VmToolsMonitoringSettings: &types.ClusterVmToolsMonitoringSettings{VmMonitoring: "vmMonitoringOnly", ClusterSettings: yes}},
 	}}
 
-	gc, endpoint := dialSimulator(t, model)
-	vms, err := clientFor(gc, endpoint, "").ListVMs(context.Background())
+	_, endpoint := dialSimulator(t, model)
+	vms, err := clientFor(t, endpoint, "").ListVMs(context.Background())
 	if err != nil {
 		t.Fatalf("ListVMs: %v", err)
 	}

@@ -42,7 +42,7 @@ func writeImportWorkbook(t *testing.T, mutate func(*assessment.ExportData)) stri
 		mutate(&data)
 	}
 	var buf bytes.Buffer
-	if err := report.WriteRVTools(&buf, data, health.Report{}); err != nil {
+	if err := report.WriteRVToolsWith(&buf, data, health.Report{}, report.ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "estate.xlsx")

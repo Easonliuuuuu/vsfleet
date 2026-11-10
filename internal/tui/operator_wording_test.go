@@ -87,7 +87,7 @@ func TestOperatorCountsIntervalsAndPicker(t *testing.T) {
 	}
 	m.baseRun, m.targetRun, m.scrubHandle = 1, 2, "t"
 	m.runs = []assessment.Run{{ID: 2}, {ID: 1}}
-	picker := ansi.Strip(strings.Join(m.viewScrubber(100, false), "\n"))
+	picker := ansi.Strip(strings.Join(m.viewScrubberWith(100, false, true), "\n"))
 	if !strings.Contains(picker, "t") || strings.Contains(picker, "T") || m.handleMark(1) != "b" || m.handleMark(2) != "t" {
 		t.Fatalf("picker must match b/t keys: %s", picker)
 	}

@@ -38,8 +38,8 @@ func TestListClustersReadsTriggeredAlarms(t *testing.T) {
 		{Key: "a3", Alarm: hostAlarm, Entity: host.Self, OverallStatus: types.ManagedEntityStatusGray},
 	}
 
-	gc, endpoint := dialSimulator(t, model)
-	c := clientFor(gc, endpoint, "")
+	_, endpoint := dialSimulator(t, model)
+	c := clientFor(t, endpoint, "")
 	clusters, err := c.ListClusters(context.Background())
 	if err != nil {
 		t.Fatalf("ListClusters: %v", err)

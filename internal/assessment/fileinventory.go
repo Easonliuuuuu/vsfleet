@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -147,7 +148,7 @@ func FileInventoryCoverage(data ExportData) []FileInventoryContext {
 		if err := json.Unmarshal(r.Payload, &ds); err != nil {
 			continue
 		}
-		entry := FileInventoryDatastore{Context: r.Context, Datastore: nonempty(ds.Name, r.Name), ID: nonempty(ds.ID, r.ID)}
+		entry := FileInventoryDatastore{Context: r.Context, Datastore: cmp.Or(ds.Name, r.Name), ID: cmp.Or(ds.ID, r.ID)}
 		entry.Status, entry.Message = inventoryDatastoreStatus(ds.FileInventory)
 		if ds.FileInventory != nil {
 			out[i].Requested = true

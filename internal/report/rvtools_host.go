@@ -1,6 +1,7 @@
 package report
 
 import (
+	"cmp"
 	"math"
 	"strings"
 	"time"
@@ -55,7 +56,7 @@ func hostRow(data assessment.ExportData, densities map[hostKey]hostDensity, r as
 	if d.GMTOffset != nil {
 		gmtOffset = *d.GMTOffset
 	}
-	row := []any{nonempty(h.Name, r.Name), h.Datacenter, h.Cluster, optionalString(d.ConfigStatus), h.InMaintenance,
+	row := []any{cmp.Or(h.Name, r.Name), h.Datacenter, h.Cluster, optionalString(d.ConfigStatus), h.InMaintenance,
 		optionalBool(d.InQuarantine), optionalString(d.CPUModel), h.CPUMHz, optionalBool(d.HTAvailable), optionalBool(d.HTActive), packages,
 		coresPerCPU, h.CPUCores, hostCPUPercent(h), h.MemoryMB, optionalString(d.MemoryTiering), hostMemoryPercent(h)}
 	row = append(append(row, hostAdapterCounts(data, h)...), h.VMCount)
@@ -67,7 +68,7 @@ func hostRow(data assessment.ExportData, densities map[hostKey]hostDensity, r as
 		optionalString(strings.Join(d.SearchDomains, ", ")), optionalString(strings.Join(d.NTPServers, ", ")), optionalBool(d.NTPDRunning),
 		optionalString(d.TimeZone), optionalString(d.TimeZoneName), gmtOffset, h.Vendor, h.Model, optionalString(d.SerialNumber),
 		optionalString(d.ServiceTag), optionalString(d.OEMString), optionalString(d.BIOSVendor), optionalString(d.BIOSVersion),
-		optionalTime(d.BIOSDate), certIssuer, certStart, certExpiry, certSubject, nonempty(h.ID, r.ID), customAttribute(h.Metadata, autoDeployIdentity),
+		optionalTime(d.BIOSDate), certIssuer, certStart, certExpiry, certSubject, cmp.Or(h.ID, r.ID), customAttribute(h.Metadata, autoDeployIdentity),
 		optionalString(d.UUID), sdkServer(data, r.Context), r.VCenterID, r.Context)
 }
 

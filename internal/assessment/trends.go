@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -345,7 +346,7 @@ func (s *Store) SnapshotTrend(ctx context.Context, opts TrendOptions, olderThan 
 				continue
 			}
 			if contextRun.VMStatus != "success" && contextRun.VMStatus != "empty" {
-				trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "snapshot", Context: contextRun.Name, Message: "VM collection is not complete: " + nonempty(contextRun.Error, contextRun.VMStatus)})
+				trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "snapshot", Context: contextRun.Name, Message: "VM collection is not complete: " + cmp.Or(contextRun.Error, contextRun.VMStatus)})
 			} else if !ContextComplete(contextRun, []string{"snapshot"}) {
 				trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "snapshot", Context: contextRun.Name, Message: "snapshot evidence was not collected: " + CoverageReason([]ContextRun{contextRun}, contextRun.Name, []string{"snapshot"})})
 			}
@@ -418,7 +419,7 @@ func (s *Store) CapacityTrend(ctx context.Context, opts TrendOptions, kinds []st
 					continue
 				}
 				if collection.Kind == kind && collection.Status != "success" && collection.Status != "empty" {
-					trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "trend", Context: contextName, Message: fmt.Sprintf("%s collection %s: %s", collection.Kind, collection.Status, nonempty(collection.Error, "incomplete"))})
+					trend.Coverage = append(trend.Coverage, CoverageIssue{Scope: "trend", Context: contextName, Message: fmt.Sprintf("%s collection %s: %s", collection.Kind, collection.Status, cmp.Or(collection.Error, "incomplete"))})
 				}
 			}
 			if len(opts.Contexts) == 0 {
@@ -585,12 +586,12 @@ func (s *Store) Report(ctx context.Context, runID int64, olderThan time.Duration
 			}
 			report.Coverage = append(report.Coverage, ReportCoverage{Context: contextRun.Name, Kind: collection.Kind, Status: collection.Status, ItemCount: collection.ItemCount, Error: collection.Error})
 			if collection.Status != "success" && collection.Status != "empty" {
-				report.Warnings = append(report.Warnings, fmt.Sprintf("%s %s collection: %s", contextRun.Name, collection.Kind, nonempty(collection.Error, collection.Status)))
+				report.Warnings = append(report.Warnings, fmt.Sprintf("%s %s collection: %s", contextRun.Name, collection.Kind, cmp.Or(collection.Error, collection.Status)))
 			}
 		}
 		if !vmCoverageRecorded && !Successful(contextRun.VMStatus) {
 			report.Coverage = append(report.Coverage, ReportCoverage{Context: contextRun.Name, Kind: "vm", Status: contextRun.VMStatus, Error: contextRun.Error})
-			report.Warnings = append(report.Warnings, fmt.Sprintf("%s VM collection: %s", contextRun.Name, nonempty(contextRun.Error, contextRun.VMStatus)))
+			report.Warnings = append(report.Warnings, fmt.Sprintf("%s VM collection: %s", contextRun.Name, cmp.Or(contextRun.Error, contextRun.VMStatus)))
 		}
 	}
 	sort.Slice(report.Coverage, func(i, j int) bool {

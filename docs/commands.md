@@ -24,6 +24,7 @@ every context. vsfleet never changes a vCenter, so kubectl's mutating verbs
 | `doctor [context...]` | Diagnose a connection stage by stage; see [troubleshooting](troubleshooting.md) |
 | `cluster-info [dump]` | Show each context's route, state, latency and version; `dump` writes every live kind as JSON for a bug report |
 | `version` | Print the version |
+| `update [--check]` | Check for a new release now and upgrade, or print how to; see [upgrading](getting-started.md#upgrading) |
 
 `ctx` is an alias of `config`.
 

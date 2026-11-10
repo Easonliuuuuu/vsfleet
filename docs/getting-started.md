@@ -31,7 +31,8 @@ scoop bucket add easonliuuuuu https://github.com/Easonliuuuuu/homebrew-tap
 scoop install easonliuuuuu/vsfleet
 ```
 
-To upgrade, quit vsfleet and run `scoop update vsfleet`. The bucket is
+To upgrade, quit vsfleet and run `scoop update vsfleet`; `vsfleet update`
+prints the same command. The bucket is
 updated by the release workflow.
 
 For a direct download, get the Windows ZIP for your CPU (`amd64` or `arm64`)
@@ -260,7 +261,12 @@ Scoop, `.deb`/`.rpm` and release archive users get a command or
 download link to copy. Other commands print a notice on stderr. After the
 upgrade, the next launch shows what's new.
 
-Set `VSFLEET_NO_UPDATE_NOTIFIER=1` to disable the check. It never runs in CI
+To check now instead of waiting, run `vsfleet update`. It upgrades Homebrew
+and `go install` copies on macOS and Linux, and prints the command or
+download link for the others. `vsfleet update --check` only reports.
+
+Set `VSFLEET_NO_UPDATE_NOTIFIER=1` to disable the check, including
+`vsfleet update`. It never runs in CI
 or the container image. See
 [Terminal UI](tui.md#upgrade-prompt) and [SECURITY.md](https://github.com/Easonliuuuuu/vsfleet/blob/main/SECURITY.md)
 for what the check sends.

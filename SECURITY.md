@@ -66,14 +66,14 @@ backup controls, and remove runs explicitly with `vsfleet capture delete
   (`--tls thumbprint`). Any future change in the presented certificate halts the
   connection immediately to prevent man-in-the-middle (MITM) attacks.
 * **Release Check:** Apart from vCenter, the only host vsfleet contacts is
-  GitHub's API, at most once a day, to learn the newest release: one
+  GitHub's API, at most once a day or when you run `vsfleet update`, to learn the newest release: one
   anonymous `GET /repos/Easonliuuuuu/vsfleet/releases/latest` with the
   `vsfleet/<version>` User-Agent and no inventory, context names or other
   identifiers. It uses the standard `HTTPS_PROXY`/`NO_PROXY` settings, never a
   context's vCenter route, and fails silently. The answer is only compared and
   displayed, never executed; the release's "What's new" notes in it are cut
   to short plain text, without control characters, before the prompt shows
-  them. Upgrading from the launch prompt runs one of a
+  them. Upgrading from the launch prompt or `vsfleet update` runs one of a
   fixed set of package-manager commands chosen from where the binary is
   installed, never `sudo` and never on Windows. Set
   `VSFLEET_NO_UPDATE_NOTIFIER=1` to turn all of this off; CI and the container

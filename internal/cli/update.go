@@ -28,7 +28,10 @@ type updater struct {
 	path    string
 	current string
 	enabled bool
-	method  update.Method
+	// off is VSFLEET_NO_UPDATE_NOTIFIER: unlike enabled, it also refuses an
+	// explicit "vsfleet update", since it promises GitHub is never asked.
+	off    bool
+	method update.Method
 
 	now     func() time.Time
 	latest  func(context.Context) (update.Found, error)
@@ -56,6 +59,7 @@ func (a *App) updates() *updater {
 		u.path = p
 		u.enabled = update.Enabled(current, os.Getenv)
 	}
+	u.off = os.Getenv(update.EnvNoUpdateNotifier) != ""
 	if exe, err := os.Executable(); err == nil {
 		if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 			exe = resolved
@@ -69,7 +73,7 @@ func (a *App) updates() *updater {
 
 // check asks GitHub and records the answer. A failure is recorded too, so an
 // estate that cannot reach GitHub is tried again tomorrow, not every launch.
-func (u *updater) check(ctx context.Context) {
+func (u *updater) check(ctx context.Context) (update.Found, error) {
 	found, err := u.latest(ctx)
 	now := u.now()
 	_ = update.Modify(u.path, func(s *update.State) {
@@ -78,6 +82,7 @@ func (u *updater) check(ctx context.Context) {
 			s.Latest, s.Notes = found.Version, found.Notes
 		}
 	})
+	return found, err
 }
 
 // uiOptions fills in the interface's side of the release check: the badge
@@ -92,7 +97,7 @@ func (u *updater) uiOptions(opts *tui.Options) {
 	opts.UpdateBadge = st.Available(u.current)
 	if st.Stale(now) {
 		opts.CheckUpdate = func(ctx context.Context) string {
-			u.check(ctx)
+			_, _ = u.check(ctx)
 			return update.Load(u.path).Available(u.current)
 		}
 	}
@@ -178,15 +183,15 @@ func isTerminalReader(r io.Reader) bool {
 }
 
 // quietCommand reports whether cmd never prints the release notice: the
-// interface handles releases itself, the demo promises to dial nothing, and
-// completion output is read by a shell, not a person.
+// interface and "update" handle releases themselves, the demo promises to
+// dial nothing, and completion output is read by a shell, not a person.
 func quietCommand(cmd *cobra.Command) bool {
 	if cmd == cmd.Root() {
 		return true
 	}
 	for c := cmd; c != nil; c = c.Parent() {
 		switch c.Name() {
-		case "ui", "demo", "completion", "help", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+		case "ui", "demo", "update", "completion", "help", cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
 			return true
 		}
 	}
@@ -213,7 +218,7 @@ func (a *App) startUpdateCheck(cmd *cobra.Command) {
 	ctx := cmd.Context()
 	go func() {
 		defer close(done)
-		u.check(ctx)
+		_, _ = u.check(ctx)
 	}()
 }
 

@@ -347,16 +347,6 @@ func judgeHost(hn *hostNet, swMTU map[string]int32) {
 	})
 }
 
-func (hn *hostNet) status() rowStatus {
-	st := statusGood
-	for _, f := range hn.findings {
-		if statusRank(f.status) < statusRank(st) {
-			st = f.status
-		}
-	}
-	return st
-}
-
 // ---- the pane -------------------------------------------------------------
 
 // host reports whether a row is an ESXi host.

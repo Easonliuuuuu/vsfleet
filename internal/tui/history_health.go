@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"fmt"
 	"sort"
 	"strings"
@@ -289,7 +290,7 @@ func (m *Model) viewHealthDetail(f health.Finding) []string {
 		}
 	}
 	field("OBJECT", f.Object.Kind+" "+f.Object.Name)
-	where := nonempty(f.Object.Context, "—")
+	where := cmp.Or(f.Object.Context, "—")
 	if f.Object.Datacenter != "" {
 		where += " · datacenter " + f.Object.Datacenter
 	}

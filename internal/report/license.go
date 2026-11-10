@@ -1,6 +1,7 @@
 package report
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 
@@ -84,7 +85,7 @@ func licenseRows(data assessment.ExportData) [][]any {
 			expiration = l.Expiration.UTC()
 		}
 		rows = append(rows, []any{
-			nonempty(l.Name, r.Name), vsphere.LicenseRedacted, nil, l.CostUnit, l.Total, l.Used, expiration,
+			cmp.Or(l.Name, r.Name), vsphere.LicenseRedacted, nil, l.CostUnit, l.Total, l.Used, expiration,
 			strings.Join(l.Features, "; "), sdkServer(data, r.Context), r.VCenterID, r.Context,
 		})
 	}
@@ -100,7 +101,7 @@ func licenseAssignmentRows(data assessment.ExportData) [][]any {
 		}
 		for _, a := range l.Assignments {
 			rows = append(rows, []any{
-				nonempty(l.Name, r.Name), l.EditionKey, a.EntityName, a.EntityType, a.EntityID, optionalString(a.Scope),
+				cmp.Or(l.Name, r.Name), l.EditionKey, a.EntityName, a.EntityType, a.EntityID, optionalString(a.Scope),
 				sdkServer(data, r.Context), r.VCenterID, r.Context,
 			})
 		}

@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -227,7 +228,7 @@ func placementChanges(before, after Observation) []FieldChange {
 		}
 	}
 	if before.VCenterID != after.VCenterID {
-		add("vcenter", nonempty(before.Context, before.VCenterID), nonempty(after.Context, after.VCenterID))
+		add("vcenter", cmp.Or(before.Context, before.VCenterID), cmp.Or(after.Context, after.VCenterID))
 	}
 	// An empty value is one the account could not see, not a place the VM
 	// moved to or from (see moved).

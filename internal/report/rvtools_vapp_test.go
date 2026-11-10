@@ -45,7 +45,7 @@ func vappExport(t *testing.T, schema string, collection *assessment.CollectionRu
 func exportWorkbook(t *testing.T, data assessment.ExportData) *excelize.File {
 	t.Helper()
 	var out bytes.Buffer
-	if err := WriteRVTools(&out, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&out, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(out.Bytes()))

@@ -13,11 +13,13 @@ import (
 
 func syntheticPerfCounter(t *testing.T, m perf.Metric) perf.Counter {
 	t.Helper()
-	c, ok := perf.CounterFor(m)
-	if !ok {
-		t.Fatalf("no counter %s", m)
+	for _, c := range perf.Counters {
+		if c.Metric == m {
+			return c
+		}
 	}
-	return c
+	t.Fatalf("no counter for %s", m)
+	return perf.Counter{}
 }
 
 // seedPerformance stores a synthetic window for "prod": one VM that is idle

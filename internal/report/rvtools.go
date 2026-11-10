@@ -4,6 +4,7 @@ package report
 import (
 	"archive/zip"
 	"bytes"
+	"cmp"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -91,13 +92,6 @@ type sheet struct {
 	textCols, countCols []int
 }
 
-// rvtoolsSheets canonicalizes and validates the export data, then returns
-// every RVTools tab in tab order. WriteRVTools and RVToolsCSV both build on
-// this so the two formats render identical content on identical terms.
-func rvtoolsSheets(data assessment.ExportData, healthReport health.Report) ([]sheet, error) {
-	return rvtoolsSheetsFor(data, healthReport, sheetOptions{})
-}
-
 // ExportOptions selects opt-in worksheets of the RVTools export.
 type ExportOptions struct {
 	// Metadata appends the vsfleetMetadata sheet: one row per tag or custom
@@ -114,7 +108,8 @@ type sheetOptions struct {
 	metadata    bool
 }
 
-// rvtoolsSheetsFor is rvtoolsSheets with control over the opt-in worksheets.
+// rvtoolsSheetsFor canonicalizes and validates the export data, then returns
+// every RVTools tab in tab order, including the selected opt-in worksheets.
 // License sheets are written only for a run that recorded license collection.
 func rvtoolsSheetsFor(data assessment.ExportData, healthReport health.Report, opts sheetOptions) ([]sheet, error) {
 	describeAll := opts.describeAll
@@ -165,15 +160,10 @@ func rvtoolsSheetsFor(data assessment.ExportData, healthReport health.Report, op
 	return all, nil
 }
 
-// WriteRVTools writes the twenty-five RVTools-compatible sheets (vFileInfo included) plus the
+// WriteRVToolsWith writes the twenty-five RVTools-compatible sheets (vFileInfo included) plus the
 // vsfleetCoverage and vsfleetPerformance extension sheets. vHealth is derived from the supplied
 // report; callers evaluate it before entering the renderer. The output is normalized as a ZIP archive
 // with fixed entry order and timestamps, making repeated writes byte-identical.
-func WriteRVTools(w io.Writer, data assessment.ExportData, healthReport health.Report) error {
-	return WriteRVToolsWith(w, data, healthReport, ExportOptions{})
-}
-
-// WriteRVToolsWith is WriteRVTools with opt-in worksheets.
 func WriteRVToolsWith(w io.Writer, data assessment.ExportData, healthReport health.Report, opts ExportOptions) error {
 	sheets, err := rvtoolsSheetsFor(data, healthReport, sheetOptions{metadata: opts.Metadata})
 	if err != nil {
@@ -246,18 +236,13 @@ type CSVFile struct {
 	Data []byte
 }
 
-// RVToolsCSV renders every RVTools tab as its own CSV document, in tab
-// order, sharing row generation and canonical ordering with WriteRVTools so
+// RVToolsCSVWith renders every RVTools tab as its own CSV document, in tab
+// order, sharing row generation and canonical ordering with WriteRVToolsWith so
 // the two formats agree and each is deterministic on the same terms.
 //
 // Cells favor pipeline consumption over spreadsheet display: timestamps are
 // RFC3339 in UTC, booleans are "true"/"false", numbers are unformatted, and
 // an absent value is an empty field.
-func RVToolsCSV(data assessment.ExportData, healthReport health.Report) ([]CSVFile, error) {
-	return RVToolsCSVWith(data, healthReport, ExportOptions{})
-}
-
-// RVToolsCSVWith is RVToolsCSV with opt-in worksheets.
 func RVToolsCSVWith(data assessment.ExportData, healthReport health.Report, opts ExportOptions) ([]CSVFile, error) {
 	sheets, err := rvtoolsSheetsFor(data, healthReport, sheetOptions{metadata: opts.Metadata})
 	if err != nil {
@@ -742,8 +727,8 @@ func hostLeadRow(tail, cells []any) []any {
 
 func hostTail(data assessment.ExportData, resource assessment.ResourceObservation, host vsphere.Host) []any {
 	return []any{
-		nonempty(host.Name, resource.Name), host.Datacenter, host.Cluster,
-		nonempty(host.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context,
+		cmp.Or(host.Name, resource.Name), host.Datacenter, host.Cluster,
+		cmp.Or(host.ID, resource.ID), sdkServer(data, resource.Context), resource.VCenterID, resource.Context,
 	}
 }
 
@@ -818,11 +803,11 @@ func clusterRows(data assessment.ExportData) [][]any {
 		if err := json.Unmarshal(r.Payload, &cluster); err != nil {
 			continue
 		}
-		row := []any{nonempty(cluster.Name, r.Name), optionalString(cluster.ConfigStatus), optionalString(cluster.OverallStatus), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, optionalInt32(cluster.CPUThreads), effectiveCapacity(cluster, cluster.EffectiveCPUMHz), cluster.TotalMemoryMB, effectiveCapacity(cluster, cluster.EffectiveMemoryMB), optionalInt32(cluster.VMotions), cluster.HAEnabled}
+		row := []any{cmp.Or(cluster.Name, r.Name), optionalString(cluster.ConfigStatus), optionalString(cluster.OverallStatus), cluster.Hosts, cluster.EffectiveHost, cluster.TotalCPUMHz, cluster.CPUCores, optionalInt32(cluster.CPUThreads), effectiveCapacity(cluster, cluster.EffectiveCPUMHz), cluster.TotalMemoryMB, effectiveCapacity(cluster, cluster.EffectiveMemoryMB), optionalInt32(cluster.VMotions), cluster.HAEnabled}
 		row = append(row, clusterHACells(cluster.Settings)...)
 		row = append(row, cluster.DRSEnabled, optionalString(cluster.DRSBehavior))
 		row = append(row, clusterDRSCells(cluster.Settings)...)
-		rows = append(rows, append(row, nonempty(cluster.ID, r.ID), cluster.Datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context))
+		rows = append(rows, append(row, cmp.Or(cluster.ID, r.ID), cluster.Datacenter, sdkServer(data, r.Context), r.VCenterID, r.Context))
 	}
 	return rows
 }
@@ -878,10 +863,10 @@ func fileInfoRows(data assessment.ExportData) [][]any {
 		}
 		files := append([]vsphere.DatastoreInventoryFile(nil), datastore.FileInventory.Files...)
 		vsphere.SortInventoryFiles(files)
-		name := nonempty(datastore.Name, r.Name)
+		name := cmp.Or(datastore.Name, r.Name)
 		for _, file := range files {
 			folder, leaf := splitFilePath(file.Path)
-			rows = append(rows, []any{folder, leaf, file.Type, file.SizeBytes, folder, folder + leaf, sdkServer(data, r.Context), r.VCenterID, name, nonempty(datastore.ID, r.ID), datastore.Datacenter, r.Context})
+			rows = append(rows, []any{folder, leaf, file.Type, file.SizeBytes, folder, folder + leaf, sdkServer(data, r.Context), r.VCenterID, name, cmp.Or(datastore.ID, r.ID), datastore.Datacenter, r.Context})
 		}
 	}
 	if len(rows) == 0 {
@@ -1133,7 +1118,7 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 					message = "capture predates source identity inventory; no ServiceInstance About record was stored"
 				case c.VMStatus != "" && c.VMStatus != "success" && c.VMStatus != "empty":
 					status = "failed"
-					message = "no ServiceInstance About record was stored: " + nonempty(c.Error, "context did not connect")
+					message = "no ServiceInstance About record was stored: " + cmp.Or(c.Error, "context did not connect")
 				default:
 					message = "no ServiceInstance About record was stored for this context"
 				}
@@ -1168,7 +1153,7 @@ func coverageRows(data assessment.ExportData, healthReport health.Report) [][]an
 					message = "vApps were not collected and are not listed"
 				case vapps.Status != "success" && vapps.Status != "empty":
 					status = "partial"
-					message = "vApps are not listed: " + nonempty(vapps.Error, vapps.Status)
+					message = "vApps are not listed: " + cmp.Or(vapps.Error, vapps.Status)
 				}
 			case spec.kind == "dvswitch" && !dvsRecorded:
 				status = "not recorded"
@@ -1585,13 +1570,6 @@ func hostMemoryPercent(h vsphere.Host) any {
 		return nil
 	}
 	return float64(h.MemoryUsageMB) / float64(h.MemoryMB) * 100
-}
-
-func nonempty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 func validateResources(resources []assessment.ResourceObservation) error {

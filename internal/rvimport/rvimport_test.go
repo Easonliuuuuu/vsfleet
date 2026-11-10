@@ -77,8 +77,8 @@ func writeFixtureWorkbook(t testing.TB, mutate func(*assessment.ExportData)) str
 	}
 
 	var buf strings.Builder
-	if err := report.WriteRVTools(&writerAdapter{&buf}, data, health.Report{}); err != nil {
-		t.Fatalf("WriteRVTools: %v", err)
+	if err := report.WriteRVToolsWith(&writerAdapter{&buf}, data, health.Report{}, report.ExportOptions{}); err != nil {
+		t.Fatalf("WriteRVToolsWith: %v", err)
 	}
 	path := filepath.Join(t.TempDir(), "fixture.xlsx")
 	if err := os.WriteFile(path, []byte(buf.String()), 0o600); err != nil {
@@ -87,7 +87,7 @@ func writeFixtureWorkbook(t testing.TB, mutate func(*assessment.ExportData)) str
 	return path
 }
 
-// writerAdapter lets WriteRVTools, which wants an io.Writer, write into a
+// writerAdapter lets WriteRVToolsWith, which wants an io.Writer, write into a
 // strings.Builder without pulling in bytes.Buffer just for this helper.
 type writerAdapter struct{ b *strings.Builder }
 

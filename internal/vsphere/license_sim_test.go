@@ -74,8 +74,8 @@ func TestFetchLicensesReportsProductUsageAndExpirationWithoutKeys(t *testing.T) 
 	t.Cleanup(model.Remove)
 	expires := time.Date(2030, 6, 1, 0, 0, 0, 0, time.UTC)
 	seedLicenses(t, model, expires)
-	gc, endpoint := dialSimulator(t, model)
-	client := clientFor(gc, endpoint, "")
+	_, endpoint := dialSimulator(t, model)
+	client := clientFor(t, endpoint, "")
 
 	inv := client.FetchLicenses(context.Background())
 	if inv.Status != "success" || inv.Message != "" {
@@ -143,8 +143,8 @@ func TestFetchLicensesWithDeniedAssignmentsIsPartialAndKeyFree(t *testing.T) {
 		// A hostile server could echo a key in its fault text.
 		Message: "denied for " + plantedKeyStandard,
 	})
-	gc, endpoint := dialSimulator(t, model)
-	inv := clientFor(gc, endpoint, "").FetchLicenses(context.Background())
+	_, endpoint := dialSimulator(t, model)
+	inv := clientFor(t, endpoint, "").FetchLicenses(context.Background())
 
 	if inv.Status != vsphere.LicenseStatusPartial {
 		t.Fatalf("status=%q message=%q", inv.Status, inv.Message)
@@ -182,9 +182,9 @@ func TestFetchLicensesEmptyListIsUnavailableNotEmpty(t *testing.T) {
 	lm.Licenses = nil
 	lam := model.Map().Get(*lm.LicenseAssignmentManager).(*simulator.LicenseAssignmentManager)
 	lam.QueryAssignedLicensesResponse.Returnval = nil
-	gc, endpoint := dialSimulator(t, model)
+	_, endpoint := dialSimulator(t, model)
 
-	inv := clientFor(gc, endpoint, "").FetchLicenses(context.Background())
+	inv := clientFor(t, endpoint, "").FetchLicenses(context.Background())
 	if inv.Status != vsphere.LicenseStatusUnavailable || len(inv.Licenses) != 0 {
 		t.Fatalf("status=%q licenses=%d", inv.Status, len(inv.Licenses))
 	}

@@ -79,7 +79,7 @@ func labPlacementData(t *testing.T) assessment.ExportData {
 func TestWriteRVToolsVInfoMatchesRVToolsPlacement(t *testing.T) {
 	data := labPlacementData(t)
 	var buf bytes.Buffer
-	if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&buf, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(&buf)

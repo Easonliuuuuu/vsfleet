@@ -13,6 +13,7 @@
 package sizing
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -221,7 +222,7 @@ func (e *evaluator) run(now time.Time) Result {
 		case len(sc.Clusters) > 0 && !clusterSelected(sc.Clusters, ctx, vm.Cluster):
 			res.Exclusions = append(res.Exclusions, Exclusion{"vm", ctx, vm.Name, fmt.Sprintf("outside the selected clusters (cluster %q)", vm.Cluster)})
 		case vm.PowerState != "poweredOn" && !sc.IncludePoweredOff:
-			res.Exclusions = append(res.Exclusions, Exclusion{"vm", ctx, vm.Name, fmt.Sprintf("power state %q; powered-off VMs are excluded unless included explicitly", nonempty(vm.PowerState, "unknown"))})
+			res.Exclusions = append(res.Exclusions, Exclusion{"vm", ctx, vm.Name, fmt.Sprintf("power state %q; powered-off VMs are excluded unless included explicitly", cmp.Or(vm.PowerState, "unknown"))})
 		default:
 			vms = append(vms, inScopeVM{ctx, vm})
 			clusterSeen[ctx+"/"+vm.Cluster] = true
@@ -697,7 +698,7 @@ func (e *evaluator) storage(vms []inScopeVM, vmGaps, dsGaps []string) storageRes
 				shared := (disk.SharedBus != "" && !strings.EqualFold(disk.SharedBus, "noSharing")) || (disk.Sharing != "" && !strings.EqualFold(disk.Sharing, "sharingNone") && !strings.EqualFold(disk.Sharing, "none"))
 				switch {
 				case id == "" && shared:
-					rdmGaps = append(rdmGaps, fmt.Sprintf("%s/%s disk %q is a shared-bus RDM with no LUN identity, so it cannot be told apart from the same LUN attached elsewhere", v.ctx, v.vm.Name, nonempty(disk.Label, fmt.Sprint(disk.Key))))
+					rdmGaps = append(rdmGaps, fmt.Sprintf("%s/%s disk %q is a shared-bus RDM with no LUN identity, so it cannot be told apart from the same LUN attached elsewhere", v.ctx, v.vm.Name, cmp.Or(disk.Label, fmt.Sprint(disk.Key))))
 					rdmBytes += float64(disk.CapacityBytes)
 				case id == "":
 					rdmBytes += float64(disk.CapacityBytes)
@@ -716,14 +717,14 @@ func (e *evaluator) storage(vms []inScopeVM, vmGaps, dsGaps []string) storageRes
 			name, rel, ok := vsphere.SplitDatastorePath(disk.BackingPath)
 			if !ok {
 				unresolved++
-				dsDiskGaps = append(dsDiskGaps, fmt.Sprintf("%s/%s disk %q has no datastore-qualified backing path", v.ctx, v.vm.Name, nonempty(disk.Label, fmt.Sprint(disk.Key))))
+				dsDiskGaps = append(dsDiskGaps, fmt.Sprintf("%s/%s disk %q has no datastore-qualified backing path", v.ctx, v.vm.Name, cmp.Or(disk.Label, fmt.Sprint(disk.Key))))
 				provisioned += float64(disk.CapacityBytes)
 				continue
 			}
 			info := byName[strings.ToLower(v.ctx)+"\x00"+name]
 			if info == nil {
 				unresolved++
-				dsDiskGaps = append(dsDiskGaps, fmt.Sprintf("%s/%s disk %q is on datastore %q which is not in the stored datastore inventory", v.ctx, v.vm.Name, nonempty(disk.Label, fmt.Sprint(disk.Key)), name))
+				dsDiskGaps = append(dsDiskGaps, fmt.Sprintf("%s/%s disk %q is on datastore %q which is not in the stored datastore inventory", v.ctx, v.vm.Name, cmp.Or(disk.Label, fmt.Sprint(disk.Key)), name))
 				provisioned += float64(disk.CapacityBytes)
 				continue
 			}
@@ -916,7 +917,7 @@ func (e *evaluator) readiness(vms []inScopeVM) ReadinessLinks {
 	for _, v := range vms {
 		scoped[v.ctx+"\x00"+v.vm.ID] = true
 		for _, nic := range v.vm.NICs {
-			if n := nonempty(nic.Network, nic.NetworkID); n != "" {
+			if n := cmp.Or(nic.Network, nic.NetworkID); n != "" {
 				networks[v.ctx+"/"+n] = true
 			}
 		}
@@ -959,13 +960,6 @@ func clusterSelected(filters []string, ctx, cluster string) bool {
 		}
 	}
 	return false
-}
-
-func nonempty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
 }
 
 func head(v []string, n int) []string {

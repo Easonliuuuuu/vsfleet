@@ -1,6 +1,7 @@
 package report
 
 import (
+	"cmp"
 	"encoding/json"
 	"strings"
 
@@ -43,7 +44,7 @@ func vmNICSwitches(data assessment.ExportData) map[switchKey]string {
 		}
 		var sw vsphere.DVSwitch
 		if err := json.Unmarshal(resource.Payload, &sw); err == nil && sw.UUID != "" {
-			out[switchKey{resource.Context, "dvs", sw.UUID}] = nonempty(sw.Name, resource.Name)
+			out[switchKey{resource.Context, "dvs", sw.UUID}] = cmp.Or(sw.Name, resource.Name)
 		}
 	}
 	return out

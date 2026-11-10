@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -74,7 +75,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 		if c.VCenterID != "" && Successful(c.VMStatus) {
 			baseByVC[c.VCenterID] = append(baseByVC[c.VCenterID], contextVMs{c.Name, withSnapshotCoverage(bv[id], c, "baseline", &d, snapshotBlind[c.VCenterID])})
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
-			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, nonempty(c.Error, c.VMStatus))
+			msg := fmt.Sprintf("%s was not fully collected in baseline: %s", c.Name, cmp.Or(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
 			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: c.Name, Message: msg})
 		}
@@ -86,7 +87,7 @@ func (s *Store) DiffForContexts(ctx context.Context, baseID, targetID int64, inc
 		if c.VCenterID != "" && Successful(c.VMStatus) {
 			targetByVC[c.VCenterID] = append(targetByVC[c.VCenterID], contextVMs{c.Name, withSnapshotCoverage(tv[id], c, "target", &d, snapshotBlind[c.VCenterID])})
 		} else if c.VMStatus != "" && !Successful(c.VMStatus) {
-			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, nonempty(c.Error, c.VMStatus))
+			msg := fmt.Sprintf("%s was not fully collected in target: %s", c.Name, cmp.Or(c.Error, c.VMStatus))
 			d.Warnings = append(d.Warnings, msg)
 			d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: c.Name, Message: msg})
 		}
@@ -196,12 +197,6 @@ func withSnapshotCoverage(vms []storedVM, c ContextRun, scope string, d *Diff, b
 // Successful reports whether a collection answered the question, including
 // the valid empty-estate answer.
 func Successful(s string) bool { return s == "success" || s == "empty" }
-func nonempty(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
 
 func sortedCopy(in []string) []string {
 	out := append([]string(nil), in...)

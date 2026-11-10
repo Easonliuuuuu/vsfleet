@@ -296,7 +296,7 @@ func TestSharePartialAssessmentStaysVisiblyPartial(t *testing.T) {
 func TestOrdinaryExportIsUnchangedByShareCode(t *testing.T) {
 	data := shareEstate()
 	var buf bytes.Buffer
-	if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&buf, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	entries := zipEntries(t, buf.Bytes())

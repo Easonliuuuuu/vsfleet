@@ -30,7 +30,7 @@ func vsourceData() assessment.ExportData {
 
 func TestVSourceRowsAreAttributedPerContextAndOmitFailedContexts(t *testing.T) {
 	data := vsourceData()
-	sheets, err := rvtoolsSheets(data, healthReport(data))
+	sheets, err := rvtoolsSheetsFor(data, healthReport(data), sheetOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +117,7 @@ func TestVSourceOldRunHasNoRowsAndNoFabricatedValues(t *testing.T) {
 	for i := range data.Contexts {
 		data.Contexts[i].Source = nil
 	}
-	files, err := RVToolsCSV(data, healthReport(data))
+	files, err := RVToolsCSVWith(data, healthReport(data), ExportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestVSourceOldRunHasNoRowsAndNoFabricatedValues(t *testing.T) {
 func TestVSourcePreservesPatchAndBuildAsText(t *testing.T) {
 	data := vsourceData()
 	var first bytes.Buffer
-	if err := WriteRVTools(&first, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&first, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(first.Bytes()))

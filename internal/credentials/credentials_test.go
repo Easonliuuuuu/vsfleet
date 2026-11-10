@@ -184,7 +184,7 @@ func TestPromptSharesReader(t *testing.T) {
 }
 
 func TestPromptCannotStore(t *testing.T) {
-	p := credentials.NewPrompt()
+	p := &credentials.Prompt{}
 	err := p.Store(context.Background(), credentials.Ref{Scheme: credentials.SchemePrompt}, credentials.Credential{})
 	if !errors.Is(err, credentials.ErrUnsupported) {
 		t.Errorf("storing into a prompt should be unsupported, got %v", err)

@@ -1,6 +1,7 @@
 package assessment
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -96,7 +97,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 					vcNames[vc] = contextName
 				}
 			} else {
-				msg := fmt.Sprintf("%s %s collection was not complete in baseline: %s", contextName, kind, nonempty(c.Error, c.Status))
+				msg := fmt.Sprintf("%s %s collection was not complete in baseline: %s", contextName, kind, cmp.Or(c.Error, c.Status))
 				d.Warnings = append(d.Warnings, msg)
 				d.Coverage = append(d.Coverage, CoverageIssue{Scope: "baseline", Context: contextName, Message: msg})
 			}
@@ -114,7 +115,7 @@ func (s *Store) infrastructureDiff(ctx context.Context, baseID, targetID int64, 
 					vcNames[vc] = contextName
 				}
 			} else {
-				msg := fmt.Sprintf("%s %s collection was not complete in target: %s", contextName, kind, nonempty(c.Error, c.Status))
+				msg := fmt.Sprintf("%s %s collection was not complete in target: %s", contextName, kind, cmp.Or(c.Error, c.Status))
 				d.Warnings = append(d.Warnings, msg)
 				d.Coverage = append(d.Coverage, CoverageIssue{Scope: "target", Context: contextName, Message: msg})
 			}

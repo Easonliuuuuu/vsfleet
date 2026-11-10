@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -457,7 +458,7 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 	if f.transport == "" {
 		if cc.Transport.Type, err = choose("Connection", []string{
 			config.TransportDirect, config.TransportSOCKS5, config.TransportHTTPProxy, config.TransportHTTPSProxy,
-		}, firstNonEmpty(cc.Transport.Type, config.TransportDirect)); err != nil {
+		}, cmp.Or(cc.Transport.Type, config.TransportDirect)); err != nil {
 			return err
 		}
 	}
@@ -465,7 +466,7 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 		// An edit that drops the proxy drops its settings with it.
 		cc.Transport = config.TransportConfig{Type: config.TransportDirect}
 	} else {
-		if cc.Transport.Address, err = ask("Proxy address", firstNonEmpty(cc.Transport.Address, "127.0.0.1:1080"), true); err != nil {
+		if cc.Transport.Address, err = ask("Proxy address", cmp.Or(cc.Transport.Address, "127.0.0.1:1080"), true); err != nil {
 			return err
 		}
 		if cc.Transport.Type == config.TransportSOCKS5 && !f.remoteDNS {
@@ -478,7 +479,7 @@ func runAddWizard(ctx context.Context, a *App, cc *config.Context, f *contextFla
 		}
 	}
 	if f.tlsMode == "" {
-		if cc.TLS.Mode, err = choose("Certificate policy", []string{config.TLSSystem, config.TLSThumbprint, config.TLSInsecure}, firstNonEmpty(cc.TLS.Mode, config.TLSSystem)); err != nil {
+		if cc.TLS.Mode, err = choose("Certificate policy", []string{config.TLSSystem, config.TLSThumbprint, config.TLSInsecure}, cmp.Or(cc.TLS.Mode, config.TLSSystem)); err != nil {
 			return err
 		}
 	}
@@ -564,13 +565,4 @@ func discoverThumbprint(ctx context.Context, a *App, cc *config.Context, interac
 	}
 	cc.TLS.Thumbprint = sha256
 	return nil
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }

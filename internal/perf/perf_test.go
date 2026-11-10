@@ -8,11 +8,13 @@ import (
 
 func counter(t *testing.T, m Metric) Counter {
 	t.Helper()
-	c, ok := CounterFor(m)
-	if !ok {
-		t.Fatalf("no counter for %s", m)
+	for _, c := range Counters {
+		if c.Metric == m {
+			return c
+		}
 	}
-	return c
+	t.Fatalf("no counter for %s", m)
+	return Counter{}
 }
 
 func series(n int, v int64) []int64 {

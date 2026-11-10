@@ -52,7 +52,7 @@ func withLicenseCollection(data assessment.ExportData, status, message string) a
 func sheetNames(t *testing.T, data assessment.ExportData) []string {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&buf, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(buf.Bytes()))
@@ -84,7 +84,7 @@ func TestDefaultExportHasNoLicenseSheetOrCoverageRow(t *testing.T) {
 			t.Fatalf("default export has a coverage row for %s; a run that did not collect licenses must be silent, not a zero-license claim", sheet)
 		}
 	}
-	files, err := RVToolsCSV(data, healthReport(data))
+	files, err := RVToolsCSVWith(data, healthReport(data), ExportOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestLicenseExportReportsProductUsageAndExpiration(t *testing.T) {
 	when := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	data := withSyntheticLicenses(sampleExportData(when))
 	var buf bytes.Buffer
-	if err := WriteRVTools(&buf, data, healthReport(data)); err != nil {
+	if err := WriteRVToolsWith(&buf, data, healthReport(data), ExportOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	f, err := excelize.OpenReader(bytes.NewReader(buf.Bytes()))

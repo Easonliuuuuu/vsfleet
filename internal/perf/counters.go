@@ -62,16 +62,6 @@ var Counters = []Counter{
 	{MemUsage, "mem", "usage", "average", UnitPercent, "interval average of active memory as a percentage of the VM's configured memory; vCenter labels it \"Host consumed %\""},
 }
 
-// CounterFor returns the counter definition for a metric.
-func CounterFor(m Metric) (Counter, bool) {
-	for _, c := range Counters {
-		if c.Metric == m {
-			return c, true
-		}
-	}
-	return Counter{}, false
-}
-
 // NoData is the value vSphere uses for a sample it has no reading for: a VM
 // that was powered off, a counter that was not collected at that level, or
 // history that was rolled off. It is never a measurement of zero.

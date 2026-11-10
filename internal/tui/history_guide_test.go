@@ -76,7 +76,7 @@ func TestScrubberDropsTheVMRowWhenNoRunHasACount(t *testing.T) {
 			m.runs = runs
 			m.baseRun, m.targetRun, m.scrubHandle = 1, 2, "t"
 			m.historyChurn = tc.churn
-			lines := m.viewScrubber(m.width, true)
+			lines := m.viewScrubberWith(m.width, true, true)
 			var plain []string
 			for _, l := range lines {
 				plain = append(plain, ansi.Strip(l))

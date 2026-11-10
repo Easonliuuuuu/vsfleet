@@ -31,9 +31,6 @@ type Prompt struct {
 	buf *bufio.Reader
 }
 
-// NewPrompt returns a Prompt bound to the process terminal.
-func NewPrompt() *Prompt { return &Prompt{In: os.Stdin, Out: os.Stderr} }
-
 func (p *Prompt) Scheme() string { return SchemePrompt }
 
 func (p *Prompt) in() io.Reader {

@@ -21,6 +21,18 @@
 * **vsphere:** pass the connection test with the built-in ReadOnly role instead of requiring `Sessions.ValidateSession` ([#189](https://github.com/Easonliuuuuu/vsfleet/issues/189))
 * **decommission:** rename the clean verdict from `ready` to `no-blockers` so it never reads as authorization to delete ([#98](https://github.com/Easonliuuuuu/vsfleet/issues/98))
 
+## [0.7.1](https://github.com/Easonliuuuuu/vsfleet/compare/v0.7.0...v0.7.1) (2026-11-13)
+
+
+### Features
+
+* **tui:** add vsfleet update to check for and install a new release ([#615](https://github.com/Easonliuuuuu/vsfleet/issues/615)) ([1c6aac9](https://github.com/Easonliuuuuu/vsfleet/commit/1c6aac9fa58d3f5cb59ae723f34eac73855fd640))
+
+
+### Bug Fixes
+
+* **release:** replace winget distribution with scoop ([#612](https://github.com/Easonliuuuuu/vsfleet/issues/612)) ([e0af3d4](https://github.com/Easonliuuuuu/vsfleet/commit/e0af3d48f83d381a8ab2a387aa781f6548815de2))
+
 ## [0.7.0](https://github.com/Easonliuuuuu/vsfleet/compare/v0.6.3...v0.7.0) (2026-11-09)
 
 

@@ -58,7 +58,7 @@ type kindLister interface {
 	list(ctx context.Context, a *App, names []string, opt getOptions) (*kindListing, []contextFailure, error)
 	// scope is the flag that narrows this kind to one parent, or "".
 	scope() string
-	// columns are the table headers, and whether --wide adds metadata.
+	// columns are the table headers, and whether -o wide adds metadata.
 	columns() (headers []string, wide bool)
 }
 
@@ -547,10 +547,6 @@ type getFlags struct {
 	noHeaders     bool
 	watch         bool
 	run           string
-	// where and wide are the removed spellings, kept only to say where they
-	// went.
-	where []string
-	wide  bool
 }
 
 func newGetCommand(a *App) *cobra.Command {
@@ -570,7 +566,7 @@ a glob that matches nothing is an empty answer.
 
 -l selects by vSphere tag, with the tag category as the label key and the tag
 name as its value: env=prod, env!=prod, 'env in (prod,dev)', env, !env.
---field-selector selects by field, in the --where language, comma-separated:
+--field-selector selects by field, with comma-separated predicates:
 'cpu>=8,power_state=poweredOn'. "vsfleet explain KIND" lists a kind's fields.
 A VM whose tags could not be read matches no label selector, negative or not.
 
@@ -639,9 +635,6 @@ until interrupted.`),
 			return append(gettableKindNames(), "all"), cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := f.rejectRemoved(cmd); err != nil {
-				return err
-			}
 			reqs, err := parseResourceArgs(args)
 			if err != nil {
 				return err
@@ -688,22 +681,7 @@ until interrupted.`),
 	for i, s := range scopeFlags {
 		fl.StringVar(&scopes[i], s.flag, "", s.usage)
 	}
-	fl.StringArrayVar(&f.where, "where", nil, "removed: use --field-selector and -l")
-	fl.BoolVar(&f.wide, "wide", false, "removed: use -o wide")
-	_ = fl.MarkHidden("where")
-	_ = fl.MarkHidden("wide")
 	return cmd
-}
-
-// rejectRemoved answers the spellings #501 replaced with where they went.
-func (f getFlags) rejectRemoved(cmd *cobra.Command) error {
-	switch {
-	case cmd.Flags().Changed("where"):
-		return errors.New(`--where was renamed: use --field-selector 'cpu>=8,...' for fields and -l CATEGORY=NAME for tags`)
-	case cmd.Flags().Changed("wide"):
-		return errors.New(`--wide was renamed: use -o wide`)
-	}
-	return nil
 }
 
 // options parses the selector and sort flags once, before any vCenter is

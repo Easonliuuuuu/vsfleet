@@ -141,7 +141,7 @@ Use "{{.CommandPath}} [command] --help" for more information about a command.{{e
 // rejectUnknownArgs is cobra.NoArgs with suggestions attached, for the root
 // command. Root cannot use the default validator — a bare "vsfleet" opens the
 // terminal interface, so its arguments have to stay rejected — but that choice
-// should not also cost the user "Did you mean status?".
+// should not also cost the user "Did you mean capture?".
 func rejectUnknownArgs(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return nil

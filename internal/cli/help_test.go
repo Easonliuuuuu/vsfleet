@@ -31,8 +31,7 @@ func runArgs(t *testing.T, args ...string) (string, string, error) {
 // the hidden ones.
 func walk(cmd *cobra.Command, fn func(*cobra.Command)) {
 	for _, sub := range cmd.Commands() {
-		// Hidden commands, such as the stubs left for renamed commands, never
-		// appear in help, so help's rules do not apply to them.
+		// Hidden commands never appear in help, so help's rules do not apply to them.
 		if sub.Name() == "help" || sub.Name() == "completion" || sub.Hidden {
 			continue
 		}

@@ -103,7 +103,6 @@ func newAnalyzeChurnCommand(a *App) *cobra.Command {
 		},
 	}
 	flags.add(cmd)
-	renameFlags(cmd, flagRename{name: "to", hint: "use --run, the last capture in the window"})
 	return cmd
 }
 
@@ -180,10 +179,6 @@ older than --older-than (30 days by default), in every capture of a window.
 	flags.add(cmd)
 	cmd.Flags().BoolVar(&trend, "trend", false, "count snapshots in every capture of a window instead of listing one capture's")
 	cmd.Flags().StringVar(&older, "older-than", "", "only snapshots at least this old (e.g. 30d, 2w); with --trend, the stale threshold (default 30d)")
-	renameFlags(cmd,
-		flagRename{name: "at", hint: "use --run"},
-		flagRename{name: "to", hint: "use --run, the last capture in the window"},
-	)
 	return cmd
 }
 
@@ -246,23 +241,4 @@ func capacityTrend(ctx context.Context, a *App, s *assessment.Store, flags trend
 	}
 	t.flush()
 	return nil
-}
-
-// renamedTrendsCommand answers the removed "assessment trends" group, and
-// each of its subcommands, with the analysis that replaced it.
-func renamedTrendsCommand() *cobra.Command {
-	cmd := renamedCommand("trends", nil, `use "vsfleet analyze churn", "analyze snapshots --trend" or "analyze capacity --trend"`)
-	generic := cmd.RunE
-	cmd.RunE = func(c *cobra.Command, args []string) error {
-		for _, arg := range args {
-			switch arg {
-			case "churn":
-				return errors.New(`"assessment trends churn" was renamed: use "vsfleet analyze churn"`)
-			case "snapshots", "capacity":
-				return fmt.Errorf(`"assessment trends %[1]s" was renamed: use "vsfleet analyze %[1]s --trend"`, arg)
-			}
-		}
-		return generic(c, args)
-	}
-	return cmd
 }

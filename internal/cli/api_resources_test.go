@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -46,80 +47,42 @@ func TestAPIResources(t *testing.T) {
 	})
 }
 
-// Every removed command, under any spelling the registry gives its kind,
-// fails with the command that replaced it instead of "unknown command".
-func TestRemovedCommandsPointAtReplacements(t *testing.T) {
-	db := filepath.Join(t.TempDir(), "history.db")
-	for _, tc := range []struct {
-		args []string
-		want []string
-	}{
-		{[]string{"vm", "list", "--filter", "web"}, []string{`"vm list" was renamed`, "vsfleet get vms"}},
-		{[]string{"vms", "show", "web-01"}, []string{"vsfleet describe vm NAME"}},
-		{[]string{"vm", "events", "web-01"}, []string{"vsfleet events --for vm/NAME"}},
-		{[]string{"net", "list"}, []string{"vsfleet get networks"}},
-		{[]string{"node", "list"}, []string{`"host list" was renamed`, "vsfleet get hosts"}},
-		{[]string{"host", "show", "esxi-07"}, []string{"vsfleet describe host NAME"}},
-		{[]string{"host", "pg", "list", "--host", "esxi-07"}, []string{"vsfleet get portgroups --host HOST"}},
-		{[]string{"tmpl", "list"}, []string{"vsfleet get templates"}},
-		{[]string{"snapshot", "list", "--vm", "web-01"}, []string{"vsfleet get snapshots"}},
-		{[]string{"portgroup", "list"}, []string{"vsfleet get networks", "vsfleet get portgroups"}},
-		{[]string{"portgroups", "list", "-o", "json"}, []string{"vsfleet get networks", "vsfleet get portgroups"}},
-		{[]string{"status", "-A"}, []string{"vsfleet cluster-info"}},
-		{[]string{"compatibility", "report", "--sheet", "vInfo"}, []string{"vsfleet explain rvtools.SHEET"}},
-		{[]string{"assessment", "perf", "show", "latest"}, []string{`"assessment perf show" was renamed`, "vsfleet top vm"}},
-		{[]string{"assessment", "perf", "collect", "--window", "7d"}, []string{`"assessment perf collect" was renamed`, "vsfleet capture perf"}},
-		{[]string{"assessment", "perf", "list"}, []string{`"assessment perf list" was renamed`, "vsfleet get perfcollections"}},
-		{[]string{"assessment", "run", "-A", "--label", "nightly"}, []string{`"assessment run" was renamed`, "vsfleet capture run"}},
-		{[]string{"assessment", "list"}, []string{"vsfleet capture list", "vsfleet get captures"}},
-		{[]string{"assessment", "diff", "nightly", "latest"}, []string{"vsfleet capture diff"}},
-		{[]string{"assessment", "delete", "42", "--force"}, []string{"vsfleet capture delete RUN"}},
-		{[]string{"assessment", "update", "42", "--pin"}, []string{"vsfleet capture update RUN"}},
-		{[]string{"assessment", "prune", "--older-than", "90d"}, []string{"vsfleet capture prune"}},
-		{[]string{"assessment", "report", "latest"}, []string{`"assessment report" was renamed`, "vsfleet describe capture RUN"}},
-		{[]string{"import", "rvtools", "estate.xlsx"}, []string{`"import rvtools" was renamed`, "vsfleet capture import rvtools FILE"}},
-		{[]string{"search", "ubuntu-golden", "-A"}, []string{`"search" was renamed`, "vsfleet get all '*TEXT*' -A"}},
-		{[]string{"vm", "history", "web-01"}, []string{`"vm history" was renamed`, "vsfleet describe vm NAME --history"}},
-		{[]string{"assessment", "inventory", "--kind", "host"}, []string{`"assessment inventory" was renamed`, "vsfleet get KIND --run RUN"}},
-		{[]string{"health", "--severity", "warning"}, []string{`"health" was renamed`, "vsfleet analyze health"}},
-		{[]string{"assessment", "findings", "nightly"}, []string{`"assessment findings" was renamed`, "vsfleet analyze health"}},
-		{[]string{"assessment", "readiness"}, []string{"vsfleet analyze readiness"}},
-		{[]string{"assessment", "network-readiness", "--source", "a", "--target", "b"}, []string{"vsfleet analyze readiness network cl/SOURCE cl/TARGET"}},
-		{[]string{"network", "compare", "a", "b"}, []string{`"network compare" was renamed`, "vsfleet analyze readiness network"}},
-		{[]string{"assessment", "sizing", "--hosts", "4"}, []string{"vsfleet analyze sizing"}},
-		{[]string{"assessment", "capacity"}, []string{"vsfleet analyze capacity"}},
-		{[]string{"assessment", "orphans"}, []string{"vsfleet analyze orphans"}},
-		{[]string{"assessment", "snapshots", "--at", "4"}, []string{"vsfleet analyze snapshots"}},
-		{[]string{"assessment", "trends", "churn"}, []string{`"assessment trends churn" was renamed`, "vsfleet analyze churn"}},
-		{[]string{"assessment", "trends", "capacity", "--kind", "host"}, []string{"vsfleet analyze capacity --trend"}},
-		{[]string{"topology", "vm", "web-01"}, []string{`"topology" was renamed`, "vsfleet analyze topology KIND/NAME"}},
-		{[]string{"deps", "vm", "web-01"}, []string{"vsfleet analyze deps KIND/NAME"}},
-		{[]string{"blast", "host", "esxi-07"}, []string{"vsfleet analyze blast-radius KIND/NAME"}},
-		{[]string{"vm", "decommission-check", "web-01"}, []string{`"vm decommission-check" was renamed`, "vsfleet analyze decommission vm/NAME"}},
-		{[]string{"assessment"}, []string{`"assessment" was renamed`, "vsfleet export", "vsfleet db"}},
-		{[]string{"history", "export", "--file", "x.xlsx"}, []string{`"assessment export" was renamed`, "vsfleet export rvtools --run RUN"}},
-		{[]string{"assessment", "export", "nightly", "--file", "x.xlsx"}, []string{"vsfleet export rvtools --run RUN"}},
-		{[]string{"assessment", "metadata", "--format", "csv"}, []string{"vsfleet export metadata --run RUN"}},
-		{[]string{"assessment", "metadata-report", "pci"}, []string{"vsfleet export metadata --definition DEFINITION --run RUN"}},
-		{[]string{"assessment", "backup", "x.db"}, []string{`"assessment backup" was renamed`, "vsfleet db backup FILE"}},
-		{[]string{"assessment", "restore", "x.db", "--force"}, []string{"vsfleet db restore FILE"}},
-		{[]string{"assessment", "doctor"}, []string{`"assessment doctor" was renamed`, "vsfleet db doctor"}},
-		{[]string{"datastore", "files", "list", "ds1"}, []string{`"datastore files list" was renamed`, "vsfleet datastore ls"}},
-		{[]string{"datastore", "files", "find", "ds1", "*.vmdk"}, []string{"vsfleet datastore find"}},
-		{[]string{"datastore", "list"}, []string{"vsfleet get datastores"}},
-		{[]string{"--history-db", "x.db", "capture", "list"}, []string{"--history-db was renamed: use --db"}},
+// Removed CLI names must fail before a command can touch a vCenter or database.
+func TestRemovedCommandsAreUnknown(t *testing.T) {
+	for _, args := range [][]string{
+		{"vm", "list"}, {"vms", "show", "web-01"},
+		{"template", "list"}, {"host", "list"}, {"node", "list"},
+		{"cluster", "list"}, {"vapp", "list"}, {"network", "list"},
+		{"dvswitch", "list"}, {"dvportgroup", "list"},
+		{"resourcepool", "list"}, {"snapshot", "list"},
+		{"health"}, {"topology"}, {"dependencies"}, {"deps"},
+		{"blast-radius"}, {"blast"}, {"search"},
+		{"context", "test", "prod"}, {"contexts", "list"},
+		{"portgroup", "list"}, {"portgroups", "list"}, {"status"},
+		{"assessment", "run"}, {"assess", "list"}, {"history", "list"},
+		{"import", "rvtools", "estate.xlsx"},
+		{"compatibility", "report"}, {"compat", "report"},
+		{"datastore", "list"}, {"datastore", "show", "ds1"},
+		{"datastore", "files", "list", "ds1"},
 	} {
-		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
-			out, _, err := runCLI(t, db, tc.args...)
-			if err == nil {
-				t.Fatalf("succeeded with output %q; want an error", out)
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			out, _, err := runArgs(t, args...)
+			name, parent := args[0], "vsfleet"
+			if name == "datastore" {
+				name, parent = args[1], "vsfleet datastore"
 			}
-			for _, want := range tc.want {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error %q does not mention %q", err, want)
-				}
+			want := fmt.Sprintf("unknown command %q for %q", name, parent)
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("error = %v; want %q (output %q)", err, want, out)
 			}
 		})
+	}
+}
+
+func TestRemovedHistoryDBFlagIsUnknown(t *testing.T) {
+	_, _, err := runArgs(t, "--history-db", "x.db", "api-resources")
+	if err == nil || !strings.Contains(err.Error(), "unknown flag: --history-db") {
+		t.Fatalf("error = %v; want unknown --history-db flag", err)
 	}
 }
 

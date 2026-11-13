@@ -53,10 +53,6 @@ func (f *healthFlags) add(cmd *cobra.Command, listRules bool) {
 	cmd.Flags().BoolVar(&f.failOnFindings, "fail-on-findings", false, "exit 2 when a reported finding meets --severity")
 	cmd.Flags().StringVar(&f.fieldSelector, "field-selector", "", "only findings whose object matches, e.g. 'cpu>=8,power_state=poweredOn'")
 	cmd.Flags().StringVarP(&f.labelSelector, "selector", "l", "", "only findings whose object carries these vSphere tags, CATEGORY=NAME")
-	renameFlags(cmd,
-		flagRename{name: "where", hint: "use --field-selector for fields and -l CATEGORY=NAME for tags"},
-		flagRename{name: "wide", boolean: true, hint: "use -o wide"},
-	)
 	if listRules {
 		cmd.Flags().BoolVar(&f.listRules, "list-rules", false, "list health rules and exit")
 	}

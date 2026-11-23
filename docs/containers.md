@@ -13,7 +13,7 @@ there is no floating `v0` tag. Pin a version or digest in production:
 <!-- x-release-please-start-version -->
 
 ```sh
-docker pull ghcr.io/easonliuuuuu/vsfleet:v0.7.0
+docker pull ghcr.io/easonliuuuuu/vsfleet:v0.7.1
 docker pull ghcr.io/easonliuuuuu/vsfleet@sha256:<manifest-digest>
 ```
 
@@ -48,7 +48,7 @@ docker run --rm \
   --mount type=bind,src="$PWD/vsfleet-data",dst=/data \
   --env VSFLEET_CONFIG=/config/config.toml \
   --env VSFLEET_DB=/data/history.db \
-  ghcr.io/easonliuuuuu/vsfleet:v0.7.0 \
+  ghcr.io/easonliuuuuu/vsfleet:v0.7.1 \
   capture run --all-contexts --label nightly
 ```
 
@@ -67,7 +67,7 @@ docker run --rm \
   --mount type=bind,src="$PWD/vsfleet-data",dst=/data \
   --mount type=bind,src="$PWD/exports",dst=/exports \
   --env VSFLEET_DB=/data/history.db \
-  ghcr.io/easonliuuuuu/vsfleet:v0.7.0 \
+  ghcr.io/easonliuuuuu/vsfleet:v0.7.1 \
   export rvtools --format csv --file /exports
 ```
 
@@ -80,7 +80,7 @@ For a vCenter signed by a private CA, mount a PEM bundle and set
 docker run --rm \
   --mount type=bind,src="$PWD/ca.pem",dst=/etc/vsfleet/ca.pem,readonly \
   --env SSL_CERT_FILE=/etc/vsfleet/ca.pem \
-  ghcr.io/easonliuuuuu/vsfleet:v0.7.0 config get-contexts
+  ghcr.io/easonliuuuuu/vsfleet:v0.7.1 config get-contexts
 ```
 
 You can also configure `thumbprint` or `insecure` TLS. Prefer a private CA or
@@ -126,7 +126,7 @@ carry a BuildKit-generated SBOM. Verify a version tag with the release workflow
 identity:
 
 ```sh
-cosign verify ghcr.io/easonliuuuuu/vsfleet:v0.7.0 \
+cosign verify ghcr.io/easonliuuuuu/vsfleet:v0.7.1 \
   --certificate-identity-regexp '^https://github.com/Easonliuuuuu/vsfleet/.github/workflows/release.yml@refs/heads/main$' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```

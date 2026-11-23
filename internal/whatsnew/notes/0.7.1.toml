@@ -1,0 +1,14 @@
+version = "0.7.1"
+
+[[highlight]]
+title = "Upgrade in one command"
+try = "vsfleet update"
+detail = "No more waiting for the daily check: vsfleet update looks for a new release now and runs brew upgrade or go install for you. With Scoop or a package it prints the exact step. --check only reports."
+
+[[highlight]]
+title = "Built with Go 1.26.11 for a net/http fix"
+detail = "0.7.0 was built with Go 1.26.10, whose net/http has a vulnerability (GO-2026-6859). This release is rebuilt with the patched Go. Only the latest release gets security fixes, so upgrade."
+
+[[heads_up]]
+title = "Windows: install with Scoop, not winget"
+detail = "winget never received current releases, so vsfleet no longer publishes there. Install or upgrade with scoop update vsfleet, or download the release ZIP."

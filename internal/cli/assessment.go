@@ -37,40 +37,6 @@ func (e *partialExitError) Error() string {
 }
 func (e *partialExitError) ExitCode() int { return 3 }
 
-// newAssessmentRenamedCommand answers the removed "assessment" group, and
-// each of its former subcommands, with where that job went.
-func newAssessmentRenamedCommand() *cobra.Command {
-	cmd := renamedCommand("assessment", []string{"assess", "history"},
-		`use "vsfleet capture", "vsfleet analyze", "vsfleet export" or "vsfleet db"`)
-	for _, r := range []struct{ name, hint string }{
-		{"run", `use "vsfleet capture run"`},
-		{"list", `use "vsfleet capture list" or "vsfleet get captures"`},
-		{"diff", `use "vsfleet capture diff"`},
-		{"delete", `use "vsfleet capture delete RUN"`},
-		{"update", `use "vsfleet capture update RUN"`},
-		{"prune", `use "vsfleet capture prune"`},
-		{"report", `use "vsfleet describe capture RUN", or "vsfleet export report --run RUN" to write it to a file`},
-		{"findings", `use "vsfleet analyze health"`},
-		{"readiness", `use "vsfleet analyze readiness"`},
-		{"network-readiness", `use "vsfleet analyze readiness network cl/SOURCE cl/TARGET"`},
-		{"sizing", `use "vsfleet analyze sizing"`},
-		{"capacity", `use "vsfleet analyze capacity"`},
-		{"orphans", `use "vsfleet analyze orphans"`},
-		{"snapshots", `use "vsfleet analyze snapshots"`},
-		{"export", `use "vsfleet export rvtools --run RUN"`},
-		{"metadata", `use "vsfleet export metadata --run RUN"`},
-		{"metadata-report", `use "vsfleet export metadata --definition DEFINITION --run RUN"`},
-		{"backup", `use "vsfleet db backup FILE"`},
-		{"restore", `use "vsfleet db restore FILE"`},
-		{"doctor", `use "vsfleet db doctor"`},
-		{"inventory", `use "vsfleet get KIND --run RUN", e.g. "vsfleet get vms,hosts --run latest -A"`},
-	} {
-		cmd.AddCommand(renamedCommand(r.name, nil, r.hint))
-	}
-	cmd.AddCommand(renamedTrendsCommand(), renamedPerfCommand())
-	return cmd
-}
-
 func capacityCell(value *float64) string {
 	if value == nil {
 		return "—"

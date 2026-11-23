@@ -60,34 +60,6 @@ func addRunFlag(cmd *cobra.Command, run *string) {
 	cmd.Flags().StringVar(run, "run", "latest", "capture to analyze: ID, label, latest, previous or date")
 }
 
-// flagRename is a removed flag and what replaced it.
-type flagRename struct {
-	name, hint string
-	boolean    bool
-}
-
-// renameFlags keeps removed flag spellings answering with their replacement,
-// hidden from help, rather than leaving cobra to call them unknown.
-func renameFlags(cmd *cobra.Command, renames ...flagRename) {
-	for _, r := range renames {
-		if r.boolean {
-			cmd.Flags().Bool(r.name, false, r.hint)
-		} else {
-			cmd.Flags().String(r.name, "", r.hint)
-		}
-		_ = cmd.Flags().MarkHidden(r.name)
-	}
-	next := cmd.RunE
-	cmd.RunE = func(c *cobra.Command, args []string) error {
-		for _, r := range renames {
-			if c.Flags().Changed(r.name) {
-				return fmt.Errorf("--%s was renamed: %s", r.name, r.hint)
-			}
-		}
-		return next(c, args)
-	}
-}
-
 func newAnalyzeReadinessCommand(a *App) *cobra.Command {
 	var flags healthFlags
 	var failOnBlockers bool

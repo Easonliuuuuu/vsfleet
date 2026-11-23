@@ -186,86 +186,22 @@ func objectMetadata(value any) (vsphere.Metadata, bool) {
 	}
 }
 
-// newKindCommands builds the type-first groups that still hold commands with
-// no kubectl verb yet: datastore file browsing. Their listing and detail
-// commands moved to "get" and "describe" and answer only with where they
-// went; every other type-first group is replaced outright by
-// renamedKindCommand.
+// newKindCommands builds the type-first groups for datastore file browsing.
 func newKindCommands(a *App) []*cobra.Command {
 	return []*cobra.Command{kindGroup("datastore", "Datastores: browse and search files (read-only)", newDatastoreFileCommands(a)...)}
 }
 
-// kindGroup is a type-first parent that keeps hidden "list" and "show"
-// stubs, so a habit or script gets a pointer to "get" and "describe".
 func kindGroup(name, short string, subs ...*cobra.Command) *cobra.Command {
 	cmd := requireSubcommand(&cobra.Command{Use: name, Aliases: kindAliases(name), Short: short})
 	cmd.AddCommand(subs...)
-	k := apiresource.Get(name)
-	// "datastore ls" is a real command, so the "list" stub keeps "ls" only
-	// where no subcommand has taken it.
-	listAliases := []string{"ls"}
 	var examples []string
 	for _, sub := range subs {
-		if sub.Name() == "ls" {
-			listAliases = nil
-		}
 		if !sub.Hidden {
 			examples = append(examples, sub.Example)
 		}
 	}
-	cmd.AddCommand(
-		renamedCommand("list", listAliases, fmt.Sprintf(`use "vsfleet get %s"`, k.Plural)),
-		renamedCommand("show", nil, fmt.Sprintf(`use "vsfleet describe %s NAME"`, k.Name)),
-	)
 	cmd.Example = strings.Join(examples, "\n\n")
 	return cmd
-}
-
-// renamedKindCommand answers a removed type-first group, such as
-// "vsfleet host list" or "vsfleet host hba list --host esxi-07", with the
-// "get" or "describe" command that replaced it. subs holds the hint for each
-// of the group's other subcommands, by name.
-func renamedKindCommand(name string, subs map[string]string) *cobra.Command {
-	k := apiresource.Get(name)
-	cmd := renamedCommand(name, kindAliases(name), fmt.Sprintf(`use "vsfleet get %s"`, k.Plural))
-	generic := cmd.RunE
-	cmd.RunE = func(c *cobra.Command, args []string) error {
-		// Flag parsing is off, so args can hold flags given before the
-		// command too ("--db x host list"): look for the first word
-		// that names what was meant rather than trusting args[0].
-		for _, arg := range args {
-			if hint, ok := subs[arg]; ok {
-				return fmt.Errorf("%q was renamed: %s", name+" "+arg, hint)
-			}
-			switch arg {
-			case "list", "ls":
-				return fmt.Errorf("%q was renamed: use \"vsfleet get %s\"", name+" "+arg, k.Plural)
-			case "show":
-				return fmt.Errorf("%q was renamed: use \"vsfleet describe %s NAME\"", name+" show", k.Name)
-			}
-			if sub, ok := apiresource.Lookup(arg); ok && name == "host" {
-				return fmt.Errorf("%q was renamed: use \"vsfleet get %s --host HOST\"", "host "+arg, sub.Plural)
-			}
-		}
-		return generic(c, args)
-	}
-	return cmd
-}
-
-// removedKindGroups are the type-first groups that are gone, with the hint
-// for each subcommand they held besides list and show.
-var removedKindGroups = []struct {
-	name string
-	subs map[string]string
-}{
-	{"vm", map[string]string{
-		"events":             `use "vsfleet events --for vm/NAME"`,
-		"history":            `use "vsfleet describe vm NAME --history"`,
-		"decommission-check": `use "vsfleet analyze decommission vm/NAME"`,
-	}},
-	{"template", nil}, {"host", nil}, {"cluster", nil}, {"vapp", nil},
-	{"network", map[string]string{"compare": `use "vsfleet analyze readiness network cl/SOURCE cl/TARGET -o wide"`}},
-	{"dvswitch", nil}, {"dvportgroup", nil}, {"resourcepool", nil}, {"snapshot", nil},
 }
 
 // kindAliases returns every spelling of a registered kind except its

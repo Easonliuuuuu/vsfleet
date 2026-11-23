@@ -178,7 +178,6 @@ window, per host, cluster or datastore.`),
 	cmd.Flags().StringVar(&flags.failOnProjection, "fail-on-projection", "", "exit 2 when a floor is projected within this duration")
 	cmd.Flags().BoolVar(&flags.trend, "trend", false, "tabulate capacity for every capture in the window instead of projecting")
 	cmd.Flags().StringVar(&flags.kind, "kind", "all", "with --trend, the kind to tabulate: host, cluster, datastore, or all")
-	renameFlags(cmd, flagRename{name: "to", hint: "use --run, the last capture in the window"})
 	return cmd
 }
 

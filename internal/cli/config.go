@@ -248,33 +248,3 @@ the one named with -n.`,
 	cmd.Flags().BoolVar(&minify, "minify", false, "show only the selected context")
 	return cmd
 }
-
-// contextRenames maps each removed "context" subcommand to its new form.
-var contextRenames = map[string]string{
-	"add":    "vsfleet config set-context NAME",
-	"list":   "vsfleet config get-contexts",
-	"ls":     "vsfleet config get-contexts",
-	"use":    "vsfleet config use-context NAME",
-	"show":   "vsfleet config view --minify -n NAME",
-	"remove": "vsfleet config delete-context NAME",
-	"rm":     "vsfleet config delete-context NAME",
-	"delete": "vsfleet config delete-context NAME",
-	"test":   "vsfleet doctor NAME",
-}
-
-// newContextRenamedCommand answers the removed "context" noun with the
-// command that replaced the subcommand typed, rather than one long list.
-func newContextRenamedCommand() *cobra.Command {
-	cmd := renamedCommand("context", []string{"contexts"},
-		`use "vsfleet config get-contexts|current-context|use-context|set-context|delete-context|view", or "vsfleet doctor" to test a connection`)
-	generic := cmd.RunE
-	cmd.RunE = func(c *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			if to, ok := contextRenames[args[0]]; ok {
-				return fmt.Errorf("\"context %s\" was renamed: use %q", args[0], to)
-			}
-		}
-		return generic(c, args)
-	}
-	return cmd
-}

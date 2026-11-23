@@ -34,12 +34,7 @@ type datastoreBrowseResult struct {
 // permission change or a new search flag only has to be taught once. A file
 // path does not work as an object name, so files are not a kind for "get".
 func newDatastoreFileCommands(a *App) []*cobra.Command {
-	files := renamedGroupCommand("files", `use "vsfleet datastore ls" or "vsfleet datastore find"`, map[string]string{
-		"list": `use "vsfleet datastore ls"`,
-		"ls":   `use "vsfleet datastore ls"`,
-		"find": `use "vsfleet datastore find"`,
-	})
-	return []*cobra.Command{newDatastoreFilesListCommand(a), newDatastoreFilesFindCommand(a), files}
+	return []*cobra.Command{newDatastoreFilesListCommand(a), newDatastoreFilesFindCommand(a)}
 }
 
 func newDatastoreFilesListCommand(a *App) *cobra.Command {

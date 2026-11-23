@@ -104,8 +104,6 @@ func TestGetOutputAndSelectors(t *testing.T) {
 			want: "DC0_C0_RP0_VM0\nDC0_C0_RP0_VM1\n"},
 		{name: "custom columns", args: []string{"vms", "-l", "env", "-o", "custom-columns=VM:.name,TAG:.metadata.tags[*].name,NONE:.nope", "--sort-by", ".name"},
 			has: []string{"VM", "DC0_C0_RP0_VM0   prod   <none>", "DC0_C0_RP0_VM1   dev    <none>"}},
-		{name: "removed --where", args: []string{"vms", "--where", "cpu>=1"}, wantErr: "--field-selector"},
-		{name: "removed --wide", args: []string{"vms", "--wide"}, wantErr: "use -o wide"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stdout, stderr, err := r.run(testPassword+"\n", append([]string{"get"}, tc.args...)...)
